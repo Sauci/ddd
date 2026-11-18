@@ -246,14 +246,35 @@ CHECKS: Final[dict[str, CheckInfo]] = {
         _check("missing-id", Severity.INFO,
                "a declaration that produces a variable states no identity for it"),
         _check("renamed-object", Severity.WARNING,
-               "an object of the baseline is offered under a different name",
+               "an object of the baseline is offered under a different name; no component read "
+               "it, and it is not an output of a component read alone",
+               comparison=True),
+        _check("renamed-read-object", Severity.ERROR,
+               "an object of the baseline that somebody read, or that a component read alone "
+               "produced, is offered under a different name, so a reader compiled against the "
+               "baseline looks for a spelling that is gone",
                comparison=True),
         _check("removed-object", Severity.ERROR,
-               "an object of the baseline is gone and somebody read it",
+               "an object of the baseline is gone and somebody read it, or an output of a "
+               "component read alone, whose readers the run was not shown",
+               comparison=True),
+        _check("removed-input", Severity.INFO,
+               "an input of a component read alone is gone: the component stops reading it, "
+               "which harms nobody",
                comparison=True),
         _check("changed-interface", Severity.ERROR,
                "kind, datatype, unit, scaling, shape, axes, locality or where a table keeps "
-               "its point counts changed",
+               "its point counts changed, or the value of a constant, or the layout a released "
+               "structure fixed: a bitfield's width, the type a structured variable names, or "
+               "the members of that structure in order, each with what it holds and its "
+               "dimensions, nested and external ones included, an external one by its header "
+               "too, save a member added at the end of it when the variable is no array, or "
+               "volatile turned on for an object a component reads or a component read alone "
+               "produces",
+               comparison=True),
+        _check("removed-constant", Severity.ERROR,
+               "a constant of the baseline is gone, so a reader that uses its macro no longer "
+               "builds",
                comparison=True),
         _check("reused-name", Severity.ERROR,
                "a name of the baseline now belongs to a different object",
@@ -263,16 +284,37 @@ CHECKS: Final[dict[str, CheckInfo]] = {
                comparison=True),
         _check("changed-storage", Severity.WARNING,
                "the initial value, volatility, memory section or measurement raster of an "
-               "object changed",
+               "object changed, or the event or cycle of a raster; volatile turned on for an "
+               "object a component reads or a component read alone produces is "
+               "changed-interface instead",
                comparison=True),
         _check("narrowed-limits", Severity.WARNING,
-               "the physical limits of an object got tighter, so calibrated data may not fit",
+               "the physical limits of an object got tighter, so calibrated data may not fit; "
+               "a measurement somebody reads, or one a component read alone produces, is "
+               "widened-limits or narrowed-read-limits instead",
+               comparison=True),
+        _check("widened-limits", Severity.WARNING,
+               "the physical limits of a measurement somebody reads, or of one a component "
+               "read alone produces, got wider, so a reader sized for the baseline's range may "
+               "meet a value it was not written for",
+               comparison=True),
+        _check("narrowed-read-limits", Severity.INFO,
+               "the physical limits of a measurement somebody reads, or of one a component "
+               "read alone produces, got tighter: a reader still gets values inside the range "
+               "it was written for",
                comparison=True),
         _check("changed-owner", Severity.WARNING,
                "another component produces the object now",
                comparison=True),
+        _check("narrowed-condition", Severity.ERROR,
+               "the preprocessor condition of an object somebody reads, or of one a component "
+               "read alone produces, was added or replaced, so a reader compiled against the "
+               "baseline does not link in a build where the new condition is false",
+               comparison=True),
         _check("changed-condition", Severity.WARNING,
-               "the preprocessor condition of an object changed",
+               "the preprocessor condition of an object changed; one added or replaced on an "
+               "object somebody reads, or on one a component read alone produces, is "
+               "narrowed-condition instead",
                comparison=True),
         _check("changed-a2l", Severity.WARNING, "the a2l entry of an object changed",
                comparison=True),
@@ -284,6 +326,9 @@ CHECKS: Final[dict[str, CheckInfo]] = {
                "plugin's comparison rules did not run",
                comparison=True),
         _check("added-object", Severity.INFO, "the candidate declares an object the baseline "
+               "did not",
+               comparison=True),
+        _check("added-constant", Severity.INFO, "the candidate declares a constant the baseline "
                "did not",
                comparison=True),
     )
@@ -478,11 +523,39 @@ class SeverityPolicy:
     because the caller relaxed ``dimension-value`` is exactly one.
     """
 
+    floored: frozenset[str] = frozenset()
+    """The checks whose override is the floor's alone: given to :meth:`from_strings` as ``floor``
+    and stated again by no ``-W`` of the caller.
+
+    What a comparison needs to tell the two apart. ``missing-producer=ignore`` is the floor
+    saying a component read alone was never shown its producers, and it is also a project saying
+    it can live with an input nobody produces; the first does not reach a producer the baseline
+    had, the second may.
+    """
+
     @classmethod
     def from_strings(
-        cls, values: Iterable[str], *, strict: bool = False, standalone: bool = False
+        cls,
+        values: Iterable[str],
+        *,
+        floor: Iterable[str] = (),
+        strict: bool = False,
+        standalone: bool = False,
     ) -> Self:
-        """Build a policy from ``check=severity`` strings (as given on the command line)."""
+        """Build a policy from ``check=severity`` strings (as given on the command line).
+
+        ``floor`` is read first and ``values`` over it, so that a caller's own ``-W`` keeps the
+        last word, and what no ``-W`` restated is :attr:`floored`.
+        """
+        if floor:
+            under = cls.from_strings(floor)
+            stated = cls.from_strings(values)
+            return cls(
+                {**under.overrides, **stated.overrides},
+                strict,
+                standalone,
+                frozenset(under.overrides) - frozenset(stated.overrides),
+            )
         overrides: dict[str, Severity] = {}
         for value in values:
             name, separator, severity = value.partition("=")
@@ -572,11 +645,13 @@ class DiagnosticBag:
         """Record a finding; returns ``None`` when the check is ignored.
 
         ``severity`` states one the policy has no say over, for a finding whose severity was
-        decided by another analysis: the errors a baseline's own analysis produced are carried
-        into this run's report prefixed, and they are that delivery's findings rather than
-        this run's to re-grade. Graded here, a ``-W`` of this run would relax or silence the
-        one word saying that the dictionary the comparison rests on could not be trusted, and
-        the run would report no verdict and exit 0.
+        decided elsewhere. The errors a baseline's own analysis produced are carried into this
+        run's report prefixed, and they are that delivery's findings rather than this run's to
+        re-grade: graded here, a ``-W`` of this run would relax or silence the one word saying
+        that the dictionary the comparison rests on could not be trusted, and the run would
+        report no verdict and exit 0. And a producer the candidate lost under the floor of
+        ``--standalone`` is filed by the comparison as the error its check is by default, since
+        the floor's ``ignore`` is the policy's only word on it (:attr:`SeverityPolicy.floored`).
         """
         if severity is None:
             severity = self.policy.resolve(check, self._registered.get(check))

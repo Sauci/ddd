@@ -216,6 +216,42 @@ class TestAKeywordIsRefused:
         )
         assert checks(bag) == ["a2l-keyword"]
 
+    def test_an_input_the_a2l_must_carry_is_held(self, tree: Path) -> None:
+        """An exported axis pulls in the measurement it names as its input, so its name is held
+        and so is its description, whatever the measurement says of its own export."""
+        bag = run(
+            tree,
+            declare("local", "MAP", a2l={"export": False}, description="d" * 300),
+            declare("local", "Ax", "uint16", kind="axis", size=2, input="MAP"),
+        )
+        assert checks(bag) == ["a2l-keyword", "a2l-unrepresentable"]
+        assert at(bag, "a2l-unrepresentable") == [
+            "a.ddd.json#component.interface[0].definition.description: "
+            "warning[a2l-unrepresentable]: the description of 'MAP' is a string of 300 "
+            "characters, but the a2l of ASAP2 1.6.1 carries 255 (MAX_STRING); it is "
+            "written whole"
+        ]
+
+    def test_a_description_past_255_on_an_axis_the_a2l_must_carry_is_named(
+        self, tree: Path
+    ) -> None:
+        bag = run(
+            tree,
+            declare("local", "Speed"),
+            declare(
+                "local",
+                "Ax",
+                "uint16",
+                kind="axis",
+                size=2,
+                input="Speed",
+                a2l={"export": False},
+                description="d" * 300,
+            ),
+            declare("local", "Cv", "uint8", kind="curve", axis="Ax"),
+        )
+        assert checks(bag) == ["a2l-unrepresentable"]
+
     def test_the_names_of_the_lower_case_are_free(self, tree: Path) -> None:
         bag = run(tree, declare("local", "map"), declare("local", "Value"))
         assert checks(bag) == []

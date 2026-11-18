@@ -1518,7 +1518,14 @@ class CompareReply(_Frozen):
 
     verdict: bool
     """Whether the candidate can replace the baseline: no finding of severity error survived
-    the session's own severity policy."""
+    the session's own severity policy, whichever list it is in - the project's own errors
+    (:attr:`own_errors`), those the baseline carries over, and the comparison's, as the exit
+    code of ``ddd compare`` and ``ddd check --baseline`` answers."""
+
+    own_errors: int
+    """How many errors the open project has of its own, which the verdict counts: the number the
+    state reports, so that a project whose comparison found nothing is not left without a reason
+    for a verdict that refuses it. ``0`` for a project with none."""
 
     findings: tuple[Finding, ...]
     """Every finding ``compare`` itself reported, sorted by file: the interface and storage

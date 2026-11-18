@@ -119,8 +119,9 @@ calibration tool still using yesterday's a2l:
 The other direction happens too: a delivery can be a flawless replacement for the baseline
 and still be internally broken, because the baseline says nothing about the components that
 were added since. Asking both questions in one exit code is what the ``--baseline`` option of
-``ddd check`` is for. The comparison itself is graded and directional - widening a limit is
-silent, narrowing it is a warning, changing a datatype is an error - and is described in
+``ddd check`` is for. The comparison itself is graded and directional - widening the limits of calibration data is
+silent and narrowing them is a warning, the other way round for a measurement a component
+reads, and changing a datatype is an error - and is described in
 :doc:`comparing deliveries </comparing_deliveries>`.
 
 What happened to this variable?
@@ -240,7 +241,10 @@ range the datatype can represent under the declared conversion - so a consumer t
 does not repeat the producer's physical range is saying nothing about it, and DDD reads that
 declaration as agreeing with whatever the producer says. Requiring the range to be repeated
 would push every project into copying the same two lines into every consumer, and copied
-lines are the ones that drift.
+lines are the ones that drift. A consumer that leaves them out still depends on the producer's
+range, though, and a comparison of two deliveries says so when that range is widened:
+``widened-limits`` is a warning on a measurement a component reads, whether or not that
+component restated the limits.
 
 Stating limits that differ from the producer's *is* a disagreement, and it is reported:
 

@@ -160,7 +160,10 @@ it has consciously decided to live with.
 The policy belongs to the project rather than to the engineer who happens to be typing: whoever
 checks the project should get the same verdict as the build server, so the overrides are best
 written once into the build system - the CMake integration takes them as ``SEVERITY`` and
-``STRICT`` arguments, see :doc:`build_integration` - instead of being remembered by hand.
+``STRICT`` arguments, see :doc:`build_integration` - instead of being remembered by hand. The
+relaxations of that policy reach a baseline given as a project description as well, so a project
+that builds with ``-W missing-producer=ignore`` can compare its branch against its trunk; its
+promotions and ``--strict`` do not, see :doc:`comparing_deliveries`.
 
 A :doc:`plugin <plugins>` check is spelled ``<plugin>/<check>`` and takes the same overrides
 a built-in check does - ``-W layout/duplicate-key=warning``, ``--strict``, ``ignore`` - the
@@ -197,9 +200,11 @@ definition not part of the file:
 ``--standalone`` is that policy, and the whole of it. It holds back the nine checks that need
 every component of a project - ``missing-producer``, ``unknown-constant``,
 ``unknown-extension``, ``unknown-raster``, ``unknown-reference``, ``unknown-section``,
-``unknown-type``, ``unknown-unit`` and ``unused-output`` - and touches nothing else, so
-everything DDD can decide from the file in front of it is still reported. A declaration one
-of the nine drops is left out of the dictionary in silence as well, because
+``unknown-type``, ``unknown-unit`` and ``unused-output`` - and touches nothing else of the
+analysis, so everything DDD can decide from the file in front of it is still reported. Beside
+``--baseline``, a producer the candidate lost is said by the comparison instead, as an error the
+floor does not reach (``missing-producer`` below). A declaration one of the nine drops is left
+out of the dictionary in silence as well, because
 ``incomplete-project`` - the trace a dropped declaration leaves when the finding that says
 why is silenced - has nothing to say where the missing file is the reason: the constant, the
 raster or the type is declared, in a file this run was not handed. The trace stays for the
@@ -495,11 +500,14 @@ or an a2l file that does not do what the description says - or that does not com
        ``MODULE`` are among them, and the standard keeps identifiers off its index. The match is
        exact and case sensitive, so ``map`` is a name. It holds the project, a component that
        gets a group, an object the a2l carries, each member of a path and a
-       ``display_identifier``, judged from the descriptions alone: an object or a member that
-       states ``export: false`` for the a2l is not held, but the check reads neither the image
-       nor the map, so an object a run drops because its build holds none of it
-       (``condition-left-out``) still draws the error, and ``-W a2l-keyword=ignore`` relaxes it
-       for that run. A member is the finding of the file that declares its structure, once. It
+       ``display_identifier``, judged from the descriptions alone. It skips what the a2l keeps
+       out and holds what the closure over references brings in: an object or a member that
+       states ``export: false`` for the a2l is skipped, unless an exported object names it, an
+       axis under an exported curve or a measurement an exported axis names as its ``input``,
+       and is held then. It reads neither the image nor the map, so an object a run drops
+       because its build holds none of it (``condition-left-out``) still draws the error, and
+       ``-W a2l-keyword=ignore`` relaxes it for that run. A member is the finding of the file
+       that declares its structure, once. It
        is separate from ``reserved-identifier``, which is about c: a name can be fine for the
        compiler and forbidden by the a2l.
    * - ``name-collision``
@@ -558,7 +566,12 @@ or an a2l file that does not do what the description says - or that does not com
      - a variable is read as ``input`` but no component declares it as an output. The generated
        consumer header would declare a symbol nobody defines. A producer whose own declaration
        could not resolve still counts as a producer, so a consumer of the same variable is not
-       told that nobody produces it.
+       told that nobody produces it. ``ddd compare`` says it too of an object a dumped candidate
+       lost the producer of while a component still reads it, at this severity and under this
+       run's ``-W``, and so does ``ddd check --baseline --standalone`` of an output the component
+       turned into an input, as an error whatever the floor says, since the floor does not reach a
+       producer the baseline had; a project's own ``-W missing-producer=ignore`` still silences
+       it.
    * - ``local-conflict``
      - error
      - a variable declared ``local`` by one component is also declared by another. ``local`` is
@@ -690,10 +703,11 @@ it is either a smell or a decision somebody should have taken consciously.
        (``MAX_IDENT``); and a part of that name is at most 128 (``MAX_PARTIAL_IDENT``), an
        array index counted within it, so an array of structures named with the full 128
        characters passes it. The file is written whole. A string or the name of a member is the finding of the
-       file that states it, once. It fires for what the descriptions send to the a2l rather
-       than for what asked to be exported, the closure over references included, so an object
-       kept out of the a2l on its own is still reported where an exported axis names it as its
-       ``input``. It reads neither the image nor the map, so an object a run drops because its
+       file that states it, once. It fires for what the descriptions send to the a2l: it skips what
+       the a2l keeps out and holds what the closure over references brings in, so an object kept
+       out of the a2l on its own, or a member, is skipped unless an exported object names it, an
+       axis under an exported curve or a measurement an exported axis names as its ``input``. It
+       reads neither the image nor the map, so an object a run drops because its
        build holds none of it (``condition-left-out``) is reported all the same, and stops a
        ``--strict`` run; ``-W a2l-unrepresentable=ignore`` relaxes it for that run.
    * - ``point-counts-mismatch``
@@ -820,24 +834,51 @@ registry can be read in one place.
      - Fires when
    * - ``removed-object``
      - error
-     - an object of the baseline is gone and a component read it.
+     - an object of the baseline is gone and a component read it, or an output of a component
+       read alone, whose readers the run was not shown: the readers of a component file read
+       alone are the component itself, so the message does not claim that nobody read it, and
+       every grade that waits on a reader takes such an output as read.
    * - ``changed-interface``
      - error
-     - the kind, datatype, unit, scaling, shape, axes or locality of an object changed, or
-       where a table keeps its point counts, or the layout a released structure fixed for
-       its consumers: the width of a bitfield, the order of the members, or the type a
-       structured variable names. Scaling compares an
-       enum by its name and its ordered enumerators, whose descriptions are documentation
-       and are not compared.
+     - kind, datatype, unit, scaling, shape, axes, locality or where a table keeps its point
+       counts changed, or the value of a constant, or the layout a released structure fixed: a
+       bitfield's width, the type a structured variable names, or the members of that structure
+       in order, each with what it holds and its dimensions, nested and external ones included,
+       an external one by its header too, save a member added at the end of it when the variable
+       is no array, or volatile turned on for an object a component reads or a component read
+       alone produces. Turned on, ``volatile`` is the interface of an object a reader was
+       compiled against: a reader built without the qualifier reaches it through an lvalue that
+       is not volatile, which C leaves undefined, and the finding is not repeated as
+       ``changed-storage``. Scaling compares an enum by its name and
+       its ordered enumerators, whose descriptions are documentation and are not compared.
+   * - ``renamed-read-object``
+     - error
+     - an object of the baseline that a component read, or that a component read alone
+       produced, is offered under a different name. A reader may be a binary compiled against
+       the baseline's headers, and it looks for a spelling that is gone. A structured variable's rename is said under each leaf's path,
+       and each leaf answers for its variable's readers. ``-W renamed-object`` relaxes the
+       warning an unread object's rename is, and does not reach this error.
+   * - ``narrowed-condition``
+     - error
+     - the preprocessor condition of an object a component reads, or of one a component read
+       alone produces, was added or replaced, so a reader compiled against the baseline does not
+       link in a build where the new condition is false. DDD cannot weigh one condition against another and takes a replacement as the
+       builds the object is present in changing. A ``-W changed-condition`` relaxation does not
+       reach it.
    * - ``reused-name``
      - error
      - a name of the baseline now belongs to a different object: the object that carried it
        was renamed or removed, and a new one took the spelling. Nothing about the delivery
        looks broken, and a dataset or a recording keyed by the name binds to the wrong storage.
+   * - ``removed-constant``
+     - error
+     - a constant of the baseline is gone, so a reader that uses its macro no longer builds. It
+       is an error whether or not an object is dimensioned by it, because a macro is what a
+       reader compiled against the baseline's headers names.
    * - ``renamed-object``
      - warning
-     - an object of the baseline is offered under a different name; its ``id`` is what says
-       so. The interface comparison still runs across the pair, and ``--renames`` writes the
+     - an object of the baseline is offered under a different name and no component read it;
+       its ``id`` is what says so. The interface comparison still runs across the pair, and ``--renames`` writes the
        old and the new spelling out, for migrating datasets and recordings.
    * - ``removed-unused-object``
      - warning
@@ -846,7 +887,7 @@ registry can be read in one place.
    * - ``changed-storage``
      - warning
      - the initial value, the volatility, the memory section or the measurement raster of an
-       object changed. A
+       object changed, or the event or cycle of a raster. A
        calibration object whose ``volatile`` went from ``true`` to ``false`` is the case worth
        reading twice: it keeps its address and a tool can still write to it, but the compiler
        is now entitled to fold the initial value into the code that reads it, so tuning it
@@ -858,16 +899,27 @@ registry can be read in one place.
    * - ``narrowed-limits``
      - warning
      - the physical limits of an object got tighter, so calibrated data may no longer fit.
-       Widening is silent, because every value the baseline allowed still fits. The ends are
-       compared with the relative tolerance of ``limits-out-of-range``: most limits are
-       derived, and a candidate that writes down the ones its datatype implies is not
-       narrowing the unrounded ends an older baseline carries.
+       Widening is silent, because every value the baseline allowed still fits; this is the
+       grade of calibration data and of a measurement nobody reads. The ends are compared with
+       the relative tolerance of ``limits-out-of-range``: most limits are derived, and a
+       candidate that writes down the ones its datatype implies is not narrowing the unrounded
+       ends an older baseline carries. A project that relaxed ``narrowed-limits`` for a
+       measurement a component reads relaxes ``narrowed-read-limits`` and ``widened-limits``
+       instead.
+   * - ``widened-limits``
+     - warning
+     - the physical limits of a measurement a component reads, or of one a component read alone
+       produces, got wider, so a reader sized for the range of the baseline may meet a value it
+       was not written for. The ends are weighed
+       as ``narrowed-limits`` weighs them.
    * - ``changed-owner``
      - warning
      - another component produces the object now.
    * - ``changed-condition``
      - warning
-     - the preprocessor condition of an object changed.
+     - the preprocessor condition of an object changed; one added or replaced on an object a
+       component reads, or on one a component read alone produces, is ``narrowed-condition``
+       instead.
    * - ``changed-a2l``
      - warning
      - the a2l entry of an object changed.
@@ -884,6 +936,19 @@ registry can be read in one place.
    * - ``added-object``
      - info
      - the candidate declares an object the baseline did not.
+   * - ``added-constant``
+     - info
+     - the candidate declares a constant the baseline did not, which no reader of the baseline
+       can be disturbed by.
+   * - ``narrowed-read-limits``
+     - info
+     - the physical limits of a measurement a component reads, or of one a component read alone
+       produces, got tighter: a reader still gets values inside the range it was written for.
+   * - ``removed-input``
+     - info
+     - an input of a component read alone is gone: the component stops reading it, which harms
+       nobody. Only for a baseline that is a component file, whose dictionary records no
+       reader but the component itself.
 
 The producing component wins
 ----------------------------

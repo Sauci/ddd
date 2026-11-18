@@ -19,6 +19,7 @@ function reply(fields: Partial<CompareReply> = {}): CompareReply {
   return {
     revision: 1,
     verdict: false,
+    own_errors: 0,
     findings: [],
     baseline_findings: [],
     renames: [],

@@ -14,13 +14,14 @@ drifted from that the first time either side changed.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
 from ddd.diagnostics import (
+    CHECKS,
     STANDALONE_POLICY,
     DiagnosticBag,
     Location,
@@ -30,8 +31,9 @@ from ddd.diagnostics import (
 )
 
 if TYPE_CHECKING:
+    from ddd.compare import Pairing
     from ddd.ir import DataDictionary
-    from ddd.plugins import Plugin
+    from ddd.plugins import Plugin, PluginError
 
 BASELINE_PREFIX: Final = "in the baseline: "
 """What marks an error carried over from the baseline's own analysis, so that it reads as the
@@ -114,9 +116,22 @@ class Resolved:
     staleness makes a reading of this side stale, which is how :mod:`ddd.gui.compare` decides
     a cached baseline has to be read again."""
 
+    alone: bool = False
+    """Whether this side is one component file, read without a project around it.
+
+    What a dictionary cannot say of itself, and what ``compare`` has to be told: the readers it
+    records for an object are the component's own and nobody else's, because the run was not
+    shown the rest. A project description is whole. An archived dump is graded as whole too,
+    though a ``dump --standalone`` of a component is partial: it carries no mark saying so, the
+    mark is a change of the format, and a dump is compared as it always was."""
+
 
 def read_dictionary(
-    path: Path, bag: DiagnosticBag, reading: Reading | None = None
+    path: Path,
+    bag: DiagnosticBag,
+    reading: Reading | None = None,
+    *,
+    floor_when_alone: bool = False,
 ) -> Resolved | None:
     """A dumped dictionary, or a project/component description resolved into one.
 
@@ -126,6 +141,14 @@ def read_dictionary(
     ``reading`` is where this says *why* it answers ``None``, for a caller that has to put that
     in words - which of the two readers met the file, and how far it got. A caller with nothing
     to say about a refusal leaves it out.
+
+    ``floor_when_alone`` has a file that is one component, read without a project around it,
+    read under the floor ``ddd check --standalone`` reads one under
+    (:data:`~ddd.diagnostics.STANDALONE_POLICY`), whether or not the run said so: what the
+    component was never shown is not a fault of the component. Taken before anything is loaded,
+    since the loader reports some of what the floor silences, and set on ``bag`` itself: its
+    policy is replaced by the floor under the overrides it held, and stays so after the read,
+    so a caller hands it a bag of its own, as :func:`read_baseline` does.
     """
     from ddd.analysis import analyze
     from ddd.loading import load_dictionary, load_workspace, read_json_document
@@ -133,8 +156,15 @@ def read_dictionary(
     account = Reading() if reading is None else reading
     document = read_json_document(path)
     if holds_a_description(document):
+        if floor_when_alone and _is_a_component(document):
+            bag.policy = _with_the_floor(bag.policy)
+        # What this file reported, not what the bag held when it came: a baseline's carried
+        # errors share the bag of the run, and a candidate that was refused for them was never
+        # analysed, so its own findings and its renames were withheld from a run that reports
+        # a candidate's everything.
+        held = bag.count(Severity.ERROR)
         workspace = load_workspace(path, bag)
-        if workspace is None or bag.has_errors:
+        if workspace is None or bag.count(Severity.ERROR) > held:
             account.refusal = Refusal.DESCRIPTION
             return None
         return Resolved(
@@ -143,7 +173,20 @@ def read_dictionary(
             workspace.locate,
             True,
             workspace.sources(),
+            alone=not workspace.projects,
         )
+    if document is not None and not holds_a_dictionary(document):
+        # Neither: ``format`` has a default, so a file stating only a name validates as an empty
+        # dictionary - every object of the other side an addition, or a removal - and is a
+        # delivery of nothing. Said here, once, for every caller.
+        bag.add(
+            "schema",
+            "the file is neither a dumped dictionary nor a project or component description: it "
+            "states no `format`, no `project` and no `component`",
+            where(path),
+        )
+        account.refusal = Refusal.NEITHER
+        return None
     # Handed the document this already read rather than leaving the reader to read it again:
     # a dumped dictionary is the file a build archives whole, and the 45 MB one of a thousand
     # object project costs about a third of a second per pass, twice over in a comparison.
@@ -155,14 +198,43 @@ def read_dictionary(
     return Resolved(dictionary, (), lambda _: archived, False, (archived.path,))
 
 
+def _is_a_component(document: dict[str, Any] | None) -> bool:
+    """True for a file whose top level states a component: the one the loader reads alone. A file
+    stating a project as well is refused, whichever floor it was read under."""
+    return document is not None and "component" in document
+
+
+def _with_the_floor(policy: SeverityPolicy) -> SeverityPolicy:
+    """``policy`` under the floor of a component read alone, an explicit override of its own
+    keeping the last word, as ``ddd check --standalone`` has it."""
+    floor = SeverityPolicy.from_strings(STANDALONE_POLICY, strict=False, standalone=True)
+    return SeverityPolicy({**floor.overrides, **policy.overrides}, policy.strict, True)
+
+
 def _unread(document: dict[str, Any] | None) -> Refusal:
     """Which refusal a file the dump reader could not read is: the sniff again, now that the
-    reader has had its say, and never a classification of what it happened to report."""
-    if document is None:
-        return Refusal.NOT_JSON
-    if holds_a_dictionary(document):
-        return Refusal.DICTIONARY
-    return Refusal.NEITHER
+    reader has had its say, and never a classification of what it happened to report. A file
+    that is json and states no ``format`` never gets here: it is neither, and was refused
+    before the reader was asked."""
+    return Refusal.NOT_JSON if document is None else Refusal.DICTIONARY
+
+
+def relaxations(policy: SeverityPolicy) -> dict[str, Severity]:
+    """The overrides of ``policy`` that grade a check below the grade it has by default, and
+    none of the rest: what a project says it can live with, as against what it asks of itself.
+
+    A promotion - ``-W unused-output=error``, and ``--strict`` with it, which this leaves out
+    altogether - is a run asking to be told about *its own* findings more loudly; a relaxation
+    is the project's decision about a check, and one project has one decision. A check of a
+    plugin has no grade here to compare with, since the plugin that registers it is not loaded
+    yet, and what nothing grades lower than ``ignore`` is kept whichever it is.
+    """
+    return {
+        check: severity
+        for check, severity in policy.overrides.items()
+        if severity is Severity.IGNORE
+        or (check in CHECKS and severity.rank > CHECKS[check].default_severity.rank)
+    }
 
 
 def read_baseline(
@@ -178,19 +250,32 @@ def read_baseline(
     run is, so the baseline is analysed without ``--strict``; only its errors are carried over,
     prefixed, so that a broken baseline is visible. A candidate given as a dump is still
     compared against whatever resolved, because a delivery that cannot be accepted still needs
-    its differences listed; a candidate given as a description is not analysed once the shared
-    bag holds an error, so a broken baseline stops that run at the errors.
+    its differences listed; a candidate given as a description is analysed all the same, and a
+    broken baseline withholds nothing of it - its findings and its renames are reported beside
+    the carried errors, which count against the verdict and not against the candidate's reading
+    (:func:`read_dictionary`).
 
-    ``-W`` does not reach it either, for the same reason and against the same objection: the
-    overrides used to be shared, so ``-W unused-output=error`` - a run asking to be told about
-    *its own* unread outputs - promoted a warning about a predecessor into an error, carried
-    it over as ``in the baseline:`` and refused a verdict about the delivery. What does reach
-    it is ``standalone``, the floor a component read on its own sets: that is a statement
-    about how the file was handed over, and the baseline was handed over the same way.
+    A promotion of ``-W`` does not reach it, for the same reason and against the same objection:
+    the overrides used to be shared, so ``-W unused-output=error`` - a run asking to be told
+    about *its own* unread outputs - promoted a warning about a predecessor into an error,
+    carried it over as ``in the baseline:`` and refused a verdict about the delivery. A
+    relaxation does (:func:`relaxations`): a project that decided it can live with a finding
+    decided it of the delivery it compares against as much as of its own, and a project that
+    relaxes ``missing-producer`` could not otherwise compare its branch against its trunk.
+    ``standalone`` reaches it too, the floor a component read on its own sets: that is a
+    statement about how the file was handed over, and the baseline was handed over the same way. A
+    baseline that *is* one component file is read under that floor whether or not the run said
+    so - ``ddd compare`` has no flag to say it with - so that one file is read one way by every
+    caller: against the floor, the component's own input nobody was shown the producer of was
+    an error of the baseline.
     """
-    floor = STANDALONE_POLICY if standalone else ()
-    own = DiagnosticBag(SeverityPolicy.from_strings(floor, strict=False, standalone=standalone))
-    resolved = read_dictionary(path, own, reading)
+    floor = SeverityPolicy.from_strings(
+        STANDALONE_POLICY if standalone else (), strict=False, standalone=standalone
+    )
+    own = DiagnosticBag(
+        SeverityPolicy({**floor.overrides, **relaxations(bag.policy)}, False, standalone)
+    )
+    resolved = read_dictionary(path, own, reading, floor_when_alone=True)
     for diagnostic in own.sorted:
         if diagnostic.severity is Severity.ERROR:
             bag.add(
@@ -198,10 +283,10 @@ def read_baseline(
                 f"{BASELINE_PREFIX}{diagnostic.message}",
                 diagnostic.location,
                 diagnostic.notes,
-                # At the severity the baseline's own analysis gave it: "the run fails on
-                # them" (4.1) is what makes a comparison against an untrustworthy dictionary
-                # visible, and a `-W` of this run relaxing the check would leave the run
-                # reporting no verdict and exiting 0.
+                # At the severity the baseline's own analysis gave it, which is the project's
+                # relaxations over the check's own grade and never this run's promotions:
+                # "the run fails on them" (4.1) is what makes a comparison against an
+                # untrustworthy dictionary visible.
                 severity=diagnostic.severity,
             )
     return resolved
@@ -229,3 +314,77 @@ def holds_a_dictionary(document: dict[str, Any] | None) -> bool:
     decides whose refusal a file's is, never whether it loads.
     """
     return document is not None and "format" in document
+
+
+@dataclass(frozen=True, slots=True)
+class Comparison:
+    """What :func:`compare_deliveries` made of one pair: the pairing, and whether the candidate
+    can replace the baseline."""
+
+    paired: Pairing
+    """What :func:`ddd.compare.compare` paired, for ``renames`` to read back."""
+
+    verdict: bool
+    """``True`` exactly when no finding of the run is an error, whoever's it is: the
+    candidate's own, those the baseline carries over, and the comparison's (SPEC 4.1)."""
+
+
+def compare_deliveries(
+    baseline: Resolved,
+    candidate: Resolved,
+    bag: DiagnosticBag,
+    *,
+    location: Location,
+    baseline_location: Location | None = None,
+    plugins: Sequence[Plugin] | None = None,
+    on_plugin_error: Callable[[PluginError], None] | None = None,
+    held_elsewhere: int = 0,
+) -> Comparison:
+    """Whether ``candidate`` can replace ``baseline``: the comparison, then the plugins' own
+    comparison rules, then the verdict - the one place that order is written.
+
+    ``ddd compare``, ``ddd check --baseline`` and the Compare tab each ran their own copy, and
+    the copies disagreed: the tab did not count the project's own errors, and called a delivery
+    that both commands exit 1 on one that can replace. What differs between the callers is a
+    parameter here and nothing else:
+
+    - ``bag`` is where the comparison's findings go. The commands' holds the candidate's own
+      and the baseline's carried errors too, which is what their exit code answers by. The
+      tab keeps three lists apart, so what it keeps elsewhere is ``held_elsewhere``, a count
+      of errors that bear on the verdict and are not in ``bag``.
+    - ``plugins`` are the hooks to run, where they are not the candidate's own: an archived
+      dictionary names none, so ``ddd compare --plugin`` supplies them.
+    - ``on_plugin_error`` is what a hook that raises becomes. Left out, it is raised, which is
+      a usage error on the command line; the tab files it as a finding instead, because the
+      server promises findings and never an exception. Either way the verdict refuses: rules
+      that never finished grading are not ones a "can replace" may rest on.
+    """
+    from ddd.compare import compare
+    from ddd.plugins import PluginError, run_compare_hooks
+
+    paired = compare(
+        baseline.dictionary,
+        candidate.dictionary,
+        bag,
+        location=location,
+        baseline_alone=baseline.alone,
+        candidate_analysed=candidate.from_description,
+    )
+    refused = False
+    try:
+        run_compare_hooks(
+            candidate.plugins if plugins is None else plugins,
+            baseline.dictionary,
+            candidate.dictionary,
+            bag,
+            candidate.locate,
+            location,
+            baseline_location,
+        )
+    except PluginError as error:
+        if on_plugin_error is None:
+            raise
+        on_plugin_error(error)
+        refused = True
+    verdict = not (refused or held_elsewhere or bag.has_errors)
+    return Comparison(paired, verdict)

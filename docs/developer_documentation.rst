@@ -571,9 +571,16 @@ as in a hunt. Three things differ there: the concurrency group is Publish's run'
 no push or dispatch cancels a release's gates, nor has its own cancelled by them; the ``gui``
 job builds no wheel, Publish building, installing and checking the one it ships; and
 ``dev-build`` and ``dev-publish``, which run on a push or a pull request alone, never run for a
-release. The call allows ``id-token: write``, which ``dev-publish`` asks for, since a called
-workflow's jobs can only lower the permissions it is given; every other job of it is held to
-reading by the workflow's own ``permissions``.
+release. The call allows ``id-token: write``, which ``dev-publish`` asks for: a called
+workflow's jobs can only lower the permissions they are given, and GitHub checks what each asks
+for as the run starts, whatever its ``if:``. ``dev-publish`` cannot run in Publish's run, and
+every other job of it is held to reading by the workflow's own ``permissions``.
+
+A release waits on every job of ``ci.yml``, then, its windows cells and its journeys included,
+and its documentation waits on the release. When one of them fails - a journey that fails only
+now and then, say - *Re-run failed jobs* on Publish's run runs that job again, on the release's
+commit, and with it every job that depends on it: the build, its checks and the uploads, none
+of which had run. The jobs that passed keep their results.
 
 Nothing in the toolchain moves on its own. Every ``uses:`` is pinned by a major tag, the
 extension's and the browser interface's lock files pin their dependencies exactly, and

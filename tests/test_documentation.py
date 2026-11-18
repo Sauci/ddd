@@ -6024,6 +6024,13 @@ class TestWhatPublishRunsBeforeItUploads:
             "its development builds": "which run on a push or a pull request alone, never run "
             "for a release",
             "its permission": "The call allows ``id-token: write``, which ``dev-publish`` asks for",
+            "when GitHub checks it": "GitHub checks what each asks for as the run starts, "
+            "whatever its ``if:``. ``dev-publish`` cannot run in Publish's run",
+            "a release's wait": "A release waits on every job of ``ci.yml``, then, its windows "
+            "cells and its journeys included, and its documentation waits on the release.",
+            "a failed gate's re-run": "*Re-run failed jobs* on Publish's run runs that job again, "
+            "on the release's commit, and with it every job that depends on it",
+            "what keeps": "The jobs that passed keep their results.",
             "the heading": "Nothing is uploaded until the wheel has been installed and run.",
             "the gates first": "Every job of ``ci.yml`` has passed on the release's commit first",
             "the installation": "The build then installs the wheel it built into a fresh "

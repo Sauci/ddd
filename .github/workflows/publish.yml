@@ -35,10 +35,12 @@ jobs:
   # pull request alone.
   #
   # A called workflow's jobs keep no permission its caller withholds - GitHub documents that a
-  # called workflow can only lower them - and ci.yml's dev-publish asks for id-token: write, so
-  # the call allows it rather than leave GitHub to reject ci.yml for asking. ci.yml's own
-  # `permissions: contents: read` holds every other job of it to reading, and dev-publish never
-  # runs here.
+  # called workflow can only lower them - and GitHub checks what each nested job asks for as the
+  # run starts, whatever that job's `if:`. ci.yml's dev-publish asks for id-token: write, so the
+  # call allows it, or every run of Publish would fail before its first job. dev-publish, the one
+  # job asking for it, cannot run in this run: it needs dev-build, which runs on a push or a pull
+  # request alone. ci.yml's own `permissions: contents: read` holds every other job of it to
+  # reading.
   ci:
     uses: ./.github/workflows/ci.yml
     permissions:

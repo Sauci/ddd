@@ -138,11 +138,14 @@ What it trusts
   as ``ddd check`` does. Whoever started ``ddd gui`` holds it, and so does anyone its terminal
   shows it to. The printed address is for pasting into a browser's own address bar; clicked in
   the terminal instead, it is handed to an opener such as ``xdg-open`` on its command line,
-  which any local user can read while it runs. The token no longer chooses *which* plugins
-  run: an edit that would change which plugins the project runs is refused, ``409``, so the
-  reader changes that list in a text editor, not through the page. A process already running
-  as this same user is outside what this page defends: it reads these files and runs this code
-  with no token at all.
+  which any local user can read while it runs. The token names no new code: an edit that
+  would change which plugins the project's descriptions name is refused, ``409``, so the
+  reader makes that change in a text editor, not through the page. What it can run is what
+  descriptions already name: the open project's, and those of a project the start page offers
+  or a baseline under the directory ``ddd gui`` was started in, which the page may open or
+  compare against. A description that does not load runs none of the plugins it names,
+  whichever way an edit leaves it. A process already running as this same user is outside
+  what this page defends: it reads these files and runs this code with no token at all.
 
 * **The page's own origin.** The token is kept in its ``localStorage``, readable only by
   script running in this origin; the content security policy runs no script but one served
@@ -223,10 +226,10 @@ What it does not defend against
   the token itself never sits on a command line. But a local process reading the
   launcher's command line, which any local user can read on Linux and on macOS alike, and
   presenting that code before the reader's browser does holds the token, and so runs the project's code as the reader,
-  for as long as this run of ``ddd gui`` lasts - not merely ahead of the reader once. Since
-  the token no longer chooses which plugins run, what the winner holds is what any holder of
-  the token holds, as the first item above says: the project's descriptions, and the plugins
-  they name, as the reader. The winner may be any local user's program, not only one of the
+  for as long as this run of ``ddd gui`` lasts - not merely ahead of the reader once. What
+  the winner holds is what any holder of the token holds, as the first item above says: it
+  acts on the project's descriptions as the reader, and runs no code but what descriptions
+  already name. The winner may be any local user's program, not only one of the
   reader's own account: on a shared machine, another user's program that wins holds the
   reader's power over the project for the rest of the run, which a program of another user
   did not hold before. A process already running as this same user is outside what this page

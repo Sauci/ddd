@@ -869,15 +869,15 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   file's time and size exactly is not told, as the session's own watch does not tell it.
 
 * **An edit through `ddd gui` is held to what the reader could do by hand.**  An edit cannot change
-  which plugins the project runs: `POST /api/edit` answers it `409`, saying what to change in a
-  text editor, and the Files tab refuses such a plan before the reader presses.  A file an edit
-  creates is a description, named `*.ddd.json`, as every create flow of the page names one; any
-  other name is refused.  The security page, and the warning `ddd gui` prints for a `--host` beyond
-  loopback, say what the token amounts to: whoever holds it acts as the reader, since `ddd gui` runs
-  what the project names, as `make` does, and a process of the same user is outside what the page
-  defends.  A client that scripted `POST /api/edit` to change which plugins the project runs, or to
-  create a file that is not a description, now gets the `409`; the page's own flows need nothing
-  changed.
+  which plugins the project's descriptions name: `POST /api/edit` answers it `409`, saying what to
+  change in a text editor, and the Files tab refuses such a plan before the reader presses.  A file
+  an edit creates is a description, named `*.ddd.json`, as every create flow of the page names one;
+  any other name is refused.  The security page, and the warning `ddd gui` prints for a `--host`
+  beyond loopback, say what the token amounts to: whoever holds it acts as the reader, since
+  `ddd gui` runs what the project names, as `make` does, and a process of the same user is outside
+  what the page defends.  A client that scripted `POST /api/edit` to change which plugins the
+  project's descriptions name, or to create a file that is not a description, now gets the `409`;
+  the page's own flows need nothing changed.
 
 * **A build record's `project` is read under the rule a request's path meets.**  The start page's
   listing, its open and the builds that feed an open project read a `ddd-build.json` alike: a record

@@ -58,17 +58,45 @@ def test_the_page_likens_running_a_project_to_make() -> None:
     )
 
 
+def test_the_page_says_opening_a_project_here_is_running_it() -> None:
+    assert "Opening a project here is running it." in _prose()
+
+
 def test_the_page_says_what_holding_the_token_lets_one_do() -> None:
-    assert "It is code execution as the reader" in _prose()
+    assert (
+        "It is code execution as the reader: whoever holds it acts on the project's descriptions "
+        "as the reader does, and ``ddd gui`` runs the plugins they name, as ``ddd check`` does."
+        in _prose()
+    )
 
 
-def test_the_page_says_an_edit_cannot_change_which_plugins_run() -> None:
-    assert "an edit that would change which plugins the project runs is refused" in _prose()
+def test_the_page_says_an_edit_cannot_change_which_plugins_the_descriptions_name() -> None:
+    assert (
+        "The token names no new code: an edit that would change which plugins the project's "
+        "descriptions name is refused, ``409``, so the reader makes that change in a text "
+        "editor, not through the page." in _prose()
+    )
+
+
+def test_the_page_says_what_the_token_can_run() -> None:
+    assert (
+        "What it can run is what descriptions already name: the open project's, and those of a "
+        "project the start page offers or a baseline under the directory ``ddd gui`` was "
+        "started in, which the page may open or compare against." in _prose()
+    )
+
+
+def test_the_page_says_a_description_that_does_not_load_runs_none_of_its_plugins() -> None:
+    assert (
+        "A description that does not load runs none of the plugins it names, whichever way an "
+        "edit leaves it." in _prose()
+    )
 
 
 def test_the_page_leaves_a_process_of_the_reader_s_own_account_undefended() -> None:
     assert (
-        "A process already running as this same user is outside what this page defends" in _prose()
+        "A process already running as this same user is outside what this page defends: it "
+        "reads these files and runs this code with no token at all." in _prose()
     )
 
 
@@ -78,9 +106,9 @@ def test_the_page_says_the_launch_race_winner_runs_the_project_code() -> None:
 
 def test_the_page_says_the_launch_race_winner_holds_what_any_holder_of_the_token_holds() -> None:
     assert (
-        "Since the token no longer chooses which plugins run, what the winner holds is what any "
-        "holder of the token holds, as the first item above says: the project's descriptions, "
-        "and the plugins they name, as the reader." in _prose()
+        "What the winner holds is what any holder of the token holds, as the first item above "
+        "says: it acts on the project's descriptions as the reader, and runs no code but what "
+        "descriptions already name." in _prose()
     )
 
 

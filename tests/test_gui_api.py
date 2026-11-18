@@ -2872,7 +2872,7 @@ class TestEdit:
         assert includes == ["b.ddd.json", "a.ddd.json"]
 
 
-_PLUGINS_SAID: Final = "ddd gui does not change which plugins a project runs; "
+_PLUGINS_SAID: Final = "ddd gui does not change which plugins the project's descriptions name; "
 """What every shape of the plugins refusal opens with (``ddd.gui.session._PLUGINS_SAID``): each
 then says what the reader changes in a text editor instead."""
 
@@ -2928,11 +2928,11 @@ def creating_doc(root: Path, name: str, raw: str, *, at: int = 1) -> dict[str, A
     }
 
 
-class TestTheTokenDoesNotChooseWhichPluginsRun:
-    """``POST /api/edit`` refuses an edit after which the open project would run plugins other
-    than those it runs now, so the token no longer chooses the code that runs (12:I2, M7). A
-    plugin here is a ``.py`` path that imports to nothing - no plugin DDD runs is built: these
-    assert the refusal, which is reached before a file is read for its hooks."""
+class TestAnEditCannotChangeWhichPluginsTheDescriptionsName:
+    """``POST /api/edit`` refuses an edit after which the project's descriptions would name
+    plugins other than they name now, so the token names no code they do not name already
+    (12:I2, M7). A plugin here is a ``.py`` path that imports to nothing - no plugin DDD runs is
+    built: these assert the refusal, which is reached before a file is read for its hooks."""
 
     def test_setting_a_plugins_list_is_refused_and_nothing_is_written(
         self, api: Api, root: Path

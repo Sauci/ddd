@@ -103,16 +103,16 @@ tree holds, every one the build's. Answered 409, and refused again for as long a
 beside the description names it."""
 
 PLUGINS: Final = "plugins"
-"""The refusal of an edit after which the open project would name plugins other than it names now
-(:func:`_refuse_plugins`): a change of a description's ``plugins`` list, a created file whose
-document names plugins, or a change of ``includes`` that brings in or drops a description naming
-plugins. Answered 409. ``ddd gui`` runs what a project names, as ``make`` runs what a Makefile
-names, so the token no longer chooses the code that runs (decision M7); each shape says what the
-reader changes in a text editor instead."""
+"""The refusal of an edit after which the project's descriptions would name plugins other than
+they name now (:func:`_refuse_plugins`): a change of a description's ``plugins`` list, a created
+file whose document names plugins, or a change of ``includes`` that brings in or drops a
+description naming plugins. Answered 409. ``ddd gui`` runs what a project names, as ``make`` runs
+what a Makefile names, so the token names no code the descriptions do not name already (decision
+M7); each shape says what the reader changes in a text editor instead."""
 
-_PLUGINS_SAID: Final = "ddd gui does not change which plugins a project runs; "
-"""What every :data:`PLUGINS` refusal opens with: ``ddd gui`` does not choose the code a project
-runs. Each shape then says what the reader changes by hand instead."""
+_PLUGINS_SAID: Final = "ddd gui does not change which plugins the project's descriptions name; "
+"""What every :data:`PLUGINS` refusal opens with: ``ddd gui`` names no plugin the project's
+descriptions do not name already. Each shape then says what the reader changes by hand instead."""
 
 _PLUGINS_LIST: Final = f"{_PLUGINS_SAID}change the plugins list in a text editor"
 """A change of a description's ``plugins`` list, the project's or a sub-project's - a document
@@ -251,10 +251,11 @@ class Revision:
     that file wherever it lies, as ``ddd check`` does, and every route answering from the
     analysis - the dictionary, its types, units and values, a variable, the graph, the findings,
     which may quote what the file holds - answers what it states. What bounds an edit is
-    elsewhere: it cannot change which plugins the project runs (:func:`_refuse_plugins`); a file
-    it creates is a description named ``*.ddd.json``, beside the project description and
-    included by the same edit (:func:`_confined`); and a build record's ``project`` is read only
-    under the rule a request's path meets (:func:`_readable_project`).
+    elsewhere: it cannot change which plugins the project's descriptions name
+    (:func:`_refuse_plugins`); a file it creates is a description named ``*.ddd.json``, beside
+    the project description and included by the same edit (:func:`_confined`); and a build
+    record's ``project`` is read only under the rule a request's path meets
+    (:func:`_readable_project`).
     """
 
     edits: int = 0
@@ -600,12 +601,13 @@ class Session:
         whose change of that description includes it, and no plugin and no file of another kind.
         Any other is refused before a file is touched.
 
-        ``ddd gui`` does not change which plugins a project runs (:func:`_refuse_plugins`): an
-        edit that would change a ``plugins`` list, create a file whose document names plugins, or
-        bring in or drop a description naming plugins through a change of ``includes`` is refused
-        before a file is touched, so the reader changes which code runs by editing the
-        description in a text editor, never through the page. ``ddd gui`` runs what a project
-        names, as ``make`` runs what a Makefile names (decision M7).
+        ``ddd gui`` does not change which plugins the project's descriptions name
+        (:func:`_refuse_plugins`): an edit that would change a ``plugins`` list, create a file
+        whose document names plugins, or bring in or drop a description naming plugins through a
+        change of ``includes`` is refused before a file is touched, so the reader makes such a
+        change in a text editor, never through the page. ``ddd gui`` runs what a project names,
+        as ``make`` runs what a Makefile names (decision M7), and a description that does not
+        load runs none of the plugins it names, whichever way an edit leaves it.
 
         Nothing is written under the build tree a description a build generates is in
         (:attr:`Revision.generated`): an edit changing that description, creating a file beside
@@ -1154,8 +1156,8 @@ def _refuse_plugins(revision: Revision, changes: Sequence[FileChange]) -> None:
     project's or a sub-project's; a created file whose document names plugins, or one that is no
     description ``ddd gui`` creates - its content no kind of description, or its name not a
     description's - ; or a change of ``includes`` that brings in or drops a description naming
-    plugins. So the token no longer chooses the code that runs - ``ddd gui`` runs what a project
-    names, as ``make`` runs what a Makefile names.
+    plugins. So the token names no code the descriptions do not name already - ``ddd gui`` runs
+    what a project names, as ``make`` runs what a Makefile names.
 
     Each change is read as it would leave its file (:func:`ddd.editing.edited`), in memory, from
     the confined changes so a file beyond what the session serves was refused already. Every

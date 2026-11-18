@@ -1266,7 +1266,7 @@ class Api:
         revision would falsify is refused ``stale``. Every one of the three writes the project's
         description, so where a build generates it each is refused ``generated`` once the plan's
         own refusals are asked, and before anything is judged - and where it would change which
-        plugins the project runs, ``plugins``, by the edit's own check
+        plugins the project's descriptions name, ``plugins``, by the edit's own check
         (:func:`ddd.gui.session._refuse_plugins`), so an add or a creation the Apply would refuse
         is refused here too, before the reader presses.
         """

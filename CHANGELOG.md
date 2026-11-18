@@ -36,12 +36,17 @@ A project built with CMake:
     build naming its targets builds `<stem>_ddd_a2l` too, and a target that depended on the
     generation for the a2l depends on `<stem>_ddd_a2l`; a project that defined a target of that name
     renames it; a `POST_BUILD` command of the image reading `DDD_A2L` reads the a2l of the build
-    before.
+    before; under `STRICT` a map that leaves out a member of a structure now stops the first build,
+    where it stopped the second; and a file named by `DEPENDS` still reruns the generation before
+    the link, and no longer the a2l written after it.
   - "A call the module cannot honour fails the configure, naming why": a project file is given to
     `ddd_generate(... PROJECT <file>)` and not to `ddd_add_component()`; a value keyword is given a
     value, or the keyword and its value wrapped in `if()`; the `PROJECT` file is written before
     configuring; and C is enabled where `ddd_generate()` is called, by `project(<name> LANGUAGES C
     CXX)` or `enable_language(C)`.
+  - "The configure follows the tool and the templates it renders with": a step that recovered a
+    deleted output directory by hand can go, the configure reconfiguring by itself where a Ninja
+    build stopped on the missing description.
   - "Makefile generators leave a build that changed nothing with nothing to do": a step in another
     directory, or one reading a `{component}` header, depends on `<stem>_ddd_generation`, or on
     `<stem>_ddd_a2l` for the linked a2l, and not on a generated file's path; a file of the step
@@ -70,8 +75,9 @@ A description, a template and what the tool writes from them:
     `STRICT` build now stops at it.
   - "An object the build compiled out is left out of the a2l, and a reference across conditions is
     checked": an `address-missing=info` lowering kept for this is dropped; a tool that expected the
-    record, or its comment, finds none; and a project with a reference across conditions meets
-    `condition-mismatch`, an error under `--strict`.
+    record, or its comment, finds none; a curve or a map over an axis so left out goes too, as the
+    new warning `reference-left-out`, which stops a `--strict` build; and a project with a reference
+    across conditions meets `condition-mismatch`, an error under `--strict`.
   - "A member's `SYMBOL_LINK` is where a linker map can find it": a script that matched a record by
     the spelling of its path in `SYMBOL_LINK` reads the variable and the offset instead.
   - "A structure member's `export: false`, `format` and `display_identifier` reach the records below
@@ -97,7 +103,8 @@ A delivery comparison:
     finding is accepted for that delivery by relaxing `changed-interface`; a nested array whose size
     a constant names where a number did, or the other way, is accepted the same way, or keeps the
     spelling of the baseline; a `-W changed-storage=...` kept to let `volatile` turned on pass no
-    longer reaches it.
+    longer reaches it; and a script that matched the old reorder message, said once at the
+    structure, follows the new one, said at each variable.
   - "A constant that is gone stops a comparison, one that is new does not": a project that changes a
     constant between two deliveries relaxes `changed-interface` or `removed-constant`, or takes a
     new baseline.
@@ -111,7 +118,16 @@ A delivery comparison:
     `-W removed-object=...` to let an input go can drop it; one that relied on
     `removed-unused-object` for a dropped output names `removed-object` now; and a supplier whose
     gate passed the rename, the condition, the `volatile` or the wider range of an output relaxes
-    the new id for that delivery.
+    the new id for that delivery; and `ddd compare`, `ddd check --baseline` without `--standalone`
+    and the Compare tab read a component file given as the candidate as a project's file, so a
+    supplier comparing two versions of a component with inputs uses `ddd check --baseline
+    --standalone`, the command that takes the option.
+  - "A broken baseline withholds nothing, a description baseline takes the project's relaxations": a
+    baseline error a project relaxes no longer appears in its comparisons, and a script that matched
+    the lone refusal of a broken baseline now finds the rest of the report after it; and a json that
+    states no `format`, no `project` and no `component`, such as one holding only a `name`, is
+    refused as `schema` wherever it is given as a delivery to compare, where it was compared as the
+    removal of everything.
   - "A producer lost is `missing-producer`, said once, where the baseline had one": a project's own
     `-W missing-producer=ignore` silences it on every path, and a relaxation of `changed-owner` no
     longer reaches this pair.
@@ -128,16 +144,22 @@ A delivery comparison:
 
 A script or a client reading what the tool prints:
 
-  - "`ddd check`'s count line agrees in number": a script matching the old line changes.
+  - "`ddd check`'s count line agrees in number": a script matching the old line changes; and
+    `--dictionary` naming `.ddd-manifest.json`, the file the run keeps its manifest under, is
+    refused.
   - "`ddd sources` lists every file a build depends on, and a plugin's defect no longer hides them":
-    the listing grows, and a script that took its length for something else changes.
+    the listing grows, and a script that took its length for something else changes; a plugin whose
+    model raised, which ended the command with exit 2 and no listing, is the finding
+    `plugin-invalid` beside the listing, exit 0.
   - "The a2l's `MOD_COMMON` states the image's alignments, and a run that defaults the byte order
     says so": a script that read the count of diagnostics from `--format json`, expecting none, now
     finds `byte-order-defaulted`, which `-W byte-order-defaulted=ignore` silences, as does stating
     the byte order.
   - "A position independent image, an unreadable map and two debug options say what they are": a
     build that counts its findings sees `image-load-relative`, which `-W image-load-relative=ignore`
-    silences.
+    silences; and a map that is not UTF-8, one nested deeper than the interpreter reads and one
+    holding an address of more digits than it converts are a usage error naming the file, exit 2,
+    where they were Python's own words or a traceback with exit 1.
   - "A size past 65,535 is named, once, where it is declared": a script that read the text of such a
     warning, and its location, reads the new.
   - "A derived limit no longer stops short of the largest raw value": a script comparing the limits
@@ -146,6 +168,9 @@ A script or a client reading what the tool prints:
   - "A reader of a variable's scale can follow its rescale": a script that matched the title of the
     fix a `ddd gui` finding offers for a `definition-mismatch` matches the new one, which `GET
     /api/fix` returns.
+  - "The Compare tab's verdict counts the project's own errors, and `GET /api/compare` says how
+    many": the reply gains `own_errors`, an integer that is required, so that a client typed from
+    the contract adds it, and one that reads the json ignores it.
   - "`ddd gui` says what to do when a launch code is presented again": a tool that matched the
     earlier text of the line `ddd gui` prints on stderr matches the new.
   - "An edit through `ddd gui` is held to what the reader could do by hand": a client that scripted
@@ -185,7 +210,8 @@ A user of `ddd tool from-elf`:
   - "`ddd gui` edits a hand-written project whose build record sits beside it": a record of a
     `PROJECT` build is stamped `format` 2, which a DDD from 0.11.0 on declines as written by a newer
     DDD and an older one skips in silence, so a team on mixed versions upgrades its editors with the
-    module.
+    module; a `PROJECT` with an older module's record beside it stays refused until the build is
+    configured again.
   - "A float's values are written as floats, and a boolean's as booleans": a table pasted over a
     float array whose file spells whole numbers, or a cell typed or a table pasted over a boolean
     the file spells `1` or `0`, rewrites that spelling, and the diff shows it.
@@ -194,7 +220,8 @@ A user of `ddd tool from-elf`:
   - "Every number the page takes is read in decimal notation, and in no other": a person who typed
     `0x1F` types 31.
   - "A unit with spaces around it is refused on a variable's panel and a type's": a unit typed that
-    way is typed without them.
+    way is typed without them, and the route that settles a key and the type route answer 409 for
+    one.
 
 An install and the tool's python:
 

@@ -1726,9 +1726,11 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
 - **The plugins guard's corners** (task 1; R113): an undo writes back only what an edit left, and
   `restore` refuses a file changed since, but it asks no plugins refusal of its own; the walk has
   no depth cap, where the loader stops at 64, and a `MemoryError` or a `RecursionError` in it is
-  answered `500`, failing closed, which `_read_json`'s comment and a test's docstring leave
-  unsaid; and a reorder of `includes`, allowed, reorders the plugins the included descriptions
-  name, as `_plugins_named`'s docstring says. Branch 10 lists `gui/*.py`.
+  answered `500`, failing closed, where `_read_json`'s comment and a test's docstring overstate
+  what holds, saying that the walk for plugins raises on nothing the next analysis would not; and
+  a reorder of `includes`, allowed, reorders the plugins the included descriptions name, as
+  `_plugins_named`'s docstring says. Branch 10 lists `gui/*.py` and `tests/test_gui_*.py`, so the
+  claim is its to correct.
 - **Three readings of `includes`** (task 1): `_plugins_named` and `_includes_of` are nearly one
   function written twice, and `_named_by` reads `includes` a third way. Branch 14, which moves
   code across `src/ddd/`, or branch 10, which lists `gui/*.py`.
@@ -1753,6 +1755,14 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   signed out, tells the reader to open the address `ddd gui` printed, this run's, where the
   terminal's line then says to start `ddd gui` again and open the address it prints then.
   Branch 11 lists `components/*`.
+- **The all-clear where the launched browser held the token already** (task 4, `12:I3`; R125):
+  the page's sign-in leaves a token it already holds in place when the code it was launched with
+  is refused, so that no page can sign the reader out of every tab, as `signInFrom`'s docstring
+  says. So where the browser `ddd gui` opened held this run's token already, it lands signed in
+  whichever program spent the code, and the terminal's line tells its reader that nothing more is
+  needed, though that program may hold the token as well. No branch lists
+  `gui/src/api/signIn.ts`, and branch 14's moves keep the code's behaviour, so it is the
+  maintainer's.
 - **What `--host 0.0.0.0` costs a container on several networks** (task 5, `9:M8`; R106): a
   container's user who named one of its interfaces gives `0.0.0.0`, which listens on every network
   the container is attached to, wider than the interface chosen, as the changelog says. The plan
@@ -2316,12 +2326,11 @@ Every departure from a task's text, with its reason, numbered `R1`, `R2`, and so
   answer for `ddd gui` on each IPv6 interface, and the journey of `localhost` has its comments
   brought to the change, though outside the Files list, by R100's rule that a changed rule reaches
   every home. 12:I1's own trigger stays the maintainer's (*Not in any branch*).
-- **R105.** No test of branch 7 binds anything but loopback, `127.0.0.1` or `[::1]` - no wildcard,
-  no other host - and none names a network path except to loopback or opens a Windows device
-  unbounded (ruling B7-3), so that a regressing fix fails instead of hanging or reaching the
-  network. Every host beyond loopback, and 12:I1's own trigger, are the maintainer's (*Not in any
-  branch*). The cost: a test may prove a refusal by what it is given rather than by reaching what
-  it refuses.
+- **R105.** No test of branch 7 listens beyond loopback, `127.0.0.1` or `[::1]`, names a network
+  path except to loopback, or opens a Windows device unbounded (ruling B7-3, as R117 reads it),
+  so that a regressing fix fails instead of hanging or reaching the network. Every host beyond
+  loopback, and 12:I1's own trigger, are the maintainer's (*Not in any branch*). The cost: a test
+  may prove a refusal by what it is given rather than by reaching what it refuses.
 - **R106.** 9:M8 takes pass 9's change (ruling B7-4), so that a `--host` other than `127.0.0.1`,
   `0.0.0.0` or a name resolving to either is refused before anything binds, saying what to give
   instead. A container's user who named one of its own interfaces gives `0.0.0.0` instead, which
@@ -2337,11 +2346,11 @@ Every departure from a task's text, with its reason, numbered `R1`, `R2`, and so
 - **R108.** 12:M3's long poll waits a second at a time and gives its connection back once its
   client has gone, rather than the page's sentence on it being corrected (ruling B7-6): the
   sentence states the design. It costs the long poll more code than a sentence would.
-- **R109.** Branch 7's commit messages and its pull request, under decision M4, say what changed,
-  by finding id, and so do the changelog's entries, the pages, and the names and docstrings of
-  the tests: each tells what `ddd gui` now does, and what a person meets of it, and never how a
-  weakness was reached, the input that reached it or what was measured of it (ruling B7-7). The
-  changelog says less of why.
+- **R109.** Branch 7's commit messages and its pull request, under decision M4, name the findings
+  by their ids and say what changed; with the changelog's entries, the pages, and the names and
+  docstrings of the tests, they tell what `ddd gui` now does, and what a person meets of it, and
+  never how a weakness was reached, the input that reached it or what was measured of it (ruling
+  B7-7). No finding's id appears in the changelog or on the page. The changelog says less of why.
 - **R110.** The three entries of branch 1 under *Left open* that named `gui/session.py` for branch
   7 as well as branch 10 are branch 10's alone (ruling B7-8): branch 7 is pass 12's alone under
   decision M4, while branch 10's list, `gui/*.py`, holds an edit's plan and the session's undo.
@@ -2380,9 +2389,11 @@ Every departure from a task's text, with its reason, numbered `R1`, `R2`, and so
   it, the refusal, for CI's Windows legs to settle. A bind that never listens serves nothing, and
   they are part 19a's tests that no other program holds the wildcard at the port.
 - **R118.** Task 3's test of a program already on the IPv6 wildcard asserts what each system does,
-  as CI's Windows legs showed it, and the page's sentence on a fixed port names what refuses the
-  start on every system, a program listening on `[::1]` at that port; carried into task 3's round
-  beside its review's findings, one agent at a time.
+  as CI's Windows legs showed it; the ruling that decided so also had the page's sentence on a
+  fixed port say on which system the refusal holds, and carried both into task 3's round beside
+  its review's findings, one agent at a time. The round, through those findings, had the
+  sentence name instead what refuses the start on every system, a program listening on `[::1]`
+  at that port.
 - **R119.** D1 replaces part 19a's changelog entry on the hold with branch 7's entry on `[::1]`, so
   that a reader meets one entry on it, without its sentence on a fixed port held there. Two notes
   the page's gates print, a warning of Vite's on a chunk's size and a deprecation biome reports,

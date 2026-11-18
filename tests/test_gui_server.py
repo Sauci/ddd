@@ -767,6 +767,86 @@ class TestTheAddressPrinted:
         assert [answer.getheader("Set-Cookie") for answer in answers] == [None] * 4
 
 
+def asked_at(
+    bound: int,
+    method: str,
+    path: str,
+    headers: dict[str, str],
+    body: bytes | None = None,
+) -> tuple[http.client.HTTPResponse, bytes]:
+    """``method path`` sent to the port ``bound`` of 127.0.0.1 with exactly ``headers`` - a
+    ``Host`` among them - and its answer read: for a server whose ``port`` reads as another."""
+    connection = http.client.HTTPConnection("127.0.0.1", bound, timeout=10)
+    try:
+        connection.request(method, path, body=body, headers=headers)
+        response = connection.getresponse()
+        return response, response.read()
+    finally:
+        connection.close()
+
+
+class TestPortEighty:
+    """``ddd gui --port 80`` (12:M4): a browser leaves HTTP's own port out of an address it opens,
+    and so out of the ``Host`` and the ``Origin`` it sends. The address ``ddd gui`` prints, and
+    the one it opens a browser on, leave it out too, and the host with no port is this server's
+    own there. The server binds a port of loopback the system picks, and reads as port 80 here:
+    nothing binds port 80 itself."""
+
+    @pytest.fixture
+    def eighty(self, server: GuiServer, monkeypatch: pytest.MonkeyPatch) -> tuple[GuiServer, int]:
+        """``server``, reading as port 80, and the port it is bound to."""
+        bound = int(server.server_address[1])
+        monkeypatch.setattr(GuiServer, "port", property(lambda self: 80))
+        return server, bound
+
+    def test_the_address_printed_leaves_the_port_out(self, eighty) -> None:
+        server, _ = eighty
+        assert server.address == f"http://127.0.0.1/open?token={server.token}"
+
+    @pytest.mark.parametrize("host", ["127.0.0.1", "localhost", "127.0.0.1:80", "localhost:80"])
+    def test_the_host_a_browser_sends_is_this_server_s_own(self, eighty, host) -> None:
+        server, bound = eighty
+        signed_in = {"Host": host, "Authorization": f"Bearer {server.token}"}
+        response, data = asked_at(bound, "GET", "/api/session", signed_in)
+        assert response.status == 200, data
+
+    def test_a_host_naming_another_port_is_misdirected(self, eighty) -> None:
+        server, bound = eighty
+        signed_in = {"Host": f"127.0.0.1:{bound}", "Authorization": f"Bearer {server.token}"}
+        assert asked_at(bound, "GET", "/api/session", signed_in)[0].status == 421
+
+    @pytest.mark.parametrize("host", ["127.0.0.1", "localhost"])
+    def test_the_browser_is_opened_on_the_address_and_signs_in_from_its_origin(
+        self, eighty, host
+    ) -> None:
+        server, bound = eighty
+        opener = Opened()
+        launched(server, opener)
+        opened = opener.wait()
+        assert opened.startswith("http://127.0.0.1/open?code=")
+        sent = {"Host": host, "Origin": f"http://{host}", "Content-Type": "application/json"}
+        body = json.dumps({"code": parse_qs(urlsplit(opened).query)["code"][0]}).encode("utf-8")
+        response, data = asked_at(bound, "POST", "/open", sent, body)
+        assert (response.status, json.loads(data)) == (200, {"token": server.token})
+        asking = {
+            "Host": host,
+            "Origin": f"http://{host}",
+            "Sec-Fetch-Site": "same-origin",
+            "Authorization": f"Bearer {server.token}",
+        }
+        assert asked_at(bound, "GET", "/api/session", asking)[0].status == 200
+
+    def test_on_any_other_port_the_host_without_it_is_misdirected(self, server) -> None:
+        response, _ = ask(server, "GET", "/api/session", host="127.0.0.1")
+        assert response.status == 421
+        assert server.address == f"http://127.0.0.1:{server.port}/open?token={server.token}"
+
+    def test_on_any_other_port_the_origin_without_it_is_another_page_s(self, server) -> None:
+        elsewhere = {"Origin": "http://127.0.0.1"}
+        response, data = exchange(server, {"token": server.token}, headers=elsewhere)
+        assert (response.status, data) == (403, SIGN_IN_PAGE)
+
+
 class TestWhoMayAsk:
     def test_a_foreign_host_is_refused(self, server) -> None:
         response, _ = ask(server, "GET", "/api/session", host=f"evil.example:{server.port}")

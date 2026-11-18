@@ -9,8 +9,9 @@ this one trusts nothing it did not hand out itself:
   browser sends a cookie to every port of 127.0.0.1. The browser ``ddd gui`` opens for the
   reader is launched on that one-time code rather than the token itself, so the token
   never sits on a command line for another local process to read;
-* a request has to name this server's own host and port, which refuses a page whose domain was
-  re-pointed at the loopback address;
+* a request has to name this server's own host and port - on port 80, HTTP's own, the host
+  alone too, as a browser names it there - which refuses a page whose domain was re-pointed at
+  the loopback address;
 * in a browser that sends ``Sec-Fetch-Site`` (Chrome 76, Firefox 90, Safari 16.4 and later),
   every request has to say, with it, that it came from this page or from no page at all, and,
   if it names an ``Origin``, that the ``Origin`` is this server's, so a page on another port
@@ -130,6 +131,11 @@ branches on every platform (``test_nothing_in_the_suite_skips``)."""
 PORT_TRIES: Final = 5
 """How many ports ``--port 0`` is tried on before the IPv6 hold refused on each of them is a
 refusal."""
+
+HTTP_PORT: Final = 80
+"""HTTP's own port, which a browser leaves out of an address it opens there, and so out of the
+``Host`` and the ``Origin`` it sends: ``ddd gui --port 80`` prints its address without it, and
+takes the host without it for its own (12:M4)."""
 
 _SO_EXCLUSIVEADDRUSE: Final[int] = getattr(socket, "SO_EXCLUSIVEADDRUSE", -5)
 """Windows' own option, which typeshed declares on win32 alone, so read rather than named for mypy
@@ -491,6 +497,15 @@ class GuiServer(ThreadingHTTPServer):
     def port(self) -> int:
         return int(self.server_address[1])
 
+    @property
+    def origin(self) -> str:
+        """This server's own origin, as a browser spells it: ``http://127.0.0.1`` and this
+        server's port - left out on :data:`HTTP_PORT`, as a browser leaves it out (12:M4). What
+        every address it prints or opens a browser on begins with."""
+        if self.port == HTTP_PORT:
+            return "http://127.0.0.1"
+        return f"http://127.0.0.1:{self.port}"
+
     def issue_code(self) -> str:
         """Mint a single-use code that signs a browser in exactly as the long-lived token
         does, valid for :data:`CODE_SECONDS` from now or until redeemed, whichever is first.
@@ -542,8 +557,9 @@ class GuiServer(ThreadingHTTPServer):
         ``0.0.0.0`` - every interface, loopback included - and not when ``host`` names one
         interface that is neither, such as ``127.0.0.2`` or a specific address of a network
         this computer is also on: that interface alone answers, and this is a different one.
+        On :data:`HTTP_PORT` it names no port, as a browser would not (:attr:`origin`).
         """
-        return f"http://127.0.0.1:{self.port}/open?token={self.token}"
+        return f"{self.origin}/open?token={self.token}"
 
     def process_request(self, request: Any, client_address: Any) -> None:
         """Answer on a thread of its own if a slot is free; else refuse from this thread.
@@ -674,8 +690,7 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json(500, {"error": "internal", "message": _INTERNAL})
 
     def _route(self, method: str) -> None:
-        port = self._gui.port
-        if self.headers.get("Host") not in (f"127.0.0.1:{port}", f"localhost:{port}"):
+        if self.headers.get("Host") not in self._own_hosts():
             self._send(421, b"misdirected request", CONTENT_TYPES[".txt"])
             return
         try:
@@ -796,13 +811,23 @@ class _Handler(BaseHTTPRequestHandler):
             given.encode("utf-8"), self._gui.token.encode("utf-8")
         )
 
-    def _own_origins(self) -> tuple[str, str]:
-        """This server's own origin, spelled the two ways a browser may carry it: by
-        127.0.0.1 and by localhost, both at this server's port. What :meth:`_from_elsewhere`
-        and :meth:`_from_this_page` both compare a request's ``Origin`` against, kept in this
-        one place rather than each holding a literal tuple of its own."""
+    def _own_hosts(self) -> tuple[str, ...]:
+        """This server's own host, spelled each way a request may name it: by 127.0.0.1 and by
+        localhost, each at this server's port - and on :data:`HTTP_PORT` each without it too, as
+        a browser names it there (12:M4). What the ``Host`` check of :meth:`_route` reads, and
+        :meth:`_own_origins` is spelled from."""
         port = self._gui.port
-        return (f"http://127.0.0.1:{port}", f"http://localhost:{port}")
+        hosts = (f"127.0.0.1:{port}", f"localhost:{port}")
+        if port == HTTP_PORT:
+            return (*hosts, "127.0.0.1", "localhost")
+        return hosts
+
+    def _own_origins(self) -> tuple[str, ...]:
+        """This server's own origin, spelled each way a browser may carry it: ``http://`` and one
+        of :meth:`_own_hosts`. What :meth:`_from_elsewhere` and :meth:`_from_this_page` both
+        compare a request's ``Origin`` against, kept in this one place rather than each holding a
+        literal tuple of its own."""
+        return tuple(f"http://{host}" for host in self._own_hosts())
 
     def _from_elsewhere(self) -> bool:
         """Whether the request says it came from somewhere other than this server's own page.
@@ -1011,9 +1036,10 @@ def launched(server: GuiServer, opener: Callable[[str], object]) -> None:
 
     Not a file: a sandboxed browser (a snap, a flatpak) has its own private temporary
     directory, and cannot open one written to this computer's. An address of this server's
-    own reaches it the same way the printed one, pasted, would.
+    own reaches it the same way the printed one, pasted, would, and begins as it does
+    (:attr:`GuiServer.origin`).
     """
-    opener(f"http://127.0.0.1:{server.port}/open?code={server.issue_code()}")
+    opener(f"{server.origin}/open?code={server.issue_code()}")
 
 
 def run(

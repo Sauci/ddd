@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any, ClassVar, Literal, NamedTuple
 
 import dev_version
+import installed_wheel
 import jsonschema
 import pytest
 import site_versions
@@ -37,6 +38,7 @@ from pydantic import BaseModel, ValidationError
 from conftest import DEMO
 from ddd import __version__
 from ddd.analysis import _MAX_LEAVES
+from ddd.backends.c.backend import example_template_directory
 from ddd.backends.c.model import (
     CodeModel,
     ConversionView,
@@ -44,7 +46,7 @@ from ddd.backends.c.model import (
     MemberView,
     ObjectView,
 )
-from ddd.cli import EXIT_OK, _build_parser, main, schema_models
+from ddd.cli import EXIT_OK, EXIT_USAGE, _build_parser, cmake_module_directory, main, schema_models
 from ddd.diagnostics import CHECKS, Severity
 from ddd.loading import FILE_KINDS
 from ddd.models import MAX_ELEMENTS, Component, DataObject, Datatype, ObjectKind, ScalarType
@@ -4665,8 +4667,9 @@ def run_step(step_text: str, cwd: Path, **variables: str) -> subprocess.Complete
 
     The variables are exported by the script itself rather than handed over in the environment
     of the process, so that a bash that does not inherit it - WSL's, on windows - sees them too.
-    ``python3`` is this interpreter: the runner's own is what a step calls by that name, and a
-    windows machine may have none by it.
+    ``python3`` and ``python`` are this interpreter: the runner's own is what a step calls
+    ``python3``, a job's setup-python is what it calls ``python``, and a windows machine may
+    have neither by those names.
     """
     block = re.search(r"^        run: (?:\|\n((?: {10}.*\n|\n)*)|(.+)\n)", step_text + "\n", re.M)
     assert block is not None, "the step runs no script"
@@ -4674,9 +4677,10 @@ def run_step(step_text: str, cwd: Path, **variables: str) -> subprocess.Complete
     bash = shutil.which("bash")
     assert bash is not None, "the workflow's scripts are bash, so bash is needed to run them"
     exports = "".join(f"export {name}={shlex.quote(value)}\n" for name, value in variables.items())
-    python3 = f'python3() {{ {shlex.quote(Path(sys.executable).as_posix())} "$@"; }}\n'
+    interpreter = shlex.quote(Path(sys.executable).as_posix())
+    pythons = f'python3() {{ {interpreter} "$@"; }}\npython() {{ {interpreter} "$@"; }}\n'
     return subprocess.run(
-        [bash, "-e", "-c", python3 + exports + script],
+        [bash, "-e", "-c", pythons + exports + script],
         cwd=cwd,
         capture_output=True,
         text=True,
@@ -4753,17 +4757,37 @@ def equal(left: Any, right: Any) -> bool:
     return number is not None and number == number_of(right)
 
 
+def ordered(left: Any, operator: str, right: Any) -> bool:
+    """``<``, ``<=``, ``>`` or ``>=`` as GitHub has them: both values read as numbers, the way
+    ``==`` reads values of two types, and NaN in no order with anything. Two strings, which it
+    compares otherwise, are refused rather than read wrong."""
+    assert not (isinstance(left, str) and isinstance(right, str)), f"{left!r} {operator} {right!r}"
+    first, second = number_of(left), number_of(right)
+    if first is None or second is None:
+        return False
+    return {
+        "<": first < second,
+        "<=": first <= second,
+        ">": first > second,
+        ">=": first >= second,
+    }[operator]
+
+
 class Expression:
     """A GitHub Actions expression, evaluated over a context as the runner evaluates one.
 
-    It reads what the documentation workflow writes - string literals, the contexts' dotted
-    names, ``!``, ``==``, ``!=``, ``&&``, ``||``, parentheses and ``format()`` - and refuses
-    anything else, so that a condition it cannot read fails the test reading it instead of
-    being read wrong. As GitHub documents the language: ``&&`` binds tighter than ``||``, both
-    evaluate to one of their operands, and a property the context does not hold is null.
+    It reads what the workflows write - string and number literals, the contexts' dotted names,
+    ``!``, ``<``, ``<=``, ``>``, ``>=``, ``==``, ``!=``, ``&&``, ``||``, parentheses,
+    ``format()`` and ``startsWith()`` - and refuses anything else, so that a condition it cannot
+    read fails the test reading it instead of being read wrong. As GitHub documents the
+    language: the comparisons bind tighter than ``==`` and ``!=``, ``&&`` tighter than ``||``,
+    both of which evaluate to one of their operands, and a property the context does not hold
+    is null.
     """
 
-    TOKEN = re.compile(r"\s*('(?:[^']|'')*'|==|!=|&&|\|\||[!(),]|[A-Za-z_][\w.-]*)")
+    TOKEN = re.compile(
+        r"\s*('(?:[^']|'')*'|==|!=|<=|>=|&&|\|\||[!(),<>]|\d+(?:\.\d+)?|[A-Za-z_][\w.-]*)"
+    )
 
     def __init__(self, text: str, context: dict[str, Any]) -> None:
         self.text, self.context, self.at = text.strip(), context, 0
@@ -4805,10 +4829,17 @@ class Expression:
         return left
 
     def comparison(self) -> Any:
-        left = self.negation()
+        left = self.relation()
         while self.peek() in ("==", "!="):
             same = self.take() == "=="
-            left = equal(left, self.negation()) == same
+            left = equal(left, self.relation()) == same
+        return left
+
+    def relation(self) -> Any:
+        left = self.negation()
+        while self.peek() in ("<", "<=", ">", ">="):
+            operator = self.take()
+            left = ordered(left, operator, self.negation())
         return left
 
     def negation(self) -> Any:
@@ -4825,14 +4856,20 @@ class Expression:
             return inner
         if token.startswith("'"):
             return token[1:-1].replace("''", "'")
+        if token[0].isdigit():
+            return float(token)
         if self.peek() == "(":
-            assert token == "format", f"{token}() is not read here, in {self.text!r}"
+            assert token in ("format", "startsWith"), f"{token}() is not read, in {self.text!r}"
             self.take()
             arguments = [self.alternative()]
             while self.peek() == ",":
                 self.take()
                 arguments.append(self.alternative())
             assert self.take() == ")", f"a call is left open in {self.text!r}"
+            if token == "startsWith":
+                # Case aside, as every comparison of strings GitHub makes.
+                text, start = (text_of(argument).casefold() for argument in arguments)
+                return text.startswith(start)
             return re.sub(
                 r"\{\{|\}\}|\{(\d+)\}",
                 lambda found: (
@@ -5476,6 +5513,512 @@ class TestTheCiRun:
         )
         config = (ROOT / "gui" / "playwright.config.ts").read_text(encoding="utf-8")
         assert 'testIgnore: process.env.DDD_MAPPED_DRIVE ? [] : ["**/mapped.spec.ts"]' in config
+
+
+def publish_run(
+    event_name: str, ref: str, target: str = "", run_id: str = "43", *, called: bool = False
+) -> dict[str, Any]:
+    """The context a run of Publish gives its jobs, on the ubuntu runner they all run on - or,
+    ``called``, the context it gives ``ci.yml``, which it calls. GitHub documents a called
+    workflow as given its caller's ``github`` context, with the caller's name in
+    ``github.workflow``, and as ``inputs`` only those the call passes, which Publish passes none
+    of. A dispatch of Publish has its ``target``; a release, no input at all."""
+    return {
+        "github": {
+            "event_name": event_name,
+            "ref": ref,
+            "ref_name": ref.split("/", 2)[2],
+            "sha": TAGGED,
+            "run_id": run_id,
+            "workflow": "Publish",
+            "repository": "Sauci/ddd",
+            "event": {},
+        },
+        "runner": {"os": "Linux"},
+        "inputs": {"target": target} if event_name == "workflow_dispatch" and not called else {},
+    }
+
+
+def ci_run(event_name: str, ref: str, run_id: str = "44", os: str = "Linux") -> dict[str, Any]:
+    """The context a run of ``ci.yml`` started by an event of its own gives a job on one runner:
+    its own name, CI, in ``github.workflow``, a dispatch's ``repeat`` at its default, and a pull
+    request from a branch of this repository."""
+    context: dict[str, Any] = {
+        "github": {
+            "event_name": event_name,
+            "ref": ref,
+            "ref_name": ref.split("/", 2)[2],
+            "sha": MASTER_HEAD,
+            "run_id": run_id,
+            "workflow": "CI",
+            "repository": "Sauci/ddd",
+            "event": {},
+        },
+        "runner": {"os": os},
+        "inputs": {"repeat": 1} if event_name == "workflow_dispatch" else {},
+    }
+    if event_name == "pull_request":
+        head = {"repo": {"full_name": "Sauci/ddd"}}
+        context["github"]["event"] = {"pull_request": {"head": head}}
+    return context
+
+
+PUBLISH_RUNS = {
+    "a release": ("release", "refs/tags/v0.12.0", ""),
+    "a dry run": ("workflow_dispatch", "refs/heads/master", "testpypi"),
+    "a dispatch from a release's tag": ("workflow_dispatch", "refs/tags/v0.12.0", "pypi"),
+}
+"""The runs Publish makes, each by its event, its ref and the target a dispatch is given."""
+
+
+class TestWhatPublishRunsBeforeItUploads:
+    """20:M4. Publish ran the python suite again before it built a release, on one of ci's six
+    cells, and none of the page's own gates. It now calls ``ci.yml`` whole, on the release's
+    commit, and builds once every job of it has passed; then it installs what it built, and
+    checks the installation before anything is handed on. The conditions are read over the
+    context GitHub documents a called workflow as given (``publish_run(..., called=True)``), as
+    the runner evaluates them."""
+
+    @staticmethod
+    def concurrency(context: dict[str, Any]) -> tuple[Any, Any]:
+        """``ci.yml``'s concurrency group, and whether it cancels the run in progress: an
+        expression evaluated, or a literal ``true`` or ``false`` read as YAML reads it."""
+        top = CI_WORKFLOW.split("\nconcurrency:\n", 1)[1].split("\n\n", 1)[0] + "\n"
+        group, cancels = setting(top, "group", 2), setting(top, "cancel-in-progress", 2)
+        assert group is not None and cancels is not None, "ci.yml has no concurrency group"
+        literal = {"true": True, "false": False}.get(cancels)
+        cancelling = evaluated(cancels, context) if literal is None else literal
+        return evaluated(group, context), cancelling
+
+    def test_a_release_calls_ci_whole_before_its_build(self) -> None:
+        """Called rather than copied, so that the two cannot drift; with no inputs, so that no
+        run of Publish is a hunt; and waited for by the build."""
+        call = job(PUBLISH_WORKFLOW, "ci")
+        assert setting(call, "uses", 4) == "./.github/workflows/ci.yml"
+        assert "\n    with:" not in call, "Publish passes ci.yml inputs, which make a hunt"
+        assert "workflow_call" in events(CI_WORKFLOW), "ci.yml cannot be called"
+        assert setting(job(PUBLISH_WORKFLOW, "build"), "needs", 4) == "ci"
+
+    @pytest.mark.parametrize(
+        ("event_name", "ref", "target"), PUBLISH_RUNS.values(), ids=list(PUBLISH_RUNS)
+    )
+    def test_every_job_of_ci_runs_for_publish_but_the_development_builds(
+        self, event_name: str, ref: str, target: str
+    ) -> None:
+        """Each gate is a job of Publish's run, and its build waits on all of them: a job a
+        release skips counts as passed, so none of them may be skipped. The development builds
+        are no gates, and none may run for a release: dev-build runs on a push or a pull
+        request alone, and dev-publish only after it."""
+        called = publish_run(event_name, ref, target, called=True)
+        ran = {name: job_runs(CI_WORKFLOW, name, called) for name in job_names(CI_WORKFLOW)}
+        assert ran == {name: name not in ("dev-build", "dev-publish") for name in ran}
+        assert job_runs(PUBLISH_WORKFLOW, "build", publish_run(event_name, ref, target))
+
+    def test_a_release_s_gates_are_alone_in_a_group_of_their_own(self) -> None:
+        """Publish's run has the release's tag for its ref, as a dispatch of Publish or of
+        ``ci.yml`` from that tag has: in one group that cancels the run in progress, the later
+        would cancel the release's gates halfway, or the release the later's. Named after
+        Publish's run, the group is shared with no other run, and cancels nothing."""
+        release = publish_run("release", "refs/tags/v0.12.0", run_id="43", called=True)
+        others = [
+            publish_run("release", "refs/tags/v0.12.0", run_id="47", called=True),
+            publish_run("workflow_dispatch", "refs/tags/v0.12.0", "pypi", "45", called=True),
+            publish_run("workflow_dispatch", "refs/heads/master", "testpypi", "46", called=True),
+            ci_run("workflow_dispatch", "refs/tags/v0.12.0"),
+            ci_run("push", "refs/heads/master"),
+        ]
+        group, cancels = self.concurrency(release)
+        assert cancels is False
+        assert group not in {self.concurrency(other)[0] for other in others}
+
+    @pytest.mark.parametrize(
+        ("context", "group"),
+        [
+            (ci_run("push", "refs/heads/master"), "ci-refs/heads/master"),
+            (ci_run("pull_request", "refs/pull/5/merge"), "ci-refs/pull/5/merge"),
+            (ci_run("workflow_dispatch", "refs/heads/feature"), "ci-refs/heads/feature"),
+        ],
+        ids=["a push to master", "a pull request", "a dispatch"],
+    )
+    def test_ci_s_own_runs_keep_their_group(self, context: dict[str, Any], group: str) -> None:
+        """A newer run of a ref cancels the one in progress, as it always has."""
+        assert self.concurrency(context) == (group, True)
+
+    def test_the_call_allows_what_ci_s_jobs_ask_for_and_nothing_more(self) -> None:
+        """GitHub documents a called workflow as able to lower the permissions it is given, and
+        never to raise them, and ``dev-publish`` asks for ``id-token: write``: the call allows
+        what the jobs of ``ci.yml`` ask for, and nothing they do not, while ``ci.yml``'s own
+        ``permissions`` hold every job that asks for nothing to reading."""
+        asked: set[str] = set()
+        for block in re.finditer(r"^( *)permissions:\n((?:\1  \S.*\n)+)", CI_WORKFLOW, re.M):
+            asked |= {line.split("#")[0].strip() for line in block.group(2).splitlines()}
+        call = job(PUBLISH_WORKFLOW, "ci") + "\n"
+        allowed = re.search(r"^    permissions:\n((?:      \S.*\n)+)", call, re.M)
+        assert allowed is not None, "the call allows ci.yml only what Publish allows itself"
+        assert {line.split("#")[0].strip() for line in allowed.group(1).splitlines()} == asked
+        assert asked == {"contents: read", "id-token: write"}
+
+    def test_the_gui_job_builds_its_wheel_in_ci_s_own_runs_alone(self) -> None:
+        """In Publish's run the build job builds the wheel it ships, then installs and checks
+        it: a wheel of the gui job there would be a second one of the release's commit."""
+        wheel = [
+            step
+            for step in steps_of(job(CI_WORKFLOW, "gui"))
+            if "-m build" in step or "static/index.html" in step or "name: ddd-tool-" in step
+        ]
+        assert len(wheel) == 3, "the gui job's wheel is no longer built, checked and uploaded"
+        for context, built in [
+            (ci_run("push", "refs/heads/master"), True),
+            (ci_run("pull_request", "refs/pull/5/merge"), True),
+            (ci_run("push", "refs/heads/master", os="Windows"), False),
+            (publish_run("release", "refs/tags/v0.12.0", called=True), False),
+        ]:
+            assert [holds(setting(step, "if", 0), context) for step in wheel] == [built] * 3
+
+    def test_the_wheel_is_installed_and_checked_before_it_is_handed_on(self) -> None:
+        """Into a fresh environment, from the file the upload jobs are handed, its dependencies
+        from the index; then held to the wheel by ``tools/installed_wheel.py``, through the
+        ``ddd`` that installation put on its path, before the artifact is uploaded."""
+        build = job(PUBLISH_WORKFLOW, "build")
+        install = step(build, "Install the wheel into a fresh environment")
+        assert 'python -m venv "$RUNNER_TEMP/installed"' in install
+        assert '"$RUNNER_TEMP/installed/bin/python" -m pip install dist/*.whl' in install
+        check = step(build, "Check the installed wheel answers as the release")
+        assert (
+            'python -I tools/installed_wheel.py dist/*.whl "$version" '
+            '"$RUNNER_TEMP/installed/bin/ddd"'
+        ) in check
+        order = [
+            build.index("run: python -m build"),
+            build.index("- name: Check tag matches package version"),
+            build.index("- name: Install the wheel into a fresh environment"),
+            build.index("- name: Check the installed wheel answers as the release"),
+            build.index("uses: actions/upload-artifact"),
+        ]
+        assert order == sorted(order), "the wheel is handed on before it is installed and checked"
+
+    @pytest.mark.parametrize(
+        ("event_name", "ref", "checked"),
+        [
+            ("release", "refs/tags/v0.12.0", "0.12.0"),
+            ("workflow_dispatch", "refs/tags/v0.12.0", "0.12.0"),
+            ("workflow_dispatch", "refs/heads/master", "0.0.1"),
+        ],
+        ids=["a release", "a dispatch from a release's tag", "a dry run from a branch"],
+    )
+    def test_the_installation_is_held_to_the_tag_s_version(
+        self, tmp_path: Path, event_name: str, ref: str, checked: str
+    ) -> None:
+        """On a release, or a dispatch from a ``v`` tag, ``ddd --version`` has to answer the tag's
+        version; a dry run from a branch has no tag, and is held to ``pyproject.toml``'s. Here
+        ``pyproject.toml`` states another version than the tag, to tell the two apart: in a run,
+        the tag check before this step refuses such a tag."""
+        (tmp_path / "pyproject.toml").write_text('[project]\nversion = "0.0.1"\n', encoding="utf-8")
+        (tmp_path / "tools").mkdir()
+        (tmp_path / "tools" / "installed_wheel.py").write_text(
+            "import sys\nprint(sys.argv[1:])\n", encoding="utf-8"
+        )
+        (tmp_path / "dist").mkdir()
+        (tmp_path / "dist" / "ddd_tool-0.12.0-py3-none-any.whl").write_bytes(b"")
+        build = job(PUBLISH_WORKFLOW, "build")
+        ran = run_step(
+            step(build, "Check the installed wheel answers as the release"),
+            tmp_path,
+            GITHUB_EVENT_NAME=event_name,
+            GITHUB_REF=ref,
+            GITHUB_REF_NAME=ref.split("/", 2)[2],
+            RUNNER_TEMP="/runner",
+        )
+        assert ran.returncode == 0, ran.stdout + ran.stderr
+        wheel = "dist/ddd_tool-0.12.0-py3-none-any.whl"
+        assert ran.stdout == f"{[wheel, checked, '/runner/installed/bin/ddd']}\n"
+
+    def test_publish_keeps_what_its_documentation_waits_on(self) -> None:
+        """A release's documentation waits on Publish's run (20:I3): on the workflow of that
+        name, on a run a published release started, and on its success. So Publish keeps its
+        name and its trigger; no job of it, nor of the ci.yml it runs, passes while failing; on
+        a release every job of it runs but the dry run's upload, since a job skipped counts as
+        passed; and each upload waits on the build, where the tag is checked before anything is
+        handed on."""
+        named = re.search(r"^name: (.+)$", PUBLISH_WORKFLOW, re.M)
+        assert named is not None and named.group(1) == "Publish"
+        assert "types: [published]" in events(PUBLISH_WORKFLOW)["release"]
+        for workflow in (PUBLISH_WORKFLOW, CI_WORKFLOW):
+            assert "continue-on-error" not in uncommented(workflow)
+        jobs = PUBLISH_WORKFLOW.split("\njobs:\n", 1)[1]
+        names = re.findall(r"^  ([a-z][\w-]*):\n", jobs, re.M)
+        release = publish_run("release", "refs/tags/v0.12.0")
+        ran = {name: job_runs(PUBLISH_WORKFLOW, name, release) for name in names}
+        assert ran == {name: name != "publish-testpypi" for name in names}
+        uploads = [
+            name
+            for name in names
+            if re.search(r"gh-action-pypi-publish|gh release upload", job(PUBLISH_WORKFLOW, name))
+        ]
+        assert uploads == ["extension", "publish-testpypi", "publish-pypi"]
+        for name in uploads:
+            assert setting(job(PUBLISH_WORKFLOW, name), "needs", 4) == "build", name
+
+    def test_the_page_says_what_publish_runs_before_it_uploads(self) -> None:
+        """Where the maintainer reads it: what Publish runs and how, what the run it calls is
+        given and does otherwise, and how the wheel is installed and held to itself."""
+        said = flattened(PAGES["docs/developer_documentation.rst"])
+        claims = {
+            "what runs": "``publish.yml`` runs this whole workflow again before it builds a "
+            "release, on the release's own commit",
+            "how": "It calls ``ci.yml`` as a reusable workflow (``workflow_call``) rather than "
+            "keeping a copy of its jobs, so the two cannot drift",
+            "what the build waits for": "builds nothing for upload until every job of it has "
+            "passed",
+            "what it ran before": "It used to run the python suite again on one of the six "
+            "cells, and none of the page's own gates",
+            "what a called run is given": "A run called so is given Publish's ``github`` context",
+            "its inputs": "only the inputs Publish passes, which are none, so the journeys run "
+            "once each and nothing is skipped as in a hunt",
+            "its group": "the concurrency group is Publish's run's own",
+            "its wheel": "the ``gui`` job builds no wheel, Publish building, installing and "
+            "checking the one it ships",
+            "its development builds": "which run on a push or a pull request alone, never run "
+            "for a release",
+            "its permission": "The call allows ``id-token: write``, which ``dev-publish`` asks for",
+            "the gates first": "Every job of ``ci.yml`` has passed on the release's commit first",
+            "the installation": "The build then installs the wheel it built into a fresh "
+            "virtual environment, its dependencies from the index",
+            "what it is held to": "holding what it answers to the wheel itself",
+            "the version": "``ddd --version`` the version the run publishes - the tag's on a "
+            "release",
+            "the directories": "``ddd templates-dir`` a directory holding exactly the templates "
+            "the wheel carries; ``ddd cmake-dir`` one whose ``Ddd.cmake`` is the wheel's",
+            "the page": "``ddd gui``, started, the wheel's ``index.html`` at the address it prints",
+            "what it was": "used to be a listing of the wheel for ``index.html``, and it was "
+            "never installed",
+        }
+        missing = [what for what, claim in claims.items() if claim not in said]
+        assert not missing, f"the developer page no longer says {missing}"
+
+
+LAUNCH = """\
+import sys
+from pathlib import Path
+
+import ddd.gui.server
+
+pages = Path(sys.argv.pop(1))
+ddd.gui.server.static_directory = lambda: pages
+from ddd.cli import main
+
+raise SystemExit(main())
+"""
+"""This checkout's ``ddd``, run as a program the way an installation runs it, serving the pages of
+a directory the test names: the pages are compiled by npm, which no test here runs."""
+
+INDEX = b'<!doctype html>\n<title>DDD</title>\n<div id="root"></div>\n'
+"""A page for ``ddd gui`` to serve, standing for the compiled one."""
+
+BROKEN = [sys.executable, "-c", "raise SystemExit('no ddd here')"]
+"""An installation whose ``ddd`` runs nothing: it says so, and exits 1."""
+
+SIGNING_IN = """\
+import http.server
+import sys
+
+PAGE = open(sys.argv[1], "rb").read()
+
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path.startswith("/open"):
+            self.send_response(302)
+            self.send_header("Location", "/")
+            self.send_header("Set-Cookie", "signed=in; Path=/")
+            self.end_headers()
+        elif "signed=in" in self.headers.get("Cookie", ""):
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(PAGE)))
+            self.end_headers()
+            self.wfile.write(PAGE)
+        else:
+            self.send_error(401)
+
+    def log_message(self, *arguments):
+        pass
+
+
+server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+print(f"ddd gui (preview) serving http://127.0.0.1:{server.server_port}/open?token=t", flush=True)
+server.serve_forever()
+"""
+"""A ``ddd gui`` that signs a reader in the way it once did: the address it prints redirects to
+its page with a cookie, and the page answers only with that cookie."""
+
+
+class TestTheReleaseInstallsWhatItUploads:
+    """20:M4. Publish's one look at the wheel it uploads was a listing of its names for
+    ``index.html``: the wheel was never installed. ``tools/installed_wheel.py`` holds an
+    installation to the wheel it came from, and Publish's build runs it on the wheel it built,
+    installed into a fresh environment, before anything is uploaded.
+
+    The checks run here against this checkout's own ``ddd``, run as a program, and a wheel of
+    what this checkout would put in one: its version, the example templates, the cmake module,
+    and a page standing for the compiled ones, which only npm makes.
+    """
+
+    @staticmethod
+    def wheel(
+        tmp_path: Path,
+        *,
+        templates: dict[str, bytes] | None = None,
+        module: bytes | None = None,
+        page: bytes | None = INDEX,
+    ) -> Path:
+        """A wheel of what the checks read, where hatchling puts it: its metadata, the example
+        templates under ``ddd/templates/``, ``ddd/cmake/Ddd.cmake`` and the page; by default
+        this checkout's. An empty ``templates`` or ``module`` is left out, as ``page=None`` is."""
+        if templates is None:
+            source = ROOT / "examples" / "templates"
+            templates = {path.name: path.read_bytes() for path in source.iterdir()}
+        if module is None:
+            module = (ROOT / "cmake" / "Ddd.cmake").read_bytes()
+        wheel = tmp_path / f"ddd_tool-{__version__}-py3-none-any.whl"
+        with zipfile.ZipFile(wheel, "w") as archive:
+            archive.writestr(
+                f"ddd_tool-{__version__}.dist-info/METADATA",
+                f"Metadata-Version: 2.4\nName: ddd-tool\nVersion: {__version__}\n",
+            )
+            for name, data in templates.items():
+                archive.writestr(f"ddd/templates/{name}", data)
+            if module:
+                archive.writestr("ddd/cmake/Ddd.cmake", module)
+            if page is not None:
+                archive.writestr("ddd/gui/static/index.html", page)
+        return wheel
+
+    @staticmethod
+    def installed(tmp_path: Path, page: bytes | None = INDEX) -> list[str]:
+        """This checkout's ``ddd``, serving ``page`` as its compiled pages, or nothing at all."""
+        pages = tmp_path / "pages"
+        pages.mkdir()
+        if page is not None:
+            (pages / "index.html").write_bytes(page)
+        return [sys.executable, "-c", LAUNCH, str(pages)]
+
+    def test_an_installation_answering_as_the_release_passes(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Its version, its templates, its module and its page, all as the wheel has them."""
+        wheel = self.wheel(tmp_path)
+        assert installed_wheel.main([str(wheel), __version__, *self.installed(tmp_path)]) == 0
+        assert capsys.readouterr().out == f"{wheel.name}, installed, answers as ddd {__version__}\n"
+
+    def test_a_release_the_installation_does_not_name_is_refused(self, tmp_path: Path) -> None:
+        """The version a run publishes is stated three times over in what it installs: in the
+        wheel's metadata, which pip installs by; in what ``ddd --version`` prints, which the
+        banner of every generated file carries; and as the module's ``DDD_MODULE_VERSION``,
+        which the module compares with that, refusing a ``ddd`` of any other."""
+        found = installed_wheel.problems(self.wheel(tmp_path), "9.9.9", self.installed(tmp_path))
+        assert found == [
+            f"the wheel states version {__version__}, and the release is 9.9.9",
+            "the wheel's ddd/cmake/Ddd.cmake does not state DDD_MODULE_VERSION 9.9.9, so the "
+            "module refuses the ddd it is installed with",
+            f"ddd --version answers 'ddd {__version__}', and the release is 9.9.9",
+        ]
+
+    def test_an_installation_that_is_not_the_wheel_is_refused(self, tmp_path: Path) -> None:
+        """What the installation answers is held to what the wheel carries, file for file: the
+        templates its directory holds, the module, and the page ``ddd gui`` serves."""
+        source = ROOT / "examples" / "templates"
+        templates = {path.name: path.read_bytes() for path in source.iterdir()}
+        templates["extra.c.jinja2"] = b"/* the wheel carries what the installation lacks */\n"
+        module = (ROOT / "cmake" / "Ddd.cmake").read_bytes() + b"# another module\n"
+        wheel = self.wheel(tmp_path, templates=templates, module=module, page=b"<p>another\n")
+        directory, cmake = example_template_directory(), cmake_module_directory()
+        assert directory is not None and cmake is not None
+        assert installed_wheel.problems(wheel, __version__, self.installed(tmp_path)) == [
+            f"ddd templates-dir answers {directory.as_posix()!r}, which does not hold exactly "
+            f"the {len(templates)} templates the wheel carries",
+            f"ddd cmake-dir answers {cmake.as_posix()!r}, whose Ddd.cmake is not the wheel's",
+            "the page ddd gui serves is not the ddd/gui/static/index.html the wheel carries",
+        ]
+
+    def test_a_gui_with_no_page_to_serve_is_refused_saying_why(self, tmp_path: Path) -> None:
+        """``ddd gui`` refuses to start without its pages, as an installation of a wheel built
+        before they were compiled would: the step says what it said."""
+        found = installed_wheel.problems(
+            self.wheel(tmp_path), __version__, self.installed(tmp_path, page=None)
+        )
+        assert len(found) == 1, found
+        assert found[0].startswith(f"ddd gui exits {EXIT_USAGE} without printing its address,")
+        assert "has no compiled pages for ddd gui" in found[0]
+
+    def test_a_gui_printing_no_address_is_waited_for_no_longer_than_the_limit(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A server that hangs before it listens holds the step for the limit, and not for the
+        six hours a job may run."""
+        monkeypatch.setattr(installed_wheel, "TIMEOUT", 2.0)
+        silent = [sys.executable, "-c", "import sys, time\nif 'gui' in sys.argv: time.sleep(60)"]
+        found = installed_wheel.problems(self.wheel(tmp_path), __version__, silent)
+        assert found[-1] == "ddd gui printed no address within 2 seconds, saying ''"
+
+    def test_the_page_is_asked_for_as_a_browser_asks_for_it(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A browser opening the printed address follows a redirect with the cookie it was
+        given, and reaches the loopback directly whatever proxy the environment names: a
+        server signing a reader in that way serves the page all the same."""
+        monkeypatch.setenv("http_proxy", "http://127.0.0.1:9")
+        monkeypatch.delenv("no_proxy", raising=False)
+        monkeypatch.delenv("NO_PROXY", raising=False)
+        page = tmp_path / "index.html"
+        page.write_bytes(INDEX)
+        signing_in = [sys.executable, "-c", SIGNING_IN, str(page)]
+        assert installed_wheel.served(signing_in, tmp_path, INDEX) == []
+
+    def test_an_installation_that_does_not_run_is_refused_saying_why(self, tmp_path: Path) -> None:
+        assert installed_wheel.problems(self.wheel(tmp_path), __version__, BROKEN) == [
+            "ddd --version exits 1, saying 'no ddd here'",
+            "ddd templates-dir exits 1, saying 'no ddd here'",
+            "ddd cmake-dir exits 1, saying 'no ddd here'",
+            "ddd gui exits 1 without printing its address, saying 'no ddd here'",
+        ]
+
+    def test_a_wheel_missing_what_is_checked_is_refused(self, tmp_path: Path) -> None:
+        """An empty set of templates, held to an empty directory, would pass unseen."""
+        wheel = self.wheel(tmp_path, templates={}, module=b"", page=None)
+        assert installed_wheel.problems(wheel, __version__, BROKEN) == [
+            "ddd --version exits 1, saying 'no ddd here'",
+            "the wheel carries no templates under ddd/templates/",
+            "the wheel carries no ddd/cmake/Ddd.cmake",
+            "the wheel carries no ddd/gui/static/index.html, so ddd gui has nothing to serve",
+        ]
+
+    def test_each_problem_is_an_error_of_the_step_on_a_line_of_its_own(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The runner reads ``::error::`` at the start of a line as an annotation of the step,
+        so a problem spanning lines would start one of its own with whatever it was given."""
+        found = ["ddd --version answers 'x'", "it said\n::error::something else"]
+        monkeypatch.setattr(installed_wheel, "problems", lambda *_: found)
+        assert installed_wheel.main(["a.whl", "0.12.0", "ddd"]) == 1
+        assert capsys.readouterr().out.splitlines() == [
+            "::error::ddd --version answers 'x'",
+            "::error::it said ::error::something else",
+        ]
+
+    def test_a_file_that_is_no_wheel_is_refused(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        wheel = tmp_path / "ddd_tool-0.12.0-py3-none-any.whl"
+        wheel.write_bytes(b"not a zip")
+        assert installed_wheel.main([str(wheel), "0.12.0", "ddd"]) == 1
+        assert capsys.readouterr().out.startswith(f"::error::{wheel} cannot be read as a wheel: ")
+
+    @pytest.mark.parametrize("arguments", [[], ["a.whl"], ["a.whl", "0.12.0"]])
+    def test_anything_else_is_a_usage_error(
+        self, arguments: list[str], capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert installed_wheel.main(arguments) == 2
+        assert "usage:" in capsys.readouterr().err
 
 
 class TestPreCommitHook:

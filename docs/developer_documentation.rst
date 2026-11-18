@@ -495,6 +495,8 @@ sketch: the set a project starts from is the set a compiler has accepted. ``TEMP
 the service at any other directory, so a project can put its own templates through the same
 treatment.
 
+.. _continuous-integration:
+
 Continuous integration
 ----------------------
 
@@ -553,9 +555,24 @@ dependency list that no longer builds fails here rather than for whoever install
 distribution.
 
 Style and types are checked once rather than per platform, since neither varies by platform.
-``publish.yml`` runs the suite again before it builds a release, which is not redundant: a
-release can be cut from a commit this workflow never saw, and an upload to an index is
-permanent.
+
+``publish.yml`` runs this whole workflow again before it builds a release, on the release's own
+commit, which is not redundant: a release can be cut from a commit this workflow never saw, and
+an upload to an index is permanent. It calls ``ci.yml`` as a reusable workflow
+(``workflow_call``) rather than keeping a copy of its jobs, so the two cannot drift, and builds
+nothing for upload until every job of it has passed - the six cells of the suite, the lint, the
+image, the extension, the three legs of the browser interface and its screenshots. It used to
+run the python suite again on one of the six cells, and none of the page's own gates. A run
+called so is given Publish's ``github`` context - its event, its tag and its commit, and its
+name and run id, which is how the workflow tells Publish's run from one of its own - and only
+the inputs Publish passes, which are none, so the journeys run once each and nothing is skipped
+as in a hunt. Three things differ there: the concurrency group is Publish's run's own, so that
+no push or dispatch cancels a release's gates, nor has its own cancelled by them; the ``gui``
+job builds no wheel, Publish building, installing and checking the one it ships; and
+``dev-build`` and ``dev-publish``, which run on a push or a pull request alone, never run for a
+release. The call allows ``id-token: write``, which ``dev-publish`` asks for, since a called
+workflow's jobs can only lower the permissions it is given; every other job of it is held to
+reading by the workflow's own ``permissions``.
 
 Nothing in the toolchain moves on its own. Every ``uses:`` is pinned by a major tag, the
 extension's and the browser interface's lock files pin their dependencies exactly, and
@@ -876,6 +893,19 @@ A dispatch with ``target: pypi`` runs only from a ``v*`` tag, and is checked aga
 same run started on a branch would have built whatever that branch's ``pyproject.toml`` said
 and uploaded it under no tag, with no ``.vsix`` and no documentation directory - and an index
 accepts a file name once and for ever, so the only way back is the next version number.
+
+**Nothing is uploaded until the wheel has been installed and run.** Every job of ``ci.yml`` has
+passed on the release's commit first, as :ref:`continuous integration <continuous-integration>`
+says. The build then installs the wheel it built into a fresh virtual environment, its
+dependencies from the index, and ``tools/installed_wheel.py`` runs the installed ``ddd`` in an
+empty directory, holding what it answers to the wheel itself: ``ddd --version`` the version the
+run publishes - the tag's on a release, ``pyproject.toml``'s on a dry run from a branch - which
+the wheel's metadata and the module's ``DDD_MODULE_VERSION`` have to state as well; ``ddd
+templates-dir`` a directory holding exactly the templates the wheel carries; ``ddd cmake-dir``
+one whose ``Ddd.cmake`` is the wheel's; and ``ddd gui``, started, the wheel's ``index.html`` at
+the address it prints. Only then is the wheel handed to the jobs that upload it. The one look
+the release took at its artefact used to be a listing of the wheel for ``index.html``, and it
+was never installed.
 
 **The version is spelled in ten files, and a test holds five of them together.**
 ``src/ddd/__init__.py`` is where it lives: ``docs/conf.py`` imports ``__version__`` rather than

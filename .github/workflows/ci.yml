@@ -4,9 +4,16 @@ name: CI
 # is deliberately not built twice: the pull request build is the one that matters, and
 # workflow_dispatch covers running any other branch on demand.
 #
-# The release pipeline in publish.yml runs the suite again before it builds. That is not
+# The release pipeline in publish.yml runs this whole file again before it builds. That is not
 # redundant - a release can be cut from a commit, or with a version bump, that this workflow
-# never saw, and an upload to an index cannot be taken back.
+# never saw, and an upload to an index cannot be taken back. Publish calls it (workflow_call),
+# so it runs as part of Publish's run, on the release's commit, and GitHub documents what it is
+# then given: Publish's github context - its event, its ref and commit, its run's id, and its
+# name, Publish, in github.workflow - and as inputs only those the call passes, which are none.
+# inputs.repeat is then empty, which every job reads as an ordinary run's 1. Three things
+# differ, each where it is done: the concurrency group below is that run's own, the gui job
+# builds no wheel there, and dev-build, which runs on a push or a pull request alone, never
+# runs for a release.
 #
 # One pair of jobs here publishes, all the same: dev-build and dev-publish put a development
 # build of the last commit of every push to master, and of every push to this repository's own
@@ -23,13 +30,21 @@ on:
         description: "How many times each journey runs; above 1, only the journeys run"
         type: number
         default: 1
+  # Publish's run of this whole file, before it builds a release (above).
+  workflow_call:
 
 permissions:
   contents: read
 
+# A newer run of a ref cancels the older one, which a push to a pull request has made useless.
+# A run Publish calls is alone in a group named after Publish's run instead, cancelling nothing
+# and cancelled by nothing: its ref is the release's tag, which a dispatch of Publish or of
+# this file from that tag would share, and either would have cancelled the release's gates
+# halfway, or had its own cancelled by them. github.workflow is what tells the two apart, a
+# called workflow being given its caller's name there.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.workflow == 'CI' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.workflow == 'CI' }}
 
 jobs:
   test:
@@ -166,11 +181,12 @@ jobs:
     # extension job has it; the python package is installed because the types and the server
     # both come from it.
     #
-    # On ubuntu the pages it compiled then go into a wheel and an sdist, uploaded as
-    # ddd-tool-<commit>: a branch installed from them needs no node, as a release needs none -
-    # on a machine or in a container that only runs ddd, where node has no business. A release
-    # is still what anyone outside this repository installs, or the development build below for
-    # a commit not released yet: an artifact expires, and needs a GitHub account to reach.
+    # On ubuntu, in this file's own runs, the pages it compiled then go into a wheel and an
+    # sdist, uploaded as ddd-tool-<commit>: a branch installed from them needs no node, as a
+    # release needs none - on a machine or in a container that only runs ddd, where node has no
+    # business. A release is still what anyone outside this repository installs, or the
+    # development build below for a commit not released yet: an artifact expires, and needs a
+    # GitHub account to reach.
     #
     # Three legs: Playwright's own Chromium on both systems, and the windows runner's own Edge,
     # which a reader on windows most likely has (part 19a).
@@ -237,13 +253,15 @@ jobs:
           PLAYWRIGHT_CHANNEL: ${{ matrix.browser == 'msedge' && 'msedge' || '' }}
       # Built at the root, where pyproject.toml is, once the pages have passed in the browser,
       # and checked the way the release checks its own. One system is enough: the wheel is pure
-      # python, the same wherever it is built.
-      - if: runner.os == 'Linux'
+      # python, the same wherever it is built. In this file's own runs alone: in Publish's run,
+      # its build job builds the wheel it ships, and installs and checks it, so a release's run
+      # carries no second wheel of its commit.
+      - if: runner.os == 'Linux' && github.workflow == 'CI'
         working-directory: .
         run: |
           python -m pip install build
           python -m build --outdir dist
-      - if: runner.os == 'Linux'
+      - if: runner.os == 'Linux' && github.workflow == 'CI'
         name: Check the wheel carries the compiled pages
         working-directory: .
         run: |
@@ -253,7 +271,7 @@ jobs:
           if "ddd/gui/static/index.html" not in names:
               sys.exit("the wheel has no ddd/gui/static/index.html: ddd gui would have nothing to serve")
           EOF
-      - if: runner.os == 'Linux'
+      - if: runner.os == 'Linux' && github.workflow == 'CI'
         uses: actions/upload-artifact@v7
         with:
           name: ddd-tool-${{ github.sha }}

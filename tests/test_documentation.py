@@ -3511,8 +3511,12 @@ class TestWhatKeepsTheToolchainMoving:
         build = uncommented(job(PUBLISH_WORKFLOW, "build"))
         assert "python -m pip install -r requirements-release.txt" in build
         installs = re.findall(r"pip install[^\n]*", build)
+        # By the words of each line: an option's dashes are no word, so a pattern looking for
+        # --upgrade between word boundaries never finds it.
         loose = [
-            found for found in installs if re.search(r"\b(?:build|twine|--upgrade|-U)\b", found)
+            found
+            for found in installs
+            if {"build", "twine", "--upgrade", "-U"} & set(found.split())
         ]
         assert not loose, f"the release installs a tool at whatever version is newest: {loose}"
         assert "/" in dependabot()["pip"], "nothing proposes moving the pins"

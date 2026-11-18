@@ -2864,6 +2864,16 @@ class TestTheStandardLibrarysAnswers:
         }
         assert f"Error code: {code}".encode("ascii") in body
 
+    def test_a_refusal_says_its_reason_in_its_status_line(self, server) -> None:
+        status, _, _ = whole_answer(server, b"GET / x HTTP/1.1\r\n")
+        assert status == "HTTP/1.1 400 Bad request syntax ('GET / x HTTP/1.1')"
+
+    def test_a_refusal_s_page_holds_what_the_request_said_escaped(self, server) -> None:
+        status, _, body = whole_answer(server, b"GET /<script> x HTTP/1.1\r\n")
+        assert status.startswith("HTTP/1.1 400 ")
+        assert b"&lt;script&gt;" in body
+        assert b"<script>" not in body
+
     def test_a_head_is_refused_with_those_headers_and_no_page(self, server) -> None:
         sent = b"HEAD / HTTP/1.1\r\n" + f"Host: 127.0.0.1:{server.port}\r\n\r\n".encode("ascii")
         status, headers, body = whole_answer(server, sent)

@@ -969,8 +969,9 @@ class _Handler(BaseHTTPRequestHandler):
         the status line, the page explaining it, escaped, and the connection closed behind it.
         But with the headers every answer of this server carries (:func:`_head`): the policy of
         the page served, ``nosniff``, no referrer, and ``no-store`` as every refusal here has it
-        (12:M7). Never by way of :meth:`_send`: the request may be one whose headers were never
-        read, and :meth:`_send` reads them for a ``POST``'s body."""
+        (12:M7). Nothing is logged, as nothing is by this server (:meth:`log_message`). Never by
+        way of :meth:`_send`: the request may be one whose headers were never read, and
+        :meth:`_send` reads them for a ``POST``'s body."""
         short, long = self.responses.get(code, ("???", "???"))
         reason = short if message is None else message
         page = self.error_message_format % {
@@ -984,7 +985,6 @@ class _Handler(BaseHTTPRequestHandler):
             "Cache-Control": "no-store",
             "Connection": "close",
         }
-        self.log_error("code %d, message %s", code, reason)
         self.send_response(code, reason)
         for name, value in _head(CONTENT_TYPES[".html"], len(data), own).items():
             self.send_header(name, value)

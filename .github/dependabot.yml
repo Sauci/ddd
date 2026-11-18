@@ -2,10 +2,11 @@ version: 2
 
 # What this is for is the day of a release rather than the day of an update. Every `uses:` in
 # the three workflows is pinned by a major tag, the development requirements pin `ruff` and
-# `mypy` to a minor, the documentation requirements pin `sphinx` exactly, and the extension's
-# and the browser interface's lock files pin their dependencies exactly - so nothing moves on
-# its own, and without something proposing the moves nothing moves at all until a release is
-# blocked by a tool nobody upgraded or an action whose major tag was retired.
+# `mypy` to a minor, the documentation requirements pin `sphinx` exactly, the release's tools
+# are each at one version, and the extension's and the browser interface's lock files pin
+# their dependencies exactly - so nothing moves on its own, and without something proposing
+# the moves nothing moves at all until a release is blocked by a tool nobody upgraded or an
+# action whose major tag was retired.
 #
 # Weekly rather than daily: a pull request per dependency per day is noise on a repository
 # with one maintainer, and none of these is a runtime dependency of what customers install.
@@ -18,7 +19,10 @@ updates:
       interval: weekly
 
   # requirements.txt, requirements-dev.txt and requirements-docs.txt, which the metadata hook
-  # in pyproject.toml reads as the project's own dependency lists.
+  # in pyproject.toml reads as the project's own dependency lists, and requirements-release.txt,
+  # which publish.yml installs the release's build and twine from. Not the backend that
+  # pyproject.toml pins in [build-system], which its documentation says nothing of, nor the
+  # vsce the extension's scripts name: a version inside an npx command is no dependency.
   - package-ecosystem: pip
     directory: /
     schedule:

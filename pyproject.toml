@@ -1,7 +1,12 @@
 [build-system]
 # hatch-requirements-txt keeps the dependency lists in requirements files, which is where a
 # container build, a pip-tools run and a vulnerability scanner all expect to find them.
-requires = ["hatchling", "hatch-requirements-txt"]
+#
+# Both at one version: the backend writes every wheel and sdist of the project, the release's
+# among them, so a release of it changed what was shipped on the day it came out. These are
+# the versions ci's last wheel was built with. Dependabot's documentation says nothing of this
+# table, so a move here may have to be made by hand.
+requires = ["hatchling==1.33.0", "hatch-requirements-txt==0.4.1"]
 build-backend = "hatchling.build"
 
 [project]
@@ -106,6 +111,7 @@ include = [
     "/requirements.txt",
     "/requirements-dev.txt",
     "/requirements-docs.txt",
+    "/requirements-release.txt",
 ]
 # docs/superpowers/ holds the design and planning records of each feature: read by nobody the
 # sdist is sent to, skipped by the documentation tests and outside the Sphinx build, and at

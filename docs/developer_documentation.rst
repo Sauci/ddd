@@ -582,12 +582,18 @@ rather than libraries, so a release of either fails the lint job on the day it i
 rather than on the day somebody upgrades it. ``sphinx`` is pinned to one release in
 ``requirements-docs.txt`` for the same reason: the documentation is built with ``-W``, so a
 sphinx that warns about anything new fails the documentation's build, and on the wrong day
-that build is a release's. What proposes the moves instead is
-``.github/dependabot.yml``, weekly, for the actions, the requirements files, the extension and
-the browser interface: a bump then arrives as a pull request that ci has already run, which is
-the difference between upgrading a tool and discovering on a release day that one has moved on
-without you. A test holds every action to one version across the three workflows, both caps
-to being caps, and sphinx to one release.
+that build is a release's. So is every tool a release is built and checked with: ``build`` and
+``twine`` in ``requirements-release.txt``, which ``publish.yml`` installs them from,
+``hatchling`` and ``hatch-requirements-txt`` in the ``[build-system]`` table of
+``pyproject.toml``, and ``@vscode/vsce`` in the scripts of ``editors/vscode/package.json``.
+What proposes the moves instead is ``.github/dependabot.yml``, weekly, for the actions, the
+requirements files, the extension and the browser interface: a bump then arrives as a pull
+request that ci has already run, which is the difference between upgrading a tool and
+discovering on a release day that one has moved on without you. Dependabot may not reach two
+of them: its documentation says nothing of ``[build-system]``, and a version written into an
+``npx`` command is no dependency it reads, so the backend and vsce may have to be moved by
+hand. A test holds every action to one version across the three workflows, both caps to being
+caps, and sphinx and the release's tools each to one version.
 
 .. _development-builds:
 

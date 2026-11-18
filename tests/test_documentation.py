@@ -3494,6 +3494,57 @@ class TestWhatKeepsTheToolchainMoving:
         )
         assert "/" in dependabot()["pip"], "nothing proposes moving the pin"
 
+    def test_publish_installs_the_release_s_tools_at_one_version(self) -> None:
+        """20:M13. Publish installed whichever pip, build and twine were newest on the morning of
+        a release, after the suite had passed: a build or a twine that changed what it writes or
+        accepts changed the release, or failed it. They come from ``requirements-release.txt``,
+        every line of which is one version, and which dependabot reads, as it reads every
+        requirements file at the root."""
+        requirements = (ROOT / "requirements-release.txt").read_text(encoding="utf-8")
+        pinned = [
+            line.strip()
+            for line in requirements.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+        assert sorted(line.split("==", 1)[0] for line in pinned) == ["build", "twine"]
+        assert all(re.fullmatch(r"[\w-]+==\d+(?:\.\d+)+", line) for line in pinned), pinned
+        build = uncommented(job(PUBLISH_WORKFLOW, "build"))
+        assert "python -m pip install -r requirements-release.txt" in build
+        installs = re.findall(r"pip install[^\n]*", build)
+        loose = [
+            found for found in installs if re.search(r"\b(?:build|twine|--upgrade|-U)\b", found)
+        ]
+        assert not loose, f"the release installs a tool at whatever version is newest: {loose}"
+        assert "/" in dependabot()["pip"], "nothing proposes moving the pins"
+
+    def test_the_build_backend_is_one_version(self) -> None:
+        """20:M13. ``pyproject.toml`` required hatchling and hatch-requirements-txt at whatever
+        was newest, so a release of the backend changed the wheel every build of the project
+        wrote - the release's among them - on the day it came out."""
+        metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        requires = metadata["build-system"]["requires"]
+        assert sorted(line.split("==", 1)[0] for line in requires) == [
+            "hatch-requirements-txt",
+            "hatchling",
+        ]
+        assert all(re.fullmatch(r"[\w-]+==\d+(?:\.\d+)+", line) for line in requires), requires
+
+    def test_the_extension_is_packaged_by_one_vsce(self) -> None:
+        """20:M13. The extension's scripts ran ``npx --yes @vscode/vsce``, whichever vsce was
+        newest: on the day a release of it changed what it packages or refuses, so did the
+        ``.vsix`` the release attaches. Every script naming it names one version."""
+        manifest = json.loads(
+            (ROOT / "editors" / "vscode" / "package.json").read_text(encoding="utf-8")
+        )
+        named = [
+            found
+            for command in manifest["scripts"].values()
+            for found in re.findall(r"@vscode/vsce(\S*)", command)
+        ]
+        assert named, "no script of the extension runs vsce"
+        assert len(set(named)) == 1, f"the scripts run vsce at {sorted(set(named))}"
+        assert re.fullmatch(r"@\d+(?:\.\d+)+", named[0]), f"vsce is run as @vscode/vsce{named[0]}"
+
     def test_the_page_says_the_documentation_s_sphinx_is_one_release(self) -> None:
         """Where the maintainer reads what is pinned, and what a pin is held to."""
         said = flattened(PAGES["docs/developer_documentation.rst"])
@@ -3501,7 +3552,24 @@ class TestWhatKeepsTheToolchainMoving:
             "the pin": "``sphinx`` is pinned to one release in ``requirements-docs.txt``",
             "why": "the documentation is built with ``-W``, so a sphinx that warns about "
             "anything new fails the documentation's build",
-            "what holds it": "both caps to being caps, and sphinx to one release",
+            "what holds it": "both caps to being caps, and sphinx",
+        }
+        missing = [what for what, claim in claims.items() if claim not in said]
+        assert not missing, f"the developer page no longer says {missing}"
+
+    def test_the_page_says_where_the_release_s_tools_are_pinned(self) -> None:
+        """Each pin's home, and the two dependabot may not move."""
+        said = flattened(PAGES["docs/developer_documentation.rst"])
+        claims = {
+            "build and twine": "``build`` and ``twine`` in ``requirements-release.txt``, which "
+            "``publish.yml`` installs them from",
+            "the backend": "``hatchling`` and ``hatch-requirements-txt`` in the "
+            "``[build-system]`` table of ``pyproject.toml``",
+            "vsce": "``@vscode/vsce`` in the scripts of ``editors/vscode/package.json``",
+            "what dependabot may not reach": "Dependabot may not reach two of them: its "
+            "documentation says nothing of ``[build-system]``, and a version written into an "
+            "``npx`` command is no dependency it reads",
+            "what holds them": "the release's tools each to one version",
         }
         missing = [what for what, claim in claims.items() if claim not in said]
         assert not missing, f"the developer page no longer says {missing}"

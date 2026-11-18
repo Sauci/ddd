@@ -24,7 +24,7 @@ import tomllib
 import zipfile
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Literal, NamedTuple
+from typing import Any, ClassVar, Literal, NamedTuple
 
 import dev_version
 import jsonschema
@@ -45,7 +45,7 @@ from ddd.backends.c.model import (
     ObjectView,
 )
 from ddd.cli import EXIT_OK, _build_parser, main, schema_models
-from ddd.diagnostics import CHECKS
+from ddd.diagnostics import CHECKS, Severity
 from ddd.loading import FILE_KINDS
 from ddd.models import MAX_ELEMENTS, Component, DataObject, Datatype, ObjectKind, ScalarType
 from ddd.toolbox.findings import FINDINGS
@@ -62,6 +62,7 @@ DOCS_URL = "https://sauci.github.io/ddd/"
 CONSISTENCY_CHECKS = (ROOT / "docs" / "consistency_checks.rst").read_text(encoding="utf-8")
 COMPARING_DELIVERIES = (ROOT / "docs" / "comparing_deliveries.rst").read_text(encoding="utf-8")
 CHANGELOG = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+COMMAND_LINE_INTERFACE = (ROOT / "docs" / "command_line_interface.rst").read_text(encoding="utf-8")
 PAGES = {
     page.relative_to(ROOT).as_posix(): page.read_text(encoding="utf-8")
     for page in sorted((ROOT / "docs").rglob("*.rst"))
@@ -312,10 +313,332 @@ class TestTheCheckReference:
         )
         assert check in rows, f"the comparison table lists {sorted(rows)}"
 
+    def test_the_spec_lists_each_comparison_id_under_a_heading_of_its_severity(self) -> None:
+        """SPEC 4.1 grades by list: errors, warnings, information. A bullet under another
+        severity's heading tells its reader the wrong grade, and no other test reads where
+        a bullet sits."""
+        section = SPEC.split("### 4.1 Comparing two deliveries")[1].split("\n### ")[0]
+        headings = {"Errors,": Severity.ERROR, "Warnings,": Severity.WARNING}
+        current: Severity | None = None
+        seen: dict[str, set[Severity | None]] = {}
+        for line in section.splitlines():
+            if line.startswith("Information:"):
+                current = Severity.INFO
+            elif line.startswith(tuple(headings)):
+                current = headings[line.split()[0]]
+            elif (found := re.match(r"- `([a-z0-9-]+)`:", line)) and found.group(1) in CHECKS:
+                seen.setdefault(found.group(1), set()).add(current)
+        assert seen, "no comparison id found in section 4.1"
+        # Not only a comparison check: the one id the comparison borrows from the consistency
+        # checks, ``missing-producer``, is listed there too, and holds a grade of its own.
+        assert "missing-producer" in seen
+        wrong = {
+            name: (under, CHECKS[name].default_severity)
+            for name, under in seen.items()
+            if under != {CHECKS[name].default_severity}
+        }
+        assert not wrong, f"listed under a heading of another severity (under, registry): {wrong}"
+
+    @pytest.mark.parametrize(
+        "check", sorted(name for name, info in CHECKS.items() if info.comparison)
+    )
+    def test_the_comparison_table_grades_each_id_as_the_registry_does(self, check: str) -> None:
+        """Both tables of the pages state the severity beside the id, and errors come first."""
+        rows = {
+            name: severity
+            for severity, name in re.findall(
+                r"\* - (error|warning|info)\n\s+- ``([a-z0-9-]+)``", COMPARING_DELIVERIES
+            )
+        }
+        assert rows[check] == CHECKS[check].default_severity.value
+        checks_page = dict(
+            re.findall(r"\* - ``([a-z0-9-]+)``\n\s+- (error|warning|info)\n", CONSISTENCY_CHECKS)
+        )
+        assert checks_page[check] == CHECKS[check].default_severity.value
+
+    def test_the_comparison_tables_list_errors_before_warnings_before_information(self) -> None:
+        order = {"error": 0, "warning": 1, "info": 2}
+        for severities in (
+            re.findall(r"\* - (error|warning|info)\n\s+- ``[a-z0-9-]+``", COMPARING_DELIVERIES),
+            [
+                severity
+                for name, severity in re.findall(
+                    r"\* - ``([a-z0-9-]+)``\n\s+- (error|warning|info)\n", CONSISTENCY_CHECKS
+                )
+                if name in CHECKS and CHECKS[name].comparison
+            ],
+        ):
+            ranks = [order[severity] for severity in severities]
+            assert ranks == sorted(ranks)
+
+    def test_changed_storage_says_the_raster_in_one_wording_everywhere(self) -> None:
+        wording = "or the event or cycle of a raster"
+        assert wording in CHECKS["changed-storage"].description
+        for name, text in {
+            "README.md": README,
+            "docs/consistency_checks.rst": CONSISTENCY_CHECKS,
+            "docs/comparing_deliveries.rst": COMPARING_DELIVERIES,
+            "SPEC.md": SPEC,
+        }.items():
+            flat = flattened(text)
+            assert wording in flat, name
+            assert "event or the cycle of a raster" not in flat, name
+
+    def test_the_comparison_page_says_a_renamed_constant_is_two_findings(self) -> None:
+        page = flattened(COMPARING_DELIVERIES)
+        assert (
+            "A constant that was renamed is two findings, ``removed-constant`` for the old name "
+            "and ``added-constant`` for the new one"
+        ) in page
+        assert (
+            "has no `id`, so one renamed is this finding for the old name and `added-constant` "
+            "for the new one"
+        ) in flattened(SPEC)
+
     def test_the_registry_describes_changed_storage_as_the_pages_do(self) -> None:
         """``ddd checks`` prints the registry's one-liner; the raster joined the comparison
         without joining it, so the tool and the pages disagreed on what the check covers."""
         assert "raster" in CHECKS["changed-storage"].description
+
+    CHANGED_INTERFACE = (
+        "kind, datatype, unit, scaling, shape, axes, locality or where a table keeps its point "
+        "counts changed, or the value of a constant, or the layout a released structure fixed: a "
+        "bitfield's width, the type a structured variable names, or the members of that "
+        "structure in order, each with what it holds and its dimensions, nested and external "
+        "ones included, an external one by its header too, save a member added at the end of it "
+        "when the variable is no array, or volatile turned on for an object a component reads or a "
+        "component read alone produces"
+    )
+
+    def test_the_registry_and_the_three_tables_say_one_wording_of_changed_interface(
+        self,
+    ) -> None:
+        """What the check fires for, as ``ddd checks`` prints it and as the README, the check
+        reference and the comparison page each tabulate it. The layout grew from the order of
+        the members to every member and what it holds, and a table still naming the order alone
+        told its reader that an inserted member, or an external one of another type, does not
+        fire."""
+        description = CHECKS["changed-interface"].description
+        assert description == self.CHANGED_INTERFACE
+        tables = {
+            "README.md": README,
+            "docs/consistency_checks.rst": CONSISTENCY_CHECKS,
+            "docs/comparing_deliveries.rst": COMPARING_DELIVERIES,
+        }
+        for name, text in tables.items():
+            assert description in flattened(text), name
+
+    def test_the_pages_agree_that_a_precompiled_reader_is_left_wrong(self) -> None:
+        """Between two deliveries a reader may be a binary compiled against the baseline, so
+        the comparison page no longer says that every consumer is recompiled and nobody is left
+        wrong; and the rename's pair runs the other way from the removal's, for a reason each
+        page gives once: a relaxation of ``renamed-object`` must not reach a read object's
+        rename."""
+        page = flattened(COMPARING_DELIVERIES)
+        assert "so nobody is left wrong" not in page
+        assert (
+            "a reader may be a binary compiled against the previous headers and never regenerated"
+            in page
+        )
+        why = "keeps the plain id for the unread rename"
+        assert why in page and why in flattened(SPEC)
+        assert "reported as a `renamed-object`, or a `renamed-read-object`" in flattened(SPEC)
+        said = (
+            "volatile turned on for an object a component reads or a component read alone produces "
+            "is changed-interface instead"
+        )
+        assert said in CHECKS["changed-storage"].description
+        assert said in flattened(README)
+        assert said in page
+
+    def test_every_page_grades_a_rename_by_whether_somebody_reads_the_object(self) -> None:
+        """A reader may be a binary compiled against the previous headers, so a rename of an
+        object a component reads is an error under an id of its own and the warning stays for
+        an object nobody reads; ``changed-interface`` and ``changed-storage`` say the same for
+        ``volatile`` turned on. The registry and each page say so."""
+        assert CHECKS["renamed-read-object"].default_severity is Severity.ERROR
+        assert CHECKS["renamed-object"].default_severity is Severity.WARNING
+        assert CHECKS["renamed-object"].description.endswith(
+            "no component read it, and it is not an output of a component read alone"
+        )
+        for name, text in {
+            "README.md": README,
+            "docs/consistency_checks.rst": CONSISTENCY_CHECKS,
+            "docs/comparing_deliveries.rst": COMPARING_DELIVERIES,
+            "SPEC.md": SPEC,
+        }.items():
+            flat = flattened(text)
+            assert "renamed-read-object" in flat, name
+            assert "different name and no component read it" in flat, name
+        assert "does not reach this error" in flattened(CONSISTENCY_CHECKS)
+        assert "does not reach this error" in flattened(SPEC)
+        assert "turned off it is this check whoever reads" in flattened(SPEC)
+        assert "A `-W renamed-object` relaxation does not reach it" in flattened(README)
+        assert "A ``-W renamed-object`` relaxation does not reach it" in flattened(
+            COMPARING_DELIVERIES
+        )
+        assert (
+            "volatile` turned on for an object a component reads or a component read alone "
+            "produces is `changed-interface`"
+        ) in flattened(SPEC)
+        assert "Turning ``volatile`` on is a changed interface for an object a component reads" in (
+            flattened(COMPARING_DELIVERIES)
+        )
+
+    def test_every_page_grades_a_narrowed_condition_by_whether_somebody_reads_the_object(
+        self,
+    ) -> None:
+        """Wrapping an object a component reads in a condition takes it from every build where
+        that is false, and a reader compiled against the baseline stops linking there: an error
+        under an id of its own, so that ``changed-condition`` keeps its warning for a condition
+        going away and for an object nobody reads, and a relaxation of it does not reach the
+        error. The registry and each page say so."""
+        assert CHECKS["narrowed-condition"].default_severity is Severity.ERROR
+        assert CHECKS["changed-condition"].default_severity is Severity.WARNING
+        assert CHECKS["changed-condition"].description.endswith("narrowed-condition instead")
+        for name, text in {
+            "README.md": README,
+            "docs/consistency_checks.rst": CONSISTENCY_CHECKS,
+            "docs/comparing_deliveries.rst": COMPARING_DELIVERIES,
+            "SPEC.md": SPEC,
+        }.items():
+            flat = flattened(text)
+            assert "narrowed-condition" in flat, name
+            assert "changed-condition" in flat, name
+        assert "`-W changed-condition` relaxes only the warning below and does not reach this" in (
+            flattened(SPEC)
+        )
+        assert "and `narrowed-condition` where a component reads it" in flattened(SPEC)
+        assert "``-W changed-condition=ignore`` relaxes the warning only, and does not reach" in (
+            flattened(COMPARING_DELIVERIES)
+        )
+        assert "is narrowed-condition instead" in flattened(README)
+        for text in (CONSISTENCY_CHECKS, COMPARING_DELIVERIES):
+            assert (
+                "component reads, or on one a component read alone produces, is "
+                "``narrowed-condition`` instead"
+            ) in flattened(text)
+        assert "A `-W changed-condition` relaxation does not reach it" in flattened(README)
+        assert "A ``-W changed-condition`` relaxation does not reach it" in flattened(
+            CONSISTENCY_CHECKS
+        )
+        assert "a condition added to an object a component reads" in flattened(SPEC)
+        assert "no longer link there" in flattened(COMPARING_DELIVERIES)
+
+    def test_the_pages_say_a_structured_variable_with_no_leaf_is_compared_as_an_object(
+        self,
+    ) -> None:
+        """A structure holding members of external types alone has no leaf, so what a leaf says
+        of its variable - gone, renamed, reused, new - is said at the variable, graded as an
+        object is, and its ``kind`` once at the variable; a variable that has leaves is not said
+        a second time, and a removal at the variable carries no lost-identity note. The SPEC and
+        the comparison page say so."""
+        spec = flattened(SPEC)
+        for sentence in (
+            "an instance with no leaf included: its removal, its rename, its reuse of a name "
+            "and its `kind` are reported at the instance, where nothing else says them",
+            "is the only record of a variable of a structure holding members of external types "
+            "alone, which has no leaf",
+            "A structured variable with no leaf is one, said at the variable; one that has "
+            "leaves is said by its leaves, and not a second time.",
+            "a variable with no leaf is said at the variable.",
+            "A structured variable with no leaf is one of the names, and says it at the variable",
+            "`removed-unused-object`: an object is gone that no component read, a structured "
+            "variable with no leaf included.",
+            "`added-object`: the candidate declares an object the baseline did not, a "
+            "structured variable with no leaf included.",
+            "a structured variable with no leaf is listed once, under its own `id`, and a "
+            "member of a structured variable that has leaves is listed once per member",
+            "its `kind`, its array shape and its locality as interface",
+            "A structure holding only members of external types, at any depth, holds nothing "
+            "DDD can see into, and its variable has no leaf.",
+            "Such a variable **shall** therefore be reported as an object is, at the variable, "
+            "and graded as one",
+            "A variable that has leaves is not said a second time at the variable.",
+            "A removed structured variable with no leaf carries no such note, since it has no "
+            "interface to match an addition on.",
+            "What a leaf says of a variable - that it is gone, that it went under another name, "
+            "that its name is another object's, that it is new - is then said by nothing",
+            "and a variable could be removed, renamed or reused with no finding at all while "
+            "every reader's header lost the declaration, or found another object where the "
+            "name was",
+            "its removal is `removed-object`, or `removed-unused-object` where no component "
+            "read it",
+            "where the baseline is a component read alone it is graded by its scope as an "
+            "object's is",
+            "its rename is `renamed-read-object`, or `renamed-object` where no component read "
+            "it, and is in the migration map",
+            "another `id` under its name is `reused-name`",
+            "and a variable that arrived is `added-object`",
+            "The side a finding is about says whether the variable has a leaf: the baseline's "
+            "for a removal, a rename and a reused name, the candidate's for an addition.",
+            "a variable with leaves says it at each of its leaves' paths.",
+            "where nothing else says them ([section 4.1](#41-comparing-two-deliveries))",
+            "a delivery comparison reads the removal, the rename and the reuse of such a "
+            "variable from it ([section 4.1](#41-comparing-two-deliveries))",
+        ):
+            assert sentence in spec, sentence
+        page = flattened(COMPARING_DELIVERIES)
+        for sentence in (
+            "A structured variable of a structure that holds members of external types alone, "
+            "at any depth, has no leaf",
+            "the variable is reported as an object is, at the variable",
+            "``renames.json`` lists it under its own id",
+            "A variable that has leaves is not said a second time at the variable.",
+            "a structured variable with no leaf is an object here",
+            "no component read it, a structured variable with no leaf included",
+            "is one ``changed-interface`` at the variable and not one per member, a structure "
+            "of external members included",
+            "because DDD cannot see into storage its own types do not describe, and so nothing "
+            "says its removal, its rename or its reuse",
+            "Dropped, it is ``removed-object`` where a component read it and "
+            "``removed-unused-object`` where none did",
+            "a baseline that is a component file read alone grades it by its scope, as it does "
+            "an object",
+            "renamed with its ``id`` kept, it is ``renamed-read-object`` or ``renamed-object``",
+            "another ``id`` under its name is ``reused-name``",
+            "and one that arrived is ``added-object``",
+            "Its ``kind`` is the variable's as well: a measurement turned into a parameter is "
+            "one edit of one declaration, and the declaration in every reader's header gains a "
+            "``const``",
+        ):
+            assert sentence in page, sentence
+
+    def test_every_page_compares_constants_and_rasters_as_entries(self) -> None:
+        """A constant reaches every reader as a macro and the a2l as a ``SYSTEM_CONSTANT``, and a
+        raster is the event every ``IF_DATA`` that names it carries: a changed value is an
+        interface, a changed event or cycle is storage, a constant gone is an error under an id
+        of its own and one that came is an information. The registry and each page say so."""
+        assert CHECKS["removed-constant"].default_severity is Severity.ERROR
+        assert CHECKS["added-constant"].default_severity is Severity.INFO
+        assert CHECKS["removed-constant"].comparison and CHECKS["added-constant"].comparison
+        assert "or the value of a constant" in CHECKS["changed-interface"].description
+        assert "or the event or cycle of a raster" in CHECKS["changed-storage"].description
+        for name, text in {
+            "README.md": README,
+            "docs/consistency_checks.rst": CONSISTENCY_CHECKS,
+            "docs/comparing_deliveries.rst": COMPARING_DELIVERIES,
+            "SPEC.md": SPEC,
+        }.items():
+            flat = flattened(text)
+            assert "removed-constant" in flat, name
+            assert "added-constant" in flat, name
+            assert "the value of a constant" in flat, name
+            assert "event or cycle of a raster" in flat or "event or the cycle of a raster" in flat
+        page = flattened(COMPARING_DELIVERIES)
+        assert "a gain used by no object is the case that was silent" in page
+        assert "the macro and the size are two facts and neither stands for the other" in page
+        assert "A raster that came or went says nothing" in page
+        assert "recorded no constants, so against one none is compared" in page
+        assert "which recorded no constants, has none to compare them with" in flattened(SPEC)
+        assert "``10ms`` respelled ``10000us`` is no change" in page
+        assert "is the variable's one ``changed-interface``" in page
+        assert "a change of a section's access or alignment waits for it to" in page
+        spec = flattened(SPEC)
+        assert "the macro and the size are two facts and neither stands for the other" in spec
+        assert "an external member by its type's name, its header and its `dimensions`" in spec
+        assert "not compared until the dictionary carries them" in spec
+        assert "a raster that came or went is not said" in spec
 
     def test_the_registry_describes_address_missing_as_the_pages_do(self) -> None:
         """``ddd checks`` prints the registry's one-liner, and since ``--image`` the check is
@@ -5050,9 +5373,10 @@ class TestEveryShownRunThatDefaultsTheByteOrderSaysSo:
 
 
 class TestWhatTheA2lChecksCannotSee:
-    """``a2l-keyword`` and ``a2l-unrepresentable`` are judged from the descriptions alone: an
-    object stating ``export: false`` for the a2l is not held, and since neither check reads the
-    image or the map, an object a run drops because its build holds none of it still is."""
+    """``a2l-keyword`` and ``a2l-unrepresentable`` are judged from the descriptions alone: they
+    skip what the a2l keeps out and hold what the closure over references brings in, and since
+    neither check reads the image or the map, an object a run drops because its build holds
+    none of it is held too."""
 
     SPEC_TEXT = flattened(SPEC)
     CHECKS_TEXT = flattened(CONSISTENCY_CHECKS)
@@ -5065,28 +5389,42 @@ class TestWhatTheA2lChecksCannotSee:
     @pytest.mark.parametrize(
         ("text", "tick"), [("SPEC_TEXT", "`"), ("CHECKS_TEXT", "``")], ids=["SPEC", "checks"]
     )
-    def test_the_keyword_check_is_said_to_hold_a_name_only_a_run_leaves_out(
+    def test_the_keyword_check_skips_what_the_a2l_keeps_out_and_holds_what_the_closure_brings_in(
         self, text: str, tick: str
     ) -> None:
         page = getattr(self, text)
+        a2l = self.a2l(tick)
         assert (
-            f"judged from the descriptions alone: an object or a member that states "
-            f"{tick}export: false{tick} for the {self.a2l(tick)} is not held, but the check reads "
-            f"neither the image nor the map, so an object a run drops because its build holds "
-            f"none of it ({tick}condition-left-out{tick}) still draws the error, and "
+            f"judged from the descriptions alone. It skips what the {a2l} keeps out and holds "
+            f"what the closure over references brings in: an object or a member that states "
+            f"{tick}export: false{tick} for the {a2l} is skipped, unless an exported object "
+            f"names it, an axis under an exported curve or a measurement an exported axis names "
+            f"as its {tick}input{tick}, and is held then. It reads neither the image nor the "
+            f"map, so an object a run drops because its build holds none of it "
+            f"({tick}condition-left-out{tick}) still draws the error, and "
             f"{tick}-W a2l-keyword=ignore{tick} relaxes it for that run"
         ) in page
+        assert f"for the {a2l} is not held, but the check reads" not in page
         assert "An object or a member the a2l leaves out is not held" not in page
         assert "member, the A2L leaves out is not held" not in page
 
     @pytest.mark.parametrize(
         ("text", "tick"), [("SPEC_TEXT", "`"), ("CHECKS_TEXT", "``")], ids=["SPEC", "checks"]
     )
-    def test_the_limits_check_is_said_to_hold_an_object_only_a_run_leaves_out(
+    def test_the_limits_check_skips_what_the_a2l_keeps_out_and_holds_what_the_closure_brings_in(
         self, text: str, tick: str
     ) -> None:
         page = getattr(self, text)
-        assert f"fires for what the descriptions send to the {self.a2l(tick)}" in page
+        a2l = self.a2l(tick)
+        assert f"fires for what the descriptions send to the {a2l}" in page
+        assert (
+            f"it skips what the {a2l} keeps out and holds what the closure over references "
+            f"brings in, so an object kept out of the {a2l} on its own, or a member, is "
+            f"skipped unless an exported object names it, an axis under an exported curve or a "
+            f"measurement an exported axis names as its {tick}input{tick}"
+        ) in page
+        assert "is not held. Judged from the descriptions alone" not in page
+        assert f"for the {a2l} is not held. Judged" not in page
         assert (
             f"neither the image nor the map, so an object a run drops because its build holds "
             f"none of it ({tick}condition-left-out{tick}) is"
@@ -5099,6 +5437,18 @@ class TestWhatTheA2lChecksCannotSee:
         assert "It fires for what the file carries" not in page
 
     def test_the_release_note_says_it_of_both_checks(self) -> None:
+        assert (
+            "it skips what the a2l keeps out and holds what the closure over references brings "
+            "in, so an object or a member that states `export: false` for the a2l is skipped "
+            "unless an exported object names it, an axis under an exported curve or a "
+            "measurement an exported axis names as its `input`; but the check cannot see"
+        ) in self.RELEASE
+        assert (
+            "Like the keyword check, it skips what the a2l keeps out and holds what the closure "
+            "over references brings in."
+        ) in self.RELEASE
+        assert "it holds a name only where the a2l is meant to write it" not in self.RELEASE
+        assert "for the a2l is not held; but" not in self.RELEASE
         assert "so a name only such a run drops still draws the error" in self.RELEASE
         assert (
             "It cannot see a run's left-out objects either, so an object only such a run drops "
@@ -5135,8 +5485,15 @@ class TestTheRuleOfADerivedEnd:
 
     def test_spec_no_longer_says_an_end_is_rounded_outward(self) -> None:
         assert (
-            "where it is rounded it moves inward of the computed product by no more than the "
-            "arithmetic's tail of four units in the last place"
+            "where it is rounded it lies within the arithmetic's tail of four units in the last "
+            "place of the computed product, on whichever side of it the end falls"
+        ) in self.SPEC_TEXT
+        assert "it moves inward of the computed product" not in self.SPEC_TEXT
+        assert "That may take the end inward of the float" not in self.SPEC_TEXT
+        assert (
+            "That may take the end to either side of the float, by at most four units in its "
+            "last place: `7.65` is outward of the `7.6499999999999995` it replaces, and `sint16` "
+            'under `{"factor": 0.1}` states `3276.7`, inward of the product `3276.7000000000003`'
         ) in self.SPEC_TEXT
         assert "is rounded outward where it is rounded at all" not in self.SPEC_TEXT
 
@@ -5231,17 +5588,111 @@ class TestWhatTheReleaseNoteSaysOfBranchFive:
         from ddd.backends.a2l.options import A2lOptions
 
         names = [field.name for field in dataclasses.fields(A2lOptions)]
-        assert {"module_fragment", "links", "alignment_cap"} <= set(names)
+        assert names == [
+            "byte_order",
+            "alignment_cap",
+            "version",
+            "addresses",
+            "links",
+            "has_address_source",
+            "left_out",
+            "module_fragment",
+        ]
         assert (
-            "gains three fields in this release: `module_fragment`, `links`, which a member's "
-            "`SYMBOL_LINK` below is written from, and `alignment_cap`, which `MOD_COMMON`'s "
-            "alignments below are"
+            "gains five fields in this release: `module_fragment`, `links`, which a member's "
+            "`SYMBOL_LINK` below is written from, `alignment_cap`, which `MOD_COMMON`'s "
+            "alignments below are, `left_out`, named above, and `has_address_source`, which "
+            "says whether the run had a source of addresses"
         ) in self.TEXT
-        assert names.index("alignment_cap") == 1
-        assert names.index("links") == names.index("addresses") + 1
+        assert "gains three fields in this release" not in self.TEXT
         assert (
-            "`alignment_cap` stands second, after `byte_order`, and `links` after `addresses`"
-            in (self.TEXT)
+            "`A2lOptions` also gains `has_address_source`, for the comment under `ASAP2_VERSION`"
+        ) in self.TEXT
+
+    def test_the_positions_the_a2l_options_took_in_0_11_0_bind_otherwise(self) -> None:
+        from ddd.backends.a2l.options import A2lOptions, ByteOrder
+
+        shifted = A2lOptions(ByteOrder.BIG, "1 61", {"X": 1}, {"Y": ("X", 4)})  # type: ignore[arg-type]
+        assert shifted.alignment_cap == "1 61"
+        assert shifted.version == {"X": 1}
+        assert shifted.addresses == {"Y": ("X", 4)}
+        assert (
+            "`alignment_cap` stands second, after `byte_order`, and `links`, `has_address_source`, "
+            "`left_out` and `module_fragment` after `addresses`, so code that builds the options "
+            'by position meets them there: in `A2lOptions(ByteOrder.BIG, "1 61")` the version '
+            "0.11.0 took second is taken for `alignment_cap`, in a third position the addresses "
+            "0.11.0 took there are taken for `version`, and in a fourth, which 0.11.0 refused, "
+            "they are the `addresses`"
+        ) in self.TEXT
+        assert "is taken for `alignment_cap`." not in self.TEXT
+
+
+class TestWhatTheReleaseNoteSaysOfBranchSix:
+    """The migrations of how a delivery is judged that the branch's entries owe a reader: a
+    nested array whose size is spelled another way, a component read alone whose outputs are
+    graded as read and which `ddd check --baseline` now reads under the floor too, and where a
+    file holding only a name is refused and as what."""
+
+    TEXT = flattened(UNRELEASED)
+
+    def test_a_nested_array_spelled_another_way_at_its_size_is_said_with_its_migration(
+        self,
+    ) -> None:
+        assert (
+            "a nested array of another size or of its size spelled another way, `[2]` as "
+            '`["N"]` where `N` is 2'
+        ) in self.TEXT
+        assert (
+            "A nested array whose size a constant names where a number did, or the other way, is "
+            "accepted the same way, or keeps the spelling of the baseline."
+        ) in self.TEXT
+
+    def test_an_output_of_a_component_read_alone_is_said_to_be_graded_as_read(self) -> None:
+        for said in (
+            "**An output a component drops or changes is graded as one somebody reads, an input "
+            "it stops reading stops nothing, and a component is read the same way by every "
+            "command.**",
+            "and every grade that waits on a reader takes an output of it as read, with a message "
+            "that does not claim to know a reader",
+            "Renamed with its id kept, given a condition or another one, or turned `volatile`, it "
+            "is now `renamed-read-object`, `narrowed-condition` or `changed-interface`, each an "
+            "error, where it was the warning `renamed-object`, `changed-condition` or "
+            "`changed-storage`",
+            "a measurement's limits widened are now the warning `widened-limits`, where they were "
+            "silent, and narrowed the info `narrowed-read-limits`, where they were the warning "
+            "`narrowed-limits`",
+            "An object it declares `local` keeps the grades of an object nobody reads",
+            "and a supplier whose gate passed the rename, the condition, the `volatile` or the "
+            "wider range of an output, and stops or warns on it now, relaxes the new id for that "
+            "delivery",
+        ):
+            assert said in self.TEXT, said
+        assert "**An output a component drops stops a comparison, an input it stops" not in (
+            self.TEXT
+        )
+
+    def test_check_baseline_reads_a_component_baseline_under_the_floor_too(self) -> None:
+        assert (
+            "`ddd compare`, `ddd check --baseline` without `--standalone` and the Compare tab now "
+            "read such a baseline under the floor"
+        ) in self.TEXT
+        assert (
+            "a project checked against a component file with an input exited 1 on it, and exits 0"
+        ) in self.TEXT
+
+    def test_a_file_holding_only_a_name_is_refused_as_what_each_reader_refuses_it_as(
+        self,
+    ) -> None:
+        assert (
+            "it is refused as `schema` wherever it is given as a delivery to compare: either side "
+            "of `ddd compare`, the baseline of `ddd check --baseline` and the tab's baseline"
+        ) in self.TEXT
+        assert (
+            "as the file `ddd check` itself reads it stays refused as `file-kind`, the refusal it "
+            "always met"
+        ) in self.TEXT
+        assert "on either side of `ddd compare` and `ddd check --baseline`, and in the tab" not in (
+            self.TEXT
         )
 
 
@@ -5289,3 +5740,889 @@ class TestWhatThePagesSayOfFormat10:
             "reads back unchanged, and 0.11.0, which reads up to format 9, refuses a format 10 one "
             "as the dictionary of a newer DDD"
         ) in text
+
+
+class TestWhatARenameOfAnInstanceReportsOfItsDisplayIdentifiers:
+    """A rename of a structured variable is each leaf's ``renamed-object`` and no
+    ``changed-a2l`` for the instance's name at the head of a composed display identifier."""
+
+    PAGE = flattened(PAGES["docs/comparing_deliveries.rst"])
+    SPEC_TEXT = flattened(SPEC)
+
+    def test_the_page_says_the_head_of_a_composed_identifier_is_not_a_second_finding(
+        self,
+    ) -> None:
+        assert (
+            "A structured variable renamed with its ``id`` kept is each leaf's ``renamed-object``, "
+            "or ``renamed-read-object`` where a component reads the variable, and nothing more "
+            "for the display identifiers a member composes, ``V.J.b`` becoming ``W.J.b``, "
+            "since the instance's name at their head is the rename told again; an "
+            "identifier that changed in any other way, or one a leaf's own member states, is "
+            "still ``changed-a2l``"
+        ) in self.PAGE
+
+    def test_the_spec_says_it_of_changed_a2l(self) -> None:
+        assert (
+            "The instance's name at the head of a composed `display_identifier` is not a change "
+            "of it, a rename of the variable being the leaf's `renamed-object` or "
+            "`renamed-read-object`; one a leaf's own member states has no such head"
+        ) in self.SPEC_TEXT
+
+
+class TestWhatThePagesSayOfAnInitAndWhatItStores:
+    """A scalar is the array it fills only when every element holds it, ``-0.0`` is not ``0.0``,
+    and a literal no double has the bits for is refused where it is written."""
+
+    SPEC_TEXT = flattened(SPEC)
+    PAGE = flattened(PAGES["docs/comparing_deliveries.rst"])
+    FORMATS = flattened(PAGES["docs/file_formats/index.rst"])
+
+    def test_the_spec_says_when_a_scalar_is_the_array_and_which_zero_is_which(self) -> None:
+        for sentence in (
+            "A scalar is the array it fills only when every element of the array holds it: two "
+            "tables that differ in any element, such as a square map and its transpose, are two "
+            "initial values, and the finding names the first index where they part, the "
+            "elements taken in the order C lays them out.",
+            "A floating point `-0.0` is not `0.0`, since the sign bit is a stored byte, so an "
+            "initial value changing from one to the other is a change; in an integer datatype "
+            "`-0` is `0`.",
+        ):
+            assert sentence in self.SPEC_TEXT, sentence
+
+    def test_the_spec_says_where_a_literal_that_rounds_to_zero_is_refused(self) -> None:
+        for sentence in (
+            "A literal that no `float64` holds either, such as `1e-400`, is refused where it is "
+            "written (`json-syntax`) as `NaN` is, because the reader would otherwise take it for "
+            "the zero it rounds to before this rule saw it; a zero in any spelling is kept.",
+            "and a number whose digits are not zero but which the parser reads as zero, such as "
+            "`1e-400`, is refused by name (`json-syntax`).",
+        ):
+            assert sentence in self.SPEC_TEXT, sentence
+
+    def test_the_comparison_page_says_the_same_of_the_init(self) -> None:
+        assert (
+            "A scalar is the array it fills only when every element of the array holds it, so two "
+            "tables that differ in any element - a square map and its transpose - are two "
+            "initial values, and the finding names the first index they part at, in the order c "
+            "lays the elements out. ``-0.0`` is not ``0.0``, since the sign bit is a stored "
+            "byte, and changing one into the other is a change of the initial value; in an "
+            "integer datatype ``-0`` is ``0``."
+        ) in self.PAGE
+
+    def test_the_file_format_page_says_such_a_number_is_refused(self) -> None:
+        assert (
+            "A number no double has the bits for, such as ``1e-400``, is refused where it is "
+            "written, naming it, for a related reason: python would read it as zero before the "
+            "rule that a non-zero initial value which its storage rounds to zero is "
+            "``init-invalid`` could see it."
+        ) in self.FORMATS
+
+
+class TestWhatThePagesSayOfTheLayoutOfAStructuredVariable:
+    """A structured variable's layout is interface, read from the dictionary's ``types`` and said
+    once at the variable; a member added after every member of the structure of a single
+    variable is the one change that keeps every member where a reader of the baseline looks."""
+
+    SPEC_TEXT = flattened(SPEC)
+    PAGE = flattened(PAGES["docs/comparing_deliveries.rst"])
+    TYPES = flattened(PAGES["docs/file_formats/types.rst"])
+
+    def test_the_spec_says_what_the_layout_is_and_where_it_is_said(self) -> None:
+        for sentence in (
+            "the width of a bitfield, the `type` a structured variable names, the layout of a "
+            "structured variable or the value of a constant changed.",
+            "A bitfield's width and the layout of a structured variable are what a released "
+            "structure fixed for its consumers ([section 3.7](#37-type-description)), and a "
+            "consumer may be a binary compiled against the baseline's headers: narrowing a field "
+            "changes the value every reader takes out of the word, and widening one moves every "
+            "member after it.",
+            "The layout is read from the dictionary's `types` "
+            "([section 5.3](#53-data-dictionary)): the members of the variable's structure in "
+            "order, each by its name and by what it holds, a nested structure expanded into its "
+            "own members whatever it is called, an "
+            "external member by its type's name, its header and its `dimensions`, and each "
+            "dimension of a "
+            "nested or an external member by its spelling and by its value, a constant's being "
+            "the value the dictionary's `constants` give it.",
+            "A member holding a value answers for its datatype, its width and its `dimensions` at "
+            "its leaf, which compares them.",
+            "Any other difference of the layout may leave a reader of the baseline reading a "
+            "member, or an element, other than the one it was built to read, while each leaf the "
+            "two share still compares identical to the byte - a member inserted, removed, renamed "
+            "or reordered, a nested structure grown or rearranged, a nested array resized, an "
+            "external member retyped, given another header or resized - and is reported once, at "
+            "each variable whose layout it changes, naming the variable's structure and where the "
+            "two layouts part; "
+            "a structure in no variable's layout changes nothing a reader reads.",
+            "The one exception is a member added after every member of the structure of a single "
+            "variable, which moves nothing a reader of the baseline reads and is the addition of "
+            "the leaves it contributes; added to the structure of an array of structures, it "
+            "moves every element after the first, and added to a nested structure, it is a "
+            "nested structure grown.",
+            "A structured variable's `type` is what every consumer's header declares, so renaming "
+            "the structure changes the interface even when its members are untouched, while a "
+            "structure nested in it is reached through the member that holds it, so renaming "
+            "that one with its layout kept changes nothing.",
+        ):
+            assert sentence in self.SPEC_TEXT, sentence
+
+    def test_the_spec_no_longer_leaves_an_arrival_to_its_leaf_or_a_move_to_the_structure(
+        self,
+    ) -> None:
+        assert "a member that arrived or left is already the addition" not in self.SPEC_TEXT
+        assert "A reordering is reported once, at the structure" not in self.SPEC_TEXT
+
+    def test_the_spec_says_a_nested_structure_is_in_the_layout_of_the_variables_holding_it(
+        self,
+    ) -> None:
+        """A structure only ever nested is no variable's type, and is still compared, in the
+        layout of every variable that holds it."""
+        assert "a structure no variable is" not in self.SPEC_TEXT
+        assert "each variable of the type" not in self.SPEC_TEXT
+
+    def test_the_spec_says_the_variable_answers_for_its_layout(self) -> None:
+        for sentence in (
+            "The variable answers for what no member carries - its `type` and its layout - and "
+            "for what every member carries only because the variable states it:",
+            "exactly as an object without an `id` is, and as the changed layout of each variable "
+            "whose layout holds the type.",
+            "a baseline at format 3 or older states no `dimensions`, so shapes compare by value "
+            "alone, those of a structure's members included;",
+        ):
+            assert sentence in self.SPEC_TEXT, sentence
+
+    def test_the_spec_says_where_the_dictionary_carries_the_layout(self) -> None:
+        assert (
+            "`types` lists the structures in dependency order with their members, which a "
+            "delivery comparison reads the layout of a structured variable from, a dimension "
+            "spelled by a constant being read at the value `constants` gives it "
+            "([section 4.1](#41-comparing-two-deliveries)), an external member by its header as "
+            "well;"
+        ) in self.SPEC_TEXT
+
+    def test_the_comparison_page_says_what_the_layout_is_and_where_it_is_said(self) -> None:
+        for sentence in (
+            "The layout of a :doc:`structure <file_formats/types>` is interface as well, because "
+            "a reader may be a binary compiled against the previous delivery's headers, which "
+            "takes each member out of the offset those headers gave it.",
+            "A structured variable's layout is read from the dictionary's ``types``: the members "
+            "of its structure in order, a nested structure expanded into its own members "
+            "whatever it is called, an external member by its type's name, its header and its "
+            "dimensions, and every dimension by its spelling and its value.",
+            "A member inserted, removed, renamed or swapped with another leaves such a reader "
+            "reading a member other than the one it was built to read, while every member the "
+            "two deliveries share still compares identical to the byte - same path, same "
+            "datatype, same conversion, same limits - and so may a nested structure that grew or "
+            "was rearranged, a nested array that changed size, or an external member of another "
+            "type, header or dimension.",
+            "Each is reported once, at every variable whose layout it changed, naming the "
+            "structure and where the two layouts part; a structure in no variable's layout "
+            "changes nothing anybody reads, and is not compared.",
+            "One change alone keeps every member where a reader of the previous delivery looks "
+            "for it: a member added after every member of the structure of a single variable, "
+            "which is the addition of its leaves and no more.",
+            "Added to the structure of an array of structures, it moves every element after the "
+            "first, and added to a structure nested in another, it is that structure grown, so "
+            "neither is an addition alone.",
+            "while a structure nested in it is reached through the member that holds it, so "
+            "renaming that one with its layout kept changes nothing.",
+        ):
+            assert sentence in self.PAGE, sentence
+        assert "A reordering is reported once, at the structure" not in self.PAGE
+        assert "a structure no variable is" not in self.PAGE
+
+    def test_the_promise_of_a_clean_comparison_says_how_far_its_layout_reaches(self) -> None:
+        assert (
+            "still addresses the same objects, with the same layout, the same scaling and the "
+            "same meaning. The layout is the one the dictionary describes: what an external type "
+            "holds is its own header's, which no dictionary records."
+        ) in self.PAGE
+
+    def test_the_types_page_says_a_comparison_holds_an_external_member(self) -> None:
+        assert (
+            "it does not appear in ``ddd list`` or in the dictionary's ``leaves``, because there "
+            "is no datatype, unit or range to compare; a delivery comparison holds it by its "
+            "type's name, its header and its dimensions alone, as part of the layout of each "
+            "variable that holds it."
+        ) in self.TYPES
+        assert "or in a delivery comparison, because" not in self.TYPES
+
+    def test_the_types_page_says_a_comparison_reports_a_reordering(self) -> None:
+        assert (
+            "and nothing in the description changes value or name, so before the next build "
+            "measures the move it shows in the diff of the json and in ``ddd compare`` against "
+            "the delivered dictionary, which reports it at each variable whose layout holds the "
+            "structure (:doc:`../comparing_deliveries`)."
+        ) in self.TYPES
+        assert "the diff of the json is the only place the move is visible" not in self.TYPES
+
+
+class TestAComponentFileReadAloneIsComparedByWhatOneFileCanKnow:
+    """A supplier's gate compares one component file with its predecessor, and the readers its
+    dictionary records are the component's own, so the run cannot say that nobody read an output
+    it lost, and an input it stopped reading harms nobody. ``removed-input`` is the information
+    that says so, and a dump of a component carries no mark of how it was read."""
+
+    def test_the_registry_grades_a_dropped_input_as_an_information(self) -> None:
+        assert CHECKS["removed-input"].default_severity is Severity.INFO
+        assert CHECKS["removed-input"].comparison
+
+    def test_every_page_lists_the_dropped_input(self) -> None:
+        for name, text in {
+            "README.md": README,
+            "docs/consistency_checks.rst": CONSISTENCY_CHECKS,
+            "docs/comparing_deliveries.rst": COMPARING_DELIVERIES,
+            "SPEC.md": SPEC,
+        }.items():
+            assert "removed-input" in flattened(text), name
+
+    def test_every_page_says_an_output_of_a_component_read_alone_is_gone_with_its_readers_unknown(
+        self,
+    ) -> None:
+        for name, text in {
+            "README.md": README,
+            "docs/consistency_checks.rst": CONSISTENCY_CHECKS,
+            "docs/comparing_deliveries.rst": COMPARING_DELIVERIES,
+            "SPEC.md": SPEC,
+        }.items():
+            assert "an output of a component read alone" in flattened(text), name
+            assert "whose readers the run was not shown" in flattened(text), name
+
+    def test_the_specification_and_the_comparison_page_say_what_a_dump_costs(self) -> None:
+        for name, text in {
+            "SPEC.md": SPEC,
+            "docs/comparing_deliveries.rst": COMPARING_DELIVERIES,
+        }.items():
+            flat = flattened(text)
+            assert "carries no mark of how it was read" in flat, name
+            assert "the mark is a change of the format" in flat, name
+
+    def test_the_specification_and_the_comparison_page_keep_a_local_object_its_grade(self) -> None:
+        for name, text in {
+            "SPEC.md": SPEC,
+            "docs/comparing_deliveries.rst": COMPARING_DELIVERIES,
+        }.items():
+            flat = flattened(text)
+            assert "keeps its grade" in flat, name
+            assert "because no other component can read it" in flat, name
+
+    def test_the_comparison_page_says_which_callers_know_a_component_file(self) -> None:
+        flat = flattened(COMPARING_DELIVERIES)
+        assert (
+            "``ddd check --standalone --baseline``, ``ddd compare`` and the Compare tab of "
+            "``ddd gui`` take it from the file"
+        ) in flat
+        assert "An input the component stopped reading is ``removed-input``" in flat
+
+    def test_the_specification_and_the_comparison_page_say_the_floor_is_the_same_for_all_three(
+        self,
+    ) -> None:
+        for name, text, tick in (
+            ("SPEC.md", SPEC, "`"),
+            ("docs/comparing_deliveries.rst", COMPARING_DELIVERIES, "``"),
+        ):
+            flat = flattened(text)
+            assert f"the Compare tab of {tick}ddd gui{tick} take it from the file" in flat, name
+            assert "whether or not the run said so" in flat, name
+        assert "because a component given as the baseline is read one way by every caller" in (
+            flattened(SPEC)
+        )
+        assert (
+            "so that an input of the component nobody was shown the producer of is not an error "
+            "of the baseline"
+        ) in flattened(COMPARING_DELIVERIES)
+
+
+class TestAnOutputOfAComponentReadAloneIsGradedAsRead:
+    """Who reads an output of a component read alone is what the run was not shown, so every
+    grade that waits on a reader takes it as read, as its removal does: a rename, a condition
+    added or replaced, ``volatile`` turned on and a measurement's limits. Each home of those
+    grades says so, and the ids that stand for an object nobody reads say where the output went."""
+
+    TABLES: ClassVar[dict[str, str]] = {
+        "README.md": README,
+        "docs/consistency_checks.rst": CONSISTENCY_CHECKS,
+        "docs/comparing_deliveries.rst": COMPARING_DELIVERIES,
+    }
+
+    def test_the_registry_takes_it_as_read_for_each_grade(self) -> None:
+        for check, said in (
+            (
+                "renamed-read-object",
+                "an object of the baseline that somebody read, or that a component read alone "
+                "produced, is offered under a different name",
+            ),
+            (
+                "narrowed-condition",
+                "the preprocessor condition of an object somebody reads, or of one a component "
+                "read alone produces, was added or replaced",
+            ),
+            (
+                "widened-limits",
+                "the physical limits of a measurement somebody reads, or of one a component read "
+                "alone produces, got wider",
+            ),
+            (
+                "narrowed-read-limits",
+                "the physical limits of a measurement somebody reads, or of one a component read "
+                "alone produces, got tighter",
+            ),
+            (
+                "changed-interface",
+                "or volatile turned on for an object a component reads or a component read alone "
+                "produces",
+            ),
+            (
+                "changed-storage",
+                "volatile turned on for an object a component reads or a component read alone "
+                "produces is changed-interface instead",
+            ),
+            (
+                "narrowed-limits",
+                "a measurement somebody reads, or one a component read alone produces, is "
+                "widened-limits or narrowed-read-limits instead",
+            ),
+            (
+                "changed-condition",
+                "one added or replaced on an object somebody reads, or on one a component read "
+                "alone produces, is narrowed-condition instead",
+            ),
+            (
+                "renamed-object",
+                "no component read it, and it is not an output of a component read alone",
+            ),
+        ):
+            assert said in CHECKS[check].description, check
+
+    def test_each_table_takes_it_as_read_for_each_grade(self) -> None:
+        for name, text in self.TABLES.items():
+            flat = flattened(text)
+            for said in (
+                "that a component read, or that a component read alone produced, is offered under "
+                "a different name",
+                "the preprocessor condition of an object a component reads, or of one a component "
+                "read alone produces, was added or replaced",
+                "a measurement a component reads, or of one a component read alone produces, got "
+                "wider",
+                "a measurement a component reads, or of one a component read alone produces, got "
+                "tighter",
+                "one added or replaced on an object a component reads, or on one a component read "
+                "alone produces, is",
+            ):
+                assert said in flat, (name, said)
+        for name in ("README.md", "docs/comparing_deliveries.rst"):
+            flat = flattened(self.TABLES[name])
+            assert (
+                "volatile turned on for an object a component reads or a component read alone "
+                "produces is changed-interface instead"
+            ) in flat, name
+            assert (
+                "on a measurement a component reads, or on one a component read alone produces, "
+                "it is"
+            ) in flat, name
+        reference = flattened(CONSISTENCY_CHECKS)
+        assert "and every grade that waits on a reader takes such an output as read" in reference
+
+    def test_the_specification_takes_it_as_read_for_each_grade(self) -> None:
+        spec = flattened(SPEC)
+        for said in (
+            "An output of it is therefore taken as read by every grade that waits on a reader, "
+            "with a message that does not claim to know who read it",
+            "gone it is `removed-object`, renamed `renamed-read-object`, given a condition or "
+            "another one `narrowed-condition`, turned `volatile` `changed-interface`, and the "
+            "limits of a measurement widened are `widened-limits` and narrowed "
+            "`narrowed-read-limits`",
+            "any other change of an input is graded as one of an object its component reads",
+            "as it keeps every grade of an object nobody reads",
+            "is a change of interface for an object a component reads or a component read alone "
+            "produces",
+            "`renamed-read-object`: an object of the baseline that a component read, or that a "
+            "component read alone produced, is offered under a different name",
+            "and reported with the readers named, or said not to be known where a component read "
+            "alone produced it",
+            "a condition added to an object a component reads or a component read alone produces, "
+            "or one replaced by another",
+            "and it names the readers, or says they are not known",
+            "`widened-limits`: the physical limits of a measurement somebody reads, or of one a "
+            "component read alone produces, got wider",
+            "`narrowed-read-limits`: the physical limits of a measurement somebody reads, or of "
+            "one a component read alone produces, got tighter",
+            "and `narrowed-condition` where a component reads it or a component read alone "
+            "produces it",
+        ):
+            assert said in spec, said
+
+    def test_the_comparison_page_says_what_a_supplier_gate_grades_as_read(self) -> None:
+        page = flattened(COMPARING_DELIVERIES)
+        for said in (
+            "So a supplier's gate grades an output by what one file can know: it is taken as read "
+            "by every grade that waits on a reader, with a message that does not claim to know "
+            "who read it",
+            "renamed, it is ``renamed-read-object``, given a condition or another one "
+            "``narrowed-condition``, and turned ``volatile`` ``changed-interface``, each an error",
+            "and the limits of a measurement it widens are ``widened-limits`` and those it narrows "
+            "``narrowed-read-limits``",
+            "and every other grade of an object nobody reads",
+        ):
+            assert said in page, said
+        assert "So a supplier's gate grades a removal by what one file can know" not in page
+
+
+class TestOneVerdictOnOnePairWhoeverAsks:
+    """``ddd compare``, ``ddd check --baseline`` and the Compare tab ask one function, and the
+    tab counts the open project's own errors in its verdict as the commands do."""
+
+    def test_the_specification_says_the_three_give_one_pair_one_verdict(self) -> None:
+        flat = flattened(SPEC)
+        assert (
+            "`ddd compare`, `ddd check --baseline` and the Compare tab of `ddd gui` give one "
+            "pair one verdict, since they ask one function"
+        ) in flat
+        assert "the tab counts the open project's own errors in it as the commands do" in flat
+        assert "and says how many the project has of its own" in flat
+
+    def test_the_comparison_page_says_the_same(self) -> None:
+        flat = flattened(COMPARING_DELIVERIES)
+        assert "One pair gets one verdict, whoever asks." in flat
+        assert (
+            "whether it is the candidate's own, one carried over from the baseline, or the "
+            "comparison's"
+        ) in flat
+        assert "and its answer says how many the project has of its own" in flat
+
+    def test_the_command_line_page_no_longer_keeps_the_projects_errors_out_of_the_tab(
+        self,
+    ) -> None:
+        flat = flattened(COMMAND_LINE_INTERFACE)
+        assert "Its verdict is the one ``ddd compare`` exits on" in flat
+        assert "the project's own errors count in it" in flat
+        assert "the answer says how many errors the project has of its own" in flat
+        assert "take no part in it" not in flat
+
+    def test_the_command_line_page_does_not_promise_a_supplier_more_than_the_gate_holds(
+        self,
+    ) -> None:
+        flat = flattened(COMMAND_LINE_INTERFACE)
+        assert (
+            "an output a component drops, renames, puts under a new condition or turns "
+            "``volatile`` fails that gate, whoever reads it"
+        ) in flat
+        assert "and one whose limits it widens is warned of" in flat
+        assert "an input it stops reading does not" in flat
+
+
+class TestLimitsAreGradedByTheDirectionDataFlows:
+    """A measurement's limits are what the producer states for its readers, so on one somebody
+    reads it is the widening that can break them. ``widened-limits`` is the warning,
+    ``narrowed-read-limits`` the information, and calibration data keeps its grades."""
+
+    HOMES: ClassVar[dict[str, str]] = {
+        "README.md": README,
+        "docs/consistency_checks.rst": CONSISTENCY_CHECKS,
+        "docs/comparing_deliveries.rst": COMPARING_DELIVERIES,
+        "SPEC.md": SPEC,
+    }
+
+    def test_the_registry_grades_each_id_once(self) -> None:
+        assert CHECKS["widened-limits"].default_severity is Severity.WARNING
+        assert CHECKS["narrowed-read-limits"].default_severity is Severity.INFO
+        assert CHECKS["narrowed-limits"].default_severity is Severity.WARNING
+        for name in ("widened-limits", "narrowed-read-limits"):
+            assert CHECKS[name].comparison
+        assert CHECKS["narrowed-limits"].description.endswith(
+            "widened-limits or narrowed-read-limits instead"
+        )
+
+    def test_every_page_lists_both_ids(self) -> None:
+        for name, text in self.HOMES.items():
+            for check in ("widened-limits", "narrowed-read-limits"):
+                assert check in flattened(text), (name, check)
+
+    def test_the_specification_grades_limits_by_the_direction_the_data_flows(self) -> None:
+        flat = flattened(SPEC)
+        assert "Limits **shall** be graded by the direction the data flows" in flat
+        assert "so widening them **shall** be `widened-limits`, a warning" in flat
+        assert "narrowing them **shall** be `narrowed-read-limits`, an information" in flat
+        assert "A range that moved both ways is a widening." in flat
+        assert "A measurement nobody reads has no reader to promise anything to" in flat
+        assert "so widening its limits **shall** be silent" in flat
+        assert "Widening a limit **shall** be silent" not in flat
+
+    def test_the_comparison_page_says_a_widened_measurement_is_what_a_reader_can_trip_over(
+        self,
+    ) -> None:
+        flat = flattened(COMPARING_DELIVERIES)
+        assert "A measurement somebody reads is the other way round." in flat
+        assert "Widening them is therefore ``widened-limits``, a warning" in flat
+        assert "Narrowing them is ``narrowed-read-limits``, an information" in flat
+        assert 'turns into "cannot replace"' in flat
+        assert "there is nothing a calibration dataset can trip over" in flat
+        assert "nothing a consumer or a calibration dataset can trip over" not in flat
+
+    def test_the_check_reference_says_where_the_silence_holds(self) -> None:
+        flat = flattened(CONSISTENCY_CHECKS)
+        assert "this is the grade of calibration data and of a measurement nobody reads" in flat
+
+    def test_the_check_reference_tells_a_project_that_relaxed_narrowed_limits_what_to_relax(
+        self,
+    ) -> None:
+        flat = flattened(CONSISTENCY_CHECKS)
+        assert (
+            "A project that relaxed ``narrowed-limits`` for a measurement a component reads "
+            "relaxes ``narrowed-read-limits`` and ``widened-limits`` instead"
+        ) in flat
+
+    def test_the_readme_and_the_faq_say_the_direction_depends_on_the_flow(self) -> None:
+        assert "**A limit is graded by the direction the data flows.**" in flattened(README)
+        assert "widening it is a warning while narrowing it is an information" in flattened(README)
+        faq = flattened(PAGES["docs/faq.rst"])
+        assert "``widened-limits`` is a warning on a measurement a component reads" in faq
+        assert "the other way round for a measurement a component reads" in faq
+
+    # The blocks of the comparison page that show a run of ``examples/pressure``, each with
+    # the edit of the working tree that block says it ran on (``None``: the tree as shipped).
+    # A block is held to its own run as a whole - findings, summary and verdict - and not to
+    # a line that is somewhere on the page, because the same finding is shown in several.
+    RUNS: ClassVar[dict[str, str | None]] = {
+        "ddd check examples/pressure/release/pressure.ddd.json": None,
+        "ddd check examples/pressure/work/pressure.ddd.json": None,
+        "ddd compare examples/pressure/release/PressureLoop-1.4.0.json "
+        "examples/pressure/work/pressure.ddd.json": None,
+        "ddd compare examples/pressure/release/PressureLoop-1.4.0.json "
+        "examples/pressure/work/pressure.ddd.json  # the candidate without FilterGain": "no-gain",
+        "ddd check examples/pressure/work/pressure.ddd.json "
+        "--baseline examples/pressure/release/PressureLoop-1.4.0.json  "
+        "# the candidate also reading ValvePosition": "position",
+        "ddd compare examples/pressure/release/PressureLoop-1.4.0.json "
+        "examples/pressure/work/pressure.ddd.json  "
+        "# FilterGain's limits narrowed to 0 .. 0.5 instead": "gain-limits",
+        "ddd check examples/pressure/work/pressure.ddd.json  "
+        "# PressureRaw rescaled to a factor of 0.01 instead": "rescaled",
+        "ddd compare examples/pressure/release/PressureLoop-1.4.0.json "
+        "examples/pressure/work/pressure.ddd.json  "
+        "# PressureRaw rescaled to a factor of 0.01 instead": "rescaled",
+        "ddd compare examples/pressure/release/PressureLoop-1.4.0.json "
+        "examples/pressure/work/pressure.ddd.json  # the candidate renamed AirLoop": "airloop",
+        "ddd compare examples/pressure/release/PressureLoop-1.4.0.json "
+        "examples/pressure/work/pressure.ddd.json -W widened-limits=ignore "
+        "-W narrowed-read-limits=ignore -W added-object=ignore": None,
+    }
+
+    @staticmethod
+    def edit_component(tree: Path, name: str, change: Any) -> None:
+        path = tree / "examples" / "pressure" / "work" / "components" / f"{name}.ddd.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        change(data["component"]["interface"])
+        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    def tree_for(self, tmp_path: Path, scenario: str | None) -> None:
+        """Copy the example, dump the release as the page does, then apply the scenario."""
+        shutil.copytree(ROOT / "examples" / "pressure", tmp_path / "examples" / "pressure")
+        release = tmp_path / "examples" / "pressure" / "release"
+        work = tmp_path / "examples" / "pressure" / "work"
+        assert (
+            main(
+                [
+                    "dump",
+                    str(release / "pressure.ddd.json"),
+                    "-o",
+                    str(release / "PressureLoop-1.4.0.json"),
+                ]
+            )
+            == EXIT_OK
+        )
+        if scenario is None:
+            return
+        # Every other scenario is the release with one edit, as the page's "suppose" says.
+        if scenario not in ("position", "airloop"):
+            shutil.rmtree(work)
+            shutil.copytree(release, work, ignore=shutil.ignore_patterns("PressureLoop-1.4.0.json"))
+
+        def named(interface: list[dict[str, Any]], name: str) -> dict[str, Any]:
+            return next(e["definition"] for e in interface if e["definition"]["name"] == name)
+
+        def rescale(interface: list[dict[str, Any]]) -> None:
+            for entry in interface:
+                if entry["definition"]["name"] == "PressureRaw":
+                    entry["definition"]["conversion"] = {"factor": 0.01}
+                    entry["definition"]["limits"] = {"min": 0, "max": 250}
+
+        if scenario == "no-gain":
+            self.edit_component(
+                tmp_path,
+                "sensor",
+                lambda i: i.remove(next(e for e in i if e["definition"]["name"] == "FilterGain")),
+            )
+        elif scenario == "gain-limits":
+            self.edit_component(
+                tmp_path, "sensor", lambda i: named(i, "FilterGain")["limits"].update(max=0.5)
+            )
+        elif scenario == "rescaled":
+            for component in ("sensor", "controller"):
+                self.edit_component(tmp_path, component, rescale)
+        elif scenario == "airloop":
+            path = work / "pressure.ddd.json"
+            path.write_text(
+                path.read_text(encoding="utf-8").replace("PressureLoop", "AirLoop"),
+                encoding="utf-8",
+            )
+        else:
+            assert scenario == "position"
+            self.edit_component(
+                tmp_path,
+                "actuator",
+                lambda i: i.append(
+                    {
+                        "scope": "input",
+                        "definition": {**dict(named(i, "SupplyVoltage")), "name": "ValvePosition"},
+                    }
+                ),
+            )
+
+    def test_every_block_of_the_comparison_page_that_shows_a_run_is_what_the_command_prints(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Each block, as a whole: the findings, the summary line and the verdict line."""
+        blocks: dict[str, list[str]] = {}
+        lines = COMPARING_DELIVERIES.splitlines()
+        for number, line in enumerate(lines):
+            if not line.startswith("   $ ddd ") or " > " in line:
+                continue
+            shown: list[str] = []
+            for following in lines[number + 1 :]:
+                if not following.startswith("   ") or following.startswith("   $ "):
+                    break
+                shown.append(following[3:])
+            blocks.setdefault(line[5:], []).append("\n".join(shown))
+        held = 0
+        for command, scenario in self.RUNS.items():
+            assert command in blocks, command
+            shutil.rmtree(tmp_path / "examples", ignore_errors=True)
+            self.tree_for(tmp_path, scenario)
+            monkeypatch.chdir(tmp_path)
+            capsys.readouterr()
+            main(shlex.split(command.split("  #")[0])[1:])
+            captured = capsys.readouterr()
+            printed = (captured.out + captured.err).rstrip("\n")
+            for shown_text in blocks[command]:
+                assert printed == shown_text, command
+                held += 1
+        assert held == 10
+        assert "Five findings for five changes." in flattened(COMPARING_DELIVERIES)
+
+
+class TestWhatThePagesSayOfTheNineSmallerVerdicts:
+    """Each sentence the pages gained for the nine findings of the branch's last task, held where
+    it is said: the grade of ``missing-producer`` in a dump, what reaches a baseline and what
+    does not, what a file must state to be a delivery, and the order a member's change is told."""
+
+    DICTIONARY = PAGES["docs/data_dictionary.rst"]
+
+    def test_a_shape_is_told_with_the_sizes_its_constants_give(self) -> None:
+        assert (
+            "that shape is told with the size each constant gives, `[N=8] != [N=4]`"
+        ) in flattened(SPEC)
+        assert (
+            "A dimension a constant names is told with the size the constant gives, "
+            "``[N=8] != [N=4]``"
+        ) in flattened(COMPARING_DELIVERIES)
+
+    def test_an_object_that_lost_its_producer_is_missing_producer_and_said_once(self) -> None:
+        spec = flattened(SPEC)
+        assert (
+            "- `missing-producer`: an object or a structured variable had a producer in the "
+            "baseline, and the candidate, given as a dumped dictionary, has a component that "
+            "still reads it and none that produces it"
+        ) in spec
+        assert "with its one severity and under the run's own `-W`" in spec
+        assert "and it is said in place of that pair's `changed-owner`, being the one fact" in spec
+        assert "An object with no producer on both sides is no change the comparison makes" in spec
+        assert "a dictionary carries no mark of which a dump is" in spec
+        assert "An input that arrived with no producer is `added-object` alone" in spec
+        assert (
+            "A candidate given as a description has it said by its analysis, and `changed-owner` "
+            "is not said beside it there either"
+        ) in spec
+        assert "which a delivery comparison says as `missing-producer` of a candidate whose" in spec
+        pages = flattened(COMPARING_DELIVERIES)
+        assert (
+            "an object that lost its producer while a component still reads it is "
+            "``missing-producer``, an error, as ``ddd check`` says of the same description"
+        ) in pages
+        assert "said in place of that pair's ``changed-owner``, being the one fact" in pages
+        assert "``-W missing-producer=ignore`` relaxes it as it relaxes the check" in pages
+        assert "An object with no producer on both sides is no change the comparison makes" in pages
+        assert "two dumps of one component read alone hold its inputs so" in pages
+        assert "an input that arrived with no producer is an ``added-object`` and no more" in pages
+        assert "has it said by its analysis, with no ``changed-owner`` beside it" in pages
+        assert "lost the producer of while a component still reads it" in flattened(
+            CONSISTENCY_CHECKS
+        )
+        assert "``ddd compare`` says ``missing-producer`` of such an object" in flattened(
+            self.DICTIONARY
+        )
+        assert "in a candidate dump when the baseline had a producer for it" in flattened(
+            self.DICTIONARY
+        )
+
+    def test_the_floor_does_not_reach_a_producer_the_baseline_had(self) -> None:
+        spec = flattened(SPEC)
+        assert (
+            "The one exception is the floor of `ddd check --standalone`, which silences that "
+            "analysis for what a component read alone was never shown and does not reach a "
+            "producer the baseline had"
+        ) in spec
+        assert ("the comparison then says it, once, as an error whatever the floor says") in spec
+        assert "and a project's own `-W missing-producer=ignore` still silences it" in spec
+        assert (
+            "and what fails the gate for a component that turns an output into an input"
+        ) in spec
+        assert "the gate's own for a component that drops an output" not in spec
+        pages = flattened(COMPARING_DELIVERIES)
+        assert (
+            "The one exception is the floor of ``ddd check --standalone``, which silences that "
+            "analysis for what a component read alone was never shown and does not reach a "
+            "producer the baseline had"
+        ) in pages
+        assert "the comparison then says it, once, as an error whatever the floor says" in pages
+        assert "what makes a component that turns an output into an input fail that gate" in pages
+        assert "what makes a component that drops an output fail that gate" not in pages
+        assert "and a project's own ``-W missing-producer=ignore`` still silences it" in pages
+
+    def test_the_check_reference_says_the_floor_does_not_reach_a_producer_the_baseline_had(
+        self,
+    ) -> None:
+        """The row of ``missing-producer`` names both candidates the comparison says it of, and
+        the paragraph on ``--standalone`` no longer says the option touches nothing else."""
+        reference = flattened(CONSISTENCY_CHECKS)
+        assert (
+            "and so does ``ddd check --baseline --standalone`` of an output the component turned "
+            "into an input, as an error whatever the floor says, since the floor does not reach "
+            "a producer the baseline had; a project's own ``-W missing-producer=ignore`` still "
+            "silences it"
+        ) in reference
+        assert (
+            "and touches nothing else of the analysis, so everything DDD can decide from the file "
+            "in front of it is still reported"
+        ) in reference
+        assert (
+            "Beside ``--baseline``, a producer the candidate lost is said by the comparison "
+            "instead, as an error the floor does not reach (``missing-producer`` below)."
+        ) in reference
+        assert "and touches nothing else, so" not in reference
+
+    def test_a_broken_baseline_withholds_nothing_of_the_candidates(self) -> None:
+        spec = flattened(SPEC)
+        assert "and its renames are written, whatever errors the baseline carries" in spec
+        assert "a broken baseline withholds nothing of the candidate's" in spec
+        assert (
+            "and one that could not be read at all, which leaves nothing to compare, still lets "
+            "the candidate's findings be reported"
+        ) in spec
+        assert (
+            "When the baseline carries an error, the comparison is made and the verdict is a "
+            "refusal; when a side cannot be read, no verdict is printed"
+        ) in spec
+        pages = flattened(COMPARING_DELIVERIES)
+        assert "a broken baseline withholds nothing of the candidate's" in pages
+        assert (
+            "A baseline that cannot be read at all is a different matter: there is nothing to "
+            "compare, so no verdict is printed, and what the candidate has of its own is "
+            "reported all the same"
+        ) in pages
+        assert (
+            "has no dictionary to compare with: no verdict is printed and no renames file is "
+            "written, while the candidate's own findings are still reported"
+        ) in pages
+        assert "the comparison is made, the errors are reported beside it and the verdict" in pages
+        assert "under the project's own policy" in pages
+
+    def test_a_relaxation_reaches_a_description_baseline_and_a_promotion_does_not(self) -> None:
+        spec = flattened(SPEC)
+        assert "under neither `--strict` nor the promotions of the `-W` of this run" in spec
+        assert (
+            "What does reach it is the relaxations of the project's `-W`, an override grading a "
+            "check below the grade it has by default"
+        ) in spec
+        assert (
+            "a plugin's check, whose grade is not known until its plugin is loaded, only as "
+            "`ignore`"
+        ) in spec
+        assert "a project that builds with `-W missing-producer=ignore` can compare its branch" in (
+            spec
+        )
+        assert (
+            "The Compare tab reads it under the relaxations that every build record of the "
+            "project makes"
+        ) in spec
+        pages = flattened(COMPARING_DELIVERIES)
+        assert "This run's ``-W`` reaches it in one direction only. A promotion does not" in pages
+        assert "``--strict`` does not reach it either" in pages
+        assert "A relaxation does: ``-W missing-producer=ignore`` is a project deciding" in pages
+        assert "Only a lower grade than the check has by default is a relaxation" in pages
+        assert "a check one of them does not relax is not relaxed" in pages
+        assert ("so a ``-W`` of it reaches the baseline as ``ignore`` alone") in pages
+        assert (
+            "A promotion of this run does not make one of them an error, and a ``-W`` that "
+            "relaxes the check relaxes it"
+        ) in pages
+        assert "The relaxations of that policy reach a baseline given as a project" in flattened(
+            CONSISTENCY_CHECKS
+        )
+
+    def test_the_pages_say_per_side_what_ddd_compare_does_with_a_component_file(self) -> None:
+        spec = flattened(SPEC)
+        assert (
+            "`ddd compare` has no `--standalone` of its own: a component file given as the "
+            "baseline is read under that floor, as above, and one given as the candidate is read "
+            "as a project's file is, an input nobody in it produces being its own error"
+        ) in spec
+        assert (
+            "Two versions of a component with inputs are therefore compared with "
+            "`ddd check --baseline --standalone`, the command that takes the option"
+        ) in spec
+        pages = flattened(COMPARING_DELIVERIES)
+        assert (
+            "``ddd compare`` has no ``--standalone``. It reads a component file given as the "
+            "baseline under the floor"
+        ) in pages
+        assert (
+            "a component file given as the candidate it reads as a project's file is read, so "
+            "that an input nobody in the file produces is an error of the candidate"
+        ) in pages
+        assert (
+            "A supplier comparing two versions of a component with inputs therefore uses "
+            "``ddd check --baseline --standalone``, the command that takes the option"
+        ) in pages
+
+    def test_null_against_explicit_zeros_is_no_change(self) -> None:
+        assert (
+            'An object stating no `init` stores zeros, so adding `0`, `[0, 0]` or `""` to one '
+            "that had none moves no byte and is no change, in either direction"
+        ) in flattened(SPEC)
+        assert (
+            "An object stating no initial value stores zeros, so adding ``0``, ``[0, 0]`` or "
+            '``""`` to one that had none moves no byte and is no change, in either direction'
+        ) in flattened(COMPARING_DELIVERIES)
+
+    def test_a_json_holding_only_a_name_is_no_delivery(self) -> None:
+        spec = flattened(SPEC)
+        assert "is no delivery, and is refused on either side in those words" in spec
+        assert "a file stating neither it, nor `project`, nor `component`" in spec
+        assert "is no delivery and is refused as such" in flattened(self.DICTIONARY)
+        assert "is no delivery, and is refused on either side in those words" in flattened(
+            COMPARING_DELIVERIES
+        )
+
+    def test_a_members_change_is_told_per_path_in_numeric_order(self) -> None:
+        assert (
+            "A member's own change is told at every path that reaches it, and the paths are in "
+            "the order `ddd list` gives them, an index counted as a number"
+        ) in flattened(SPEC)
+        assert "sorted by `to` with an index counted as a number" in flattened(SPEC)
+        assert "A member's own change is reported at every path that reaches it" in flattened(
+            COMPARING_DELIVERIES
+        )
+        assert "``[2]`` before ``[10]``, as are the removals, the additions and the entries" in (
+            flattened(COMPARING_DELIVERIES)
+        )

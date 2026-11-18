@@ -30,8 +30,17 @@ from typing import Any
 import pytest
 
 from ddd import analysis, compare
-from ddd.ir import ResolvedInstance, ResolvedLeaf, ResolvedObject
-from ddd.models import Axis, Curve, DataObject, Map, Measurement, Parameter, ValueBlock
+from ddd.ir import ResolvedInstance, ResolvedLeaf, ResolvedObject, ResolvedRaster
+from ddd.models import (
+    Axis,
+    ConstantDeclaration,
+    Curve,
+    DataObject,
+    Map,
+    Measurement,
+    Parameter,
+    ValueBlock,
+)
 
 OBJECT_KINDS = (Measurement, Parameter, ValueBlock, Axis, Curve, Map)
 
@@ -136,6 +145,7 @@ _NOT_COMPARED_LEAF: dict[str, str] = {
     "leaf whose variable was renamed is the same leaf under a new path, which renamed-object "
     "reports for the variable once instead of once per member",
     "instance_id": _NOT_COMPARED_RESOLVED["id"],
+    "kind": _BELONGS_TO_THE_VARIABLE,
     "local": _BELONGS_TO_THE_VARIABLE,
     "volatile": _BELONGS_TO_THE_VARIABLE,
     "section": _BELONGS_TO_THE_VARIABLE,
@@ -146,9 +156,6 @@ _NOT_COMPARED_LEAF: dict[str, str] = {
 # variable *of* is on nothing else, and what its members carry only because it does is
 # compared here once instead of once per member.
 _NOT_COMPARED_INSTANCE: dict[str, str] = {
-    "kind": "compared on every leaf: the storage class decides whether a member reaches the "
-    "a2l as a MEASUREMENT or a CHARACTERISTIC, so it is a property of each record the file "
-    "carries rather than of the declaration alone",
     "a2l": "compared on every leaf, which carries the resolved answer: the analysis folds the "
     "variable's export into each member's, and the variable's own format and display "
     "identifier reach no record at all - the a2l backend reads a structured object only "
@@ -303,6 +310,34 @@ class TestEveryModelFieldIsAccountedFor:
                 f"on a structured variable and 'ddd compare' would report the candidate a "
                 f"valid replacement. Add it to an instance table in ddd/compare.py, or to "
                 f"_NOT_COMPARED_INSTANCE here."
+            )
+
+    def test_every_field_of_a_constant(self) -> None:
+        """A constant is compared as an entry, by its name, on its value; its description is a
+        note for a human that reaches no output a reader is compiled against."""
+        compared = table_names(compare._CONSTANT_FIELDS)
+        key_or_note = {"name": "the key the entries are paired by", "description": "a note"}
+        for name in ConstantDeclaration.model_fields:
+            assert name in compared or name in key_or_note, (
+                f"ConstantDeclaration.{name} is compared by nothing: a delivery could change it "
+                f"and 'ddd compare' would report the candidate a valid replacement. Add it to "
+                f"_CONSTANT_FIELDS in ddd/compare.py, or say here why it is not."
+            )
+
+    def test_every_field_of_a_raster(self) -> None:
+        """A raster is compared as an entry, by its name, on its event and its period, which the
+        dictionary carries twice: as written and as nanoseconds, the second being compared."""
+        compared = table_names(compare._RASTER_FIELDS)
+        accounted = {
+            "raster": "the key",
+            "cycle_ns": "compared as the cycle",
+            "description": "a note",
+        }
+        for name in ResolvedRaster.model_fields:
+            assert name in compared or name in accounted, (
+                f"ResolvedRaster.{name} is compared by nothing: a delivery could change it and "
+                f"'ddd compare' would report the candidate a valid replacement. Add it to "
+                f"_RASTER_FIELDS in ddd/compare.py, or say here why it is not."
             )
 
     @pytest.mark.parametrize("field", sorted(DERIVED_AS))
@@ -531,10 +566,11 @@ class TestComparisonTables:
 
         Derived rather than spelled out, so a field added to an object table reaches a leaf
         too; what this pins is the other half of the deal - that every field taken off a leaf
-        is compared at the instance, and not simply dropped. A member carries ``volatile``,
-        ``section``, ``raster`` and ``local`` only because the analysis copies them there from
-        the variable, so comparing them per member turned one edit into one finding per
-        member.
+        is compared at the instance, and not simply dropped. A member carries ``kind``,
+        ``volatile``, ``section``, ``raster`` and ``local`` only because the analysis copies
+        them there from the variable, so comparing them per member turned one edit into one
+        finding per member - and, for a structure holding only external types, said
+        the ``kind`` nowhere at all.
         """
         whole = table_names(compare._INTERFACE_FIELDS, compare._STORAGE_FIELDS)
         leaf = table_names(compare._LEAF_INTERFACE_FIELDS, compare._LEAF_STORAGE_FIELDS)

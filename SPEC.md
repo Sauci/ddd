@@ -158,7 +158,7 @@ A build that does not require them stops after the first run.
 | **declaration** | one entry of a component interface: a scope, an optional condition and a definition |
 | **definition** | the part of a declaration that says what the object is: kind, datatype, shape, conversion and the remaining keys of [section 3.3](#33-data-object-definition) |
 | **data object** | the subject of a declaration: a measurement, parameter, value block, curve, map or axis |
-| **instance** | the data object of a declaration naming a structure type ([section 3.7](#37-type-description)): one C object whose members are data objects in their own right, each reached by its access path. It is a data object like any other - it has a producer, consumers and an `id`, and the dictionary records it as its own kind of entry ([section 5.3](#53-data-dictionary)) - so every rule this specification states about a data object states it about an instance too |
+| **instance** | the data object of a declaration naming a structure type ([section 3.7](#37-type-description)): one C object whose members are data objects in their own right, each reached by its access path. It is a data object like any other - it has a producer, consumers and an `id`, and the dictionary records it as its own kind of entry ([section 5.3](#53-data-dictionary)) - so every rule this specification states about a data object states it about an instance too, an instance with no leaf included: its removal, its rename, its reuse of a name and its `kind` are reported at the instance, where nothing else says them ([section 4.1](#41-comparing-two-deliveries)) |
 | **leaf** | one value-holding member of an instance, as the dictionary sees it; a member naming an external type is opaque and is no leaf |
 | **measurement** | a data object the software writes and reads, the producer writing and the consumers reading; a calibration tool can both read and write it as well |
 | **calibration object** | a data object the software never writes: a parameter, value block, curve, map or axis, generated `const` and changed, if at all, by a calibration tool |
@@ -211,7 +211,9 @@ repeated inside one object; the file is refused (`json-syntax`) rather than read
 surviving value. A file that is not valid UTF-8, or whose nesting exceeds the depth the
 parser accepts, is refused the same way (`json-syntax`). So is a file spelling `NaN` or
 `Infinity`, which JSON does not define; a number too large for the parser's floating point,
-such as `1e400`, reads as infinity and is refused as `schema` where it is written. A file
+such as `1e400`, reads as infinity and is refused as `schema` where it is written, and a
+number whose digits are not zero but which the parser reads as zero, such as `1e-400`, is refused
+by name (`json-syntax`). A file
 whose top level is not an object is `file-kind`. Unknown keys are rejected, with one
 exception: a top level `$schema` key **shall** be accepted and ignored, because it is the
 standard way an editor binds a JSON file to its schema and thereby turns the published
@@ -460,7 +462,10 @@ Kind specific attributes:
   that is not zero and that the storage rounds to zero is `init-invalid`, because the value
   the object would start with is not the value the description states - `1e-50` on a
   `float32`, whose smallest magnitude is about 1.4e-45, and which the generated C carries as
-  a literal a compiler refuses rather than silently zeroes. It is
+  a literal a compiler refuses rather than silently zeroes. A literal that no `float64`
+  holds either, such as `1e-400`, is refused where it is written (`json-syntax`) as `NaN` is,
+  because the reader would otherwise take it for the zero it rounds to before this rule saw
+  it; a zero in any spelling is kept. It is
   compared neither against the limits, which
   are physical while `init` is raw, nor against the enumerators of an enum conversion.
   A `string` object ([section 3.4](#34-conversions)) **may** state its `init` as a JSON
@@ -548,13 +553,15 @@ whoever states them, and only two *stated* sets of limits can disagree
 otherwise from the first declaration in load order that states them, and otherwise they
 are derived; every other declaration that states limits is compared against that stated
 reference. A derived end holds the physical value of its raw count, and where it is rounded
-it moves inward of the computed product by no more than the arithmetic's tail of four units in
-the last place. The tail of the arithmetic is taken off a short decimal, because a
-decimal factor has no exact binary float: a `uint8` under `{"factor": 0.03}` covers 0 ..
-`7.65`, the number its own largest raw count reads as, rather than the `7.6499999999999995`
-the multiplication produces. That may take the end inward of the float, by at most four units
-in its last place: `sint16` under `{"factor": 0.1}` states `3276.7` where the product is
-`3276.7000000000003`, which the tolerance below treats as the same number. An end whose
+it lies within the arithmetic's tail of four units in the last place of the computed product,
+on whichever side of it the end falls. The tail of the arithmetic is taken off a short
+decimal, because a decimal factor has no exact binary float: a `uint8` under
+`{"factor": 0.03}` covers 0 .. `7.65`, the number its own largest raw count reads as, rather
+than the `7.6499999999999995` the multiplication produces. That may take the end to either
+side of the float, by at most four units in its last place: `7.65` is outward of the
+`7.6499999999999995` it replaces, and `sint16` under `{"factor": 0.1}` states `3276.7`,
+inward of the product `3276.7000000000003`, which the tolerance below treats as the same
+number. An end whose
 digits run past twelve keeps them: a `uint64` under `{"factor": 1}` covers 0 ..
 `1.8446744073709552e+19`, and a `uint32` under 2^-10 up to `4194303.9990234375`, where twelve
 digits stated a number short of the top count. Under the identity the ends are the raw ends
@@ -1459,10 +1466,13 @@ Errors:
   among them. The list is DDD's own, written from the 1.6.1 grammar, and the match is exact
   and case sensitive, so `map` is a name. It holds the project, a component that gets a group,
   an object the A2L carries, each member of a path, and a `display_identifier`, judged from the
-  descriptions alone: an object or a member that states `export: false` for the A2L is not
-  held, but the check reads neither the image nor the map, so an object a run drops because
-  its build holds none of it (`condition-left-out`) still draws the error, and
-  `-W a2l-keyword=ignore` relaxes it for that run. A member is the finding of the file declaring its structure, once however many
+  descriptions alone. It skips what the A2L keeps out and holds what the closure over
+  references brings in: an object or a member that states `export: false` for the A2L is
+  skipped, unless an exported object names it, an axis under an exported curve or a
+  measurement an exported axis names as its `input`, and is held then. It reads neither the
+  image nor the map, so an object a run drops because its build holds none of it
+  (`condition-left-out`) still draws the error, and `-W a2l-keyword=ignore` relaxes it for
+  that run. A member is the finding of the file declaring its structure, once however many
   variables use it. It is an error, so a build that passed can stop on it, and it is not the c
   half of `reserved-identifier`: a name can be fine for the compiler and forbidden by the A2L,
   and the reverse.
@@ -1533,15 +1543,16 @@ Warnings:
   `SYMBOL_LINK` a record holds until the image names the variable, is at most `MAX_STRING`
   255 characters; a record's name is at most `MAX_IDENT` 1024; and a part of that name, an
   index counted within it, is at most `MAX_PARTIAL_IDENT` 128, so an array of structures named
-  with the full 128 characters passes it. A path made of members is held once per variable. A string
-  or a name of a member is the finding of the file that states it. The check fires for what the
-  descriptions send to the A2L, the closure over references included
-  ([section 5.2](#52-a2l)): an object or a member that states `export: false` for the A2L is
-  not held. Judged from the descriptions alone, it reads neither the image nor the map, so an
-  object a run drops because its build holds none of it (`condition-left-out`) is named all
-  the same, and stops a `--strict` run; `-W a2l-unrepresentable=ignore` relaxes it for that
-  run. The text of a module fragment is
-  the project's own A2L and is never checked.
+  with the full 128 characters passes it. A path made of members is held once per variable.
+  A string or a name of a member is the finding of the file that states it. The check fires
+  for what the descriptions send to the A2L ([section 5.2](#52-a2l)): it skips what the A2L
+  keeps out and holds what the closure over references brings in, so an object kept out of
+  the A2L on its own, or a member, is skipped unless an exported object names it, an axis
+  under an exported curve or a measurement an exported axis names as its `input`. Judged from
+  the descriptions alone, it reads neither the image nor the map, so an object a run drops
+  because its build holds none of it (`condition-left-out`) is named all the same, and stops
+  a `--strict` run; `-W a2l-unrepresentable=ignore` relaxes it for that run. The text of a
+  module fragment is the project's own A2L and is never checked.
 - `point-counts-mismatch`: a curve or a map stores its point counts one way and one of its
   axes the other. The A2L describes each as resolved; an interpolation routine is unlikely
   to read both.
@@ -1670,18 +1681,53 @@ artefact to archive (`ddd dump`, [section 7](#7-tool-interface)), and the compar
 function of two of them. Either side **may** also be given as a project or component
 description, which is resolved to its dictionary on the spot; the archived dictionary is
 what keeps the question answerable after the descriptions have moved on. The baseline is
-analysed in its own right, under neither `--strict` nor the `-W` of this run, its findings
-being its own; only its error findings are carried into the report, each prefixed with
-"in the baseline:" and at the severity its own analysis gave them, so that a broken baseline
-is visible without drowning the comparison and without this run's policy relaxing it away.
-What does reach it is `--standalone`, which states how the file was handed over rather than
-how strictly the run grades. A candidate given as a
-description is analysed too, and all of its findings are reported at their own severities.
+analysed in its own right, under neither `--strict` nor the promotions of the `-W` of this run,
+its findings being its own; only its error findings are carried into the report, each prefixed
+with "in the baseline:" and at the severity its own analysis gave them, so that a broken baseline
+is visible without drowning the comparison and without this run's strictness promoting its
+warnings. What does reach it is the relaxations of the project's `-W`, an override grading a
+check below the grade it has by default - a plugin's check, whose grade is not known until its
+plugin is loaded, only as `ignore` - because a project that decided it can live with a
+finding decided it of the delivery it compares against as much as of its own: a project that
+builds with `-W missing-producer=ignore` can compare its branch against its trunk, as `ddd check`
+of either is clean. The Compare tab reads it under the relaxations that every build record of
+the project makes. What reaches it as well is `--standalone`, which states how the file was
+handed over rather than how strictly the run grades. A baseline that is a component file is a component read alone, and the
+readers its dictionary records are the component's own and nobody else's, because the run
+was not shown the rest. An output of it is therefore taken as read by every grade that waits on a
+reader, with a message that does not claim to know who read it, where "no component read it" is a
+claim about components the run never saw: gone it is `removed-object`, renamed
+`renamed-read-object`, given a condition or another one `narrowed-condition`, turned `volatile`
+`changed-interface`, and the limits of a measurement widened are `widened-limits` and narrowed
+`narrowed-read-limits`. An input the component stopped reading is `removed-input`, an information,
+because a component that reads less harms nobody, and any other change of an input is graded as one
+of an object its component reads. An object it declares `local` keeps its grade,
+`removed-unused-object`, because no other component can read it, as it keeps every grade of an
+object nobody reads. `ddd check --standalone --baseline`, `ddd compare` and the Compare tab of `ddd gui`
+take it from the file, and read it under the floor `ddd check --standalone` reads a component under,
+whether or not the run said so, because a component given as the baseline is read one way by every
+caller.
+`ddd compare` has no `--standalone` of its own: a component file given as the baseline is read
+under that floor, as above, and one given as the candidate is read as a project's file is, an
+input nobody in it produces being its own error. Two versions of a component with inputs are
+therefore compared with `ddd check --baseline --standalone`, the command that takes the option. An archived dictionary carries no mark of how it was read, `ddd dump
+--standalone` included: the mark is a change of the format, and is deferred, so a comparison
+against such a dump is graded as one of a whole project is, whose readers the dump records as
+they were. A candidate given as a
+description is analysed too, and all of its findings are reported at their own severities, and its
+renames are written, whatever errors the baseline carries: a broken baseline withholds nothing of
+the candidate's, and one that could not be read at all, which leaves nothing to compare, still lets
+the candidate's findings be reported. A file that is neither a dictionary nor a description - it states no `format`, no
+`project` and no `component`, a file holding only a `name` among them - is no delivery, and is
+refused on either side in those words rather than read as an empty dictionary.
 The verdict is that the candidate can replace the baseline exactly when no finding of the
 run is reported as an error - the candidate's own, the baseline's carried ones and the
 comparison's alike - and the exit code follows the verdict
-([section 7](#7-tool-interface)). When a side cannot be read, or the baseline carries an
-error and the candidate is a description, no verdict is printed and the exit code is 1.
+([section 7](#7-tool-interface)). `ddd compare`, `ddd check --baseline` and the Compare tab of
+`ddd gui` give one pair one verdict, since they ask one function: the tab counts the open project's own errors in it as the commands do, under the strictest
+reading of the build records that grade it, and says how many the project has of its own. When the baseline carries an error, the comparison is
+made and the verdict is a refusal; when a side cannot be read, no verdict is printed and the exit
+code is 1.
 
 In plain text the report closes with a verdict line naming the two files and saying whether
 the candidate can replace the baseline; it names them by file name, and by the paths as
@@ -1690,8 +1736,9 @@ project kept in a directory each. `ddd compare --renames <file>` writes beside i
 old-to-new name pairs the comparison established, so that a calibration dataset, a
 recording or a test script keyed by the old spelling can be migrated without parsing the
 findings: a JSON list of objects `{"id", "from", "to"}`, one entry per paired object whose
-name changed, sorted by `to`, `[]` when nothing was renamed; a member of a structured
-object is listed once per member, its `id` being the instance's `id` followed by the
+name changed, sorted by `to` with an index counted as a number, `[]` when nothing was renamed; a structured variable with no
+leaf is listed once, under its own `id`, and a member of a structured variable that has
+leaves is listed once per member, its `id` being the instance's `id` followed by the
 member's path below the instance as the access path spells it - `.latest` for a member of a
 single structure, `[2].raw` for a member of the third element of an array of them, with no
 `.` before the index. The file is written whether or not the comparison found errors,
@@ -1704,10 +1751,12 @@ A change **shall** be graded by what it costs the consumers.
 Errors, because the consumers of the object become wrong, whether or not they still
 compile:
 
-- `removed-object`: an object is gone that a component read.
+- `removed-object`: an object is gone that a component read, or an output of a component
+  read alone, whose readers the run was not shown. A structured variable with no leaf is one,
+  said at the variable; one that has leaves is said by its leaves, and not a second time.
 - `changed-interface`: kind, datatype, unit, scaling, shape, referenced objects, locality,
   where a table keeps its point counts, the width of a bitfield, the `type` a structured
-  variable names or the order of a structure's members changed. Scaling is the conversion,
+  variable names, the layout of a structured variable or the value of a constant changed. Scaling is the conversion,
   compared by its kind and by its parameters, and an enum by its name together with its
   enumerators in order; a description,
   of an object or of an enumerator, is documentation and is never compared. An enum inside a
@@ -1716,16 +1765,63 @@ compile:
   comparison of two deliveries has no such finding to leave them to, so it compares them
   itself. Locality is whether the object is local to its component
   ([section 2.1](#21-scope)); a local object becoming shared, or the reverse, changes who
-  **may** use it. A bitfield's width and the order of the members are the layout a released
-  structure fixed for its consumers ([section 3.7](#37-type-description)): narrowing a field
-  changes the value every reader takes out of the word, widening one moves every member after
-  it, and reordering two of them moves every address after the first change while every
-  member still compares identical to the byte. A reordering is reported once, at the
-  structure, because the edit is one line of one type description however many variables of
-  it a project declares; only the members both sides declare are lined up, since a member
-  that arrived or left is already the addition or the removal of the leaf it contributes. A
-  structured variable's `type` is what every consumer's header declares, so renaming the
-  structure changes the interface even when its members are untouched.
+  **may** use it. A bitfield's width and the layout of a structured variable are what a
+  released structure fixed for its consumers ([section 3.7](#37-type-description)), and a
+  consumer may be a binary compiled against the baseline's headers: narrowing a field
+  changes the value every reader takes out of the word, and widening one moves every member
+  after it. The layout is read from the dictionary's `types`
+  ([section 5.3](#53-data-dictionary)): the members of the variable's structure in order,
+  each by its name and by what it holds, a nested structure expanded into its own members
+  whatever it is called, an external member by its type's name, its header and its
+  `dimensions`, and each dimension of a nested or an external member by its spelling and by its value, a
+  constant's being the value the dictionary's `constants` give it. A member holding a value
+  answers for its datatype, its width and its `dimensions` at its leaf, which compares them.
+  Any other difference of the layout may leave a reader of the baseline reading a member, or
+  an element, other than the one it was built to read, while each leaf the two share still
+  compares identical to the byte - a member inserted, removed, renamed or reordered, a
+  nested structure grown or rearranged, a nested array resized, an external member retyped,
+  given another header or resized - and is reported once, at each variable whose layout it changes, naming the
+  variable's structure and where the two layouts part; a structure in no variable's layout
+  changes nothing a reader reads. The one exception is a member added after every member of
+  the structure of a single variable, which moves nothing a reader of the baseline reads and
+  is the addition of the leaves it contributes; added to the structure of an array of
+  structures, it moves every element after the first, and added to a nested structure, it is
+  a nested structure grown. A structured variable's `type` is what every consumer's header
+  declares, so renaming the structure changes the interface even when its members are
+  untouched, while a structure nested in it is reached through the member that holds it, so
+  renaming that one with its layout kept changes nothing. Turning `volatile` on, from false
+  to true, is a change of interface for an object a component reads or a component read
+  alone produces, and is reported here once, at the variable for a structured one, and not
+  again as `changed-storage`: a reader
+  compiled against the baseline's headers reaches the object through an lvalue that is not
+  volatile, which C leaves undefined. A constant is compared as an entry, by its name, on its
+  value: every constant reaches the generated header as a macro and the A2L as a
+  `SYSTEM_CONSTANT`, whether or not an object is dimensioned by it, so a changed value is a
+  changed interface, said at the constant. An object it dimensions says its own shape at the
+  object as well, because the macro and the size are two facts and neither stands for the
+  other, and that shape is told with the size each constant gives, `[N=8] != [N=4]`, since the
+  spelling alone reads the same on both sides of a size that changed behind it. The description of a constant is documentation and is never compared, and a baseline of
+  format 3 or older, which recorded no constants, has none to compare them with. The header of
+  an external member is part of the layout above, and is said once, at the variable.
+- `renamed-read-object`: an object of the baseline that a component read, or that a
+  component read alone produced, is offered under a different name. A reader may be a binary compiled
+  against the baseline's headers, and it looks for a spelling that is gone. It is found as
+  `renamed-object` is, by the `id` ([section 3.3](#33-data-object-definition)), and reported with
+  the readers named, or said not to be known where a component read alone produced it; a
+  structured variable's rename is said under each leaf's path, each leaf answering for the
+  readers of its variable; a variable with no leaf is said at the variable. A check has one
+  severity, so a project's `-W renamed-object` relaxes only the warning below and does not
+  reach this error; that is why the rename's pair of ids runs the other way from the removals',
+  and `renamed-object` keeps the plain id for the unread rename.
+- `narrowed-condition`: a condition added to an object a component reads or a component read
+  alone produces, or one replaced by another, so the builds the object is present in changed. A reader may be a binary compiled
+  against the baseline's headers, and in a build where the new condition is false it looks
+  for an object that is not there and does not link. DDD cannot weigh one condition against
+  another, so it takes a replacement as the builds changing, and it names the readers, or says
+  they are not known. A
+  check has one severity, so a project's `-W changed-condition` relaxes only the warning
+  below and does not reach this error; the same narrowing of an object nobody reads, and a
+  condition going away, stay `changed-condition`.
 - `reused-name`: a name of the baseline now names a different object. Three things prove it,
   and a rename proves it from either end. Two ids stated under one name that differ prove it
   outright. So does the baseline's object under that name having already been paired, by `id`,
@@ -1743,46 +1839,90 @@ compile:
   When the baseline's object survives elsewhere in the candidate under a new name, the finding
   carries a note saying so, and when the object now under the name arrived there by a rename,
   a note names what the baseline called it; a swap carries both. A project that reuses names
-  deliberately relaxes the check with `-W reused-name=warning`.
+  deliberately relaxes the check with `-W reused-name=warning`. A structured variable with no
+  leaf is one of the names, and says it at the variable; a variable with leaves says it at
+  each of its leaves' paths.
+- `missing-producer`: an object or a structured variable had a producer in the baseline, and the
+  candidate, given as a dumped dictionary, has a component that still reads it and none that
+  produces it. A dictionary dumped from a project that failed is written all the same, and with no producer
+  the object compared as `changed-owner` alone, a warning, and a replacement. It is the id `ddd check`
+  gives the same fault ([section 4](#4-consistency-checks)), with its one severity and under the
+  run's own `-W`, so that a project that relaxes it has chosen to hold such objects, and it is said in
+  place of that pair's `changed-owner`, being the one fact. An object with no producer on both sides
+  is no change the comparison makes: a dump of a component read alone holds every input it reads so,
+  and a dictionary carries no mark of which a dump is. An input that arrived with no producer is
+  `added-object` alone. A candidate given as a description has it said by its analysis, and
+  `changed-owner` is not said beside it there either. The one exception is the floor of
+  `ddd check --standalone`, which silences that analysis for what a component read alone was never
+  shown and does not reach a producer the baseline had: the comparison then says it, once, as an
+  error whatever the floor says - the grade an output gone from a component read alone has, and
+  what fails the gate for a component that turns an output into an input - and a project's own
+  `-W missing-producer=ignore` still silences it.
+- `removed-constant`: a constant of the baseline is gone. A reader that uses its macro no
+  longer builds, so it is an error whether or not an object is dimensioned by it. A constant
+  has no `id`, so one renamed is this finding for the old name and `added-constant` for the
+  new one.
 
 Warnings, because behaviour or tooling changes while no consumer becomes wrong:
 
-- `renamed-object`: an object of the baseline is offered under a different name; its `id`
+- `renamed-object`: an object of the baseline is offered under a different name and no
+  component read it; its `id`
   is what says so ([section 3.3](#33-data-object-definition)). A rename that also changed
   the interface **shall** report both findings rather than only one, and a baseline recorded
   before an id existed on either side **shall** infer no rename - it is reported as a
   removal and an addition, exactly as `missing-id` warns it would be
-  ([section 4](#4-consistency-checks)). Warning rather than error: every consumer names the
-  object it reads, so a rename that left one behind already failed `ddd check`; what breaks
-  is outside DDD's sight - calibration datasets, recordings, test scripts and requirement
+  ([section 4](#4-consistency-checks)). Warning rather than error for an object nobody
+  reads: every consumer names the object it reads, so a rename that left one behind already
+  failed `ddd check`; what breaks is outside DDD's sight - calibration datasets, recordings, test scripts and requirement
   documents keyed by the old spelling.
-- `removed-unused-object`: an object is gone that no component read.
+- `removed-unused-object`: an object is gone that no component read, a structured variable
+  with no leaf included.
 - `changed-storage`: the initial value, the volatility, the section or the measurement
-  raster ([section 3.10](#310-measurement-rasters)) changed. On a calibration object the
+  raster ([section 3.10](#310-measurement-rasters)) of an object changed, or the event or cycle
+  of a raster, which are compared as entries by name and said at the raster, the cycle
+  by the period it resolves to and not by its spelling; a raster that came or went is not
+  said, because an object that names it says its own change of raster; `volatile` turned on for an
+  object a component reads or a component read alone produces is `changed-interface` instead,
+  and turned off it is this check whoever reads. On a calibration object the
   volatility also decides whether a tool can still change the value in a running target,
   the section says literally which memory the object ends up in, and the raster which event
   a measuring tool receives the value in. An `init` is compared as the storage it produces
   and not as it was spelled: a scalar written for an array is the array it fills, and a
   string's text is the character codes it stands for followed by the zeros that pad the
   array ([section 3.3](#33-data-object-definition)), so a delivery that respells an initial
-  value without moving a byte of it replaces its predecessor. Both spellings are the tool's
+  value without moving a byte of it replaces its predecessor. A scalar is the array it fills
+  only when every element of the array holds it: two tables that differ in any element,
+  such as a square map and its transpose, are two initial values, and the finding names the
+  first index where they part, the elements taken in the order C lays them out. A floating
+  point `-0.0` is not `0.0`, since the sign bit is a stored byte, so an initial value changing
+  from one to the other is a change; in an integer datatype `-0` is `0`. Both spellings are the tool's
   own offer, and a finding naming them is what the description writes: the two values as
   JSON, cut short past a few elements when the array is long, with the first index at which
-  they part named beside them.
+  they part named beside them. An object stating no `init` stores zeros, so adding `0`, `[0, 0]`
+  or `""` to one that had none moves no byte and is no change, in either direction.
 - `narrowed-limits`: the physical limits got tighter, so calibrated data may no longer
-  fit. The two ends are compared with the relative tolerance of `limits-out-of-range`
+  fit; it is the grade of calibration data and of a measurement nobody reads. The two ends are compared with the relative tolerance of `limits-out-of-range`
   ([section 4](#4-consistency-checks)), because most limits are derived and a derived end
   is the product of a float: a candidate that writes down the limits its datatype and
   conversion imply is not narrowing the range of a baseline archived before those ends
   were rounded ([section 3.3](#33-data-object-definition)).
+- `widened-limits`: the physical limits of a measurement somebody reads, or of one a
+  component read alone produces, got wider, so a reader sized for the range of the baseline may
+  meet a value it was not written for. The
+  ends are weighed as `narrowed-limits` weighs them.
 - `changed-owner`: another component produces the object now.
 - `changed-condition`: the preprocessor condition changed, namely the producer's, which is
   the one the dictionary records on the object
-  ([section 3.3.1](#331-one-object-several-declarations)).
+  ([section 3.3.1](#331-one-object-several-declarations)). A condition going away is this
+  check whoever reads the object, because the object is then in every build; one added or
+  replaced is this check only for an object nobody reads, and `narrowed-condition` where a
+  component reads it or a component read alone produces it.
 - `changed-a2l`: the resolved A2L presentation changed, that is the export (compared as
   resolved, [section 3.3.1](#331-one-object-several-declarations)), `format` or
-  `display_identifier`. A changed unit is `changed-interface`, and descriptions, of
-  objects and of enumerators alike, are not compared.
+  `display_identifier`. The instance's name at the head of a composed `display_identifier`
+  is not a change of it, a rename of the variable being the leaf's `renamed-object` or `renamed-read-object`; one a
+  leaf's own member states has no such head. A changed unit is `changed-interface`, and
+  descriptions, of objects and of enumerators alike, are not compared.
 - `project-mismatch`: the two dictionaries name different projects, so the baseline is
   probably not the predecessor of this candidate.
 - `missing-plugin`: the baseline or the candidate records a plugin
@@ -1798,49 +1938,88 @@ Warnings, because behaviour or tooling changes while no consumer becomes wrong:
 
 Information:
 
-- `added-object`: the candidate declares an object the baseline did not.
+- `added-object`: the candidate declares an object the baseline did not, a structured
+  variable with no leaf included.
+- `added-constant`: the candidate declares a constant the baseline did not, which no reader
+  of the baseline can be disturbed by.
+- `narrowed-read-limits`: the physical limits of a measurement somebody reads, or of one a
+  component read alone produces, got tighter, which is an information, because a reader still
+  gets values inside the range it was
+  written for.
+- `removed-input`: an input of a baseline that is a component read alone is gone: the
+  component stops reading it, which harms nobody. Reported only for a component file, and
+  with one severity whatever else the run grades.
 
-A `removed-object` or `removed-unused-object` finding carries a note when exactly one
+A `removed-object`, `removed-input` or `removed-unused-object` finding carries a note when exactly one
 addition in the candidate is identical to it in interface, storage and references, and
 under a different name: `'X' was added with an identical interface; if that was a rename, the
 id did not travel with it`. It asserts nothing and pairs nothing - the two may simply be
 different objects - and stays silent the moment more than one addition matches equally well.
 It stays silent too where a delivery offers more than a handful of additions alike in every
 one of those properties: a crowd no single candidate was going to come out of, and the note
-is advisory where the answer to it is not. This is the only part of the feature that helps a
+is advisory where the answer to it is not. A removed structured variable with no leaf carries
+no such note, since it has no interface to match an addition on. This is the only part of the
+feature that helps a
 project which never adopts `id` at all.
 
 A member of a structured object ([section 3.7](#37-type-description)) has no declaration
 of its own to carry an `id`: it is paired by the `id` of its instance together with its
 path below the instance. Renaming the instance therefore keeps every member paired, each
-reported as a `renamed-object` under its path, which is what a migration tool needs, while
+reported as a `renamed-object`, or a `renamed-read-object` where a component reads it, under its path, which is what a migration tool needs, while
 renaming a member of the *type* changes the path and is reported as a removal and an
-addition, exactly as an object without an `id` is. The gap is known; closing it would mean
-an identity on a type's member.
+addition, exactly as an object without an `id` is, and as the changed layout of each
+variable whose layout holds the type. The gap is known; closing it would mean an identity
+on a type's member.
 
 A structured object **shall** be compared as the variable it is and not only through its
-members. The variable answers for what no member carries - its `type` - and for what every
-member carries only because the variable states it: its array shape and its locality as
-interface, and its volatility, its section, its raster, its producer and its condition as
-storage and as their own findings. Each of those is therefore reported once, at the
-variable, where the declaration that states it is. Reported under the members instead, one
-edit on one declaration was one finding per member of the structure, and one per member of
-every element of an array of them, each naming a path for a change that is on one line.
-What is left at a member is what the member itself states: its datatype, its meaning, its
-shape, its width in bits and the A2L entry it asks for.
+members. The variable answers for what no member carries - its `type` and its layout - and
+for what every member carries only because the variable states it: its `kind`, its array
+shape and its
+locality as interface, and its volatility, its section, its raster, its producer and its
+condition as storage and as their own findings. Each of those is therefore reported once,
+at the variable, where the declaration that states it is. Reported under the members
+instead, one edit on one declaration was one finding per member of the structure, and one
+per member of every element of an array of them, each naming a path for a change that is on
+one line. A member's own change is told at every path that reaches it, and the paths are in the
+order `ddd list` gives them, an index counted as a number - `[2]` before `[10]` - as are the
+removals, the additions and the renames. What is left at a member is what the member itself states: its datatype, its
+meaning, its shape, its width in bits and the A2L entry it asks for.
 
-Widening a limit **shall** be silent, because every value the baseline allowed still fits.
-Limits that got tighter **shall not** be reported on an object whose interface changed as
-well: the interface change is the finding to act on, and the narrowing would only bury it.
-This is deliberately coarser than reporting only a narrowing that is a consequence of the
-interface change, which nothing can decide; an independent narrowing of the same object is
-therefore also held back until the interface change is resolved.
+A structure holding only members of external types, at any depth, holds nothing DDD can see
+into, and its variable has no leaf. What a leaf says of a variable - that it is gone, that it
+went under another name, that its name is another object's, that it is new - is then said by
+nothing, and a variable could be removed, renamed or reused with no finding at all while every
+reader's header lost the declaration, or found another object where the name was. Such a
+variable **shall** therefore be reported as an object is, at the variable, and graded as one:
+its removal is `removed-object`, or `removed-unused-object` where no component read it, and
+where the baseline is a component read alone it is graded by its scope as an object's is; its
+rename is `renamed-read-object`, or `renamed-object` where no component read it, and is in the
+migration map; another `id` under its name is `reused-name`; and a variable that arrived is
+`added-object`. The side a finding is about says whether the variable has a leaf: the
+baseline's for a removal, a rename and a reused name, the candidate's for an addition. A
+variable that has leaves is not said a second time at the variable.
+
+Limits **shall** be graded by the direction the data flows. Calibration data flows into the
+software, so widening its limits **shall** be silent, because every value the baseline
+allowed still fits, and narrowing them is `narrowed-limits`. The limits of a measurement
+somebody reads are what the producer states for its readers, which may hold a lookup indexed
+by the value or a clamp sized for it, so widening them **shall** be `widened-limits`, a
+warning, and narrowing them **shall** be `narrowed-read-limits`, an information, because a
+reader still gets values inside the range it was written for. A range that moved both ways
+is a widening. A measurement nobody reads has no reader to promise anything to, and keeps the
+grades of calibration data. Limits that changed **shall not** be reported on an object whose
+interface changed as well: the interface change is the finding to act on, and the limits
+would only bury it. This is deliberately coarser than reporting only a change of limits that
+is a consequence of the interface change, which nothing can decide; an independent change of
+the limits of the same object is therefore also held back until the interface change is
+resolved.
 
 A dictionary of an older format is read with the defaults of that format: a baseline at
-format 3 or older states no `dimensions`, so shapes compare by value alone; one at format 6
-or older records no `plugins`, so `missing-plugin` cannot fire for it. Adopting a scalar
-type is not a change of interface, because the dictionary records the datatype a type
-resolves to ([section 5.3](#53-data-dictionary)).
+format 3 or older states no `dimensions`, so shapes compare by value alone, those of a
+structure's members included; one at format 6 or older records no `plugins`, so
+`missing-plugin` cannot fire for it. Adopting a scalar type is not a change of interface,
+because the dictionary records the datatype a type resolves to
+([section 5.3](#53-data-dictionary)).
 
 ## 5 Generated artefacts
 
@@ -2184,7 +2363,9 @@ whole number of at least 1, written as a number and not as text, of which a read
 description file is read under ([section 3](#3-file-formats)) - a key spelled twice in one
 object is refused rather than resolved to its last spelling - because a document archived
 beside a delivery is as open to a hand edit as the description it was dumped from. Its
-schema is published by `ddd schema dictionary`. The top level carries `format`, `name`,
+schema is published by `ddd schema dictionary`. A reader of a delivery takes a file for a dictionary
+by its `format`, which every dump states: a file stating neither it, nor `project`, nor `component`
+is no delivery ([section 4.1](#41-comparing-two-deliveries)). The top level carries `format`, `name`,
 `description`, `source`
 (the file name of the root description), `components`, `objects`, `enums`, `constants`,
 `rasters`, `types`, `instances`, `leaves`, `plugins` and `extensions`.
@@ -2205,11 +2386,15 @@ own, else its component's default), `volatile`,
 `condition` (the producer's), `references` (the objects this one names, keyed by the role it
 names them in - `axis` for a curve, `x_axis` and `y_axis` for a map, `input` for an axis -
 and `{}` on an object that names none), `owner` (the component producing it, `null` only
-where no component does, which a consistent project has none of), `consumers`, `local`,
+where no component does, which a consistent project has none of, and which a delivery comparison
+says as `missing-producer` of a candidate whose object lost its producer ([section 4.1](#41-comparing-two-deliveries))), `consumers`, `local`,
 `point_counts` (`"none"` or `"leading"`, resolved for a curve, a map or an axis, `"none"`
 for every other kind) and `a2l` with `export` resolved to a boolean. An instance records `name`, `id`, `extensions`, `type`,
 `kind`, `description`, `shape`, `dimensions`, `volatile`, `section`, `raster`, `condition`,
-`owner`, `consumers`, `local` and `a2l`; a leaf records `path`, `instance`, `instance_id`,
+`owner`, `consumers`, `local` and `a2l`, and is the only record of a variable of a structure
+holding members of external types alone, which has no leaf: a delivery comparison reads the
+removal, the rename and the reuse of such a variable from it
+([section 4.1](#41-comparing-two-deliveries)); a leaf records `path`, `instance`, `instance_id`,
 `kind`, `datatype`, `description`, `unit`, `conversion`, `limits`, `shape`, `dimensions`,
 `bits`, `volatile`, `section`, `raster`, `condition`, `owner`, `consumers`, `local` and
 `a2l`, whose `export` is the instance's and the members' folded into one - true only where
@@ -2218,10 +2403,15 @@ all are, so keeping a structure out of the A2L keeps every member of it out - wh
 `display_identifier` the member's own, or the path that the members above it compose
 ([section 3.7](#37-type-description)), as `V[1].J.b`: identifiers joined by dots, each with
 its indices. It is the one display identifier of the document that may hold more than one
-identifier, and it is held to no length. `types` lists the
-structures in dependency order with their members; `enums` the enum conversions, one per
-name, the best documented variant; `constants` and `rasters` the declared entries. Nothing
-in the document depends on the machine that wrote it.
+identifier, and it is held to no length. `types` lists the structures in dependency order
+with their members, which a delivery comparison reads the layout of a structured variable
+from, a dimension spelled by a constant being read at the value `constants` gives it
+([section 4.1](#41-comparing-two-deliveries)), an external member by its header as well;
+`enums` the enum conversions, one per name, the best documented variant; `constants` and
+`rasters` the declared entries, which a delivery comparison compares by name. The sections a
+project declares are not carried, so a change of a section's access or alignment is not
+compared until the dictionary carries them. Nothing in the
+document depends on the machine that wrote it.
 
 ## 6 Address information
 

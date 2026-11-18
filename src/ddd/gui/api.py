@@ -1714,6 +1714,7 @@ class Api:
                 contract.CompareReply(
                     revision=revision.number,
                     verdict=result.verdict,
+                    own_errors=result.own_errors,
                     findings=[
                         _finding(filed, derived.files.get(derived.resolve(filed.file)), cache)
                         for filed in findings

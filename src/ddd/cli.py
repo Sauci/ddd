@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ddd import __version__
-from ddd.deliveries import Resolved, read_baseline, read_dictionary
+from ddd.deliveries import Resolved, compare_deliveries, read_baseline, read_dictionary
 from ddd.diagnostics import (
     CHECKS,
     STANDALONE_POLICY,
@@ -875,9 +875,6 @@ def _command_check(args: argparse.Namespace) -> int:
     # analysis, on a bag of its own - and those are known only once it has been read. So a
     # `-W` naming a plugin's check is verified below rather than at the end of the analysis,
     # which is where a run without a baseline verifies it.
-    from ddd.compare import compare
-    from ddd.plugins import run_compare_hooks
-
     resolved, bag = _analyze(args, verify=args.baseline is None)
     dictionary = resolved.dictionary if resolved is not None else None
     # With a baseline, one command answers both questions and returns one exit code, which
@@ -894,16 +891,12 @@ def _command_check(args: argparse.Namespace) -> int:
             )
             _verify_overrides(bag, () if baseline is None else baseline.plugins)
             if resolved is not None and baseline is not None:
-                location = where(args.project)
-                compare(baseline.dictionary, resolved.dictionary, bag, location=location)
-                run_compare_hooks(
-                    resolved.plugins,
-                    baseline.dictionary,
-                    resolved.dictionary,
+                compare_deliveries(
+                    baseline,
+                    resolved,
                     bag,
-                    resolved.locate,
-                    location,
-                    where(args.baseline),
+                    location=where(args.project),
+                    baseline_location=where(args.baseline),
                 )
     _report(bag, args.format)
     if args.format == "json":
@@ -921,8 +914,7 @@ def _command_check(args: argparse.Namespace) -> int:
 
 
 def _command_compare(args: argparse.Namespace) -> int:
-    from ddd.compare import compare, renames
-    from ddd.plugins import run_compare_hooks
+    from ddd.compare import renames
 
     policy = SeverityPolicy.from_strings(args.severity, strict=args.strict)
     bag = DiagnosticBag(policy)
@@ -947,16 +939,13 @@ def _command_compare(args: argparse.Namespace) -> int:
             plugins = _plugins_from_arguments(args.plugin, bag)
         _verify_overrides(bag, baseline.plugins)
 
-        location = where(args.candidate)
-        paired = compare(baseline.dictionary, candidate.dictionary, bag, location=location)
-        run_compare_hooks(
-            plugins,
-            baseline.dictionary,
-            candidate.dictionary,
+        compared = compare_deliveries(
+            baseline,
+            candidate,
             bag,
-            candidate.locate,
-            location,
-            where(args.baseline),
+            location=where(args.candidate),
+            baseline_location=where(args.baseline),
+            plugins=plugins,
         )
         if args.renames is not None:
             _refuse_a_source(args.renames, "--renames", *candidate.sources, *baseline.sources)
@@ -965,7 +954,9 @@ def _command_compare(args: argparse.Namespace) -> int:
             # moved.
             try:
                 args.renames.write_text(
-                    json.dumps(renames(paired), indent=2) + "\n", encoding="utf-8", newline=""
+                    json.dumps(renames(compared.paired), indent=2) + "\n",
+                    encoding="utf-8",
+                    newline="",
                 )
             except OSError as error:
                 msg = (
@@ -2141,7 +2132,7 @@ def _analyze(
     # the flag sets the floor for a component read alone, the caller still has the last word.
     standalone = list(STANDALONE_POLICY) if getattr(args, "standalone", False) else []
     policy = SeverityPolicy.from_strings(
-        [*standalone, *args.severity], strict=args.strict, standalone=bool(standalone)
+        args.severity, floor=standalone, strict=args.strict, standalone=bool(standalone)
     )
     bag = DiagnosticBag(policy)
     # The load is inside the block too: a plugin's model that raises while a block is validated

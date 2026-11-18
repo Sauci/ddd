@@ -17,6 +17,7 @@ from conftest import (
     run_analysis,
     write_tree,
 )
+from ddd.cli import EXIT_FINDINGS, main
 from ddd.diagnostics import DiagnosticBag
 from ddd.loading import (
     FileRead,
@@ -210,6 +211,8 @@ def test_a_repeated_key_is_refused(tree: Path) -> None:
     [
         ("{ not json", "Expecting property name"),
         ('{"limit": NaN}', "'NaN' is not valid json"),
+        ('{"init": 1e-400}', "'1e-400' is not a number a float holds"),
+        ('{"init": [0.0, -2.5E-999]}', "'-2.5E-999' is not a number a float holds"),
         ('{"name": "P", "name": "Q"}', "key 'name' appears twice"),
     ],
 )
@@ -217,8 +220,38 @@ def test_the_loaders_parse_is_the_one_other_readers_are_given(text: str, reason:
     """``ddd gui`` shows and edits the files the loader reads, and has to refuse what it refuses:
     read by python's own parser, a file holding ``NaN`` was served as json no browser reads."""
     assert parse_json_text('{"a": [1.0, true, null]}') == {"a": [1.0, True, None]}
+    # What a double holds is kept, whatever it looks like: zero in any spelling, and the
+    # smallest subnormal.
+    assert parse_json_text("[0.0, -0.0, 0e5, 0.000e-400, 5e-324, 1e308]") == [
+        0.0,
+        -0.0,
+        0.0,
+        0.0,
+        5e-324,
+        1e308,
+    ]
     with pytest.raises(ValueError, match=reason):
         parse_json_text(text)
+
+
+@pytest.mark.parametrize("datatype", ["float32", "float64"])
+def test_an_init_no_double_holds_is_a_finding_and_fails_strict_check(
+    tree: Path, capsys: pytest.CaptureFixture[str], datatype: str
+) -> None:
+    """``1e-400`` is not zero, and python's reader made it zero before the rule that a value
+    the storage rounds to zero is ``init-invalid`` could look at it: ``check`` was clean."""
+    text = json.dumps(component("A", declare("local", "X", datatype, init="@@")))
+    files = {
+        "project.ddd.json": project("P", "a.ddd.json"),
+        "a.ddd.json": text.replace('"@@"', "1e-400"),
+    }
+    dictionary, bag = run_analysis(tree, files)
+    assert dictionary is None
+    assert checks(bag) == ["json-syntax"]
+    assert "'1e-400' is not a number a float holds" in messages(bag)
+    capsys.readouterr()
+    assert main(["check", str(tree / "project.ddd.json"), "--strict"]) == EXIT_FINDINGS
+    assert "'1e-400'" in capsys.readouterr().err
 
 
 def test_a_document_too_deep_for_the_parse_is_refused_like_any_other(

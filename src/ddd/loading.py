@@ -108,11 +108,32 @@ def _reject_constant(name: str) -> float:
     raise ValueError(msg)
 
 
+def _read_float(literal: str) -> float:
+    """A json number with a fraction or an exponent, refused where it is a magnitude no double has.
+
+    ``1e-400`` is a number, and a double has no bits for it: python's reader gives ``0.0``,
+    silently, so ``init`` ``1e-400`` read as ``0`` before anything looked at it - ``check`` was
+    clean and ``list`` showed zero, though the rule is that a value the storage rounds to zero
+    is ``init-invalid``. Refused here, as ``NaN`` and ``Infinity`` are and for the same reason:
+    the literal is only in the text, and past this point it is a zero and nothing says what was
+    written. A zero in any spelling is kept, and so is every magnitude a double holds,
+    subnormals included. The other end is read as ever: ``1e400`` is infinity, and the schema
+    refuses it where it is written.
+    """
+    value = float(literal)
+    mantissa = literal.lower().partition("e")[0]
+    if value == 0.0 and any(digit in mantissa for digit in "123456789"):
+        msg = f"'{literal}' is not a number a float holds; DDD has no representation for it"
+        raise ValueError(msg)
+    return value
+
+
 def parse_json_text(text: str) -> Any:
     """The value a json text holds, read the way DDD reads every document.
 
-    Stricter than python's own reader twice over: ``NaN`` and ``Infinity`` are refused, and so
-    is an object spelling one key twice (its two hooks say why). Public so that whatever else
+    Stricter than python's own reader three times over: ``NaN`` and ``Infinity`` are refused, so
+    is a magnitude no double has (``1e-400``), and so is an object spelling one key twice (the
+    hooks say why). Public so that whatever else
     reads a description file - ``ddd gui`` showing one, its engine editing one - reads it by the
     same rule, and a file ``ddd check`` refuses is never shown as data or edited as json.
 
@@ -123,6 +144,7 @@ def parse_json_text(text: str) -> Any:
         return json.loads(
             text,
             parse_constant=_reject_constant,
+            parse_float=_read_float,
             object_pairs_hook=_reject_duplicate_keys,
         )
     except RecursionError:

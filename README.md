@@ -625,19 +625,26 @@ for the baseline - and graded, because the changes are not equally bad:
 
 | severity | check | reported when |
 | --- | --- | --- |
-| error | `removed-object` | an object is gone and a component read it |
-| error | `changed-interface` | kind, datatype, unit, scaling, shape, axes, locality or where a table keeps its point counts changed, or the layout a released structure fixed for its consumers: a bitfield's width, the order of the members, or the type a structured variable names |
+| error | `removed-object` | an object is gone and a component read it, or an output of a component read alone, whose readers the run was not shown |
+| error | `changed-interface` | kind, datatype, unit, scaling, shape, axes, locality or where a table keeps its point counts changed, or the value of a constant, or the layout a released structure fixed: a bitfield's width, the type a structured variable names, or the members of that structure in order, each with what it holds and its dimensions, nested and external ones included, an external one by its header too, save a member added at the end of it when the variable is no array, or volatile turned on for an object a component reads or a component read alone produces |
+| error | `renamed-read-object` | an object of the baseline that a component read, or that a component read alone produced, is offered under a different name, so a reader compiled against the baseline looks for a spelling that is gone; its `id` is what says so. A `-W renamed-object` relaxation does not reach it |
+| error | `narrowed-condition` | the preprocessor condition of an object a component reads, or of one a component read alone produces, was added or replaced, so a reader compiled against the baseline does not link in a build where the new condition is false. A `-W changed-condition` relaxation does not reach it |
+| error | `removed-constant` | a constant of the baseline is gone, so a reader that uses its macro no longer builds |
 | error | `reused-name` | a name of the baseline now names a different object |
-| warning | `renamed-object` | an object of the baseline is offered under a different name; its `id` is what says so |
+| warning | `renamed-object` | an object of the baseline is offered under a different name and no component read it; its `id` is what says so |
 | warning | `removed-unused-object` | an object is gone that no component read |
-| warning | `changed-storage` | the initial value, `volatile`, the memory `section` or the measurement `raster` changed; on calibration data the volatility also decides whether a tool can still change the value in a running target, the section says which memory the object ends up in, and the raster which event a measuring tool receives it in. An initial value compares as the bytes it produces, and on a structured variable the three are the variable's own and reported at it once |
-| warning | `narrowed-limits` | the limits got tighter, so calibrated data may no longer fit |
+| warning | `changed-storage` | the initial value, `volatile`, the memory `section` or the measurement `raster` of an object changed, or the event or cycle of a raster; volatile turned on for an object a component reads or a component read alone produces is changed-interface instead; on calibration data the volatility also decides whether a tool can still change the value in a running target, the section says which memory the object ends up in, and the raster which event a measuring tool receives it in. An initial value compares as the bytes it produces, and on a structured variable the three are the variable's own and reported at it once |
+| warning | `narrowed-limits` | the limits got tighter, so calibrated data may no longer fit; on a measurement a component reads, or on one a component read alone produces, it is widened-limits or narrowed-read-limits instead |
+| warning | `widened-limits` | the limits of a measurement a component reads, or of one a component read alone produces, got wider, so a reader sized for the baseline's range may meet a value it was not written for |
 | warning | `changed-owner` | another component produces it now |
-| warning | `changed-condition` | the preprocessor condition changed |
+| warning | `changed-condition` | the preprocessor condition changed; one added or replaced on an object a component reads, or on one a component read alone produces, is narrowed-condition instead |
 | warning | `changed-a2l` | the a2l entry changed |
 | warning | `project-mismatch` | the two sides name different projects, so the baseline may be the wrong file |
 | warning | `missing-plugin` | a compared dictionary records a plugin this run has not loaded, so that plugin's rules did not run |
 | info | `added-object` | the candidate declares something new |
+| info | `added-constant` | the candidate declares a constant the baseline did not |
+| info | `narrowed-read-limits` | the limits of a measurement a component reads, or of one a component read alone produces, got tighter: a reader still gets values inside the range it was written for |
+| info | `removed-input` | an input of a component read alone is gone: the component stops reading it, which harms nobody |
 
 [examples/pressure](https://github.com/Sauci/ddd/tree/master/examples/pressure) ships the three deliveries of the documentation's worked
 example - the release that went out, a working tree with five changes to it and an older tree -
@@ -646,9 +653,12 @@ can be tried from a checkout; the
 [documentation](https://sauci.github.io/ddd/latest/comparing_deliveries.html) walks through
 what it reports.
 
-Three details worth knowing. **Widening a limit is silent** - every value the baseline allowed
-still fits - while narrowing it is a warning; and when the interface already changed, the
-narrowed limits that follow from it are not reported separately, so the cause is not buried
+Three details worth knowing. **A limit is graded by the direction the data flows.** On calibration
+data widening is silent - every value the baseline allowed still fits - while narrowing it is a
+warning; on a measurement a component reads it is the other way round, because its limits are
+what it states for its readers, and widening it is a warning while narrowing it is an information.
+And when the interface already changed, the
+limits that follow from it are not reported separately, so the cause is not buried
 under its own symptom. A rescaled conversion is an **error**, because that is the failure
 which compiles, links, runs, and reports every value wrong by a constant factor. And
 `reused-name` is an error for the same reason - a calibration dataset or a recorded

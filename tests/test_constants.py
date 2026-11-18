@@ -1081,7 +1081,7 @@ class TestComparingDeliveries:
         bag = DiagnosticBag()
         compare(baseline, candidate, bag)
         assert checks(bag) == ["changed-interface"]
-        assert "shape: [N] != [8]" in messages(bag)
+        assert "shape: [N=8] != [8]" in messages(bag)
 
     def test_a_revalued_constant_is_a_changed_interface(self, tree: Path) -> None:
         from ddd.compare import compare
@@ -1128,7 +1128,7 @@ class TestComparingDeliveries:
         bag = DiagnosticBag()
         compare(self.archived(baseline), candidate, bag)
         assert checks(bag) == ["changed-interface"]
-        assert "shape: [N] != [8]" in messages(bag)
+        assert "shape: [N=12] != [8]" in messages(bag)
 
 
 class TestTheListTable:

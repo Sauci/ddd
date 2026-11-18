@@ -1532,21 +1532,24 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   byte order mark may name no component, if the json reader of those releases refuses the mark,
   which no run has shown either way: its header would then go undeclared, a change of it reaching
   its readers a build late under Ninja, and a root starting with one would be refused as not
-  json, as 0.11.0 refused it. No branch's task runs a floor; branch 5 lists `cmake/Ddd.cmake`.
+  json, as 0.11.0 refused it. No branch's task runs a floor. Branch 5 listed `cmake/Ddd.cmake` and
+  took none of it, and no later branch lists it, so it is the maintainer's.
 - **A component's file turned into a project after the configure** (task 5, `9:I3`):
   `ddd_add_component()` refuses a project file when the build is configured, and a registered
   file is no dependency of the configure, so a component's file rewritten as a project is
   refused only at the next configure. Until then the generation collects it as any registered
-  file, and an edit of what it includes builds to `no work to do`. Branch 5 lists
-  `cmake/Ddd.cmake`.
+  file, and an edit of what it includes builds to `no work to do`. Branch 5 listed
+  `cmake/Ddd.cmake` and took none of it, and no later branch lists it, so it is the maintainer's.
 - **A generated file deleted by hand under make** (task 7, `9:M6`): it is not written again until
   the step runs for another reason - an edit, a clean - or its stamp is deleted, and every build
   reading it stops on it until then, as the build page and SPEC 7.1 have it; ninja makes a
-  declared file that is missing. Branch 5 lists `cmake/Ddd.cmake`.
+  declared file that is missing. Branch 5 listed `cmake/Ddd.cmake` and took none of it, and no later
+  branch lists it, so it is the maintainer's.
 - **The a2l options' flag for an address source** (task 2): `A2lOptions.has_address_source` is
   false unless given, whatever addresses the options carry, so an a2l written through options
   that carry addresses and leave the flag out says it has no address source; the one place in the
-  tool building the options sets the flag. Branch 5 lists `backends/a2l/*`.
+  tool building the options sets the flag. Branch 5 listed `backends/a2l/*` and took none of it, and
+  no later branch lists it, so it is the maintainer's.
 - **`STRICT` passes an empty map read after the link** (task 2): a map with no entries raises no
   `address-missing`, so an a2l whose every address is 0 passes `STRICT`, saying so in its comment.
   Whether `STRICT` should fail it is a change of a check, the maintainer's to decide, in the pull
@@ -1651,8 +1654,9 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   the grammar without the standard's text. The final wave left two candidates it could not settle
   from memory, `DEFAULT_VALUE_NUMERIC` and `NOT_IN_ECU`, and took `INPUT_QUANTITY` out as the name
   of a parameter; the words the grammar fixes as a parameter's value, `NO_COMPU_METHOD` and
-  `NO_INPUT_QUANTITY`, which DDD writes, are not on the list either. Checking it takes the
-  standard, so it is the maintainer's; the list lives in `models/*`, which branch 13 lists.
+  `NO_INPUT_QUANTITY`, which DDD writes, are not on the list either. ASAP2 1.7's `OVERWRITE` block is recalled, from memory, to hold
+  `INPUT_QUANTITY` and `CONVERSION` as keywords; that matters to the list once DDD writes version
+  1.7, as SPEC 5.2 plans. Checking it takes the standard, so it is the maintainer's; the list lives in `models/*`, which branch 13 lists.
 - **What the a2l checks cannot see** (tasks 4 and 8): `a2l-keyword` and `a2l-unrepresentable` are
   judged from the descriptions before a run reads its image or its map, so an object the run
   drops because its build holds none of it still draws them, and `-W` relaxes them for that run,
@@ -1671,6 +1675,37 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   as before the link, a member's record names its path at offset 0, which a patcher resolving
   symbols through the map cannot answer. Stating the offset would take the image's layout, which a
   map does not give: for the maintainer, should a patcher that reads debug information be tried.
+
+**Branch 6:**
+- **The count the Compare panel does not draw** (task 9; R96): the tab's verdict counts the open
+  project's own errors and its reply says how many, `own_errors`, but the page draws neither the
+  count nor a reason, so a project whose every error is its own is told it cannot replace the
+  baseline above a comparison that has nothing to report. Branch 11 lists `components/*` and the
+  `compare` library; whether 0.12.0 waits for it is the maintainer's.
+- **What the tests do not run yet** (tasks 1, 3, 4, 6 and 9): three `$ ddd` blocks of the
+  comparing page, the 1.3.0 comparison and the two runs of v1.3, the first of which prints an
+  absolute path a test has to put in place; a single variable whose structure ends in a nested
+  structure that grew; a nested array's size respelled, compared against a dump; a `-0.0` initial
+  value in a dumped baseline; the message of a condition replaced on an object nobody reads; and,
+  in `tests/test_compare_deliveries.py`, a `tmp_path` and a `capsys` nothing uses and a module
+  imported in the body of a test. Branch 16 lists `tests/*`.
+- **The cost of reading a float** (task 4; R93): the loader takes the mantissa of every float
+  literal to tell a non-zero one that reads as 0, about 0.073 s against 0.028 s over 500,000
+  floats, where taking it only for a value that reads as 0 would cost nothing. Branch 13 lists
+  `loading.py`.
+- **A member that states `export: false`** (D0): the sentences D0 corrected on what the a2l
+  checks hold put a condition on skipping such a member, which is always skipped, nothing naming
+  a member from outside. Branch 13 lists `consistency_checks.rst`, branch 15 the other pages.
+- **The comparison's words left to the documents** (tasks 3, 4 and 10): SPEC 4.1's list of
+  warnings, and the comparing page's, open on a line saying no consumer becomes wrong, which
+  `widened-limits` under it says the opposite of; a sentence of SPEC and of the page beginning
+  "Both spellings" lost what it refers to when the `-0.0` sentence came between them; lines past
+  100 columns and uneven rewraps; and `missing-producer`, which SPEC 4.1 lists among the
+  comparison's errors, is in neither comparison table, and its registry line does not say a
+  comparison files it. Branch 15 lists the pages, and branch 12 `diagnostics.py`.
+- **An example plugin's account of `changed-interface`** (task 1): `examples/plugins/ddd_layout.py`
+  describes what the check compares as a part of it. No branch lists the example plugins, so it is
+  the maintainer's.
 
 ## Rulings taken
 
@@ -2106,6 +2141,93 @@ Every departure from a task's text, with its reason, numbered `R1`, `R2`, and so
   so the dictionary is format 10, which 0.11.0 refuses as the dictionary of a newer DDD, and a
   format 9 one reads back unchanged.
 
+**Branch 6:**
+- **R87.** Branch 6 runs a D0 first, the residuals branch 5's re-review left and its row of the
+  progress log, then tasks 1 to 10 in order, then its changelog as D1 (R4), then the whole-branch
+  review and one final wave, as branches 2 to 5 did (R27, R42, R61, R73).
+- **R88.** D0 reads a leaf's composed display identifier that differs from the baseline's only by
+  its instance's name at its head, `V.J.b` against `W.J.b`, as no `changed-a2l`: the rename is
+  the leaf's own finding, and a consequence is not told beside its cause. 0.11.0 composed no
+  identifier, so the changelog has no entry for it.
+- **R89.** Task 1 says a layout that moved once, at each variable whose layout it is, inside that
+  variable's one `changed-interface`, and never at the structure: whether an edit of a structure
+  moves anything is the variable's question, a member added at the end moving every element after
+  the first of an array and nothing of a single variable. The reorder the structure used to report
+  is gone, so a structure three variables hold is three findings and one no variable holds is
+  none, as the changelog says. A layout that moved and a path added or removed are two facts, each
+  said once, and a member renamed in place is also its variable's `changed-interface`, the layout
+  holding names so that a swap is seen.
+- **R90.** Task 1's "dimensions by value" is read as each dimension's value with its spelling
+  kept, a nested array's as every other: the generated code carries the spelling, so a nested
+  array respelled at an equal size is `changed-interface`, as a member holding values already was,
+  and `7:M2` is settled one way. Against a baseline that records no spellings, the values alone
+  compare.
+- **R91.** An id has one severity, so the grades tasks 2, 3 and 6 make by whether somebody reads
+  the object are ids of their own: a read object's rename is the new error `renamed-read-object`,
+  where task 2's text makes `renamed-object` an error; a read object narrowed by a condition is the
+  new error `narrowed-condition`; a read measurement's limits widened are the new warning
+  `widened-limits`, and narrowed the new information `narrowed-read-limits`. `volatile` turned on
+  under a reader makes a precompiled reader's access undefined (C11 6.7.3p6), and joins
+  `changed-interface`. The existing ids keep their grades for an object nobody reads, so that a
+  `-W` naming one still names one grade; a range that moved both ways is a widening.
+- **R92.** A change of the dictionary's shape on branches 6 to 16 stays format 10 and adds its
+  sentence to format 10's paragraph: no release has written 10, and the number marks what a
+  release reads. Branch 6 changes no field: it reads `types`, `constants` and `rasters` as they
+  were.
+- **R93.** Task 4 closes `7:M9` whole. The comparison tells `-0.0` from `0.0` by the bytes they
+  store, and the loader, which branch 13 lists, refuses a non-zero literal a double reads as 0,
+  `1e-400`, as `json-syntax`, naming it, where it refuses NaN, so that `ddd check` holds it to the
+  rule that calls it `init-invalid`.
+- **R94.** Task 7 gives a constant gone an id of its own, the error `removed-constant`, since a
+  reader using its macro no longer builds, and one that arrived the information `added-constant`,
+  beside the changed value its text names; a constant has no `id`, so one renamed is the two.
+  Constants are compared only when both dictionaries are format 4 or newer, the first to record
+  them, and a raster's cycle by the period it resolves to.
+- **R95.** Task 8 reports a structured variable with no leaf as an object is, and another `id`
+  under its name gives the three findings an object's reuse gives, `reused-name`,
+  `removed-object` and `added-object`, where its text names the reuse alone.
+- **R96.** Task 9's "its panel says how many" is met by the server. The tab's verdict counts the
+  open project's own errors, and the reply carries their count as `own_errors` in
+  `gui/contract.py`, outside the Files list, where the reply is typed; the page's three fixtures
+  of the reply under `gui/src` gain it, every field of the reply being required, and the page's
+  whole gate ran. The page's sentence drawing the count is branch 11's, which lists
+  `components/*`: branch 6 lists no page file, and a sentence of the page makes a pull request of
+  the interface, with its screenshots. Until then a project whose every error is its own is told
+  it cannot replace the baseline above a comparison that has nothing to report, which the pull
+  request says, so whether a release waits for branch 11 is the maintainer's (*Left open*,
+  branch 6).
+- **R97.** Decision 5.6 is read as `ddd compare` reading a component file given as the baseline
+  under the floor of `ddd check --standalone`, and one given as the candidate as a project's file,
+  so two versions of a component with inputs are compared with `ddd check --baseline
+  --standalone`, the command that takes the option. The floor task 5 left `ddd compare` without
+  went to task 9, where the three callers share one reading of a component file.
+- **R98.** Task 10's object that lost its producer is `missing-producer`, an error, where the
+  baseline's object had a producer and the candidate's, still read, has none, said in place of
+  that pair's `changed-owner`; an object with no producer on both sides is no change, a dump
+  carrying no mark of being a component's (decision 7.2). Where the floor of `--standalone` alone
+  silences the check, the comparison says it, as an error the floor does not reach, and a
+  project's own `-W missing-producer=ignore` still silences it: `SeverityPolicy` gains `floored`
+  to tell the two apart, which no plugin page names, so the changelog does not either.
+- **R99.** Task 10's stamp is taken before the read and compared with the stamps after it by
+  equality, as the session's poll compares, with no window and no slack. A flat description named
+  as a baseline is stamped by the files it names before its first read, so it is kept from that
+  read, and a dump's first read parses it once more to learn what it names; a write that keeps a
+  file's time and size exactly is not told, as the session does not tell it.
+- **R100.** Branch 6 brings each rule it changes to every home of the rule - the registry in
+  `diagnostics.py`, the README's table, the check reference, the command line page, the FAQ and
+  the file-format pages among them - though its Files list names the comparing page, the
+  changelog and two sections of SPEC: a rule that changes reaches all of its homes.
+- **R101.** The final wave takes what a component read alone produces as read by every grade that
+  waits on a reader. That amends task 5's resolution, under which only an output's removal was
+  graded by what one file can know, and the reading of tasks 2, 3 and 6, under which an object
+  was read where the baseline records a consumer: a component file records no reader of its
+  outputs, so a grade waiting for one could never be given. Renamed, such an output is
+  `renamed-read-object`, given a condition `narrowed-condition`, turned `volatile`
+  `changed-interface`, and its limits widened are `widened-limits` and narrowed
+  `narrowed-read-limits`, each message saying the readers are not known; a local object and an
+  input keep their grades. The price is a supplier's gate that stops on a change to an output
+  nobody in the whole project reads.
+
 ## Progress log
 
 | Branch | Pull request | Merged | Notes |
@@ -2114,6 +2236,7 @@ Every departure from a task's text, with its reason, numbered `R1`, `R2`, and so
 | 2, `fix/build-integration` | #85 | 2026-11-15, into its stacked base; reached master through #87 (`7d1ff765`) the same day | `9:C1` and `1:C2`, every stale build of the review, and the module's guards; the re-review's residuals carried into branch 3's D0 |
 | 3, `fix/gui-values` | #86 | 2026-11-15, into its stacked base; reached master through #87 (`7d1ff765`) the same day | `3:C1` and `15:C1`, what the page writes when a person types, picks or pastes a value; the re-review's residuals carried into branch 4's D0 |
 | 4, `fix/elf-and-addresses` | #88 | not merged | Its Critical (`11:C1`) and what the branch covers: what is read from a linked image, and where an address comes from; the re-review's residuals carried into branch 5's D0; task 6a's four Importants, 8b and 6b stay with the maintainer after two safety stops |
+| 5, `fix/generated-artefacts` | #89 | not merged | Its Critical (`1:C1`) and what the branch covers: what the C and a2l writers produce, and the option that made the C undefined; the re-review's residuals carried into branch 6's D0; branch 2's four *Left open* entries that named its Files list are now the maintainer's, it having taken none of them |
 
 ## Self-review
 

@@ -417,12 +417,13 @@ def _resolved_baseline(
     except (OSError, ValueError, RuntimeError, RecursionError) as error:
         # Resolving is not total, and it is the first thing reader input meets: a NUL inside the
         # path raises `ValueError` out of the stat behind it - and `parse_qs` decodes `%00` into
-        # a real one, so it arrives over the wire - while a path the filesystem refuses outright
-        # raises `OSError`, and on python 3.12 a loop of links `RuntimeError` and a chain of
-        # about a thousand `RecursionError` (a `RuntimeError` already, named for the reader).
-        # None is one of the three below, and unanswered here each left a traceback in the
-        # terminal and a 500 telling the reader to go and read it. Named as typed, because
-        # there is no resolved spelling of a path that would not resolve.
+        # a real one, so it arrives over the wire; on Windows, from python 3.13 on, resolving
+        # hands such a path back as it is instead, and `_read`'s open refuses it - while a path
+        # the filesystem refuses outright raises `OSError`, and on python 3.12 a loop of links
+        # `RuntimeError` and a chain of about a thousand `RecursionError` (a `RuntimeError`
+        # already, named for the reader). None is one of the three below, and unanswered here
+        # each left a traceback in the terminal and a 500 telling the reader to go and read it.
+        # Named as typed, because there is no resolved spelling of a path that would not resolve.
         raise BaselineRefusedError(
             f"the baseline '{path.as_posix()}' is unreadable: {error}"
         ) from error
@@ -462,17 +463,20 @@ def _read(path: Path, relaxed: dict[str, Severity], known: tuple[Path, ...]) -> 
     the file names itself (:func:`~ddd.gui.session._named_by`).
 
     The open is a probe and reads nothing: it answers *unreadable* - a file that is not there,
-    a directory, one whose permissions refuse - before ``read_baseline`` is asked for a reading
-    that would report it as something else entirely. Reading the bytes here as well, which is
-    what the fingerprint key used to need, meant the 45 MB dump of a thousand object project
-    went through twice on every read. A first read still parses it twice, once to learn what it
-    names (:func:`~ddd.gui.session._named_by`) and once in ``read_baseline``, a cost paid once
-    per baseline the cache does not hold.
+    a directory, one whose permissions refuse, a path no file can bear - before
+    ``read_baseline`` is asked for a reading that would report it as something else entirely.
+    ``open`` raises ``ValueError`` rather than ``OSError`` for a path holding a NUL, which
+    resolving hands back as it is on Windows from python 3.13 on, where elsewhere it raises
+    (:func:`_resolved_baseline`): refused here as unreadable all the same, the route's ``400``
+    (12:M1). Reading the bytes here as well, which is what the fingerprint key used to need,
+    meant the 45 MB dump of a thousand object project went through twice on every read. A first
+    read still parses it twice, once to learn what it names (:func:`~ddd.gui.session._named_by`)
+    and once in ``read_baseline``, a cost paid once per baseline the cache does not hold.
     """
     try:
         with path.open("rb"):
             pass
-    except OSError as error:
+    except (OSError, ValueError) as error:
         raise BaselineRefusedError(
             f"the baseline '{path.as_posix()}' is unreadable: {error}"
         ) from (error)

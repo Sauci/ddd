@@ -45,6 +45,12 @@ The walk asserts no answer is 500 - never one of 400, 404 or 409 (ruling P18-7).
 route's ``?after=`` is lenient: none of these values is a whole number, so it is answered at
 once every time, and the walk's ``wait_seconds=0`` (as ``tests/test_gui_api.py``'s own fixtures
 construct the api) means nothing here could wait regardless.
+
+The query walk runs with the working directory at the demo's root, as ``ddd gui`` serves from
+the directory it was started in, so that a relative path lands where a real run's would (12:M1).
+It runs twice: resolving every path as the system the suite runs on resolves it, and as Windows
+resolves it (:func:`_resolving_as_windows_does`), which hands back a path it cannot look up
+rather than raising, so that every system the suite runs on asks what a run on Windows is asked.
 """
 
 from __future__ import annotations
@@ -264,8 +270,29 @@ def _well_formed(
     return plain, actions
 
 
-def test_every_key_of_every_route_s_query_is_never_answered_500(tmp_path: Path) -> None:
+def _resolving_as_windows_does(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``Path.resolve`` as Windows answers it from python 3.13 on, wherever looking a path up
+    raises ``ValueError``: the path made absolute and handed back as it is, as ``ntpath.realpath``
+    does when it is not strict. Every other path resolves as it does on the system this runs on."""
+    real = Path.resolve
+
+    def resolve(self: Path, strict: bool = False) -> Path:
+        try:
+            return real(self, strict)
+        except ValueError:
+            return self.absolute()
+
+    monkeypatch.setattr(Path, "resolve", resolve)
+
+
+@pytest.mark.parametrize("windows", [False, True], ids=["as-this-system-resolves", "as-windows"])
+def test_every_key_of_every_route_s_query_is_never_answered_500(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, windows: bool
+) -> None:
     api, root = demo_api(tmp_path)
+    monkeypatch.chdir(root)
+    if windows:
+        _resolving_as_windows_does(monkeypatch)
     plain, actions = _well_formed(root)
     cases = 0
     for route in ROUTES:
@@ -444,6 +471,48 @@ def test_every_string_field_of_a_post_body_is_never_answered_500(tmp_path: Path)
         "the seven string fields these five models hold, eleven values each, and the two "
         "numbers spelled as an index"
     )
+
+
+UNOPENABLE_BASELINES: Final = ("%00", "a%00b", "base%00.ddd.json")
+"""Baselines as a query spells them, each a path no file can bear: resolving one raises on some
+systems and hands it back on Windows, and opening one raises on every system."""
+
+
+@pytest.mark.parametrize("windows", [False, True], ids=["as-this-system-resolves", "as-windows"])
+@pytest.mark.parametrize("spelled", UNOPENABLE_BASELINES, ids=range(len(UNOPENABLE_BASELINES)))
+def test_a_baseline_no_file_can_bear_is_refused_400_from_the_directory_served(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    spelled: str,
+    windows: bool,
+) -> None:
+    """``GET /api/compare`` over the wire, with the working directory at the project's root, as
+    ``run`` serves from it, and the session's root that directory: refused ``400``, saying the
+    baseline is unreadable, and nothing printed on the terminal (12:M1)."""
+    root = tmp_path / "demo"
+    shutil.copytree(EXAMPLES / "demo", root)
+    monkeypatch.chdir(root)
+    session = Session(Path.cwd())
+    session.open(root / "demo.ddd.json")
+    pages = tmp_path / "pages"
+    pages.mkdir()
+    (pages / "index.html").write_text("stand-in", encoding="utf-8")
+    server = GuiServer(Api(session, root / "demo.ddd.json", wait_seconds=0.05), pages)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        if windows:
+            _resolving_as_windows_does(monkeypatch)
+        status, body = _ask(server, "GET", f"/api/compare?baseline={spelled}")
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+    assert (status, body["error"]) == (400, "bad-request"), body
+    assert body["message"].startswith("the baseline '"), body
+    assert " is unreadable: " in body["message"], body
+    assert capsys.readouterr().err == ""
 
 
 # What the start page reads of a build record (12:I4): a record's project is read under the rule a

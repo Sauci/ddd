@@ -1578,6 +1578,41 @@ class TestPackaging:
                 f"documentation build fails for whoever installs from the archive"
             )
 
+    @pytest.mark.parametrize(
+        ("name", "without_it"),
+        [
+            (
+                "SECURITY.md",
+                "whoever reads the archive has no way of reporting a vulnerability privately",
+            ),
+            (
+                ".dockerignore",
+                "an image built from the unpacked archive copies in the compiled pages it holds, "
+                "which docker/Dockerfile says the build context never has",
+            ),
+            (
+                ".gitattributes",
+                "the unpacked archive put under git on windows checks the image's scripts out "
+                "with the crlf endings their shebangs fail on",
+            ),
+        ],
+        ids=["SECURITY.md", ".dockerignore", ".gitattributes"],
+    )
+    def test_the_sdist_carries_its_policy_and_what_its_builds_are_told(
+        self, name: str, without_it: str
+    ) -> None:
+        """20:M6. The archive is what an evaluator is sent, and it carries ``docker/``, the
+        compose file and the pages compiled into ``src/ddd/gui/static``. Three files at the
+        root say how the tree is to be built and reported on, and none of the suite reads
+        them, so no test above could notice their absence."""
+        metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        shipped = {
+            pattern.lstrip("/")
+            for pattern in metadata["tool"]["hatch"]["build"]["targets"]["sdist"]["include"]
+        }
+        assert (ROOT / name).is_file(), f"{name} is not in the tree"
+        assert name in shipped, f"the sdist leaves out {name}, so {without_it}"
+
     def test_the_runtime_requirements_are_what_the_package_imports(self) -> None:
         """The three runtime dependencies are a deliberate claim of the README, so a fourth one
         appearing in requirements.txt has to be a decision rather than a drive-by addition.

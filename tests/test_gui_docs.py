@@ -153,3 +153,11 @@ def test_the_page_says_a_fixed_port_listened_on_at_ipv6_loopback_is_refused_nami
 
 def test_the_page_says_none_of_it_is_tested_on_macos() -> None:
     assert "None of this is tested on macOS." in _prose()
+
+
+def test_the_page_says_a_wait_for_the_state_gives_its_slot_back_once_the_page_has_gone() -> None:
+    assert (
+        "A wait for the state to change, which the page keeps open, looks every second whether "
+        "the page is still there, and gives its slot back once it is not - reloaded, or its tab "
+        "closed." in _prose()
+    )

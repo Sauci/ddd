@@ -2118,7 +2118,7 @@ class Held:
         self.asked = threading.Semaphore(0)
         self.release = threading.Event()
 
-    def handle(self, method, path, query, body):
+    def handle(self, method, path, query, body, *, gone=None):
         self.asked.release()
         assert self.release.wait(10), "the test never let the request go"
         return Reply(200, {"held": True})
@@ -2465,6 +2465,182 @@ class TestTheCap:
                 assert ask(server, "GET", "/api/session")[0].status == 200
             finally:
                 idle.close()
+
+
+def long_poll(server: GuiServer, after: int) -> socket.socket:
+    """A long poll of the state past version ``after``, as a page sends one, over a connection of
+    its own: its request sent, its answer left for the test to read or never read."""
+    connection = socket.create_connection(("127.0.0.1", server.port), timeout=10)
+    connection.sendall(
+        f"GET /api/state?after={after} HTTP/1.1\r\n"
+        f"Host: 127.0.0.1:{server.port}\r\n"
+        f"Authorization: Bearer {server.token}\r\n\r\n".encode("ascii")
+    )
+    return connection
+
+
+class Waiting:
+    """``Session.wait``, noting the thread of every request that waits in it, and saying once
+    ``count`` of them have."""
+
+    def __init__(self, session: Session, count: int) -> None:
+        self.wait = session.wait
+        self.count = count
+        self.threads: set[int] = set()
+        self.lock = threading.Lock()
+        self.all_waiting = threading.Event()
+
+    def __call__(self, after: int, timeout: float) -> Any:
+        with self.lock:
+            self.threads.add(threading.get_ident())
+            if len(self.threads) >= self.count:
+                self.all_waiting.set()
+        return self.wait(after, timeout)
+
+
+class TestALongPollWhoseClientHasGone:
+    """A long poll waits for the state to change in slices, and between two it looks whether its
+    client has gone - closed its connection, or reset it - and if so answers at once, which gives
+    its connection's slot back (12:M3, ruling B7-6): a page that reloads leaves its long poll
+    behind, and a tab reloading never fills the cap. The slice is shortened here, so that a slot
+    given back within one is given back at once."""
+
+    def test_the_poll_waits_twenty_five_seconds_a_second_at_a_time(self) -> None:
+        assert (api_module.WAIT_SECONDS, api_module.SLICE_SECONDS) == (25.0, 1.0)
+
+    @pytest.fixture
+    def polled(self, project_file: Path, pages: Path) -> Iterator[tuple[GuiServer, Api, int]]:
+        """A server of two slots whose long poll waits its full twenty-five seconds in slices of
+        five hundredths, and the version its state is at."""
+        session = Session(project_file.parent)
+        session.open(project_file)
+        api = Api(session, project_file, slice_seconds=0.05)
+        assert api.wait_seconds == api_module.WAIT_SECONDS
+        for server in serving(api, pages, connections=2):
+            yield server, api, session.snapshot().version
+
+    def test_clients_gone_give_their_slots_back_within_a_slice(self, polled, monkeypatch) -> None:
+        server, api, version = polled
+        waiting = Waiting(api.session, 2)
+        monkeypatch.setattr(api.session, "wait", waiting)
+        polls = [long_poll(server, version) for _ in range(2)]
+        assert waiting.all_waiting.wait(10), "the long polls never waited"
+        for poll in polls:
+            poll.close()
+        # Both slots given back well inside the poll's twenty-five seconds: waited for, since a
+        # slot comes back on its connection's own thread once its answer has been let go.
+        for _ in range(2):
+            assert server.slots.acquire(timeout=5), "a long poll held its slot past its client"
+        for _ in range(2):
+            server.slots.release()
+        response, data = ask(server, "GET", "/api/session")
+        assert response.status == 200, data
+
+    def test_a_poll_whose_client_stays_waits_past_its_slices_for_a_newer_version(
+        self, polled, project_file
+    ) -> None:
+        server, api, version = polled
+        with long_poll(server, version) as poll:
+            # Ten slices and more pass unanswered: the client is still there.
+            poll.settimeout(0.5)
+            with pytest.raises(TimeoutError):
+                poll.recv(1)
+            api.session.open(project_file)
+            poll.settimeout(10)
+            answer = http.client.HTTPResponse(poll)
+            answer.begin()
+            assert answer.status == 200
+            assert json.loads(answer.read())["version"] > version
+
+    def test_a_poll_answers_once_its_wait_runs_out_however_many_slices_it_takes(
+        self, project_file, pages
+    ) -> None:
+        session = Session(project_file.parent)
+        session.open(project_file)
+        version = session.snapshot().version
+        api = Api(session, project_file, wait_seconds=0.3, slice_seconds=0.05)
+        for server in serving(api, pages):
+            started = time.monotonic()
+            response, data = ask(server, "GET", f"/api/state?after={version}")
+            waited = time.monotonic() - started
+            assert (response.status, json.loads(data)["version"]) == (200, version)
+            assert waited >= 0.25, "answered before its wait ran out"
+
+    def test_the_api_answers_a_poll_whose_client_has_gone_after_one_slice(
+        self, project_file
+    ) -> None:
+        session = Session(project_file.parent)
+        session.open(project_file)
+        version = session.snapshot().version
+        api = Api(session, project_file, slice_seconds=0.05)
+        asked: list[float] = []
+
+        def gone() -> bool:
+            asked.append(time.monotonic())
+            return True
+
+        started = time.monotonic()
+        reply = api.handle("GET", "/api/state", {"after": [str(version)]}, None, gone=gone)
+        assert (reply.status, reply.body["version"]) == (200, version)
+        assert len(asked) == 1, "asked once, after its first slice"
+        assert asked[0] - started < 5
+
+    def test_a_poll_asked_of_the_api_directly_has_no_client_to_lose(self, project_file) -> None:
+        """Without ``gone`` - every test of the api, and any caller but the server - a poll waits
+        out its time, its client never gone."""
+        session = Session(project_file.parent)
+        session.open(project_file)
+        version = session.snapshot().version
+        api = Api(session, project_file, wait_seconds=0.2, slice_seconds=0.05)
+        started = time.monotonic()
+        reply = api.handle("GET", "/api/state", {"after": [str(version)]}, None)
+        assert (reply.status, reply.body["version"]) == (200, version)
+        assert time.monotonic() - started >= 0.15
+
+
+def gone_from(end: socket.socket, timeout: float = 30) -> bool:
+    """What the connection's handler says of ``end``, the server's end of a connection whose
+    deadline is ``timeout``: whether its client has gone."""
+    end.settimeout(timeout)
+    return module._Handler._gone(types.SimpleNamespace(connection=end, timeout=timeout))
+
+
+class TestWhetherAClientHasGone:
+    """``_Handler._gone``: a peek at the connection, which neither waits nor takes anything off
+    it, its deadline put back as it was however the peek ends."""
+
+    def test_a_client_that_sent_nothing_more_is_still_there(self) -> None:
+        ours, theirs = socket.socketpair()
+        with ours, theirs:
+            assert gone_from(ours) is False
+            assert ours.gettimeout() == 30
+
+    def test_a_client_that_sent_more_is_still_there_and_what_it_sent_is_left(self) -> None:
+        ours, theirs = socket.socketpair()
+        with ours, theirs:
+            theirs.sendall(b"GET")
+            arrived_in_full(ours, b"GET")
+            assert gone_from(ours, 12) is False
+            assert ours.gettimeout() == 12
+            assert ours.recv(3) == b"GET"
+
+    def test_a_client_that_closed_its_end_has_gone(self) -> None:
+        ours, theirs = socket.socketpair()
+        with ours:
+            theirs.close()
+            arrived(ours)
+            assert gone_from(ours) is True
+            assert ours.gettimeout() == 30
+
+    def test_a_client_that_reset_the_connection_has_gone(self) -> None:
+        """Reset by closing with bytes it never read, as ``TestTheCap`` resets one."""
+        ours, theirs = socket.socketpair()
+        with ours:
+            ours.sendall(b"never read")
+            theirs.close()
+            arrived(ours)
+            assert gone_from(ours) is True
+            assert ours.gettimeout() == 30
 
 
 def request_line(length: int) -> bytes:

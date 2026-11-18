@@ -208,7 +208,9 @@ What it does not defend against
   page available: anyone who can reach the port, token or not, can still open and hold
   sixty-four connections, and so deny the page its server - though a connection idle for
   thirty seconds is closed and gives its slot back, so holding one takes writing to it at
-  least that often. A browser never comes near that limit by itself - six connections to
+  least that often. A wait for the state to change, which the page keeps open, looks every
+  second whether the page is still there, and gives its slot back once it is not - reloaded,
+  or its tab closed. A browser never comes near that limit by itself - six connections to
   one host, across every tab - so this is a risk from another local process or user, not
   from ordinary use.
 

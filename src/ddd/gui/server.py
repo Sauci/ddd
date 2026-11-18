@@ -109,7 +109,9 @@ MAX_CONNECTIONS: Final = 64
 A browser opens at most six connections to one host, across all its tabs, so the page never
 comes near this: sixty-four leaves room for ten browser profiles and some scripts. Without
 it, the threads grew with whatever was asked: probed against ``7d7aaed``, three hundred long
-polls at once took the server from 4 threads to 275."""
+polls at once took the server from 4 threads to 275. A long poll a page leaves behind,
+reloading or closing, gives its slot back within a slice (:data:`ddd.gui.api.SLICE_SECONDS`), so
+reloading never piles them up."""
 
 BUSY: Final = "ddd gui is answering as many connections as it takes at once; ask again in a moment"
 """What a connection past :data:`MAX_CONNECTIONS` is answered, with a ``503``."""
@@ -741,8 +743,26 @@ class _Handler(BaseHTTPRequestHandler):
         # value is kept too, a key given twice included, for the api to refuse
         # (`ddd.gui.routes.one_value_each`).
         query = parse_qs(url.query, keep_blank_values=True)
-        reply = self._gui.api.handle(method, url.path, query, body)
+        reply = self._gui.api.handle(method, url.path, query, body, gone=self._gone)
         self._send_json(reply.status, reply.body)
+
+    def _gone(self) -> bool:
+        """Whether this connection's client has gone - closed its end, or reset it - while its
+        request waits: what a long poll asks between the slices it waits in (12:M3,
+        :meth:`ddd.gui.api.Api._snapshot_after`). A peek, which neither waits nor takes anything
+        off the connection: a client that sent more is still there, and what it sent is read as
+        its next request. The connection's deadline is put back as it was however the peek
+        ends."""
+        connection = self.connection
+        connection.settimeout(0)
+        try:
+            return not connection.recv(1, socket.MSG_PEEK)
+        except BlockingIOError:
+            return False
+        except OSError:
+            return True
+        finally:
+            connection.settimeout(self.timeout)
 
     def _exchange(self, body: bytes) -> None:
         """``POST /open``: a launch code, or the token itself, traded for the token the page

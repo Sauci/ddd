@@ -584,7 +584,8 @@ with <code class="docutils literal notranslate"><span class="pre">ddd</span> <sp
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">&lt;stem&gt;_ddd_a2l</span></code></p></td>
 <td><p>with <code class="docutils literal notranslate"><span class="pre">ADDRESSES_FROM_IMAGE</span></code> or <code class="docutils literal notranslate"><span class="pre">ADDRESS_MAP</span></code>, built by default: writes the a2l once
 the image is linked, every address it carries read out of the image or out of the map
-(see below). It depends on the image, on the map with <code class="docutils literal notranslate"><span class="pre">ADDRESS_MAP</span></code>, on the project
+(see below). It depends on the image, on the map with <code class="docutils literal notranslate"><span class="pre">ADDRESS_MAP</span></code>, on the
+<code class="docutils literal notranslate"><span class="pre">A2L_MODULE_FRAGMENT</span></code> file, on the project
 description and the files collected into it, on a <code class="docutils literal notranslate"><span class="pre">.py</span></code> plugin the call names and on the
 tool, and on nothing the c alone is rendered from. A build that names its targets -
 <code class="docutils literal notranslate"><span class="pre">cmake</span> <span class="pre">--build</span> <span class="pre">--target</span> <span class="pre">firmware.elf</span></code>, say, or <code class="docutils literal notranslate"><span class="pre">firmware_ddd_generation</span></code> - does not
@@ -780,7 +781,10 @@ address and raises no <code class="docutils literal notranslate"><span class="pr
 says so itself; a map that names some objects and not others raises it, once, for the
 objects it lacks, save a conditional one of which it names neither the object nor a
 member, which is left out of the a2l and reported at <code class="docutils literal notranslate"><span class="pre">info</span></code>: a structure the map names
-by its own name, as <code class="docutils literal notranslate"><span class="pre">nm</span></code> lists it, keeps its members <code class="docutils literal notranslate"><span class="pre">address-missing</span></code>.</p></td>
+by its own name, as <code class="docutils literal notranslate"><span class="pre">nm</span></code> lists it, keeps its members <code class="docutils literal notranslate"><span class="pre">address-missing</span></code>.
+What the a2l leaves out with that object is not raised either: a curve or a map over an
+axis so left out, and a measurement that asked to stay out of the file and was in it only
+as the input of such an axis.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ADDRESSES_FROM_IMAGE</span></code></p></td>
 <td><p>write the a2l once the image is linked, every address it carries read out of the
@@ -794,11 +798,16 @@ with <code class="docutils literal notranslate"><span class="pre">-g</span></cod
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">BYTE_ORDER</span> <span class="pre">little|big</span></code></p></td>
 <td><p>byte order reported in the a2l.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">SEVERITY</span> <span class="pre">&lt;check=level&gt;...</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">A2L_MODULE_FRAGMENT</span> <span class="pre">&lt;file&gt;</span></code></p></td>
+<td><p>a text file pasted unchanged at the head of the a2l’s <code class="docutils literal notranslate"><span class="pre">MODULE</span></code>, whichever step writes
+the a2l (<a class="reference internal" href="generated_artefacts.html#a2l-module-fragment"><span class="std std-ref">What the a2l leaves to the project</span></a>). It is an input of that step, so an edit to it writes
+the a2l again. Refused together with <code class="docutils literal notranslate"><span class="pre">NO_A2L</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">SEVERITY</span> <span class="pre">&lt;check=level&gt;...</span></code></p></td>
 <td><p>severity overrides, exactly like <code class="docutils literal notranslate"><span class="pre">-W</span></code> on the command line. They apply to both the
 generation and the check target.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">LINK_LIBRARIES</span> <span class="pre">&lt;target&gt;...</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">LINK_LIBRARIES</span> <span class="pre">&lt;target&gt;...</span></code></p></td>
 <td><p>usage requirements for compiling the generated definition file, stated by hand. The
 manual fallback: in the collected mode <code class="docutils literal notranslate"><span class="pre">&lt;stem&gt;_ddd_headers</span></code> already carries the
 interface compile usage of every registered component - include directories, compile
@@ -808,11 +817,8 @@ closure - and the definition file links it, so this remains for the hand written
 own c templates include. These libraries reach the definition file alone, so a
 component that includes a generated header needing one of them has to link it itself.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">DEPENDS</span> <span class="pre">&lt;file&gt;...</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">DEPENDS</span> <span class="pre">&lt;file&gt;...</span></code></p></td>
 <td><p>additional files that retrigger the generation.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">CONST_INPUTS</span></code></p></td>
-<td><p>declare input variables <code class="docutils literal notranslate"><span class="pre">const</span></code> in the consumer headers.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">NO_A2L</span></code></p></td>
 <td><p>do not generate the a2l file; no <code class="docutils literal notranslate"><span class="pre">DDD_A2L</span></code> property is set then. The run still
@@ -902,8 +908,8 @@ than ship an a2l with an address of 0. An object that states a condition, and of
 image defines nothing at all, is not reported that way: the build was made without it, and the
 a2l leaves it out. The example above, built as <code class="docutils literal notranslate"><span class="pre">RelWithDebInfo</span></code> with the keyword added,
 places every object of the demo but <code class="docutils literal notranslate"><span class="pre">ValueG</span></code>, which a condition compiles out of this image.
-Built where gcc links position independent by default, as it does on a Debian or Ubuntu host and
-in the <code class="docutils literal notranslate"><span class="pre">cmake</span></code> compose service, it prints:</p>
+Built where gcc links position independent by default, as it does on a Debian or Ubuntu host, it
+prints:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>firmware.elf: info[image-load-relative]: the image is position independent, so the addresses the a2l states are offsets from where it loads
     note: a project that adds its load base when it reads the a2l is right, and one that does not finds every address wrong
 firmware.elf: info[condition-left-out]: the image has no address for 'ValueG', which is only present in the build when 'defined(FEATURE_X)'; it is left out of the a2l
@@ -1022,7 +1028,6 @@ docker<span class="w"> </span>compose<span class="w"> </span>build
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>check<span class="w">           </span><span class="c1"># ddd check on the demo project</span>
 docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>generate<span class="w">        </span><span class="c1"># ddd generate into build/gen</span>
 docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>compile<span class="w">         </span><span class="c1"># generate + compile + link + verify</span>
-docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>compile-const<span class="w">   </span><span class="c1"># the same, with --const-inputs</span>
 docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>cmake<span class="w">           </span><span class="c1"># configure and build examples/cmake</span>
 docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span><span class="nb">test</span><span class="w">            </span><span class="c1"># pytest with the coverage gate</span>
 docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>coverage<span class="w">        </span><span class="c1"># the same, plus build/htmlcov/index.html</span>

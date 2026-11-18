@@ -137,7 +137,7 @@ and <code class="docutils literal notranslate"><span class="pre">dump</span></co
 with <code class="docutils literal notranslate"><span class="pre">--force</span></code>:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all examples/inconsistent/project.ddd.json -o build/gen -t examples/templates
 ...
-4 errors, 1 warning
+4 errors, 1 warning, 1 info
 $ echo $?
 1
 </pre></div>
@@ -606,7 +606,22 @@ bring in, so <code class="docutils literal notranslate"><span class="pre">uint16
 any name containing a double underscore, or starting with an underscore followed by a
 capital letter.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">name-collision</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">a2l-keyword</span></code></p></td>
+<td><p>error</p></td>
+<td><p>a name that reaches the a2l as an identifier, or as a part of one, is a keyword or an
+enumeration value of ASAP2 1.6.1: <code class="docutils literal notranslate"><span class="pre">MAP</span></code>, <code class="docutils literal notranslate"><span class="pre">VALUE</span></code>, <code class="docutils literal notranslate"><span class="pre">IDENTICAL</span></code>, <code class="docutils literal notranslate"><span class="pre">ROOT</span></code> and
+<code class="docutils literal notranslate"><span class="pre">MODULE</span></code> are among them, and the standard keeps identifiers off its index. The match is
+exact and case sensitive, so <code class="docutils literal notranslate"><span class="pre">map</span></code> is a name. It holds the project, a component that
+gets a group, an object the a2l carries, each member of a path and a
+<code class="docutils literal notranslate"><span class="pre">display_identifier</span></code>, judged from the descriptions alone: an object or a member that
+states <code class="docutils literal notranslate"><span class="pre">export:</span> <span class="pre">false</span></code> for the a2l is not held, but the check reads neither the image
+nor the map, so an object a run drops because its build holds none of it
+(<code class="docutils literal notranslate"><span class="pre">condition-left-out</span></code>) still draws the error, and <code class="docutils literal notranslate"><span class="pre">-W</span> <span class="pre">a2l-keyword=ignore</span></code> relaxes it
+for that run. A member is the finding of the file that declares its structure, once. It
+is separate from <code class="docutils literal notranslate"><span class="pre">reserved-identifier</span></code>, which is about c: a name can be fine for the
+compiler and forbidden by the a2l.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">name-collision</span></code></p></td>
 <td><p>error</p></td>
 <td><p>two names that are distinct in the description files would become the same c identifier
 or the same generated file: an enumerator and a variable, a variable and the name of an
@@ -620,12 +635,12 @@ the same types header and replaces the member’s name where the structure decla
 or two component names differing only in case,
 which ask for the same header on a case insensitive filesystem.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate-declaration</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">duplicate-declaration</span></code></p></td>
 <td><p>error</p></td>
 <td><p>one component declares the same variable twice, for instance once as <code class="docutils literal notranslate"><span class="pre">input</span></code> and once
 as <code class="docutils literal notranslate"><span class="pre">output</span></code>. The second declaration is ignored for the rest of the run.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">consumer-storage</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">consumer-storage</span></code></p></td>
 <td><p>error</p></td>
 <td><p>an <code class="docutils literal notranslate"><span class="pre">input</span></code> declaration states <code class="docutils literal notranslate"><span class="pre">init</span></code> or <code class="docutils literal notranslate"><span class="pre">section</span></code>. What a variable starts out
 as, and which memory it lives in, is decided by the component that produces it, so a
@@ -634,7 +649,7 @@ different thing from the disagreements above, and is reported where the claim is
 written rather than where it is overruled. Relaxable, so a project migrating existing
 descriptions can lower it while the <code class="docutils literal notranslate"><span class="pre">init</span></code> and <code class="docutils literal notranslate"><span class="pre">section</span></code> keys are removed.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">consumer-raster</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">consumer-raster</span></code></p></td>
 <td><p>error</p></td>
 <td><p>an <code class="docutils literal notranslate"><span class="pre">input</span></code> declaration states a measurement raster (see the
 <a class="reference internal" href="file_formats/rasters.html"><span class="doc">rasters file</span></a>). Which event updates a variable is
@@ -643,7 +658,7 @@ so a reader stating one is claiming an authority it does not have. Kept a separa
 identifier from <code class="docutils literal notranslate"><span class="pre">consumer-storage</span></code>, whose published description says storage,
 which a raster is not.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">consumer-identity</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">consumer-identity</span></code></p></td>
 <td><p>error</p></td>
 <td><p>an <code class="docutils literal notranslate"><span class="pre">input</span></code> declaration states an <code class="docutils literal notranslate"><span class="pre">id</span></code>. Which earlier delivery a variable continues
 is decided by the component that produces it, exactly as <code class="docutils literal notranslate"><span class="pre">init</span></code> and <code class="docutils literal notranslate"><span class="pre">section</span></code> are,
@@ -651,7 +666,7 @@ so a reader stating one is claiming an identity it does not have. Kept a separat
 identifier from <code class="docutils literal notranslate"><span class="pre">consumer-storage</span></code>, whose published description says storage, which
 an identity is not.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">consumer-extension</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">consumer-extension</span></code></p></td>
 <td><p>error</p></td>
 <td><p>an <code class="docutils literal notranslate"><span class="pre">input</span></code> declaration states an <code class="docutils literal notranslate"><span class="pre">extensions</span></code> block. What a plugin knows about a
 variable is decided by the component that produces it, exactly as <code class="docutils literal notranslate"><span class="pre">init</span></code>,
@@ -659,19 +674,19 @@ variable is decided by the component that produces it, exactly as <code class="d
 not own. Kept a separate identifier from <code class="docutils literal notranslate"><span class="pre">consumer-storage</span></code>, whose published
 description says storage, which a block is not.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">multiple-producers</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">multiple-producers</span></code></p></td>
 <td><p>error</p></td>
 <td><p>a variable is declared <code class="docutils literal notranslate"><span class="pre">output</span></code> by more than one component. Exactly one component owns
 the storage of a variable; two definitions would not even link.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">missing-producer</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">missing-producer</span></code></p></td>
 <td><p>error</p></td>
 <td><p>a variable is read as <code class="docutils literal notranslate"><span class="pre">input</span></code> but no component declares it as an output. The generated
 consumer header would declare a symbol nobody defines. A producer whose own declaration
 could not resolve still counts as a producer, so a consumer of the same variable is not
 told that nobody produces it.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">local-conflict</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">local-conflict</span></code></p></td>
 <td><p>error</p></td>
 <td><p>a variable declared <code class="docutils literal notranslate"><span class="pre">local</span></code> by one component is also declared by another. <code class="docutils literal notranslate"><span class="pre">local</span></code> is
 a promise that the variable is nobody else’s business, and DDD keeps it out of the
@@ -680,7 +695,7 @@ curve, map or axis of another component that names it as its <code class="docuti
 <code class="docutils literal notranslate"><span class="pre">y_axis</span></code> or <code class="docutils literal notranslate"><span class="pre">input</span></code> is the same conflict, reported at the reference, and the object
 is not dropped.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">definition-mismatch</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">definition-mismatch</span></code></p></td>
 <td><p>error</p></td>
 <td><p>two components describe the same variable differently in a property that changes what
 the value <em>means</em>: kind, datatype, unit, declared shape, conversion, volatility,
@@ -693,12 +708,12 @@ nothing at all. An enum conversion is compared here by its name alone; the enume
 behind it are <code class="docutils literal notranslate"><span class="pre">enum-conflict</span></code>’s, immediately below, so a reordered or revalued
 enumerator is that one finding rather than two.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">enum-conflict</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">enum-conflict</span></code></p></td>
 <td><p>error</p></td>
 <td><p>the same enum type name is defined with different enumerators. One c enum is generated
 per name, so only one set of enumerators could survive.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">unknown-reference</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">unknown-reference</span></code></p></td>
 <td><p>error</p></td>
 <td><p>a curve, a map or an axis refers by name to an object no component declares. The
 referring object is dropped as unresolvable whatever severity this check is given -
@@ -706,7 +721,7 @@ a curve without its axis has no shape, and an axis naming an absent measurement
 would leave a dangling name in the a2l - and <code class="docutils literal notranslate"><span class="pre">incomplete-project</span></code> reports the
 absence when the finding is silenced.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">reference-kind</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">reference-kind</span></code></p></td>
 <td><p>error</p></td>
 <td><p>a reference points at an object of the wrong kind, for example the <code class="docutils literal notranslate"><span class="pre">axis</span></code> of a curve
 naming a measurement instead of an axis. A structured object is the wrong kind for the
@@ -715,7 +730,7 @@ it reaches the a2l as one record per value-holding member and none of its own, s
 axis indexed by it would carry a name the file does not declare. The referring object
 is dropped as unresolvable too, exactly as <code class="docutils literal notranslate"><span class="pre">unknown-reference</span></code> drops one.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">init-invalid</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">init-invalid</span></code></p></td>
 <td><p>error</p></td>
 <td><p>an initial value does not fit its datatype - out of range, written as a fraction for an
 integer, neither 0 nor 1 for a bool, or a magnitude a floating point datatype rounds to
@@ -728,7 +743,7 @@ one initialiser that are wrong in the same way are one finding, which names how 
 there are and what else is among them: a table typed one datatype too narrow is one
 mistake, not one per element.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">point-counts-unrepresentable</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">point-counts-unrepresentable</span></code></p></td>
 <td><p>error</p></td>
 <td><p>a table stores its point counts in a datatype that cannot hold them: a <code class="docutils literal notranslate"><span class="pre">boolean</span></code>
 table, or an integer one whose range stops short of a count. Only a counted table is
@@ -803,12 +818,31 @@ everywhere else.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">a2l-unrepresentable</span></code></p></td>
 <td><p>warning</p></td>
-<td><p>an object the a2l carries cannot be fully described by the version DDD writes: today
-that is an array of more than three dimensions, which the <code class="docutils literal notranslate"><span class="pre">MATRIX_DIM</span></code> of ASAP2 1.6.1
-cannot carry. It fires for what the file carries rather than for what asked to be
-exported, the closure over references included, so an object kept out of the a2l on its
-own is still reported where an exported axis names it as its <code class="docutils literal notranslate"><span class="pre">input</span></code>. The extra
-dimensions are written out and only a 1.7 reader understands them.</p></td>
+<td><p>an object the a2l carries cannot be fully described by the version DDD writes, or the a2l
+carries a string, an identifier or a part of one past what the format holds. An array of
+more than three dimensions is the first: the <code class="docutils literal notranslate"><span class="pre">MATRIX_DIM</span></code> of ASAP2 1.6.1 cannot carry
+it, and the extra dimensions are written out and only a 1.7 reader understands them; a
+member with too many is named once at its type, however many variables reach it. A
+size past 65,535 is the second: the <code class="docutils literal notranslate"><span class="pre">MATRIX_DIM</span></code> of an array, a string measurement’s
+among them, the <code class="docutils literal notranslate"><span class="pre">NUMBER</span></code> of a string characteristic and the <code class="docutils literal notranslate"><span class="pre">MaxAxisPoints</span></code> of an
+axis are a <code class="docutils literal notranslate"><span class="pre">uint</span></code> of two bytes, and the record is written with the number whole; the
+finding names the field the record writes. A curve or a map is named at its axis, and a
+member of a structure at its type, once, a string member naming both of its fields,
+since its record is a measurement or a characteristic as the variable holding it is.
+The limits are those of table 5 of ASAP2 1.6.1: a string, which is a description of an
+object, a member, a component or the project (written on <code class="docutils literal notranslate"><span class="pre">PROJECT</span></code>, <code class="docutils literal notranslate"><span class="pre">HEADER</span></code> and
+<code class="docutils literal notranslate"><span class="pre">MODULE</span></code>), a unit (237 characters at most under an identity conversion, whose
+method describes itself as <code class="docutils literal notranslate"><span class="pre">physical</span> <span class="pre">value</span> <span class="pre">in</span></code> and the unit), or the <code class="docutils literal notranslate"><span class="pre">SYMBOL_LINK</span></code> of a record before the image names the
+variable, is at most 255 characters (<code class="docutils literal notranslate"><span class="pre">MAX_STRING</span></code>); a record’s name is at most 1024
+(<code class="docutils literal notranslate"><span class="pre">MAX_IDENT</span></code>); and a part of that name is at most 128 (<code class="docutils literal notranslate"><span class="pre">MAX_PARTIAL_IDENT</span></code>), an
+array index counted within it, so an array of structures named with the full 128
+characters passes it. The file is written whole. A string or the name of a member is the finding of the
+file that states it, once. It fires for what the descriptions send to the a2l rather
+than for what asked to be exported, the closure over references included, so an object
+kept out of the a2l on its own is still reported where an exported axis names it as its
+<code class="docutils literal notranslate"><span class="pre">input</span></code>. It reads neither the image nor the map, so an object a run drops because its
+build holds none of it (<code class="docutils literal notranslate"><span class="pre">condition-left-out</span></code>) is reported all the same, and stops a
+<code class="docutils literal notranslate"><span class="pre">--strict</span></code> run; <code class="docutils literal notranslate"><span class="pre">-W</span> <span class="pre">a2l-unrepresentable=ignore</span></code> relaxes it for that run.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">point-counts-mismatch</span></code></p></td>
 <td><p>warning</p></td>
@@ -832,7 +866,10 @@ legitimately lacks the objects that were not linked into this image, and an imag
 the objects a condition compiled out of it, which is why the run goes on; a post-link
 build that wants an a2l with no hole in it runs with <code class="docutils literal notranslate"><span class="pre">--strict</span></code>, which makes this an
 error and writes nothing. An object stating a condition is not reported here where the
-build holds nothing of it: it is left out of the a2l, and <code class="docutils literal notranslate"><span class="pre">condition-left-out</span></code> says so.</p></td>
+build holds nothing of it: it is left out of the a2l, and <code class="docutils literal notranslate"><span class="pre">condition-left-out</span></code> says so.
+What the a2l leaves out with it is not reported here either: a curve or a map over an axis
+so left out, which <code class="docutils literal notranslate"><span class="pre">reference-left-out</span></code> names, and a measurement that asked to stay out
+of the file and was in it only as the input of such an axis, which no finding names.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">elf-mismatch</span></code></p></td>
 <td><p>warning</p></td>
@@ -851,10 +888,9 @@ and the variable is compared with none of them. A structure member is compared o
 size, encoding and shape. A unit that declares the variable without defining it, as a
 consumer does through a component header, is held to the qualifiers of the kind too,
 and the finding names the unit: a header that leaves out <code class="docutils literal notranslate"><span class="pre">volatile</span></code> lets that unit’s
-compiler read the variable once. A declaration may add <code class="docutils literal notranslate"><span class="pre">const</span></code>, which
-<code class="docutils literal notranslate"><span class="pre">--const-inputs</span></code> gives the inputs of a component on purpose; any other difference is
-judged as the definition’s is. Only declarations the image’s debug information states
-are seen, which gcc writes for a variable a unit reads and clang does not.</p></td>
+compiler read the variable once, and one that adds <code class="docutils literal notranslate"><span class="pre">const</span></code> leaves two declarations
+of an object c leaves undefined; every difference is judged as the definition’s is.
+Only declarations the image’s debug information states are seen, which gcc writes for a variable a unit reads and clang does not.</p></td>
 </tr>
 </tbody>
 </table>
@@ -874,14 +910,21 @@ are seen, which gcc writes for a variable a unit reads and clang does not.</p></
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">image-load-relative</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">byte-order-defaulted</span></code></p></td>
+<td><p>info</p></td>
+<td><p>the a2l is written with neither <code class="docutils literal notranslate"><span class="pre">--byte-order</span></code> nor <code class="docutils literal notranslate"><span class="pre">--image</span></code>, so <code class="docutils literal notranslate"><span class="pre">MSB_LAST</span></code> is a
+default and not a choice. The finding says what the run assumed and how to state the other
+one: <code class="docutils literal notranslate"><span class="pre">--byte-order</span> <span class="pre">big</span></code>, or <code class="docutils literal notranslate"><span class="pre">BYTE_ORDER</span></code> of <code class="docutils literal notranslate"><span class="pre">ddd_generate</span></code> in cmake. An image states
+its own byte order.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">image-load-relative</span></code></p></td>
 <td><p>info</p></td>
 <td><p>the image <code class="docutils literal notranslate"><span class="pre">--image</span></code> was given is position independent (<code class="docutils literal notranslate"><span class="pre">ET_DYN</span></code>): the addresses the a2l
 takes from it are offsets from where it loads, and the a2l states them as they are. Right
 for a project that adds its load base when it reads the file, wrong for one that does not,
 which the note says.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">condition-left-out</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">condition-left-out</span></code></p></td>
 <td><p>info</p></td>
 <td><p>an object that states a condition is absent from the build: the image <code class="docutils literal notranslate"><span class="pre">--image</span></code> was
 given defines no variable of its name and holds no symbol of it, or the map
@@ -891,13 +934,13 @@ finding per condition. A curve or map over an axis left out cannot be described 
 it and goes with it, which <code class="docutils literal notranslate"><span class="pre">reference-left-out</span></code> names. Any other reason an image gives, and
 an object stating no condition, are <code class="docutils literal notranslate"><span class="pre">address-missing</span></code> instead, so that a hole stays one.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">empty-component</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">empty-component</span></code></p></td>
 <td><p>info</p></td>
 <td><p>a component declares no variable at all. Perfectly legal - a component may have no global
 interface - but worth saying out loud, because the usual cause is a description file that
 was registered before it was written.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">empty-vocabulary</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">empty-vocabulary</span></code></p></td>
 <td><p>info</p></td>
 <td><p>a types, units, constants, sections or rasters file declares nothing: its own list is
 empty, and the finding is drawn there. Legal as well, and an information rather than a
@@ -906,7 +949,7 @@ none - removing the last one in <code class="docutils literal notranslate"><span
 than held against the project. A units file declaring nothing still opts the project
 into <code class="docutils literal notranslate"><span class="pre">unknown-unit</span></code>, so every stated unit no other units file declares is reported.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">incomplete-project</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">incomplete-project</span></code></p></td>
 <td><p>info</p></td>
 <td><p>a declaration is missing from the dictionary and the finding that says why has been
 silenced - a <code class="docutils literal notranslate"><span class="pre">type-kind</span></code> relaxed to <code class="docutils literal notranslate"><span class="pre">ignore</span></code>, for instance. The declaration is left
@@ -917,7 +960,7 @@ type, the consumers of a dropped producer, a curve or an axis whose own referenc
 nothing or names the wrong kind, and a curve or an axis referring to one that went are
 each reported in turn.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">missing-id</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">missing-id</span></code></p></td>
 <td><p>info</p></td>
 <td><p>a declaration that produces a variable states no <code class="docutils literal notranslate"><span class="pre">id</span></code>, so a delivery that renames the
 variable is compared as a removal and an unrelated addition. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">id</span> <span class="pre">--assign</span></code> writes

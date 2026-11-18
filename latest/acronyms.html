@@ -425,6 +425,24 @@ there rather than by regenerating the file.</p></td>
 <code class="docutils literal notranslate"><span class="pre">rasters</span></code> file assigned. The name of the event lives in the module level <code class="docutils literal notranslate"><span class="pre">DAQ</span></code>
 block, which describes the target’s XCP implementation and which DDD does not write.</p></td>
 </tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">A2ML</span></code></p></td>
+<td><p>The ASAM MCD-2 MC metalanguage, in which the parameters of an <code class="docutils literal notranslate"><span class="pre">IF_DATA</span></code> are described. DDD
+writes none: a project that needs one gives it in the
+<a class="reference internal" href="generated_artefacts.html#a2l-module-fragment"><span class="std std-ref">module fragment</span></a>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">MOD_PAR</span></code></p></td>
+<td><p>The module’s parameter block, of which a module has one: <code class="docutils literal notranslate"><span class="pre">EPK</span></code>, <code class="docutils literal notranslate"><span class="pre">ADDR_EPK</span></code> and
+<code class="docutils literal notranslate"><span class="pre">MEMORY_SEGMENT</span></code> live inside it, and so do the <code class="docutils literal notranslate"><span class="pre">SYSTEM_CONSTANT</span></code>s DDD writes for a
+project’s named constants. A fragment may hold it only where the project declares none.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">EPK</span></code></p></td>
+<td><p>The identifier of the software version a tool uses to tell that an a2l belongs to an
+image, with its <code class="docutils literal notranslate"><span class="pre">ADDR_EPK</span></code>. DDD writes neither; they go in the module fragment.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">MEMORY_SEGMENT</span></code></p></td>
+<td><p>A memory region of the target, as a calibration tool sees it. Not written by DDD; it goes in
+the module fragment.</p></td>
+</tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">GROUP</span></code></p></td>
 <td><p>A named collection of measurements and characteristics, used to organise the objects
 in the calibration tool. DDD emits one per component that exports at least one object,

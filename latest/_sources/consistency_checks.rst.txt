@@ -22,7 +22,7 @@ with ``--force``:
 
    $ ddd generate all examples/inconsistent/project.ddd.json -o build/gen -t examples/templates
    ...
-   4 errors, 1 warning
+   4 errors, 1 warning, 1 info
    $ echo $?
    1
 
@@ -488,6 +488,20 @@ or an a2l file that does not do what the description says - or that does not com
        bring in, so ``uint16_t`` is out), or is reserved for the implementation by C11 7.1.3 -
        any name containing a double underscore, or starting with an underscore followed by a
        capital letter.
+   * - ``a2l-keyword``
+     - error
+     - a name that reaches the a2l as an identifier, or as a part of one, is a keyword or an
+       enumeration value of ASAP2 1.6.1: ``MAP``, ``VALUE``, ``IDENTICAL``, ``ROOT`` and
+       ``MODULE`` are among them, and the standard keeps identifiers off its index. The match is
+       exact and case sensitive, so ``map`` is a name. It holds the project, a component that
+       gets a group, an object the a2l carries, each member of a path and a
+       ``display_identifier``, judged from the descriptions alone: an object or a member that
+       states ``export: false`` for the a2l is not held, but the check reads neither the image
+       nor the map, so an object a run drops because its build holds none of it
+       (``condition-left-out``) still draws the error, and ``-W a2l-keyword=ignore`` relaxes it
+       for that run. A member is the finding of the file that declares its structure, once. It
+       is separate from ``reserved-identifier``, which is about c: a name can be fine for the
+       compiler and forbidden by the a2l.
    * - ``name-collision``
      - error
      - two names that are distinct in the description files would become the same c identifier
@@ -657,12 +671,31 @@ it is either a smell or a decision somebody should have taken consciously.
        everywhere else.
    * - ``a2l-unrepresentable``
      - warning
-     - an object the a2l carries cannot be fully described by the version DDD writes: today
-       that is an array of more than three dimensions, which the ``MATRIX_DIM`` of ASAP2 1.6.1
-       cannot carry. It fires for what the file carries rather than for what asked to be
-       exported, the closure over references included, so an object kept out of the a2l on its
-       own is still reported where an exported axis names it as its ``input``. The extra
-       dimensions are written out and only a 1.7 reader understands them.
+     - an object the a2l carries cannot be fully described by the version DDD writes, or the a2l
+       carries a string, an identifier or a part of one past what the format holds. An array of
+       more than three dimensions is the first: the ``MATRIX_DIM`` of ASAP2 1.6.1 cannot carry
+       it, and the extra dimensions are written out and only a 1.7 reader understands them; a
+       member with too many is named once at its type, however many variables reach it. A
+       size past 65,535 is the second: the ``MATRIX_DIM`` of an array, a string measurement's
+       among them, the ``NUMBER`` of a string characteristic and the ``MaxAxisPoints`` of an
+       axis are a ``uint`` of two bytes, and the record is written with the number whole; the
+       finding names the field the record writes. A curve or a map is named at its axis, and a
+       member of a structure at its type, once, a string member naming both of its fields,
+       since its record is a measurement or a characteristic as the variable holding it is.
+       The limits are those of table 5 of ASAP2 1.6.1: a string, which is a description of an
+       object, a member, a component or the project (written on ``PROJECT``, ``HEADER`` and
+       ``MODULE``), a unit (237 characters at most under an identity conversion, whose
+       method describes itself as ``physical value in`` and the unit), or the ``SYMBOL_LINK`` of a record before the image names the
+       variable, is at most 255 characters (``MAX_STRING``); a record's name is at most 1024
+       (``MAX_IDENT``); and a part of that name is at most 128 (``MAX_PARTIAL_IDENT``), an
+       array index counted within it, so an array of structures named with the full 128
+       characters passes it. The file is written whole. A string or the name of a member is the finding of the
+       file that states it, once. It fires for what the descriptions send to the a2l rather
+       than for what asked to be exported, the closure over references included, so an object
+       kept out of the a2l on its own is still reported where an exported axis names it as its
+       ``input``. It reads neither the image nor the map, so an object a run drops because its
+       build holds none of it (``condition-left-out``) is reported all the same, and stops a
+       ``--strict`` run; ``-W a2l-unrepresentable=ignore`` relaxes it for that run.
    * - ``point-counts-mismatch``
      - warning
      - a curve or a map stores its point counts one way and one of its axes the other. The a2l
@@ -684,6 +717,9 @@ it is either a smell or a decision somebody should have taken consciously.
        build that wants an a2l with no hole in it runs with ``--strict``, which makes this an
        error and writes nothing. An object stating a condition is not reported here where the
        build holds nothing of it: it is left out of the a2l, and ``condition-left-out`` says so.
+       What the a2l leaves out with it is not reported here either: a curve or a map over an axis
+       so left out, which ``reference-left-out`` names, and a measurement that asked to stay out
+       of the file and was in it only as the input of such an axis, which no finding names.
    * - ``elf-mismatch``
      - warning
      - the image ``--image`` was given holds a variable it places otherwise than its description
@@ -701,10 +737,9 @@ it is either a smell or a decision somebody should have taken consciously.
        size, encoding and shape. A unit that declares the variable without defining it, as a
        consumer does through a component header, is held to the qualifiers of the kind too,
        and the finding names the unit: a header that leaves out ``volatile`` lets that unit's
-       compiler read the variable once. A declaration may add ``const``, which
-       ``--const-inputs`` gives the inputs of a component on purpose; any other difference is
-       judged as the definition's is. Only declarations the image's debug information states
-       are seen, which gcc writes for a variable a unit reads and clang does not.
+       compiler read the variable once, and one that adds ``const`` leaves two declarations
+       of an object c leaves undefined; every difference is judged as the definition's is.
+       Only declarations the image's debug information states are seen, which gcc writes for a variable a unit reads and clang does not.
 
 Information
 ~~~~~~~~~~~
@@ -716,6 +751,12 @@ Information
    * - Check
      - Default
      - Fires when
+   * - ``byte-order-defaulted``
+     - info
+     - the a2l is written with neither ``--byte-order`` nor ``--image``, so ``MSB_LAST`` is a
+       default and not a choice. The finding says what the run assumed and how to state the other
+       one: ``--byte-order big``, or ``BYTE_ORDER`` of ``ddd_generate`` in cmake. An image states
+       its own byte order.
    * - ``image-load-relative``
      - info
      - the image ``--image`` was given is position independent (``ET_DYN``): the addresses the a2l

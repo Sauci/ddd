@@ -28,6 +28,8 @@ produce, which is what every transcript below hands to ``--template-dir``:
 .. code-block:: text
 
    $ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates
+   <project>: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+   1 info
    wrote       build/gen/ddd_globals.c (created)
    wrote       build/gen/ddd_globals.h (created)
    wrote       build/gen/ddd_types.h (created)
@@ -197,36 +199,36 @@ description change points at the component that changed:
 
    /* measurements */
    /** Measurement with a verbal conversion table */
-   uint8_t StateA = 0U;
+   DDD_RETAIN uint8_t StateA = 0U;
    /** Name of the current state, as text */
-   uint8_t StateName[16] = "OFF";
+   DDD_RETAIN uint8_t StateName[16] = "OFF";
    /** Measurement used as the input quantity of AxisA [Hz] */
-   volatile uint16_t ValueE = 0U;
+   DDD_RETAIN volatile uint16_t ValueE = 0U;
    /** Signed measurement with a fixed point conversion [degC] */
-   int16_t ValueF = -400;
+   DDD_RETAIN int16_t ValueF = -400;
    #if defined(FEATURE_X)
    /** Measurement that only exists when FEATURE_X is defined [V] */
-   uint16_t ValueG = 1000U;
+   DDD_RETAIN uint16_t ValueG = 1000U;
    #endif /* defined(FEATURE_X) */
    /** Component local measurement of the controller [%] */
-   int16_t ValueH = 0;
+   DDD_RETAIN int16_t ValueH = 0;
 
    /* calibration data */
    /** Shared axis indexed by ValueE [Hz] (calibration axis, 6 points) */
-   const uint16_t AxisA[6] = { 0U, 3200U, 6400U, 12800U, 19200U, 32000U };
+   DDD_RETAIN const uint16_t AxisA[6] = { 0U, 3200U, 6400U, 12800U, 19200U, 32000U };
    /** Component local axis indexed by ValueA [%] (calibration axis, 4 points) */
-   const uint8_t AxisB[4] = { 0U, 60U, 140U, 200U };
+   DDD_RETAIN const uint8_t AxisB[4] = { 0U, 60U, 140U, 200U };
    /** Calibratable curve over AxisA [ms] (calibration curve over AxisA) */
-   const uint16_t CurveA[6] = { 1200U, 900U, 800U, 750U, 700U, 650U };
+   DDD_RETAIN const uint16_t CurveA[6] = { 1200U, 900U, 800U, 750U, 700U, 650U };
    /** Calibratable map over AxisA and AxisB [%] (calibration map over AxisA and AxisB) */
-   const int8_t MapA[4][6] = {
+   DDD_RETAIN const int8_t MapA[4][6] = {
        { 20, 24, 28, 30, 32, 30 },
        { 18, 22, 26, 28, 30, 28 },
        { 12, 16, 20, 22, 24, 22 },
        { 6, 10, 14, 16, 18, 16 }
    };
    /** Single calibratable constant [Hz] (calibration parameter) */
-   const uint16_t ParameterA = 3200U;
+   DDD_RETAIN const uint16_t ParameterA = 3200U;
 
 Several details of that excerpt are deliberate, and they fall on both sides of the split
 between the data and its presentation. The text of the comment is DDD's: it is assembled from
@@ -236,7 +238,10 @@ to open the json to find out that ``CurveA`` is indexed by ``AxisA``. What surro
 is the template's, and the examples put it in an ordinary ``/* ... */`` comment; whether the
 generated code should instead be documented in the form a documentation generator reads is a
 decision about the project's sources rather than about its data, and it is made by writing the
-markers that generator expects in the template. The values are DDD's again: every literal
+markers that generator expects in the template. So is the ``DDD_RETAIN`` before each
+definition, a macro the file defines empty unless the build defines it first, which a build
+linking with ``--gc-sections`` on ELF does so that the linker keeps what no code references
+(:doc:`templates`). The values are DDD's again: every literal
 carries the suffix its datatype asks for, in upper case as the coding standards common in the
 industry require: ``U`` for ``uint8``, ``uint16`` and ``uint32``, ``ULL`` and ``LL`` for the
 64 bit types, ``F`` for ``float32``, nothing for the signed narrow types and for
@@ -278,8 +283,12 @@ this:
    /* inputs - produced elsewhere, UserInterface may only read them */
    /** Measurement used as the input quantity of AxisA [Hz] */
    extern volatile uint16_t ValueE;  /* produced by Controller */
+   #define ValueE__FACTOR (0.25)
+   #define ValueE__OFFSET (0.0)
    /** Signed measurement with a fixed point conversion [degC] */
    extern int16_t ValueF;  /* produced by Controller */
+   #define ValueF__FACTOR (0.1)
+   #define ValueF__OFFSET (0.0)
    /** Floating point measurement without a conversion [degC] */
    extern float ValueC;  /* produced by SensorHub */
    /** Measurement with a verbal conversion table */
@@ -288,14 +297,20 @@ this:
    extern uint8_t StateName[16];  /* produced by Controller */
    /** Array measurement with four elements [V] */
    extern volatile uint16_t ValueB[4];  /* produced by SensorHub */
+   #define ValueB__FACTOR (0.001)
+   #define ValueB__OFFSET (0.0)
    #if defined(FEATURE_X)
    /** Measurement that only exists when FEATURE_X is defined [V] */
    extern uint16_t ValueG;  /* produced by Controller */
+   #define ValueG__FACTOR (0.001)
+   #define ValueG__OFFSET (0.0)
    #endif /* defined(FEATURE_X) */
    /** Counter written by the event logger */
    extern uint8_t ValueJ;  /* produced by EventLogger */
    /** Shared axis indexed by ValueE [Hz] (calibration axis, 6 points) */
    extern const uint16_t AxisA[6];  /* produced by Controller */
+   #define AxisA__FACTOR (0.25)
+   #define AxisA__OFFSET (0.0)
 
    /* locals - owned exclusively by UserInterface */
    /** Second calibratable curve over the same shared axis [%] (calibration curve over AxisA) */
@@ -329,48 +344,25 @@ whether or not another component may read it.
    to include its own header. What travels to a component is that directory and the compile
    usage needed to read what is in it, never a link edge.
 
-``--const-inputs``
-~~~~~~~~~~~~~~~~~~
+Inputs are declared as they are defined
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Visibility stops a component from touching a variable it never declared, but it does not
-stop it from writing to one it declared as an ``input``. ``--const-inputs`` closes that gap
-by adding ``const`` to the input declarations of the consumer headers, which turns an
-assignment into a diagnostic the compiler issues at the offending line. It is the one c
-option left on the command line rather than in a template, because it changes what is
-declared and not how it is written: the qualifier is part of the declaration the model hands
-over, so any template that prints those declarations honours it. Generating the demo with
-``--const-inputs`` opens the inputs section of ``UserInterface.h`` like this:
+stop it from writing to one it declared as an ``input``. The generated headers do not try to:
+every declaration of an object carries the qualifiers its definition carries and no others,
+so a consumer sees ``extern int16_t ValueF;`` where ``ddd_globals.c`` defines
+``int16_t ValueF = -400;``. A header that declared the input ``const`` instead would leave two
+declarations of one object that disagree about their qualifiers, which c leaves undefined, and
+an optimising compiler may then read the variable once where its producer writes it in
+between. A write to a variable owned by somebody else is a matter for review.
 
-.. code-block:: c
-
-   /* inputs - produced elsewhere, UserInterface may only read them */
-   /** Measurement used as the input quantity of AxisA [Hz] */
-   extern const volatile uint16_t ValueE;  /* produced by Controller */
-   /** Signed measurement with a fixed point conversion [degC] */
-   extern const int16_t ValueF;  /* produced by Controller */
-   /** Floating point measurement without a conversion [degC] */
-   extern const float ValueC;  /* produced by SensorHub */
-   ...
-
-Note that ``volatile`` survives the transformation: ``const volatile`` is the correct
-qualification for a value that this translation unit may not write but that something else -
-here the producing component - changes underneath it, and dropping the ``volatile`` would let
-the optimiser cache a reading in a register. Objects that are already ``const``, the
-calibration data, are left alone; a second ``const`` does not compile.
-
-.. warning::
-   The definition in ``ddd_globals.c`` stays non-const, because the producing component has
-   to be able to write it. The consumer therefore sees ``extern const int16_t ValueF;`` while
-   the object is defined as ``int16_t ValueF = -400;``, and c requires that all declarations
-   of the same object agree on their type qualifiers. This is a constraint violation, and a
-   conforming compiler is entitled to reject it. In practice every embedded toolchain the
-   tool has been used with accepts it - the declarations are in different translation units,
-   the linker only matches names, and no compiler diagnoses across that boundary - but
-   "accepted in practice" is not "correct", which is why the behaviour is opt-in rather than
-   the default. The repository verifies the claim rather than asserting it: the container
-   target ``compile-const`` regenerates the demo with ``--const-inputs`` and compiles and
-   links the result with ``-std=c11 -Wall -Wextra -Wpedantic -Werror -Wconversion -Wshadow
-   -Wcast-qual -Wstrict-prototypes``.
+.. note::
+   Migrating from 0.11: ``ddd generate c --const-inputs``, ``CONST_INPUTS`` of
+   ``ddd_generate()``, ``.const`` of a header entry and ``declaration(const=...)`` of an
+   object are refused in a sentence naming 0.12.0. Delete them; a template that printed
+   ``entry.line`` needs nothing else. ``ddd generate a2l --image`` names, where the
+   compiler records it, a header that declares a variable with a ``const`` its description
+   does not state.
 
 Conditional declarations
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -384,7 +376,7 @@ templates emit the same ``#if`` around all of them:
 
    #if defined(FEATURE_X)
    /** Measurement that only exists when FEATURE_X is defined [V] */
-   uint16_t ValueG = 1000U;
+   DDD_RETAIN uint16_t ValueG = 1000U;
    #endif /* defined(FEATURE_X) */
 
 They repeat the condition in the ``#endif`` comment because these guards are frequently
@@ -436,8 +428,7 @@ else does - so DDD composes them independently instead of letting one displace t
 
 Every ``extern`` declaration of the object is qualified to match, in ``ddd_globals.h`` and in
 the header of each component that declared it, so that the whole image is compiled against
-one statement about the value. This is the argument ``--const-inputs`` makes one section
-above, applied to the other half of the data: ``const volatile`` is the correct qualification
+one statement about the value. ``const volatile`` is the correct qualification
 for a value this translation unit may not write but that something else changes underneath
 it, and whether that something else is the producing component or the calibration tool
 connected to the running ecu makes no difference to the compiler.
@@ -458,27 +449,31 @@ that one across an opaque call, so a value that changes while the software runs 
 observed to change between them - and with ``-flto`` it folds outright. Reading the parameter
 once into a ram copy at startup is no escape either: ``RamGain = Gain;`` is ``mov eax, 3``.
 
-What that costs is not a write that fails but a write nobody notices. A program that stores 7
-through the address of a plain ``const`` object prints, identically at ``-O0``, ``-O2`` and
-``-Os``, that memory now holds ``Gain=7`` and that ``apply(1)`` still returns 3, which is
-exactly the failure a calibration engineer spends an afternoon on: the tool shows the new
-value, reads it back correctly, and the ecu behaves as it did before.
+What a tool's write then does was run as a hosted program (gcc 15.2.0, binutils 2.46) that stores
+7 through the address of ``Gain`` and prints what memory holds, what ``Gain`` reads and what
+``apply(1)`` returns. On an ordinary hosted build the store faults, a segmentation fault, at
+``-O0``, ``-O2`` and ``-Os``, for ``const`` and ``const volatile`` alike, because both lie in
+``.rodata``. With the page made writable first (``mprotect``, as an overlay or an emulation
+memory makes it for a tool), a plain ``const`` object reads 3 and ``apply(1)`` returns 3 at all
+three levels, while memory holds 7 at ``-O0`` and still 3 at ``-O2`` and ``-Os``. A ``const volatile`` object reads 7 and ``apply(1)`` returns 7 at all
+three. What a particular target does with a store to flash is the target's to say, and was not
+measured.
 
-``volatile`` is not free, and what it costs is the read only memory the ``const`` earned. gcc
-treats a volatile access as a side effect and takes the object out of the read only category
-altogether: ``.section .rodata`` becomes a plain ``.data``, the section flags ``readelf``
-reports go from ``A`` to ``WA``, and the class ``nm`` prints goes from ``R`` to ``D``.
-Measured with gcc 12.2.0 on DDD's own generated demo with the flag set quoted above, ``size
--A ddd_globals.o`` moved from ``.rodata 84`` and ``.data 2`` to ``.data 86`` - every byte of
-the calibration data changing category. Those two counts are of the demo as it stood when the
-measurement was taken, and they move with whatever the demo declares; what does not move is
-that all of it goes across. Naming a section
-explicitly does not change this - a ``.calib`` section is emitted ``A`` when its contents are
-``const`` and ``WA`` when they are ``const volatile``. On a flash target with an ordinary
-linker script that means a ram address with a load region in flash and a copy at startup, so
-the calibration tool programs a page the code never reads and the next reset overwrites what
-the tool wrote. A project that calibrates online therefore places these objects itself, in
-its linker script.
+Where the object lies is a separate question, and ``volatile`` does not answer it:
+``volatile`` does not move a value to RAM on any toolchain measured. The committed ELF images
+the test suite reads, built by gcc 14.2.0 (x86_64, i686, aarch64, powerpc and s390x),
+arm-none-eabi-gcc 14.2.1 and clang 19.1.7, hold every ``const volatile`` object in ``.rodata``,
+which is not writable, except the small ones on powerpc, which lie in ``.sdata``, a writable
+section, as the plain ``const`` objects of their size do. ``readelf`` reports the flags ``A``, not
+``WA``, for ``.rodata``, and ``nm`` the class ``R``, not ``D``, on every image measured but
+the small objects of powerpc. Where the compiler
+places such an object depends on the target and on the compiler's version, and no other
+version was measured: confirm it once on the toolchain a project ships with.
+
+Where a calibration parameter lives is the project's to decide, by the ``section`` DDD writes
+and by the linker script, and a tool writes a parameter that stays in flash through an overlay
+or an emulation memory. A project that calibrates from RAM places the object there itself,
+with the startup copy that implies.
 
 DDD states no preference between the two answers and reports nothing about the choice. There
 is nothing in a description it could derive one from - unlike the limits, which follow from
@@ -536,6 +531,8 @@ exit code is unaffected:
 .. code-block:: text
 
    $ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates
+   <project>: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+   1 info
    unchanged   build/gen/ddd_globals.c
    unchanged   build/gen/ddd_globals.h
    unchanged   build/gen/ddd_types.h
@@ -555,6 +552,8 @@ touched. Changing the description of one variable in ``SensorHub`` shows the gra
 .. code-block:: text
 
    $ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates  # after the edit
+   <project>: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+   1 info
    wrote       build/gen/ddd_globals.c (updated)
    wrote       build/gen/ddd_globals.h (updated)
    unchanged   build/gen/ddd_types.h
@@ -581,6 +580,8 @@ than the status. Here the output directory did not exist yet, which is why every
 .. code-block:: text
 
    $ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates --dry-run
+   <project>: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+   1 info
    would write build/gen/ddd_globals.c (created)
    would write build/gen/ddd_globals.h (created)
    would write build/gen/ddd_types.h (created)
@@ -622,6 +623,7 @@ writes, saying so:
 .. code-block:: text
 
    $ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates  # after the component left
+   ...
    wrote       build/gen/ddd_globals.c (updated)
    ...
    removed     build/gen/EventLogger.h
@@ -704,9 +706,14 @@ what they are reading.
 The whole project becomes a single ``MODULE`` named after the project, which is the right
 granularity here: a module is what a calibration tool connects to, and the components of the
 image are one target, not several. ``BYTE_ORDER`` follows ``--byte-order``, which writes
-``MSB_LAST`` for ``little`` (the default) and ``MSB_FIRST`` for ``big``; the alignment values
-are the natural alignment of each width, which is what a compiler targeting a modern core
-does unless it is told to pack. The a2l is written by the ``a2l`` and ``all`` artefacts, and
+``MSB_LAST`` for ``little`` (the default) and ``MSB_FIRST`` for ``big``; a run that gives
+neither the option nor an image says at ``info``, as ``byte-order-defaulted``, that it
+assumed little endian (cmake's ``BYTE_ORDER`` is the same choice). The alignment values are
+the natural alignment of each width by default, which is what a compiler targeting a modern
+core does unless it is told to pack. With ``--image`` the 64 bit ones come from the image's
+machine: ``ALIGNMENT_INT64`` and ``ALIGNMENT_FLOAT64_IEEE`` are 4 for an i386 image, which
+aligns a 64 bit scalar to 4. For a machine and ABI the tool holds no alignment rule for, the
+defaults stand. The a2l is written by the ``a2l`` and ``all`` artefacts, and
 it is named after the project, so ``DemoDevice`` produces ``DemoDevice.a2l``.
 
 A project that declares a :doc:`constant vocabulary <file_formats/constants>` gets a
@@ -891,7 +898,11 @@ The generated names are derived from the conversion and the unit, so ``CM_LIN_HZ
 readable in a tool rather than being a serial number, and a unit that is not a valid
 identifier is transliterated - ``%`` becomes ``PCT``, ``m/s^2`` becomes ``M_PER_S2``. When two
 different conversions share a unit, the second one gets a numeric suffix; the demo carries
-both ``CM_LIN_PCT`` (factor 0.5) and ``CM_LIN_PCT_2`` (factor 0.1). The display format is the
+both ``CM_LIN_PCT`` (factor 0.5) and ``CM_LIN_PCT_2`` (factor 0.1). The unsuffixed name goes
+to the object whose record the file writes first: the measurements, then the axes, then the
+other calibration objects, curves and maps among them, each in the dictionary's order, with the members of structures after the plain
+objects of their kind. A measurement that comes before an axis in the file therefore keeps the
+plain name, whatever the axis's curve is called. The display format is the
 third part of the key, because a method carries exactly one: it is derived from the datatype
 and the conversion - ``%8.0`` where every physical value is whole, ``%8.3`` otherwise - so an
 integer and a float object scaled the same way in the same unit get a method each, with the
@@ -901,7 +912,16 @@ The ``COEFFS`` line is the part that surprises everybody who reads an a2l for th
 A description says ``{"kind": "linear", "factor": 0.25, "offset": 0.0}``, which means
 ``physical = raw * factor + offset``, and yet the coefficients written out are
 ``0 1 0 0 0 0.25``. The reason is that ``RAT_FUNC`` describes the conversion in the *other*
-direction. Its six coefficients ``a b c d e f`` define
+direction.
+
+Writing ``RAT_FUNC`` for a linear conversion is a choice. The standard (ASAP2 1.6.1, the
+``COMPU_METHOD`` record) says to use the conversion type ``LINEAR`` for linear functions, and
+``COEFFS_LINEAR a b`` states ``physical = a * raw + b``, the description's own direction,
+which would leave nothing to explain here. DDD writes ``RAT_FUNC`` anyway and keeps
+doing so: a file written by an earlier version keeps the
+type of its methods, and the choice is not an option of the tool.
+
+Its six coefficients ``a b c d e f`` define
 
 .. code-block:: text
 
@@ -1045,7 +1065,8 @@ the situation rather than silently truncating:
 
    $ ddd generate all cube.ddd.json -o build/gen -t templates -W unused-output=ignore
    cube.ddd.json#component.interface[0].definition: warning[a2l-unrepresentable]: 'Cube' has 4 dimensions, but the MATRIX_DIM of ASAP2 1.6.1 carries 3; the extra dimensions are written out and only a 1.7 reader understands them
-   1 warning
+   <project>: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+   1 warning, 1 info
    wrote       build/gen/ddd_globals.c (created)
    ...
 
@@ -1216,8 +1237,11 @@ below - says so on the line under its ``ASAP2_VERSION``, as the head of the file
 since no ``address-missing`` can: there is nothing to miss.
 
 Three mechanisms exist to fix that up, and DDD offers all three because projects are split
-between them. The first is ``SYMBOL_LINK``, which names the c symbol the record describes and is
-emitted for **every** object, always, whether or not an address is known. It is what an a2l
+between them. The first is ``SYMBOL_LINK``, which names the linker symbol the record lies in,
+with the offset from it, and is emitted for **every** object, always, whether or not an address
+is known. A variable that is not a member names itself at offset 0; a structure member names the
+variable and its own offset when ``--image`` placed it, and its path at offset 0 before the link
+or with a map, which is a path no linker map can answer. It is what an a2l
 address patcher - a tool that reads the map file or the debug information of the linked image
 and rewrites the ``ECU_ADDRESS`` fields - matches on, so a build that patches its a2l after
 linking needs no configuration on the DDD side at all.
@@ -1255,7 +1279,7 @@ whichever the tool producing it finds easier:
    {
      "ValueE": "0x20000100",
      "AxisA": "0x08004000",
-     "ParameterA": 134234112
+     "ParameterA": 134234128
    }
 
 A string address is written in decimal, or in hexadecimal behind a ``0x`` prefix, and in
@@ -1291,7 +1315,7 @@ filled in:
        /end AXIS_PTS
 
        /begin CHARACTERISTIC ParameterA "Single calibratable constant"
-         VALUE 0x08004000 RL_VALUES_UWORD 0 CM_LIN_HZ 500 1500
+         VALUE 0x08004010 RL_VALUES_UWORD 0 CM_LIN_HZ 500 1500
          SYMBOL_LINK "ParameterA" 0
        /end CHARACTERISTIC
 
@@ -1416,3 +1440,47 @@ demo's calibration objects, ``ParameterA``, ``AxisB``, ``CurveA``, ``MapA``, ``C
    :doc:`ddd compare </comparing_deliveries>`: the ``changed-a2l`` check reports it as a
    warning when a candidate delivery is measured against an archived baseline, because a
    calibration file prepared against the previous a2l may no longer apply cleanly.
+
+.. _a2l-module-fragment:
+
+What the a2l leaves to the project
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+DDD writes what the data dictionary holds, and nothing about the target that reads the file.
+The ``IF_DATA`` blocks it writes on a measurement are described by an ``A2ML``, the ASAM MCD-2
+MC metalanguage, which ASAP2 asks the file to carry; the module's own ``IF_DATA`` - the protocol
+layer, the transport and the ``DAQ`` list of the XCP stack - is the stack's; and what lets a tool
+trust that this file belongs to this image, an ``EPK`` with its ``ADDR_EPK``, and the
+``MEMORY_SEGMENT`` of each memory the target has, are the target's as well. None of it is
+modelled. A project that needs any of it names a text file with ``--a2l-module-fragment``, or
+``A2L_MODULE_FRAGMENT`` in cmake, and the a2l holds that file once, unchanged, as the first thing
+inside the ``MODULE``:
+
+.. code-block:: text
+
+   ddd generate a2l project.ddd.json -o gen --a2l-module-fragment module.a2l
+
+.. code-block:: text
+
+     /begin MODULE DemoDevice "..."
+   /begin A2ML
+     ...
+   /end A2ML
+
+       /begin MOD_COMMON "global variables of DemoDevice"
+       ...
+
+The text is pasted as it is - not indented, not checked and not reordered - with a final
+newline added if the file has none. It comes before every ``IF_DATA`` of the file, so a reader
+that parses an ``IF_DATA`` by the metalanguage has met the metalanguage first. DDD does not read
+the fragment's keywords, with one exception: a ``MOD_PAR`` may appear once in a module, and
+``EPK``, ``ADDR_EPK`` and ``MEMORY_SEGMENT`` live inside it. DDD writes a ``MOD_PAR`` of its own
+wherever the project declares a :doc:`named constant <file_formats/constants>`, for its
+``SYSTEM_CONSTANT``\ s, so a fragment holding one beside a named constant is a usage error naming
+the fragment. In a project that declares no constant the fragment's ``MOD_PAR`` is the module's.
+A project with named constants therefore cannot carry an ``EPK`` through the fragment.
+
+A fragment that cannot be read, or is not UTF-8 text, is refused naming the file, as an address
+map is. In cmake the file is an input of whichever step writes the a2l, the run before the link
+or the one after it, so an edit to it writes the a2l again; it is the a2l's alone, and is
+refused beside ``NO_A2L`` or ``--without a2l``.

@@ -46,12 +46,15 @@ are the raw range of its datatype &#45; which is what the a2l record states &#45
 that ranges a conversion has to know that a string exists. A byte has no reading of its
 own, so no reading is produced for it, as for the identity.
 " alt="" coords="868,451,1023,511"/>
-<area shape="rect" id="node6" title="ddd.models.objects.A2lObjectOptions
+<area shape="rect" id="node6" title="ddd.models.objects.LeafA2lOptions
 
-What a declaration asks of the a2l backend. Only that backend interprets it.
+The ``a2l`` block a leaf is published under, which the analysis resolves.
 
-Nothing here changes the generated c or the meaning of the object; a project that
-generates no a2l can leave the whole block out.
+The block a member states, with ``export`` folded over the variable and every member above
+the leaf, ``format`` the innermost stated one, and ``display_identifier`` a path where a
+member above the leaf states one: that member&#39;s identifier stands for its own segment of
+the leaf&#39;s path, so ``V[1].j.b`` with ``j`` displayed ``J`` is ``V[1].J.b``. The block a
+project writes keeps one plain identifier; this one is written by the analysis alone.
 " alt="" coords="827,697,1063,817"/>
 <area shape="rect" id="node7" title="ddd.models.objects.Limits
 

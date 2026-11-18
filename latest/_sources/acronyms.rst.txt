@@ -261,6 +261,20 @@ that the table can be read as a description of one file.
      - One entry of that list: the event *channel number*, which is the number the
        ``rasters`` file assigned. The name of the event lives in the module level ``DAQ``
        block, which describes the target's XCP implementation and which DDD does not write.
+   * - ``A2ML``
+     - The ASAM MCD-2 MC metalanguage, in which the parameters of an ``IF_DATA`` are described. DDD
+       writes none: a project that needs one gives it in the
+       :ref:`module fragment <a2l-module-fragment>`.
+   * - ``MOD_PAR``
+     - The module's parameter block, of which a module has one: ``EPK``, ``ADDR_EPK`` and
+       ``MEMORY_SEGMENT`` live inside it, and so do the ``SYSTEM_CONSTANT``\ s DDD writes for a
+       project's named constants. A fragment may hold it only where the project declares none.
+   * - ``EPK``
+     - The identifier of the software version a tool uses to tell that an a2l belongs to an
+       image, with its ``ADDR_EPK``. DDD writes neither; they go in the module fragment.
+   * - ``MEMORY_SEGMENT``
+     - A memory region of the target, as a calibration tool sees it. Not written by DDD; it goes in
+       the module fragment.
    * - ``GROUP``
      - A named collection of measurements and characteristics, used to organise the objects
        in the calibration tool. DDD emits one per component that exports at least one object,

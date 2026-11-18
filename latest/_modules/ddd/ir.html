@@ -138,6 +138,7 @@
     <span class="n">A2lObjectOptions</span><span class="p">,</span>
     <span class="n">Dimension</span><span class="p">,</span>
     <span class="n">InitValue</span><span class="p">,</span>
+    <span class="n">LeafA2lOptions</span><span class="p">,</span>
     <span class="n">Limits</span><span class="p">,</span>
     <span class="n">ObjectKind</span><span class="p">,</span>
     <span class="n">PointCounts</span><span class="p">,</span>
@@ -710,8 +711,9 @@
     <span class="n">local</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
 <span class="w">    </span><span class="sd">"""Owned exclusively by ``owner``."""</span>
 
-    <span class="n">a2l</span><span class="p">:</span> <span class="n">A2lObjectOptions</span> <span class="o">=</span> <span class="n">A2lObjectOptions</span><span class="p">()</span>
-<span class="w">    </span><span class="sd">"""The member's own a2l options; a member may be kept out of the file on its own."""</span>
+    <span class="n">a2l</span><span class="p">:</span> <span class="n">LeafA2lOptions</span> <span class="o">=</span> <span class="n">LeafA2lOptions</span><span class="p">()</span>
+<span class="w">    </span><span class="sd">"""The member's a2l options resolved over the variable and the members above it; a member</span>
+<span class="sd">    may be kept out of the file on its own."""</span>
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">name</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
@@ -763,7 +765,7 @@
 <span class="sd">"""</span>
 
 
-<span class="n">DICTIONARY_FORMAT</span> <span class="o">=</span> <span class="mi">9</span>
+<span class="n">DICTIONARY_FORMAT</span> <span class="o">=</span> <span class="mi">10</span>
 <span class="sd">"""Version of the dictionary format itself.</span>
 
 <span class="sd">A dumped dictionary is meant to be archived next to a delivery and read back by a later</span>
@@ -777,6 +779,10 @@
 
 <span class="sd">Format 9 added ``point_counts`` to every object. A format 8 dictionary carries none, and reads</span>
 <span class="sd">back with ``none`` everywhere, which is the layout it described.</span>
+
+<span class="sd">Format 10 widened a leaf's ``display_identifier`` from one plain identifier to a path of them,</span>
+<span class="sd">``V[1].J.b``, which a member naming a structure composes for the leaves below it. A format 9</span>
+<span class="sd">dictionary carries at most a plain identifier there, and reads back unchanged.</span>
 <span class="sd">"""</span>
 
 

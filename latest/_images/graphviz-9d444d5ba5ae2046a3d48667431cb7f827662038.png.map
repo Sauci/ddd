@@ -75,7 +75,7 @@ What a declaration asks of the a2l backend. Only that backend interprets it.
 
 Nothing here changes the generated c or the meaning of the object; a project that
 generates no a2l can leave the whole block out.
-" alt="" coords="1316,2036,1552,2156"/>
+" alt="" coords="1316,2642,1552,2762"/>
 <area shape="rect" id="node12" title="ddd.models.conversion.IdentityConversion
 
 ``physical == raw``; stated like any other conversion, ``{}`` its shortest spelling.
@@ -83,11 +83,11 @@ generates no a2l can leave the whole block out.
 Not a default: a definition naming storage by ``datatype`` states this one where raw and
 physical are the same number, so that the claim is written down rather than left to
 silence.
-" alt="" coords="1350,788,1519,848"/>
+" alt="" coords="1350,1048,1519,1108"/>
 <area shape="rect" id="node13" title="ddd.models.conversion.LinearConversion
 
 ``physical = raw * factor + offset``, the scaling of a fixed point value.
-" alt="" coords="1352,1048,1517,1168"/>
+" alt="" coords="1352,1462,1517,1582"/>
 <area shape="rect" id="node14" title="ddd.models.conversion.StringConversion
 
 Bytes read as text: each element of the array holds one character code.
@@ -101,12 +101,22 @@ The two mappings are the identity on one byte, so that the derived limits of a s
 are the raw range of its datatype &#45; which is what the a2l record states &#45; and nothing
 that ranges a conversion has to know that a string exists. A byte has no reading of its
 own, so no reading is produced for it, as for the identity.
-" alt="" coords="1357,1522,1512,1582"/>
-<area shape="rect" id="node15" title="ddd.models.objects.Limits
+" alt="" coords="1357,788,1512,848"/>
+<area shape="rect" id="node15" title="ddd.models.objects.LeafA2lOptions
+
+The ``a2l`` block a leaf is published under, which the analysis resolves.
+
+The block a member states, with ``export`` folded over the variable and every member above
+the leaf, ``format`` the innermost stated one, and ``display_identifier`` a path where a
+member above the leaf states one: that member&#39;s identifier stands for its own segment of
+the leaf&#39;s path, so ``V[1].j.b`` with ``j`` displayed ``J`` is ``V[1].J.b``. The block a
+project writes keeps one plain identifier; this one is written by the analysis alone.
+" alt="" coords="1316,2036,1552,2156"/>
+<area shape="rect" id="node16" title="ddd.models.objects.Limits
 
 Physical lower/upper limit of a data object.
 " alt="" coords="1351,1669,1518,1759"/>
-<area shape="rect" id="node16" title="ddd.ir.ResolvedMember
+<area shape="rect" id="node17" title="ddd.ir.ResolvedMember
 
 One member of a structure, as the c templates need it to declare the member.
 
@@ -119,7 +129,7 @@ of a base datatype, is a structure, or is storage of a type DDD does not describ
 member stating none of them would be storage with no size, no meaning and no name, which
 a consumer of this document has nothing to do with.
 " alt="" coords="1296,2204,1572,2474"/>
-<area shape="rect" id="node17" title="ddd.models.conversion.Enumerator
+<area shape="rect" id="node18" title="ddd.models.conversion.Enumerator
 
 One named value of an enum conversion, and what that value means.
 " alt="" coords="1716,632,1831,752"/>

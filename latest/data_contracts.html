@@ -2423,7 +2423,7 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
 <span class="w">                  </span><span class="nt">"format"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
 <span class="w">                  </span><span class="nt">"display_identifier"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
 <span class="w">               </span><span class="p">},</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"What this member asks of the a2l file once the structure is flattened into it.\n\nPer member rather than per structure, because that is the granularity the a2l ends up with:\neach member becomes an object of its own, so keeping one of them out of the file, or giving\none of them a display format, is a decision about that member alone."</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"What this member asks of the a2l file once the structure is flattened into it.\n\nPer member rather than per structure, because that is the granularity the a2l ends up with:\neach member becomes an object of its own, so keeping one of them out of the file, or giving\none of them a display format, is a decision about that member alone.\n\nOn a member that names a structure the block shapes every record below it: ``export: false``\nkeeps the whole subtree out of every instance, and nothing deeper brings a leaf back;\n``format`` reaches each leaf below (not a string); ``display_identifier`` stands for the\nmember's own segment of the path of each record below it, ``V.j.b`` with ``j`` displayed ``J``\nbeing ``V.J.b``. A deeper member's own ``format`` wins for its own subtree; a leaf's own\n``display_identifier`` is written as stated."</span>
 <span class="w">            </span><span class="p">}</span>
 <span class="w">         </span><span class="p">},</span>
 <span class="w">         </span><span class="nt">"required"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
@@ -4779,7 +4779,7 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
 <span class="w">                  </span><span class="nt">"format"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
 <span class="w">                  </span><span class="nt">"display_identifier"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
 <span class="w">               </span><span class="p">},</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"What this member asks of the a2l file once the structure is flattened into it.\n\nPer member rather than per structure, because that is the granularity the a2l ends up with:\neach member becomes an object of its own, so keeping one of them out of the file, or giving\none of them a display format, is a decision about that member alone."</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"What this member asks of the a2l file once the structure is flattened into it.\n\nPer member rather than per structure, because that is the granularity the a2l ends up with:\neach member becomes an object of its own, so keeping one of them out of the file, or giving\none of them a display format, is a decision about that member alone.\n\nOn a member that names a structure the block shapes every record below it: ``export: false``\nkeeps the whole subtree out of every instance, and nothing deeper brings a leaf back;\n``format`` reaches each leaf below (not a string); ``display_identifier`` stands for the\nmember's own segment of the path of each record below it, ``V.j.b`` with ``j`` displayed ``J``\nbeing ``V.J.b``. A deeper member's own ``format`` wins for its own subtree; a leaf's own\n``display_identifier`` is written as stated."</span>
 <span class="w">            </span><span class="p">}</span>
 <span class="w">         </span><span class="p">},</span>
 <span class="w">         </span><span class="nt">"required"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
@@ -7903,7 +7903,7 @@ one of them&amp;#xA;appears here.&amp;#xA;&quot;];
 <span class="w">                  </span><span class="nt">"format"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
 <span class="w">                  </span><span class="nt">"display_identifier"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
 <span class="w">               </span><span class="p">},</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"What this member asks of the a2l file once the structure is flattened into it.\n\nPer member rather than per structure, because that is the granularity the a2l ends up with:\neach member becomes an object of its own, so keeping one of them out of the file, or giving\none of them a display format, is a decision about that member alone."</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"What this member asks of the a2l file once the structure is flattened into it.\n\nPer member rather than per structure, because that is the granularity the a2l ends up with:\neach member becomes an object of its own, so keeping one of them out of the file, or giving\none of them a display format, is a decision about that member alone.\n\nOn a member that names a structure the block shapes every record below it: ``export: false``\nkeeps the whole subtree out of every instance, and nothing deeper brings a leaf back;\n``format`` reaches each leaf below (not a string); ``display_identifier`` stands for the\nmember's own segment of the path of each record below it, ``V.j.b`` with ``j`` displayed ``J``\nbeing ``V.J.b``. A deeper member's own ``format`` wins for its own subtree; a leaf's own\n``display_identifier`` is written as stated."</span>
 <span class="w">            </span><span class="p">}</span>
 <span class="w">         </span><span class="p">},</span>
 <span class="w">         </span><span class="nt">"required"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
@@ -8579,7 +8579,7 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
 <span class="w">                  </span><span class="nt">"format"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
 <span class="w">                  </span><span class="nt">"display_identifier"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
 <span class="w">               </span><span class="p">},</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"What this member asks of the a2l file once the structure is flattened into it.\n\nPer member rather than per structure, because that is the granularity the a2l ends up with:\neach member becomes an object of its own, so keeping one of them out of the file, or giving\none of them a display format, is a decision about that member alone."</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"What this member asks of the a2l file once the structure is flattened into it.\n\nPer member rather than per structure, because that is the granularity the a2l ends up with:\neach member becomes an object of its own, so keeping one of them out of the file, or giving\none of them a display format, is a decision about that member alone.\n\nOn a member that names a structure the block shapes every record below it: ``export: false``\nkeeps the whole subtree out of every instance, and nothing deeper brings a leaf back;\n``format`` reaches each leaf below (not a string); ``display_identifier`` stands for the\nmember's own segment of the path of each record below it, ``V.j.b`` with ``j`` displayed ``J``\nbeing ``V.J.b``. A deeper member's own ``format`` wins for its own subtree; a leaf's own\n``display_identifier`` is written as stated."</span>
 <span class="w">            </span><span class="p">}</span>
 <span class="w">         </span><span class="p">},</span>
 <span class="w">         </span><span class="nt">"required"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
@@ -8880,7 +8880,7 @@ structure moves every address after&amp;#xA;the change, which is why a compariso
 <span class="w">            </span><span class="nt">"format"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
 <span class="w">            </span><span class="nt">"display_identifier"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
 <span class="w">         </span><span class="p">},</span>
-<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"What this member asks of the a2l file once the structure is flattened into it.\n\nPer member rather than per structure, because that is the granularity the a2l ends up with:\neach member becomes an object of its own, so keeping one of them out of the file, or giving\none of them a display format, is a decision about that member alone."</span>
+<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"What this member asks of the a2l file once the structure is flattened into it.\n\nPer member rather than per structure, because that is the granularity the a2l ends up with:\neach member becomes an object of its own, so keeping one of them out of the file, or giving\none of them a display format, is a decision about that member alone.\n\nOn a member that names a structure the block shapes every record below it: ``export: false``\nkeeps the whole subtree out of every instance, and nothing deeper brings a leaf back;\n``format`` reaches each leaf below (not a string); ``display_identifier`` stands for the\nmember's own segment of the path of each record below it, ``V.j.b`` with ``j`` displayed ``J``\nbeing ``V.J.b``. A deeper member's own ``format`` wins for its own subtree; a leaf's own\n``display_identifier`` is written as stated."</span>
 <span class="w">      </span><span class="p">}</span>
 <span class="w">   </span><span class="p">},</span>
 <span class="w">   </span><span class="nt">"$defs"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
@@ -9310,10 +9310,22 @@ the field cannot hold and the software then reads back something else.</p>
 <p>Per member rather than per structure, because that is the granularity the a2l ends up with:
 each member becomes an object of its own, so keeping one of them out of the file, or giving
 one of them a display format, is a decision about that member alone.</p>
+<p>On a member that names a structure the block shapes every record below it: <code class="docutils literal notranslate"><span class="pre">export:</span> <span class="pre">false</span></code>
+keeps the whole subtree out of every instance, and nothing deeper brings a leaf back;
+<code class="docutils literal notranslate"><span class="pre">format</span></code> reaches each leaf below (not a string); <code class="docutils literal notranslate"><span class="pre">display_identifier</span></code> stands for the
+member’s own segment of the path of each record below it, <code class="docutils literal notranslate"><span class="pre">V.j.b</span></code> with <code class="docutils literal notranslate"><span class="pre">j</span></code> displayed <code class="docutils literal notranslate"><span class="pre">J</span></code>
+being <code class="docutils literal notranslate"><span class="pre">V.J.b</span></code>. A deeper member’s own <code class="docutils literal notranslate"><span class="pre">format</span></code> wins for its own subtree; a leaf’s own
+<code class="docutils literal notranslate"><span class="pre">display_identifier</span></code> is written as stated.</p>
 <p>What this member asks of the a2l file once the structure is flattened into it.</p>
 <p>Per member rather than per structure, because that is the granularity the a2l ends up with:
 each member becomes an object of its own, so keeping one of them out of the file, or giving
 one of them a display format, is a decision about that member alone.</p>
+<p>On a member that names a structure the block shapes every record below it: <code class="docutils literal notranslate"><span class="pre">export:</span> <span class="pre">false</span></code>
+keeps the whole subtree out of every instance, and nothing deeper brings a leaf back;
+<code class="docutils literal notranslate"><span class="pre">format</span></code> reaches each leaf below (not a string); <code class="docutils literal notranslate"><span class="pre">display_identifier</span></code> stands for the
+member’s own segment of the path of each record below it, <code class="docutils literal notranslate"><span class="pre">V.j.b</span></code> with <code class="docutils literal notranslate"><span class="pre">j</span></code> displayed <code class="docutils literal notranslate"><span class="pre">J</span></code>
+being <code class="docutils literal notranslate"><span class="pre">V.J.b</span></code>. A deeper member’s own <code class="docutils literal notranslate"><span class="pre">format</span></code> wins for its own subtree; a leaf’s own
+<code class="docutils literal notranslate"><span class="pre">display_identifier</span></code> is written as stated.</p>
 </dd></dl>
 
 </dd></dl>
@@ -14506,7 +14518,7 @@ measurement or a value block, <code class="docutils literal notranslate"><span c
 <dl class="field-list simple">
 <dt class="field-odd">Constraints<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>func</strong> = &lt;function within_64_bits at 0x75dc39e5a160&gt;</p></li>
+<li><p><strong>func</strong> = &lt;function within_64_bits at 0x710ceab98b80&gt;</p></li>
 <li><p><strong>json_schema_input_type</strong> = PydanticUndefined</p></li>
 </ul>
 </dd>
@@ -14520,7 +14532,7 @@ measurement or a value block, <code class="docutils literal notranslate"><span c
 <dl class="field-list simple">
 <dt class="field-odd">Constraints<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>func</strong> = &lt;function within_64_bits at 0x75dc39e5a160&gt;</p></li>
+<li><p><strong>func</strong> = &lt;function within_64_bits at 0x710ceab98b80&gt;</p></li>
 <li><p><strong>json_schema_input_type</strong> = PydanticUndefined</p></li>
 </ul>
 </dd>
@@ -14647,6 +14659,117 @@ mentions is exported: see “Who asks for an export” on the definition page.</
 <dt class="sig sig-object py" id="ddd.models.A2lObjectOptions.display_identifier">
 <span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">display_identifier</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Identifier</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#ddd.models.A2lObjectOptions.display_identifier" title="Link to this definition"></a></dt>
 <dd><p>Alternative name shown by the calibration tool.</p>
+</dd></dl>
+
+</dd></dl>
+
+<p>A leaf of the <a class="reference internal" href="data_dictionary.html"><span class="doc">data dictionary</span></a> carries the same block resolved, as
+<a class="reference internal" href="#ddd.models.LeafA2lOptions" title="ddd.models.LeafA2lOptions"><code class="xref py py-class docutils literal notranslate"><span class="pre">ddd.models.LeafA2lOptions</span></code></a>: a display identifier there may be the path a member above
+the leaf composes, <code class="docutils literal notranslate"><span class="pre">V[1].J.b</span></code>, where the block a description writes holds one identifier.</p>
+<dl class="py class pydantic_model">
+<dt class="sig sig-object py" id="ddd.models.LeafA2lOptions">
+<span class="property"><span class="pre">pydantic</span> <span class="pre">model</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">LeafA2lOptions</span></span><a class="reference internal" href="_modules/ddd/models/objects.html#LeafA2lOptions"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ddd.models.LeafA2lOptions" title="Link to this definition"></a></dt>
+<dd><p>The <code class="docutils literal notranslate"><span class="pre">a2l</span></code> block a leaf is published under, which the analysis resolves.</p>
+<p>The block a member states, with <code class="docutils literal notranslate"><span class="pre">export</span></code> folded over the variable and every member above
+the leaf, <code class="docutils literal notranslate"><span class="pre">format</span></code> the innermost stated one, and <code class="docutils literal notranslate"><span class="pre">display_identifier</span></code> a path where a
+member above the leaf states one: that member’s identifier stands for its own segment of
+the leaf’s path, so <code class="docutils literal notranslate"><span class="pre">V[1].j.b</span></code> with <code class="docutils literal notranslate"><span class="pre">j</span></code> displayed <code class="docutils literal notranslate"><span class="pre">J</span></code> is <code class="docutils literal notranslate"><span class="pre">V[1].J.b</span></code>. The block a
+project writes keeps one plain identifier; this one is written by the analysis alone.</p>
+<div class="graphviz"><img src="_images/graphviz-a6e3bec583620221b0eb1445cc69c24a564b1eb8.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
+   graph [fontcolor=gray66,
+      fontname=&quot;Times New Roman,Times,Liberation Serif,serif&quot;,
+      fontsize=9,
+      nodesep=0.5,
+      rankdir=LR,
+      ranksep=1.5
+   ];
+   node [fontname=&quot;Times New Roman,Times,Liberation Serif,serif&quot;,
+      fontsize=14,
+      label=&quot;\N&quot;,
+      shape=plain
+   ];
+   edge [dir=both];
+   &quot;ddd.models.objects.LeafA2lOptions&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;LeafA2lOptions&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;export&lt;/td&gt;&lt;td port=&quot;export&quot;&gt;bool | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;format&lt;/td&gt;&lt;td port=&quot;format&quot;&gt;Optional[str]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;display_identifier&lt;/td&gt;&lt;td port=&quot;display_identifier&quot;&gt;Optional[str]&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
+      tooltip=&quot;ddd.models.objects.LeafA2lOptions&amp;#xA;&amp;#xA;The ``a2l`` block a leaf is published under, which the analysis resolves.&amp;#xA;&amp;#xA;The \
+block a member states, with ``export`` folded over the variable and every member above&amp;#xA;the leaf, ``format`` the innermost stated \
+one, and ``display_identifier`` a path where a&amp;#xA;member above the leaf states one: that member's identifier stands for its own \
+segment of&amp;#xA;the leaf's path, so ``V[1].j.b`` with ``j`` displayed ``J`` is ``V[1].J.b``. The block a&amp;#xA;project writes keeps \
+one plain identifier; this one is written by the analysis alone.&amp;#xA;&quot;];
+}" class="graphviz" /></div>
+<p><details  class="autodoc_pydantic_collapsable_json">
+<summary>Show JSON schema</summary><div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">   </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"LeafA2lOptions"</span><span class="p">,</span>
+<span class="w">   </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The ``a2l`` block a leaf is published under, which the analysis resolves.\n\nThe block a member states, with ``export`` folded over the variable and every member above\nthe leaf, ``format`` the innermost stated one, and ``display_identifier`` a path where a\nmember above the leaf states one: that member's identifier stands for its own segment of\nthe leaf's path, so ``V[1].j.b`` with ``j`` displayed ``J`` is ``V[1].J.b``. The block a\nproject writes keeps one plain identifier; this one is written by the analysis alone."</span><span class="p">,</span>
+<span class="w">   </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"object"</span><span class="p">,</span>
+<span class="w">   </span><span class="nt">"properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"export"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">         </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">            </span><span class="p">{</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"boolean"</span>
+<span class="w">            </span><span class="p">},</span>
+<span class="w">            </span><span class="p">{</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"null"</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">         </span><span class="p">],</span>
+<span class="w">         </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Whether the object belongs in the a2l file; omitted, it does.\n\nThe one a2l option any component may state, not only the producer. Which signals a\ncalibration engineer needs to see is not a property of whoever happens to write the\nvariable: a component reading a value from a library it does not own has as good a claim\nto measuring it.\n\nStated by several, the answer is yes if any of them says so, and an object nobody\nmentions is exported: see \"Who asks for an export\" on the definition page."</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Export"</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">"format"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">         </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">            </span><span class="p">{</span>
+<span class="w">               </span><span class="nt">"pattern"</span><span class="p">:</span><span class="w"> </span><span class="s2">"^%[0-9]*\\.[0-9]+$"</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
+<span class="w">            </span><span class="p">},</span>
+<span class="w">            </span><span class="p">{</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"null"</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">         </span><span class="p">],</span>
+<span class="w">         </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"a2l ``FORMAT`` string, e.g. ``\"%8.3\"``: total width, then decimal places.\n\nRefused beside a ``string`` conversion, which has no decimals to display."</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Format"</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">"display_identifier"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">         </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">            </span><span class="p">{</span>
+<span class="w">               </span><span class="nt">"pattern"</span><span class="p">:</span><span class="w"> </span><span class="s2">"^[A-Za-z_][A-Za-z0-9_]*(?:\\[[0-9]+\\])*(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[[0-9]+\\])*)*$"</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
+<span class="w">            </span><span class="p">},</span>
+<span class="w">            </span><span class="p">{</span>
+<span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"null"</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">         </span><span class="p">],</span>
+<span class="w">         </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The name the calibration tool shows the leaf under: the member's own identifier, or the\npath a member above composes; nothing where neither states one.\n\nNot held to a length. The a2l's checks hold what reaches the file, and a leaf of a variable\nkept out of it is composed all the same, so a dictionary can carry a path past\n``MAX_IDENT`` or a part past ``MAX_PARTIAL_IDENT`` that nothing reported, and has to read\nback."</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Display Identifier"</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">   </span><span class="p">},</span>
+<span class="w">   </span><span class="nt">"additionalProperties"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</details></p><dl class="field-list simple">
+<dt class="field-odd">Fields<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">display_identifier</span> <span class="pre">(Annotated[str,</span> <span class="pre">StringConstraints(pattern=A2L_PATH_PATTERN)]</span> <span class="pre">|</span> <span class="pre">None)</span></code></p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="ddd.models.LeafA2lOptions.display_identifier">
+<span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">display_identifier</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Annotated</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">StringConstraints</span><span class="p"><span class="pre">(</span></span><span class="n"><span class="pre">pattern</span></span><span class="o"><span class="pre">=</span></span><span class="pre">A2L_PATH_PATTERN</span><span class="p"><span class="pre">)</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#ddd.models.LeafA2lOptions.display_identifier" title="Link to this definition"></a></dt>
+<dd><p>The name the calibration tool shows the leaf under: the member’s own identifier, or the
+path a member above composes; nothing where neither states one.</p>
+<p>Not held to a length. The a2l’s checks hold what reaches the file, and a leaf of a variable
+kept out of it is composed all the same, so a dictionary can carry a path past
+<code class="docutils literal notranslate"><span class="pre">MAX_IDENT</span></code> or a part past <code class="docutils literal notranslate"><span class="pre">MAX_PARTIAL_IDENT</span></code> that nothing reported, and has to read
+back.</p>
+<p>The name the calibration tool shows the leaf under: the member’s own identifier, or the
+path a member above composes; nothing where neither states one.</p>
+<p>Not held to a length. The a2l’s checks hold what reaches the file, and a leaf of a variable
+kept out of it is composed all the same, so a dictionary can carry a path past
+<code class="docutils literal notranslate"><span class="pre">MAX_IDENT</span></code> or a part past <code class="docutils literal notranslate"><span class="pre">MAX_PARTIAL_IDENT</span></code> that nothing reported, and has to read
+back.</p>
 </dd></dl>
 
 </dd></dl>

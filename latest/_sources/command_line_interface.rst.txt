@@ -32,7 +32,7 @@ of the document the command prints, next to whatever else it has to report:
 
 .. code-block:: text
 
-   $ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates --format json
+   $ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates --byte-order little --format json
    {
      "diagnostics": [],
      "summary": {
@@ -226,8 +226,12 @@ The commands
        artefact takes only its own options - ``-t`` names the directory of jinja2
        templates the c sources are rendered from, required wherever c is rendered and with no
        default, because which files the project wants and what they look like is not
-       something DDD can guess; ``--address-map``, ``--image`` and ``--byte-order`` belong to
-       the a2l. ``--image`` reads every address the a2l carries out of a linked ELF image's
+       something DDD can guess; ``--address-map``, ``--image``, ``--byte-order`` and
+       ``--a2l-module-fragment`` belong to the a2l. ``--a2l-module-fragment FILE`` pastes that
+       text file, unchanged, at the head of the a2l's ``MODULE`` - the ``A2ML``, a module level
+       ``IF_DATA``, and in a project that declares no named constant the ``MOD_PAR`` carrying
+       ``EPK`` and ``MEMORY_SEGMENT`` (:ref:`a2l-module-fragment`); a file that cannot be read or
+       is not UTF-8 is refused naming it, and so is a ``MOD_PAR`` beside a named constant. ``--image`` reads every address the a2l carries out of a linked ELF image's
        DWARF - an object by its name, a structure member by its access path - and the a2l takes
        the image's byte order, so a ``--byte-order`` contradicting it is refused, as is
        ``--image`` beside ``--address-map``; what the image cannot place keeps address 0 and is
@@ -238,7 +242,7 @@ The commands
        the a2l is written later, once the addresses are known. Naming ``c`` instead is not the
        same thing: it produces no plugin artefact at all, and says nothing about it.
        Subtracting an artefact takes its options with it, so ``--without a2l`` beside an
-       ``--address-map`` is refused rather than quietly ignored, and a run that has subtracted
+       ``--address-map`` or ``--a2l-module-fragment`` is refused rather than quietly ignored, and a run that has subtracted
        the c neither wants nor accepts ``-t``.
        ``--dry-run`` reports what would be written without writing anything, ``--force``
        generates in spite of errors. Every artefact also takes ``--dictionary FILE``, which

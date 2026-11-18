@@ -305,7 +305,12 @@ left out.</p></td>
 engine speed each used to write out the datatype, the unit, the scaling and the limits, and
 DDD’s job was to notice when one of the three was wrong. If all three say <code class="docutils literal notranslate"><span class="pre">Speed_t</span></code> instead,
 there is nothing left for them to disagree about - which is a check turned into a construction,
-and the reason the four keys above are exactly the ones a scalar type fixes. <code class="docutils literal notranslate"><span class="pre">kind</span></code>,
+and the reason the four keys above are exactly the ones a scalar type fixes. It is also a
+check given up: with one description there is no second one for <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code> to find
+different, so a rescale of the type is one edit that no reader’s description shows, and it
+changes no generated header but the one the example templates give a scale macro. A project
+that wants a disagreement reported restates the definition instead; <a class="reference internal" href="../concept.html"><span class="doc">Concept</span></a> sets
+the two against each other. <code class="docutils literal notranslate"><span class="pre">kind</span></code>,
 <code class="docutils literal notranslate"><span class="pre">dimensions</span></code>, <code class="docutils literal notranslate"><span class="pre">init</span></code>, <code class="docutils literal notranslate"><span class="pre">volatile</span></code> and the <code class="docutils literal notranslate"><span class="pre">a2l</span></code> block stay on the variable, because they
 are properties of one object rather than of the type: two measurements of one type may well
 differ in whether an interrupt writes one of them.</p>
@@ -374,7 +379,20 @@ question of whether the answer is shared: a unit written on a member says it for
 that structure, and a <code class="docutils literal notranslate"><span class="pre">Temperature_t</span></code> says it once for everything in the project that names
 it. The <code class="docutils literal notranslate"><span class="pre">a2l</span></code> block sits on the member rather than on the structure because that is the
 granularity the file ends up with - keeping one member out of the a2l, or giving one member a
-display format, is a decision about that member alone. A member under a string conversion, its
+display format, is a decision about that member alone. On a member that names a structure the
+block shapes every record below it: <code class="docutils literal notranslate"><span class="pre">export:</span> <span class="pre">false</span></code> keeps the whole subtree out of the a2l in
+every instance of the type, and nothing deeper brings a leaf back, an inner <code class="docutils literal notranslate"><span class="pre">export:</span> <span class="pre">true</span></code>
+included; <code class="docutils literal notranslate"><span class="pre">format</span></code> reaches each leaf below it, but not a string; and a <code class="docutils literal notranslate"><span class="pre">display_identifier</span></code> stands for
+that member’s own segment of the path of each record below it, so <code class="docutils literal notranslate"><span class="pre">V[1].j.b</span></code> with <code class="docutils literal notranslate"><span class="pre">j</span></code> displayed
+<code class="docutils literal notranslate"><span class="pre">J</span></code> is displayed <code class="docutils literal notranslate"><span class="pre">V[1].J.b</span></code>, and the identifiers of several members compose:
+<code class="docutils literal notranslate"><span class="pre">V.J[0].Inner.x</span></code> for <code class="docutils literal notranslate"><span class="pre">j</span></code> displayed <code class="docutils literal notranslate"><span class="pre">J</span></code> and <code class="docutils literal notranslate"><span class="pre">n</span></code> below it <code class="docutils literal notranslate"><span class="pre">Inner</span></code>. A deeper member that states
+its own <code class="docutils literal notranslate"><span class="pre">format</span></code> wins for its own subtree. A leaf’s own <code class="docutils literal notranslate"><span class="pre">display_identifier</span></code>, on a member that
+names no structure, is written as stated and not composed into a path, so the elements of an array of
+structures share it. Each identifier a member states is held as a name is, at the member that states
+it: <code class="docutils literal notranslate"><span class="pre">a2l-keyword</span></code> for a keyword, and <code class="docutils literal notranslate"><span class="pre">a2l-unrepresentable</span></code> past <code class="docutils literal notranslate"><span class="pre">MAX_PARTIAL_IDENT</span></code>, or, for the
+composed identifier, past <code class="docutils literal notranslate"><span class="pre">MAX_IDENT</span></code>. Two members displayed alike give records alike, and DDD does
+not warn of it, as it does not of two leaves so displayed. A member
+under a string conversion, its
 own or its type’s, is a <code class="docutils literal notranslate"><span class="pre">value</span></code> member of exactly one dimension, and states no unit, limits
 or format, as a definition would not.</p>
 <section id="what-a-member-does-not-say">
@@ -555,9 +573,9 @@ type is declared with the external name verbatim, the include above making it co
 that kind and that <code class="docutils literal notranslate"><span class="pre">volatile</span></code> would get - which is the whole point of the kind belonging to
 the declaration rather than to the members:</p>
 <div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cm">/** The inlet sensor as this ecu sees it */</span>
-<span class="k">volatile</span><span class="w"> </span><span class="n">Sensor_t</span><span class="w"> </span><span class="n">Inlet</span><span class="p">;</span>
+<span class="n">DDD_RETAIN</span><span class="w"> </span><span class="k">volatile</span><span class="w"> </span><span class="n">Sensor_t</span><span class="w"> </span><span class="n">Inlet</span><span class="p">;</span>
 <span class="cm">/** What the calibration tool may change about the inlet sensor */</span>
-<span class="k">const</span><span class="w"> </span><span class="k">volatile</span><span class="w"> </span><span class="n">SensorCal_t</span><span class="w"> </span><span class="n">InletCal</span><span class="p">;</span>
+<span class="n">DDD_RETAIN</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="k">volatile</span><span class="w"> </span><span class="n">SensorCal_t</span><span class="w"> </span><span class="n">InletCal</span><span class="p">;</span>
 </pre></div>
 </div>
 <section id="flattened-into-the-a2l">
@@ -575,9 +593,10 @@ load a file that uses it without a warning and then display nothing for it.</p>
 /end MEASUREMENT
 </pre></div>
 </div>
-<p>The offset in <code class="docutils literal notranslate"><span class="pre">SYMBOL_LINK</span></code> is <code class="docutils literal notranslate"><span class="pre">0</span></code> and means it: the offset of a symbol from itself. The
-name carries the whole path, so the address a build reports for <code class="docutils literal notranslate"><span class="pre">Inlet.latest.value</span></code> is the
-address of that member and nothing has to be added to it. The limits <code class="docutils literal notranslate"><span class="pre">-40</span> <span class="pre">150</span></code> and the
+<p><code class="docutils literal notranslate"><span class="pre">SYMBOL_LINK</span></code> is shown as it is written before the link and with an address map: the member’s
+path at offset <code class="docutils literal notranslate"><span class="pre">0</span></code>, which names no symbol a linker map holds. With <code class="docutils literal notranslate"><span class="pre">--image</span></code> it names the
+variable’s own symbol, <code class="docutils literal notranslate"><span class="pre">Inlet</span></code>, and the member’s offset from it in bytes, as ASAP2 defines
+the record, and the same holds for the two records below. The limits <code class="docutils literal notranslate"><span class="pre">-40</span> <span class="pre">150</span></code> and the
 <code class="docutils literal notranslate"><span class="pre">CM_LIN_DEGC</span></code> come from <code class="docutils literal notranslate"><span class="pre">Temperature_t</span></code>, which the member names and the enclosing structure
 never repeats. Each leaf also joins the <code class="docutils literal notranslate"><span class="pre">GROUP</span></code> of the component that declares the variable,
 so a structured variable is not a hole in that component’s measurement list.</p>

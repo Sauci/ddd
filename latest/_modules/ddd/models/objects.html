@@ -397,6 +397,36 @@
 
 
 
+<span class="n">A2L_PATH_PATTERN</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="sa">r</span><span class="s2">"^[A-Za-z_][A-Za-z0-9_]*(?:\[[0-9]+\])*(?:\.[A-Za-z_][A-Za-z0-9_]*(?:\[[0-9]+\])*)*$"</span>
+<span class="p">)</span>
+<span class="sd">"""Identifiers joined by dots, each with the indices of its element: ``V[1].J.b``, as a leaf's</span>
+<span class="sd">own path is written. One plain identifier is such a path too."""</span>
+
+
+<div class="viewcode-block" id="LeafA2lOptions">
+<a class="viewcode-back" href="../../../data_contracts.html#ddd.models.LeafA2lOptions">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">LeafA2lOptions</span><span class="p">(</span><span class="n">A2lObjectOptions</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""The ``a2l`` block a leaf is published under, which the analysis resolves.</span>
+
+<span class="sd">    The block a member states, with ``export`` folded over the variable and every member above</span>
+<span class="sd">    the leaf, ``format`` the innermost stated one, and ``display_identifier`` a path where a</span>
+<span class="sd">    member above the leaf states one: that member's identifier stands for its own segment of</span>
+<span class="sd">    the leaf's path, so ``V[1].j.b`` with ``j`` displayed ``J`` is ``V[1].J.b``. The block a</span>
+<span class="sd">    project writes keeps one plain identifier; this one is written by the analysis alone.</span>
+<span class="sd">    """</span>
+
+    <span class="n">display_identifier</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">StringConstraints</span><span class="p">(</span><span class="n">pattern</span><span class="o">=</span><span class="n">A2L_PATH_PATTERN</span><span class="p">)]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">"""The name the calibration tool shows the leaf under: the member's own identifier, or the</span>
+<span class="sd">    path a member above composes; nothing where neither states one.</span>
+
+<span class="sd">    Not held to a length. The a2l's checks hold what reaches the file, and a leaf of a variable</span>
+<span class="sd">    kept out of it is composed all the same, so a dictionary can carry a path past</span>
+<span class="sd">    ``MAX_IDENT`` or a part past ``MAX_PARTIAL_IDENT`` that nothing reported, and has to read</span>
+<span class="sd">    back."""</span></div>
+
+
+
 <span class="n">MEANING_KEYS</span><span class="p">:</span> <span class="n">Final</span> <span class="o">=</span> <span class="p">(</span><span class="s2">"unit"</span><span class="p">,</span> <span class="s2">"conversion"</span><span class="p">,</span> <span class="s2">"limits"</span><span class="p">)</span>
 <span class="sd">"""What says how a raw number is read: the keys a scalar type exists to fix once.</span>
 

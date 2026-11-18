@@ -257,7 +257,8 @@ conversion, limits, initial value and a2l settings.</p></td>
 <p>The same variable is normally declared by several components: once by the one that writes it
 and once by each one that reads it. That repetition is not redundancy, it is the whole
 mechanism. The consumer states what it <em>expects</em>, the producer states what it <em>promises</em>, and
-DDD compares the two. Where they differ, the declaration of the <strong>producing</strong> component is the
+DDD compares the two descriptions - a declared type in place of the repetition leaves nothing
+to compare, which <a class="reference internal" href="../concept.html"><span class="doc">Concept</span></a> weighs. Where they differ, the declaration of the <strong>producing</strong> component is the
 authoritative one: its definition is what gets generated, and the finding points at the
 consumer that deviates.</p>
 <p>Declaring the same variable twice inside <strong>one</strong> component is a different matter, and always a
@@ -332,14 +333,22 @@ is <code class="docutils literal notranslate"><span class="pre">Controller.h</sp
 <div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cm">/* outputs - written by Controller, read by other components */</span>
 <span class="cm">/** Measurement used as the input quantity of AxisA [Hz] */</span>
 <span class="k">extern</span><span class="w"> </span><span class="k">volatile</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">ValueE</span><span class="p">;</span>
+<span class="cp">#define ValueE__FACTOR (0.25)</span>
+<span class="cp">#define ValueE__OFFSET (0.0)</span>
 <span class="cm">/** Shared axis indexed by ValueE [Hz] (calibration axis, 6 points) */</span>
 <span class="k">extern</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">AxisA</span><span class="p">[</span><span class="mi">6</span><span class="p">];</span>
+<span class="cp">#define AxisA__FACTOR (0.25)</span>
+<span class="cp">#define AxisA__OFFSET (0.0)</span>
 
 <span class="cm">/* inputs - produced elsewhere, Controller may only read them */</span>
 <span class="cm">/** Scalar measurement with a linear conversion [%] */</span>
 <span class="k">extern</span><span class="w"> </span><span class="kt">uint8_t</span><span class="w"> </span><span class="n">ValueA</span><span class="p">;</span><span class="w">  </span><span class="cm">/* produced by SensorHub */</span>
+<span class="cp">#define ValueA__FACTOR (0.5)</span>
+<span class="cp">#define ValueA__OFFSET (0.0)</span>
 <span class="cm">/** Array measurement with four elements [V] */</span>
 <span class="k">extern</span><span class="w"> </span><span class="k">volatile</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">ValueB</span><span class="p">[</span><span class="mi">4</span><span class="p">];</span><span class="w">  </span><span class="cm">/* produced by SensorHub */</span>
+<span class="cp">#define ValueB__FACTOR (0.001)</span>
+<span class="cp">#define ValueB__OFFSET (0.0)</span>
 
 <span class="cm">/* locals - owned exclusively by Controller */</span>
 <span class="cm">/** Component local measurement of the controller [%] */</span>
@@ -359,13 +368,9 @@ also <code class="docutils literal notranslate"><span class="pre">volatile</span
 way of naming a variable that belongs to <code class="docutils literal notranslate"><span class="pre">SensorHub</span></code> and was not declared as one of its own
 inputs - the access rule is enforced by the compiler rather than by review. Reading a foreign
 input is possible by construction, since that is what an input is; <em>writing</em> one still
-compiles here, because the declaration is not <code class="docutils literal notranslate"><span class="pre">const</span></code>. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">c</span> <span class="pre">--const-inputs</span></code>
-declares inputs <code class="docutils literal notranslate"><span class="pre">extern</span> <span class="pre">const</span></code> instead, which stops that too, at the cost of a definition
-that stays non-const - strictly a constraint violation, accepted by the usual embedded
-toolchains, and therefore opt-in. An input that is volatile becomes <code class="docutils literal notranslate"><span class="pre">extern</span> <span class="pre">const</span> <span class="pre">volatile</span></code>,
-since the qualifier the object asked for is not dropped for the one the option adds. It is an
-option rather than a matter for the templates because it changes what is declared and not how
-the declaration is written. The whole picture is on the
+compiles here, because the declaration is not <code class="docutils literal notranslate"><span class="pre">const</span></code>: a header that declared an input
+<code class="docutils literal notranslate"><span class="pre">const</span></code> while the definition is not would leave two declarations of one object that c leaves
+undefined, so a write to a foreign input is a matter for review. The whole picture is on the
 <a class="reference internal" href="../generated_artefacts.html"><span class="doc">generated artefacts</span></a> page.</p>
 </section>
 </section>
@@ -397,7 +402,7 @@ example templates can put the same guard around all of them, with the condition 
 comment on the <code class="docutils literal notranslate"><span class="pre">#endif</span></code> so that a long guarded region stays readable:</p>
 <div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cp">#if defined(FEATURE_X)</span>
 <span class="cm">/** Measurement that only exists when FEATURE_X is defined [V] */</span>
-<span class="kt">uint16_t</span><span class="w"> </span><span class="n">ValueG</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1000U</span><span class="p">;</span>
+<span class="n">DDD_RETAIN</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">ValueG</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1000U</span><span class="p">;</span>
 <span class="cp">#endif </span><span class="cm">/* defined(FEATURE_X) */</span>
 </pre></div>
 </div>

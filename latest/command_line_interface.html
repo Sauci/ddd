@@ -134,7 +134,7 @@ output is json already, <code class="docutils literal notranslate"><span class="
 browser, <code class="docutils literal notranslate"><span class="pre">cmake-dir</span></code> and <code class="docutils literal notranslate"><span class="pre">templates-dir</span></code>, which print one path, and <code class="docutils literal notranslate"><span class="pre">id</span></code>, which reports
 the files it skipped and one total rather than findings. In json the diagnostics become part
 of the document the command prints, next to whatever else it has to report:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates --format json
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates --byte-order little --format json
 {
   "diagnostics": [],
   "summary": {
@@ -334,8 +334,12 @@ a plugin runs its backend alone. Each
 artefact takes only its own options - <code class="docutils literal notranslate"><span class="pre">-t</span></code> names the directory of jinja2
 templates the c sources are rendered from, required wherever c is rendered and with no
 default, because which files the project wants and what they look like is not
-something DDD can guess; <code class="docutils literal notranslate"><span class="pre">--address-map</span></code>, <code class="docutils literal notranslate"><span class="pre">--image</span></code> and <code class="docutils literal notranslate"><span class="pre">--byte-order</span></code> belong to
-the a2l. <code class="docutils literal notranslate"><span class="pre">--image</span></code> reads every address the a2l carries out of a linked ELF image’s
+something DDD can guess; <code class="docutils literal notranslate"><span class="pre">--address-map</span></code>, <code class="docutils literal notranslate"><span class="pre">--image</span></code>, <code class="docutils literal notranslate"><span class="pre">--byte-order</span></code> and
+<code class="docutils literal notranslate"><span class="pre">--a2l-module-fragment</span></code> belong to the a2l. <code class="docutils literal notranslate"><span class="pre">--a2l-module-fragment</span> <span class="pre">FILE</span></code> pastes that
+text file, unchanged, at the head of the a2l’s <code class="docutils literal notranslate"><span class="pre">MODULE</span></code> - the <code class="docutils literal notranslate"><span class="pre">A2ML</span></code>, a module level
+<code class="docutils literal notranslate"><span class="pre">IF_DATA</span></code>, and in a project that declares no named constant the <code class="docutils literal notranslate"><span class="pre">MOD_PAR</span></code> carrying
+<code class="docutils literal notranslate"><span class="pre">EPK</span></code> and <code class="docutils literal notranslate"><span class="pre">MEMORY_SEGMENT</span></code> (<a class="reference internal" href="generated_artefacts.html#a2l-module-fragment"><span class="std std-ref">What the a2l leaves to the project</span></a>); a file that cannot be read or
+is not UTF-8 is refused naming it, and so is a <code class="docutils literal notranslate"><span class="pre">MOD_PAR</span></code> beside a named constant. <code class="docutils literal notranslate"><span class="pre">--image</span></code> reads every address the a2l carries out of a linked ELF image’s
 DWARF - an object by its name, a structure member by its access path - and the a2l takes
 the image’s byte order, so a <code class="docutils literal notranslate"><span class="pre">--byte-order</span></code> contradicting it is refused, as is
 <code class="docutils literal notranslate"><span class="pre">--image</span></code> beside <code class="docutils literal notranslate"><span class="pre">--address-map</span></code>; what the image cannot place keeps address 0 and is
@@ -346,7 +350,7 @@ built-in artefact out while still producing the plugins’ - the run a build wan
 the a2l is written later, once the addresses are known. Naming <code class="docutils literal notranslate"><span class="pre">c</span></code> instead is not the
 same thing: it produces no plugin artefact at all, and says nothing about it.
 Subtracting an artefact takes its options with it, so <code class="docutils literal notranslate"><span class="pre">--without</span> <span class="pre">a2l</span></code> beside an
-<code class="docutils literal notranslate"><span class="pre">--address-map</span></code> is refused rather than quietly ignored, and a run that has subtracted
+<code class="docutils literal notranslate"><span class="pre">--address-map</span></code> or <code class="docutils literal notranslate"><span class="pre">--a2l-module-fragment</span></code> is refused rather than quietly ignored, and a run that has subtracted
 the c neither wants nor accepts <code class="docutils literal notranslate"><span class="pre">-t</span></code>.
 <code class="docutils literal notranslate"><span class="pre">--dry-run</span></code> reports what would be written without writing anything, <code class="docutils literal notranslate"><span class="pre">--force</span></code>
 generates in spite of errors. Every artefact also takes <code class="docutils literal notranslate"><span class="pre">--dictionary</span> <span class="pre">FILE</span></code>, which
@@ -1351,7 +1355,8 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <span class="go">                        [--format {text,json}] -o OUTPUT_DIR</span>
 <span class="go">                        [--byte-order {little,big}]</span>
 <span class="go">                        [--address-map ADDRESS_MAP] [--image IMAGE]</span>
-<span class="go">                        [--dictionary FILE] [--dry-run] [--force]</span>
+<span class="go">                        [--a2l-module-fragment FILE] [--dictionary FILE]</span>
+<span class="go">                        [--dry-run] [--force]</span>
 <span class="go">                        project</span>
 </pre></div>
 </div>
@@ -1410,6 +1415,12 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 </dd></dl>
 
 <dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-a2l-a2l-module-fragment">
+<span class="sig-name descname"><span class="pre">--a2l-module-fragment</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;file&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-generate-a2l-a2l-module-fragment" title="Link to this definition"></a></dt>
+<dd><p>text file pasted verbatim at the head of the a2l’s MODULE: what the a2l cannot state itself, such as the A2ML its IF_DATA are written in, and, where the project declares no named constant, a MOD_PAR carrying EPK, ADDR_EPK and MEMORY_SEGMENT</p>
+</dd></dl>
+
+<dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-ddd-generate-a2l-dictionary">
 <span class="sig-name descname"><span class="pre">--dictionary</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;file&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-generate-a2l-dictionary" title="Link to this definition"></a></dt>
 <dd><p>also write the resolved data dictionary, the text ddd dump prints, to this file, in the same write as the artefacts: all of them or none</p>
@@ -1432,10 +1443,10 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <h4>ddd generate all<a class="headerlink" href="#ddd-generate-all" title="Link to this heading"></a></h4>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd generate all [-h] [-W CHECK=SEVERITY] [--strict]</span>
 <span class="go">                        [--format {text,json}] -o OUTPUT_DIR [-t TEMPLATE_DIR]</span>
-<span class="go">                        [--const-inputs] [--byte-order {little,big}]</span>
+<span class="go">                        [--byte-order {little,big}]</span>
 <span class="go">                        [--address-map ADDRESS_MAP] [--image IMAGE]</span>
-<span class="go">                        [--without {c,a2l}] [--dictionary FILE] [--dry-run]</span>
-<span class="go">                        [--force]</span>
+<span class="go">                        [--a2l-module-fragment FILE] [--without {c,a2l}]</span>
+<span class="go">                        [--dictionary FILE] [--dry-run] [--force]</span>
 <span class="go">                        project</span>
 </pre></div>
 </div>
@@ -1482,12 +1493,6 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 </dd></dl>
 
 <dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-ddd-generate-all-const-inputs">
-<span class="sig-name descname"><span class="pre">--const-inputs</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-generate-all-const-inputs" title="Link to this definition"></a></dt>
-<dd><p>declare input variables const in the consumer headers</p>
-</dd></dl>
-
-<dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-ddd-generate-all-byte-order">
 <span class="sig-name descname"><span class="pre">--byte-order</span></span><span class="sig-prename descclassname"> <span class="pre">{little,big}</span></span><a class="headerlink" href="#cmdoption-ddd-generate-all-byte-order" title="Link to this definition"></a></dt>
 <dd><p>byte order reported in the a2l file, default: little, or the image’s with –image</p>
@@ -1503,6 +1508,12 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <dt class="sig sig-object std" id="cmdoption-ddd-generate-all-image">
 <span class="sig-name descname"><span class="pre">--image</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;image&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-generate-all-image" title="Link to this definition"></a></dt>
 <dd><p>linked ELF image whose DWARF debug information gives every address the a2l carries, and its byte order</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-all-a2l-module-fragment">
+<span class="sig-name descname"><span class="pre">--a2l-module-fragment</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;file&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-generate-all-a2l-module-fragment" title="Link to this definition"></a></dt>
+<dd><p>text file pasted verbatim at the head of the a2l’s MODULE: what the a2l cannot state itself, such as the A2ML its IF_DATA are written in, and, where the project declares no named constant, a MOD_PAR carrying EPK, ADDR_EPK and MEMORY_SEGMENT</p>
 </dd></dl>
 
 <dl class="std option">
@@ -1534,8 +1545,7 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <h4>ddd generate c<a class="headerlink" href="#ddd-generate-c" title="Link to this heading"></a></h4>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd generate c [-h] [-W CHECK=SEVERITY] [--strict]</span>
 <span class="go">                      [--format {text,json}] -o OUTPUT_DIR -t TEMPLATE_DIR</span>
-<span class="go">                      [--const-inputs] [--dictionary FILE] [--dry-run]</span>
-<span class="go">                      [--force]</span>
+<span class="go">                      [--dictionary FILE] [--dry-run] [--force]</span>
 <span class="go">                      project</span>
 </pre></div>
 </div>
@@ -1579,12 +1589,6 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <dt class="sig sig-object std" id="cmdoption-ddd-generate-c-t">
 <span id="cmdoption-ddd-generate-c-template-dir"></span><span class="sig-name descname"><span class="pre">-t</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;template_dir&gt;</span></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--template-dir</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;template_dir&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-generate-c-t" title="Link to this definition"></a></dt>
 <dd><p>directory holding the jinja2 templates of the c sources. Every file in it ending in .jinja2 is rendered to a file named like the template without that extension, so ddd_globals.c.jinja2 produces ddd_globals.c; a name starting with an underscore is a helper that renders nothing on its own, and a name containing {component} is rendered once per component. ‘ddd templates-dir’ prints a set of example templates to copy from</p>
-</dd></dl>
-
-<dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-ddd-generate-c-const-inputs">
-<span class="sig-name descname"><span class="pre">--const-inputs</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-generate-c-const-inputs" title="Link to this definition"></a></dt>
-<dd><p>declare input variables const in the consumer headers</p>
 </dd></dl>
 
 <dl class="std option">

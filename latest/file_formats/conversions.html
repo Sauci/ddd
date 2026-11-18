@@ -450,7 +450,7 @@ missing. The integer and list spellings stay available, the list being how a fix
 without a terminator is written. In c the text becomes a string literal and the compiler fills
 the rest of the array with zero:</p>
 <div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cm">/** Software label of the controller, as text (calibration value block) */</span>
-<span class="k">const</span><span class="w"> </span><span class="kt">uint8_t</span><span class="w"> </span><span class="n">SoftwareLabel</span><span class="p">[</span><span class="mi">16</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"V1.2.3"</span><span class="p">;</span>
+<span class="n">DDD_RETAIN</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">uint8_t</span><span class="w"> </span><span class="n">SoftwareLabel</span><span class="p">[</span><span class="mi">16</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"V1.2.3"</span><span class="p">;</span>
 </pre></div>
 </div>
 <p>In the a2l a calibration string is a <code class="docutils literal notranslate"><span class="pre">CHARACTERISTIC</span></code> of type <code class="docutils literal notranslate"><span class="pre">ASCII</span></code>, the form Vector’s
@@ -502,13 +502,20 @@ to be contiguous, and the range is about what the tool may display, not about wh
 storage could hold.</p></li>
 <li><p><strong>string</strong> - the byte range of the datatype, 0 .. 255 for a <code class="docutils literal notranslate"><span class="pre">uint8</span></code>; nobody may state others.</p></li>
 </ul>
-<p>A derived end is rounded to twelve significant digits, the width a reading is spelled at,
-because a decimal factor has no exact binary float: 255 counts of <code class="docutils literal notranslate"><span class="pre">0.03</span></code> multiply out to
+<p>A derived end holds the physical value of its raw count. A decimal factor has no exact binary
+float, so the multiplication leaves a tail: 255 counts of <code class="docutils literal notranslate"><span class="pre">0.03</span></code> multiply out to
 <code class="docutils literal notranslate"><span class="pre">7.6499999999999995</span></code>, and a calibration tool holding data to the limits it reads would then
-refuse <code class="docutils literal notranslate"><span class="pre">7.65</span></code> - the value that very raw count stands for. The rounded end is what reaches
-the a2l and the dumped dictionary. Limits <strong>stated</strong> by hand are never rounded; they are
-compared against the derived range with a relative tolerance of 1e-9, so a limit copied out of
-an a2l an earlier version wrote is not reported as off the range.</p>
+refuse <code class="docutils literal notranslate"><span class="pre">7.65</span></code> - the value that very raw count stands for. An end within four units in the
+last place of its twelve digit decimal is written as that decimal, <code class="docutils literal notranslate"><span class="pre">7.65</span></code> here, which may
+sit up to those four units inward of the product: <code class="docutils literal notranslate"><span class="pre">sint16</span></code> under <code class="docutils literal notranslate"><span class="pre">factor</span> <span class="pre">0.1</span></code> gives
+<code class="docutils literal notranslate"><span class="pre">3276.7</span></code> where the product is <code class="docutils literal notranslate"><span class="pre">3276.7000000000003</span></code>. Any other end is the number itself, in
+the fewest digits that read back as it: <code class="docutils literal notranslate"><span class="pre">uint64</span></code> under <code class="docutils literal notranslate"><span class="pre">factor</span> <span class="pre">1</span></code> gives
+<code class="docutils literal notranslate"><span class="pre">1.8446744073709552e+19</span></code>, and <code class="docutils literal notranslate"><span class="pre">uint32</span></code> under 2^-10 <code class="docutils literal notranslate"><span class="pre">4194303.9990234375</span></code>, where twelve
+digits would state a number short of the top count. Under the identity the ends are the raw
+ends, so a <code class="docutils literal notranslate"><span class="pre">float32</span></code> stops at <code class="docutils literal notranslate"><span class="pre">FLT_MAX</span></code>, <code class="docutils literal notranslate"><span class="pre">3.4028234663852886e+38</span></code>. The end is what
+reaches the a2l and the dumped dictionary. Limits <strong>stated</strong> by hand are never rounded; they
+are compared against the derived range with a relative tolerance of 1e-9, so a limit copied
+out of an a2l an earlier version wrote is not reported as off the range.</p>
 <p>A <strong>negative factor swaps the two ends</strong>, and DDD swaps them back: the conversion of the
 smallest raw value is then the largest physical value, and limits with <code class="docutils literal notranslate"><span class="pre">min</span></code> above <code class="docutils literal notranslate"><span class="pre">max</span></code>
 would be rejected by the very validation that keeps hand-written limits sane. An <code class="docutils literal notranslate"><span class="pre">sint8</span></code> with

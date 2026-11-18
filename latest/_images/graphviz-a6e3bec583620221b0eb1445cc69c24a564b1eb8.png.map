@@ -1,0 +1,12 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="ddd.models.objects.LeafA2lOptions
+
+The ``a2l`` block a leaf is published under, which the analysis resolves.
+
+The block a member states, with ``export`` folded over the variable and every member above
+the leaf, ``format`` the innermost stated one, and ``display_identifier`` a path where a
+member above the leaf states one: that member&#39;s identifier stands for its own segment of
+the leaf&#39;s path, so ``V[1].j.b`` with ``j`` displayed ``J`` is ``V[1].J.b``. The block a
+project writes keeps one plain identifier; this one is written by the analysis alone.
+" alt="" coords="5,5,241,125"/>
+</map>

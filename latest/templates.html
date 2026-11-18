@@ -74,6 +74,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#how-the-files-reach-the-disk">How the files reach the disk</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#getting-started">Getting started</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#the-example-templates">The example templates</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#a-link-may-drop-a-definition">A link may drop a definition</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="command_line_interface.html">Command line interface</a></li>
@@ -161,8 +162,10 @@ than by a project: its readers are measurement and calibration tools that implem
 standard, and a house style in that file is not a preference, it is a file the tool refuses.
 The distinction is the whole argument on this page in one line - the c code is read by your
 developers, so your project decides how it reads; the a2l file is read by a program, so the
-standard decides. See <a class="reference internal" href="generated_artefacts.html"><span class="doc">generated artefacts</span></a> for what the a2l
-backend produces.</p>
+standard decides. What the standard leaves to the target - the <code class="docutils literal notranslate"><span class="pre">A2ML</span></code>, an <code class="docutils literal notranslate"><span class="pre">EPK</span></code>, a
+<code class="docutils literal notranslate"><span class="pre">MEMORY_SEGMENT</span></code> - is a text file of the project’s own, pasted at the head of the module by
+<code class="docutils literal notranslate"><span class="pre">--a2l-module-fragment</span></code>; see <a class="reference internal" href="generated_artefacts.html#a2l-module-fragment"><span class="std std-ref">the a2l’s module fragment</span></a>. See
+<a class="reference internal" href="generated_artefacts.html"><span class="doc">generated artefacts</span></a> for what the a2l backend produces.</p>
 </section>
 <section id="why-jinja2">
 <h2>Why jinja2<a class="headerlink" href="#why-jinja2" title="Link to this heading"></a></h2>
@@ -249,6 +252,8 @@ templates produce the following:</p>
 </tbody>
 </table>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates
+&lt;project&gt;: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+1 info
 wrote       build/gen/ddd_globals.c (created)
 wrote       build/gen/ddd_globals.h (created)
 wrote       build/gen/ddd_types.h (created)
@@ -315,14 +320,25 @@ one - the example templates write each as a <code class="docutils literal notran
 an array dimensioned by a constant renders its <code class="docutils literal notranslate"><span class="pre">array_suffix</span></code> with the constant’s
 <em>name</em>, which therefore has to be declared before the first array that uses it.
 <code class="docutils literal notranslate"><span class="pre">.value</span></code> is the number and nothing else, for a template that does its own
-formatting; <code class="docutils literal notranslate"><span class="pre">.literal</span></code> is that value as a c literal of the narrowest type that
-holds it, which is what to render where the value is simply to be emitted. The two
-differ only at the ends of the 64 bit range, where there is no literal to write out
-bare: <code class="docutils literal notranslate"><span class="pre">-9223372036854775808</span></code> renders as <code class="docutils literal notranslate"><span class="pre">(-9223372036854775807LL</span> <span class="pre">-</span> <span class="pre">1)</span></code>, because c
-has no negative literal and the unary minus would be applied to a literal too large
-for any signed type, and <code class="docutils literal notranslate"><span class="pre">18446744073709551615</span></code> renders as
+formatting; <code class="docutils literal notranslate"><span class="pre">.literal</span></code> is that value as a c literal, which is what to render where
+the value is simply to be emitted. Which literal depends on the value’s range alone,
+and never on whether a narrower or an unsigned type would hold it:</p>
+<ul class="simple">
+<li><p>from <code class="docutils literal notranslate"><span class="pre">-2147483648</span></code> to <code class="docutils literal notranslate"><span class="pre">2147483647</span></code> it is written bare, <code class="docutils literal notranslate"><span class="pre">5</span></code> as <code class="docutils literal notranslate"><span class="pre">5</span></code>. The most
+negative of them is the unary minus applied to <code class="docutils literal notranslate"><span class="pre">2147483648</span></code>, which c types as a
+<code class="docutils literal notranslate"><span class="pre">long</span></code> or a <code class="docutils literal notranslate"><span class="pre">long</span> <span class="pre">long</span></code> and not as an <code class="docutils literal notranslate"><span class="pre">int</span></code>;</p></li>
+<li><p>anywhere else up to the 64 bit signed ends it takes <code class="docutils literal notranslate"><span class="pre">LL</span></code>: <code class="docutils literal notranslate"><span class="pre">2147483648</span></code> renders
+as <code class="docutils literal notranslate"><span class="pre">2147483648LL</span></code>, <code class="docutils literal notranslate"><span class="pre">4294967295</span></code> as <code class="docutils literal notranslate"><span class="pre">4294967295LL</span></code> although an <code class="docutils literal notranslate"><span class="pre">unsigned</span> <span class="pre">int</span></code>
+holds it, and <code class="docutils literal notranslate"><span class="pre">-2147483649</span></code> as <code class="docutils literal notranslate"><span class="pre">-2147483649LL</span></code>;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">-9223372036854775808</span></code> renders as <code class="docutils literal notranslate"><span class="pre">(-9223372036854775807LL</span> <span class="pre">-</span> <span class="pre">1)</span></code>, because c has
+no negative literal and the unary minus would be applied to a literal too large for
+any signed type;</p></li>
+<li><p>above <code class="docutils literal notranslate"><span class="pre">9223372036854775807</span></code> it takes <code class="docutils literal notranslate"><span class="pre">ULL</span></code>, <code class="docutils literal notranslate"><span class="pre">18446744073709551615</span></code> as
 <code class="docutils literal notranslate"><span class="pre">18446744073709551615ULL</span></code>, because a compiler otherwise reads it as unsigned and
-says so.</p></td>
+says so;</p></li>
+<li><p>a number with a fraction is a <code class="docutils literal notranslate"><span class="pre">double</span></code> literal, as it looks.</p></li>
+</ul>
+</td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model.enums</span></code></p></td>
 <td><p>One entry per enum conversion, each with <code class="docutils literal notranslate"><span class="pre">.name</span></code> and <code class="docutils literal notranslate"><span class="pre">.enumerators</span></code>; an
@@ -347,9 +363,11 @@ objects no component declares as an output end up in a final group called
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model.sections</span></code></p></td>
 <td><p>The placed objects grouped per <a class="reference internal" href="file_formats/sections.html"><span class="doc">linker section</span></a>, one
 entry per section with <code class="docutils literal notranslate"><span class="pre">.name</span></code> and <code class="docutils literal notranslate"><span class="pre">.objects</span></code>, strictest alignment first so that
-data of one section packs without padding. Objects without a <code class="docutils literal notranslate"><span class="pre">section</span></code> are not
-here - they stay in their component’s group and the toolchain’s default placement -
-and the sequence is empty when the project places nothing.</p></td>
+data of one section packs without padding. A placed object is in its component’s group
+as well, so a template that walks <code class="docutils literal notranslate"><span class="pre">model.groups</span></code> and <code class="docutils literal notranslate"><span class="pre">model.sections</span></code> and defines
+every object it meets defines it twice: take the definitions from <code class="docutils literal notranslate"><span class="pre">model.groups</span></code> and
+the placement from here. An object without a <code class="docutils literal notranslate"><span class="pre">section</span></code> is in its group only, and the
+sequence is empty when the project places nothing.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model.headers</span></code></p></td>
 <td><p>One entry per component, in project order, whether or not the component declares
@@ -373,14 +391,14 @@ header after the standard includes, before the first structure that needs them.<
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model.guard(*parts)</span></code></p></td>
 <td><p>A normalised include guard, e.g. <code class="docutils literal notranslate"><span class="pre">model.guard(&quot;ddd&quot;,</span> <span class="pre">&quot;globals&quot;)</span></code> for
-<code class="docutils literal notranslate"><span class="pre">DDD_GLOBALS_H</span></code>: the parts are joined, upper cased, anything that is not a letter or
-a digit becomes an underscore, a leading digit is prefixed, and <code class="docutils literal notranslate"><span class="pre">_H</span></code> is appended.
+<code class="docutils literal notranslate"><span class="pre">DDD_GLOBALS_H</span></code>: the parts are joined, upper cased, a run of anything that is not a
+letter or a digit becomes one underscore, the underscores at either end are dropped,
+a leading digit is prefixed, and <code class="docutils literal notranslate"><span class="pre">_H</span></code> is appended.
 Offered rather than imposed - a template that has its own convention writes it out.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model.options</span></code></p></td>
-<td><p>What the command line let the caller decide, which for the c backend is
-<code class="docutils literal notranslate"><span class="pre">const_inputs</span></code> and nothing else: everything else that used to be an option is now a
-property of the template you write.</p></td>
+<td><p>What the command line let the caller decide, which for the c backend is nothing:
+everything that used to be an option is now a property of the template you write.</p></td>
 </tr>
 </tbody>
 </table>
@@ -413,11 +431,10 @@ and initialiser included: <code class="docutils literal notranslate"><span class
 volatile. The template adds the semicolon, which is what lets it put something between
 the two.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">.declaration(const=...)</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">.declaration()</span></code></p></td>
 <td><p>The matching <code class="docutils literal notranslate"><span class="pre">extern</span></code> declaration, again without the semicolon, carrying the same
-qualifier the definition does. <code class="docutils literal notranslate"><span class="pre">const=true</span></code> adds a <code class="docutils literal notranslate"><span class="pre">const</span></code> unless the object
-already carries one, so asking for it on calibration data does not produce the
-<code class="docutils literal notranslate"><span class="pre">const</span> <span class="pre">const</span></code> that no compiler accepts.</p></td>
+qualifier the definition does. It takes no argument: a <code class="docutils literal notranslate"><span class="pre">const=</span></code> keyword, which
+<code class="docutils literal notranslate"><span class="pre">--const-inputs</span></code> needed, was removed in 0.12.0 and is refused in a sentence saying so.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">.comment</span></code></p></td>
 <td><p>The description, the unit in square brackets and, for calibration data, a note saying
@@ -442,6 +459,28 @@ write the GCC attribute between the declarator and the initialiser.</p></td>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">.owner</span></code>, <code class="docutils literal notranslate"><span class="pre">.consumers</span></code></p></td>
 <td><p>The component that produces the object and the components that read it, for a comment
 that says where a value comes from.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">.unit</span></code></p></td>
+<td><p>The physical unit, exactly as the a2l states it: empty when the object has none, and
+for a structured variable, whose members state their own.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">.conversion</span></code></p></td>
+<td><p>What turns the raw value into the physical one, as the a2l states it, or nothing for a
+structured variable. <code class="docutils literal notranslate"><span class="pre">.conversion.kind</span></code> is <code class="docutils literal notranslate"><span class="pre">identity</span></code>, <code class="docutils literal notranslate"><span class="pre">linear</span></code>, <code class="docutils literal notranslate"><span class="pre">enum</span></code> or
+<code class="docutils literal notranslate"><span class="pre">string</span></code>. A <code class="docutils literal notranslate"><span class="pre">linear</span></code> one has <code class="docutils literal notranslate"><span class="pre">.conversion.factor</span></code> and <code class="docutils literal notranslate"><span class="pre">.conversion.offset</span></code>
+(physical = raw * factor + offset), each also as a c literal in
+<code class="docutils literal notranslate"><span class="pre">.conversion.factor_literal</span></code> and <code class="docutils literal notranslate"><span class="pre">.conversion.offset_literal</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">.conversion.coefficients</span></code>, the six numbers of the a2l’s rational function
+(<code class="docutils literal notranslate"><span class="pre">0</span> <span class="pre">1</span> <span class="pre">-offset</span> <span class="pre">0</span> <span class="pre">0</span> <span class="pre">factor</span></code>) with <code class="docutils literal notranslate"><span class="pre">.conversion.coefficient_literals</span></code> beside them. An
+<code class="docutils literal notranslate"><span class="pre">enum</span></code> one has <code class="docutils literal notranslate"><span class="pre">.conversion.name</span></code> and <code class="docutils literal notranslate"><span class="pre">.conversion.enumerators</span></code>, each with
+<code class="docutils literal notranslate"><span class="pre">.name</span></code>, <code class="docutils literal notranslate"><span class="pre">.value</span></code> and <code class="docutils literal notranslate"><span class="pre">.description</span></code>: the enum’s entries in <code class="docutils literal notranslate"><span class="pre">model.enums</span></code>, so an
+object whose own copy documents less states the copy the types header declares. A field
+a kind does not have is empty.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">.limits</span></code></p></td>
+<td><p>The range the a2l states: the limits the description states, or what the datatype and
+the conversion imply. <code class="docutils literal notranslate"><span class="pre">.limits.min</span></code> and <code class="docutils literal notranslate"><span class="pre">.limits.max</span></code>, each also as a c literal in
+<code class="docutils literal notranslate"><span class="pre">.limits.min_literal</span></code> and <code class="docutils literal notranslate"><span class="pre">.limits.max_literal</span></code>; nothing for a structured variable.</p></td>
 </tr>
 </tbody>
 </table>
@@ -477,6 +516,31 @@ or two keywords that follow, with their trailing space. A template that composes
 declaration is better off testing the two booleans than matching text against the string they
 produce, and they are also what a MISRA deviation record above every <code class="docutils literal notranslate"><span class="pre">volatile</span></code> object, or
 a section attribute on the tunable data alone, is written from.</p>
+<p><code class="docutils literal notranslate"><span class="pre">.unit</span></code>, <code class="docutils literal notranslate"><span class="pre">.conversion</span></code> and <code class="docutils literal notranslate"><span class="pre">.limits</span></code> are the values the a2l is written from, taken from
+the same place, so a template that writes a scale macro, a table or a header of its own cannot
+disagree with the a2l. The example <code class="docutils literal notranslate"><span class="pre">{component}.h</span></code> template uses them: beside each input and
+output whose conversion is <code class="docutils literal notranslate"><span class="pre">linear</span></code> it writes two macros, named after the variable with a
+double underscore and a suffix:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">extern</span> <span class="n">int16_t</span> <span class="n">Speed</span><span class="p">;</span>  <span class="o">/*</span> <span class="n">produced</span> <span class="n">by</span> <span class="n">Prod</span> <span class="o">*/</span>
+<span class="c1">#define Speed__FACTOR (0.1)</span>
+<span class="c1">#define Speed__OFFSET (-40.0)</span>
+</pre></div>
+</div>
+<p>A rescale of the conversion changes that header, so every file that includes it is compiled
+again; a reader that multiplies by <code class="docutils literal notranslate"><span class="pre">Speed__FACTOR</span></code> follows the rescale, and one that wrote
+the number itself does not, which no check of the descriptions can see. The names carry a
+double underscore because DDD refuses one in every name a project writes - a variable, a type,
+a constant, an enumerator - so no name the generated c holds can be one of them; the values
+are parenthesised so that a negative offset cannot join the sign in front of it. The names are
+sound C, which reserves a name that begins with two underscores, or with one and a capital
+letter, but not one that holds two further in. C++ reserves that too, so a C++ unit including
+the header meets <code class="docutils literal notranslate"><span class="pre">Speed__FACTOR</span></code> as a name reserved to the implementation; a project whose
+readers are C++ renames the macros in the two lines of the <code class="docutils literal notranslate"><span class="pre">scale</span></code> macro of
+<code class="docutils literal notranslate"><span class="pre">_macros.jinja2</span></code> that spell them. The example
+writes nothing for any other kind of conversion: an <code class="docutils literal notranslate"><span class="pre">identity</span></code> and a <code class="docutils literal notranslate"><span class="pre">string</span></code> have no
+scale, and the <code class="docutils literal notranslate"><span class="pre">typedef</span> <span class="pre">enum</span></code> of an <code class="docutils literal notranslate"><span class="pre">enum</span></code> is already in the types header. A project whose
+templates were copied before this one keeps the headers it had, and gains the macros by
+copying the two lines and the macro of <code class="docutils literal notranslate"><span class="pre">_macros.jinja2</span></code>.</p>
 </section>
 <section id="a-component-header">
 <h3>A component header<a class="headerlink" href="#a-component-header" title="Link to this heading"></a></h3>
@@ -488,6 +552,13 @@ nothing and lets the template say so rather than emit a header that is only a gu
 <code class="docutils literal notranslate"><span class="pre">component</span></code> in the middle is deliberate: without it a component named <code class="docutils literal notranslate"><span class="pre">types</span></code> would
 define <code class="docutils literal notranslate"><span class="pre">DDD_TYPES_H</span></code> before <code class="docutils literal notranslate"><span class="pre">ddd_types.h</span></code> was ever included, and the whole type header
 would preprocess away.</p>
+<p>A name with an underscore at an edge cannot take that form, which drops the underscore and would
+give <code class="docutils literal notranslate"><span class="pre">Valve</span></code> and <code class="docutils literal notranslate"><span class="pre">Valve_</span></code> one guard, so that a file including both finds the second header
+preprocessed away. Such a name has a prefix of its own, and the name without its edge
+underscores after it: <code class="docutils literal notranslate"><span class="pre">DDD_COMPONENTS_TRAILING_VALVE_H</span></code> for <code class="docutils literal notranslate"><span class="pre">Valve_</span></code>,
+<code class="docutils literal notranslate"><span class="pre">DDD_COMPONENTS_LEADING_VALVE_H</span></code> for <code class="docutils literal notranslate"><span class="pre">_valve</span></code> and <code class="docutils literal notranslate"><span class="pre">DDD_COMPONENTS_BOTH_VALVE_H</span></code> for
+<code class="docutils literal notranslate"><span class="pre">_valve_</span></code>. No guard holds a double underscore, which C++ reserves wherever it stands and
+DDD refuses in every name a project writes. Every other name keeps the guard it had.</p>
 <p>Each entry of the three lists is a declaration rather than a bare object, because the same
 variable is declared differently in different headers:</p>
 <table class="docutils align-default">
@@ -502,24 +573,22 @@ variable is declared differently in different headers:</p>
 </thead>
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">.line</span></code></p></td>
-<td><p>The complete declaration, semicolon included, with <code class="docutils literal notranslate"><span class="pre">const</span></code> already applied where it
-belongs. Most templates need nothing else.</p></td>
+<td><p>The complete declaration, semicolon included, qualified as the definition is. Most
+templates need nothing else.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">.condition</span></code></p></td>
 <td><p>The preprocessor condition of this declaration, or nothing.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">.const</span></code></p></td>
-<td><p>Whether <code class="docutils literal notranslate"><span class="pre">--const-inputs</span></code> added a <code class="docutils literal notranslate"><span class="pre">const</span></code> to this declaration, for a template that
-builds the line itself. It says nothing about the object’s own qualifiers, which are
-<code class="docutils literal notranslate"><span class="pre">.variable.constant</span></code> and <code class="docutils literal notranslate"><span class="pre">.variable.volatile</span></code>.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">.variable</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">.variable</span></code></p></td>
 <td><p>The object behind the declaration, with everything the previous table lists - which is
 how a header comments a declaration with <code class="docutils literal notranslate"><span class="pre">.variable.comment</span></code> or names its producer
 with <code class="docutils literal notranslate"><span class="pre">.variable.owner</span></code>.</p></td>
 </tr>
 </tbody>
 </table>
+<p><code class="docutils literal notranslate"><span class="pre">.const</span></code> of a header entry, which said whether <code class="docutils literal notranslate"><span class="pre">--const-inputs</span></code> had added a <code class="docutils literal notranslate"><span class="pre">const</span></code>, was
+removed in 0.12.0 with the option and is refused in a sentence saying so; <code class="docutils literal notranslate"><span class="pre">.line</span></code> is the
+declaration.</p>
 </section>
 </section>
 <section id="helpers-and-what-a-subdirectory-is-for">
@@ -570,6 +639,8 @@ its own format has no other way of stating an encoding
 timestamp does not move and the compilation of everything that includes it is not triggered
 again. Regenerating a project that has not changed therefore reports:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates
+&lt;project&gt;: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+1 info
 unchanged   build/gen/ddd_globals.c
 unchanged   build/gen/ddd_globals.h
 unchanged   build/gen/ddd_types.h
@@ -619,6 +690,20 @@ fallback. In a cmake build the directory is passed to <code class="docutils lite
 <span class="x"> *</span>
 <span class="x"> * DO NOT EDIT - every change is lost the next time DDD runs.</span>
 <span class="x"> */</span>
+<span class="cp">{%</span>- <span class="k">endmacro</span> <span class="cp">%}</span>
+
+<span class="c">{# The factor and the offset of a linear conversion, as two macros beside the declaration.</span>
+<span class="c">   Their names carry a double underscore, which DDD refuses in every name of a project (a</span>
+<span class="c">   variable, a type, a constant, an enumerator), so no name the generated C holds can be</span>
+<span class="c">   one of them. A rescale of the conversion changes this header, and every file that</span>
+<span class="c">   includes it is rebuilt. Another kind of conversion - identity, an enum, a string -</span>
+<span class="c">   writes nothing: there is no scale to carry. The values are parenthesised so that a</span>
+<span class="c">   negative offset cannot join the sign before it: 'x-Speed__OFFSET' would read as a decrement. #}</span>
+<span class="cp">{%</span> <span class="k">macro</span> <span class="nv">scale</span><span class="o">(</span><span class="nv">variable</span><span class="o">)</span> -<span class="cp">%}</span>
+<span class="cp">{%</span> <span class="k">if</span> <span class="nv">variable.conversion</span> <span class="k">and</span> <span class="nv">variable.conversion.kind</span> <span class="o">==</span> <span class="s2">"linear"</span> <span class="cp">%}</span>
+<span class="x">#define </span><span class="cp">{{</span> <span class="nv">variable.name</span> <span class="cp">}}</span><span class="x">__FACTOR (</span><span class="cp">{{</span> <span class="nv">variable.conversion.factor_literal</span> <span class="cp">}}</span><span class="x">)</span>
+<span class="x">#define </span><span class="cp">{{</span> <span class="nv">variable.name</span> <span class="cp">}}</span><span class="x">__OFFSET (</span><span class="cp">{{</span> <span class="nv">variable.conversion.offset_literal</span> <span class="cp">}}</span><span class="x">)</span>
+<span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
 <span class="cp">{%</span>- <span class="k">endmacro</span> <span class="cp">%}</span>
 </pre></div>
 </div>
@@ -681,7 +766,7 @@ fallback. In a cmake build the directory is passed to <code class="docutils lite
 <div class="code-block-caption"><span class="caption-text">ddd_globals.c.jinja2 - the single definition of every global variable</span><a class="headerlink" href="#id3" title="Link to this code"></a></div>
 <div class="highlight-jinja notranslate"><div class="highlight"><pre><span></span><span class="cp">{%</span> <span class="k">import</span> <span class="s2">"_macros.jinja2"</span> <span class="k">as</span> <span class="nv">macros</span> <span class="cp">%}</span>
 <span class="cp">{%</span> <span class="k">macro</span> <span class="nv">define</span><span class="o">(</span><span class="nv">variable</span><span class="o">)</span> -<span class="cp">%}</span>
-<span class="cp">{{</span> <span class="nv">variable.qualifier</span> <span class="cp">}}{{</span> <span class="nv">variable.c_type</span> <span class="cp">}}</span><span class="x"> </span><span class="cp">{{</span> <span class="nv">variable.name</span> <span class="cp">}}{{</span> <span class="nv">variable.array_suffix</span> -<span class="cp">}}</span>
+<span class="x">DDD_RETAIN </span><span class="cp">{{</span> <span class="nv">variable.qualifier</span> <span class="cp">}}{{</span> <span class="nv">variable.c_type</span> <span class="cp">}}</span><span class="x"> </span><span class="cp">{{</span> <span class="nv">variable.name</span> <span class="cp">}}{{</span> <span class="nv">variable.array_suffix</span> -<span class="cp">}}</span>
 <span class="cp">{{</span> <span class="s1">' __attribute__((section("'</span> <span class="o">~</span> <span class="nv">variable.section</span> <span class="o">~</span> <span class="s1">'")))'</span> <span class="k">if</span> <span class="nv">variable.section</span> <span class="k">else</span> <span class="s1">''</span> -<span class="cp">}}</span>
 <span class="cp">{{</span> <span class="s1">' = '</span> <span class="o">~</span> <span class="nv">variable.initializer</span> <span class="k">if</span> <span class="nv">variable.initializer</span> <span class="k">is</span> <span class="k">not</span> <span class="nf">none</span> <span class="k">else</span> <span class="s1">''</span> <span class="cp">}}</span><span class="x">;</span>
 <span class="cp">{%</span>- <span class="k">endmacro</span> <span class="cp">%}</span>
@@ -692,6 +777,20 @@ fallback. In a cmake build the directory is passed to <code class="docutils lite
 <span class="x"> * Definition of every global variable of the project.  Compile and link this</span>
 <span class="x"> * file exactly once; DDD is the only owner of these storage locations.</span>
 <span class="x"> */</span>
+
+<span class="x">/*</span>
+<span class="x"> * A link with --gc-sections drops a definition no code references, a</span>
+<span class="x"> * measurement only the calibration tool reads among them, and the a2l then</span>
+<span class="x"> * describes storage the image does not hold.  A project on ELF that links so</span>
+<span class="x"> * defines DDD_RETAIN as __attribute__((used, retain)), with -D or in a header</span>
+<span class="x"> * the build includes first, with a gcc that knows 'retain' and a binutils that</span>
+<span class="x"> * keeps such a section; where gcc ignores 'retain' (PE), a reference to the</span>
+<span class="x"> * object or a linker script that keeps its section does the same.  Left</span>
+<span class="x"> * undefined it is empty, and the definitions are what they were.</span>
+<span class="x"> */</span>
+<span class="x">#ifndef DDD_RETAIN</span>
+<span class="x">#define DDD_RETAIN</span>
+<span class="x">#endif</span>
 <span class="cp">{%</span> <span class="k">for</span> <span class="nv">group</span> <span class="k">in</span> <span class="nv">model.groups</span> <span class="cp">%}</span>
 
 <span class="x">/* ---------------------------------------------------------------------------</span>
@@ -809,6 +908,7 @@ fallback. In a cmake build the directory is passed to <code class="docutils lite
 <span class="x">/** </span><span class="cp">{{</span> <span class="nv">entry.variable.comment</span> <span class="cp">}}</span><span class="x"> */</span>
 <span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
 <span class="cp">{{</span> <span class="nv">entry.line</span> <span class="cp">}}</span>
+<span class="cp">{{</span> <span class="nv">macros.scale</span><span class="o">(</span><span class="nv">entry.variable</span><span class="o">)</span> -<span class="cp">}}</span>
 <span class="cp">{%</span> <span class="k">if</span> <span class="nv">entry.condition</span> <span class="cp">%}</span>
 <span class="x">#endif /* </span><span class="cp">{{</span> <span class="nv">entry.condition</span> <span class="cp">}}</span><span class="x"> */</span>
 <span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
@@ -825,6 +925,7 @@ fallback. In a cmake build the directory is passed to <code class="docutils lite
 <span class="x">/** </span><span class="cp">{{</span> <span class="nv">entry.variable.comment</span> <span class="cp">}}</span><span class="x"> */</span>
 <span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
 <span class="cp">{{</span> <span class="nv">entry.line</span> <span class="cp">}}{{</span> <span class="s2">"  /* produced by "</span> <span class="o">~</span> <span class="nv">entry.variable.owner</span> <span class="o">~</span> <span class="s2">" */"</span> <span class="k">if</span> <span class="nv">entry.variable.owner</span> <span class="k">else</span> <span class="s2">""</span> <span class="cp">}}</span>
+<span class="cp">{{</span> <span class="nv">macros.scale</span><span class="o">(</span><span class="nv">entry.variable</span><span class="o">)</span> -<span class="cp">}}</span>
 <span class="cp">{%</span> <span class="k">if</span> <span class="nv">entry.condition</span> <span class="cp">%}</span>
 <span class="x">#endif /* </span><span class="cp">{{</span> <span class="nv">entry.condition</span> <span class="cp">}}</span><span class="x"> */</span>
 <span class="cp">{%</span> <span class="k">endif</span> <span class="cp">%}</span>
@@ -855,6 +956,26 @@ fallback. In a cmake build the directory is passed to <code class="docutils lite
 </pre></div>
 </div>
 </div>
+</section>
+<section id="a-link-may-drop-a-definition">
+<h2>A link may drop a definition<a class="headerlink" href="#a-link-may-drop-a-definition" title="Link to this heading"></a></h2>
+<p>Compiling the definitions as one unit and linking it into the image keeps them out of an
+archive’s selective pull, but not out of the linker’s collection of sections. A link with
+<code class="docutils literal notranslate"><span class="pre">--gc-sections</span></code> drops a definition no code references, with or without <code class="docutils literal notranslate"><span class="pre">-fdata-sections</span></code>,
+and an object nobody but the calibration tool reads goes with it: the a2l then
+carries its object at address 0 or, given the image with <code class="docutils literal notranslate"><span class="pre">--image</span></code>, reports it
+<code class="docutils literal notranslate"><span class="pre">address-missing</span></code>. Linking the demo this way gave the same result on this host with
+<code class="docutils literal notranslate"><span class="pre">-fdata-sections</span></code> and without it.</p>
+<p>The example template <code class="docutils literal notranslate"><span class="pre">ddd_globals.c.jinja2</span></code> puts <code class="docutils literal notranslate"><span class="pre">DDD_RETAIN</span></code> before every definition, and
+it is empty unless the project defines it, so that the c is what it was without it. On ELF a
+project that links with <code class="docutils literal notranslate"><span class="pre">--gc-sections</span></code> defines it as <code class="docutils literal notranslate"><span class="pre">__attribute__((used,</span> <span class="pre">retain))</span></code>, which
+with gcc 15.2.0, binutils 2.46 and <code class="docutils literal notranslate"><span class="pre">-fdata-sections</span></code> kept every object of the demo where the
+empty macro kept none, and <code class="docutils literal notranslate"><span class="pre">used</span></code> alone kept none; it needs a gcc that knows <code class="docutils literal notranslate"><span class="pre">retain</span></code> and a
+binutils that keeps such a section, and the definition goes on the compiler’s command line
+(<code class="docutils literal notranslate"><span class="pre">-D</span></code>) or in a header the build includes first. On PE gcc ignores <code class="docutils literal notranslate"><span class="pre">retain</span></code>, so the macro
+does not keep a definition there, and a reference to the object from code that is linked, or a
+linker script that keeps the section, does. A project that writes its own definition template
+spells the same thing in it.</p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <p>How these examples comment the generated code is not a recommendation. A different

@@ -220,7 +220,7 @@ same header that declares their sizes:</p>
 <span class="cp">#define PRESSURE_CELLS 8 </span><span class="cm">/**&lt; cells of the pressure manifold */</span>
 
 <span class="cm">/* ddd_globals.c */</span>
-<span class="k">volatile</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">ManifoldPressure</span><span class="p">[</span><span class="n">PRESSURE_CELLS</span><span class="p">]</span><span class="w"> </span><span class="n">__attribute__</span><span class="p">((</span><span class="n">section</span><span class="p">(</span><span class="s">".fast_ram"</span><span class="p">)));</span>
+<span class="n">DDD_RETAIN</span><span class="w"> </span><span class="k">volatile</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">ManifoldPressure</span><span class="p">[</span><span class="n">PRESSURE_CELLS</span><span class="p">]</span><span class="w"> </span><span class="n">__attribute__</span><span class="p">((</span><span class="n">section</span><span class="p">(</span><span class="s">".fast_ram"</span><span class="p">)));</span>
 </pre></div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">list</span></code> shows the spelling too - the <code class="docutils literal notranslate"><span class="pre">SHAPE</span></code> column of <code class="docutils literal notranslate"><span class="pre">ManifoldPressure</span></code> reads

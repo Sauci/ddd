@@ -127,12 +127,13 @@ A backend therefore never reaches into the loader or into the analysis, and if i
 know something, that something is a field of the dictionary rather than a second calculation
 performed in a template.</p>
 <p>That arrangement is worth having for two reasons. The first is that two backends cannot
-disagree about what a project contains: the shape a c array is declared with and the
-<code class="docutils literal notranslate"><span class="pre">MATRIX_DIM</span></code> written into the a2l are read from one field, so they cannot drift apart -
-each backend only has to order the indices the way its own format wants them, c with the
-last index running fastest and ASAP2 with the first. The second is that the work of
-resolving a project is done once, in a place that reports findings, instead of once per
-output format in a place that can only crash.</p>
+disagree about what a project contains: the number of elements of an array is worked out
+once, by the analysis, and each backend only has to order the indices the way its own format
+wants them, c with the last index running fastest and ASAP2 with the first. The two do not
+read one field: the a2l backend writes <code class="docutils literal notranslate"><span class="pre">MATRIX_DIM</span></code> from <code class="docutils literal notranslate"><span class="pre">shape</span></code>, and the c backend writes
+the array from <code class="docutils literal notranslate"><span class="pre">dimensions</span></code>, which names a declared constant where the description stated
+one. That they agree holds of the shipped backends and templates; nothing holds a template of a
+project’s own that reads the other field to it.</p>
 <p>DDD publishes the dictionary rather than keeping it to itself. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span></code> writes it out as
 json, and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">schema</span> <span class="pre">dictionary</span></code> prints its json schema, so a generator DDD does not ship
 - a report, a database importer, a header for a language DDD knows nothing about - can
@@ -144,7 +145,7 @@ ddd<span class="w"> </span>schema<span class="w"> </span>dictionary<span class="
 </div>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd dump examples/demo/demo.ddd.json
 {
-  "format": 9,
+  "format": 10,
   "name": "DemoDevice",
   "description": "Demonstration project showing every kind of data object",
   "source": "demo.ddd.json",
@@ -179,8 +180,8 @@ the next delivery may replace it, long after the sources of the first one have m
 backend sees it:</p>
 <p>The <strong>limits are filled in.</strong> <code class="docutils literal notranslate"><span class="pre">limits</span></code> is never absent. A declaration that states its
 physical limits keeps them; one that does not gets the full range its datatype and
-conversion imply, computed once. A backend writing <code class="docutils literal notranslate"><span class="pre">LOWER_LIMIT</span></code> and <code class="docutils literal notranslate"><span class="pre">UPPER_LIMIT</span></code> into
-an a2l therefore never has to decide what a missing limit means, and cannot decide it
+conversion imply, computed once. A backend writing the lower and the upper limit of a record
+into an a2l therefore never has to decide what a missing limit means, and cannot decide it
 differently from anybody else.</p>
 <p>The <strong>shape is a tuple of dimensions</strong>, empty for a scalar, and it is complete even when the
 description file never stated it. A measurement or a value block declares its <code class="docutils literal notranslate"><span class="pre">dimensions</span></code>
@@ -296,7 +297,7 @@ component read on its own - a standalone <code class="docutils literal notransla
 component file - has no project to take a default from, so its tables resolve to
 <code class="docutils literal notranslate"><span class="pre">&quot;none&quot;</span></code> unless the component states the key itself.</p>
 <p>A table resolved to <code class="docutils literal notranslate"><span class="pre">&quot;leading&quot;</span></code> is declared flat, counts first, in its own datatype:</p>
-<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="k">const</span><span class="w"> </span><span class="kt">uint32_t</span><span class="w"> </span><span class="n">M</span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="p">(</span><span class="mi">16</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="p">(</span><span class="mi">16</span><span class="p">)]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="mi">16U</span><span class="p">,</span><span class="w"> </span><span class="mi">16U</span><span class="p">,</span><span class="w"> </span><span class="p">...</span><span class="w"> </span><span class="p">};</span>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="n">DDD_RETAIN</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">uint32_t</span><span class="w"> </span><span class="n">M</span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="p">(</span><span class="mi">16</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="p">(</span><span class="mi">16</span><span class="p">)]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="mi">16U</span><span class="p">,</span><span class="w"> </span><span class="mi">16U</span><span class="p">,</span><span class="w"> </span><span class="p">...</span><span class="w"> </span><span class="p">};</span>
 </pre></div>
 </div>
 <p>and the a2l describes it with a record layout of its own, the counts ahead of the values it
@@ -318,13 +319,15 @@ and one of its axes to the other. From format 9 on, every resolved object carrie
 <h2>The format field<a class="headerlink" href="#the-format-field" title="Link to this heading"></a></h2>
 <p>A dumped dictionary is meant to be archived next to a delivery and read back by a later
 version of DDD, possibly years later. The <code class="docutils literal notranslate"><span class="pre">format</span></code> field stamps the shape of the document
-- currently <code class="docutils literal notranslate"><span class="pre">9</span></code> - and changes only when that shape changes, not with every release of the
-tool.</p>
+- currently <code class="docutils literal notranslate"><span class="pre">10</span></code> - and changes only when that shape changes, not with every release of the
+tool. Format 10 lets a leaf’s <code class="docutils literal notranslate"><span class="pre">display_identifier</span></code> be a path of identifiers, <code class="docutils literal notranslate"><span class="pre">V[1].J.b</span></code>,
+which a member naming a structure composes for every leaf below it; a format 9 dictionary
+holds at most one identifier there, and reads back unchanged.</p>
 <p>It exists so that a later reader can say <em>this file is newer than I understand</em> rather than
 misread it. DDD accepts a dictionary whose format is the one it knows or older, and refuses
 one that is newer:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd compare baseline.json demo.ddd.json
-baseline.json#format: error[schema]: in the baseline: this dictionary is in format 10, and this DDD understands up to 9; use a newer DDD to read it
+baseline.json#format: error[schema]: in the baseline: this dictionary is in format 11, and this DDD understands up to 10; use a newer DDD to read it
 1 error
 </pre></div>
 </div>
@@ -368,7 +371,7 @@ elided here for space):</p>
 <span class="w">  </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The resolved data of one project."</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nt">"format"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">      </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="mi">9</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Format"</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"integer"</span>
@@ -508,7 +511,7 @@ than half way through a jinja template.</p>
 <p>What <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span></code> writes and every backend reads. Unlike the description files, this one
 is produced rather than authored: every derived property is already worked out, so a
 consumer never has to repeat the resolution and two consumers can never disagree about it.</p>
-<div class="graphviz"><img src="_images/graphviz-1bae40a9ddabe0a63100e211c63b78afd3bfad7a.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
+<div class="graphviz"><img src="_images/graphviz-9d444d5ba5ae2046a3d48667431cb7f827662038.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
    graph [fontcolor=gray66,
       fontname=&quot;Times New Roman,Times,Liberation Serif,serif&quot;,
       fontsize=9,
@@ -540,7 +543,7 @@ than widening it: an object with no datatype&amp;#xA;and no limits would turn ev
 are read&amp;#xA;unconditionally in a dozen places on the strength of always being there.&amp;#xA;&quot;];
    &quot;ddd.ir.DataDictionary&quot;:instances:e -&gt; &quot;ddd.ir.ResolvedInstance&quot;:_root:w   [arrowhead=crownone,
       arrowtail=nonenone];
-   &quot;ddd.ir.ResolvedLeaf&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;ResolvedLeaf&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;path&lt;/td&gt;&lt;td port=&quot;path&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;instance&lt;/td&gt;&lt;td port=&quot;instance&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;instance_id&lt;/td&gt;&lt;td port=&quot;instance_id&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;kind&lt;/td&gt;&lt;td port=&quot;kind&quot;&gt;ObjectKind&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;datatype&lt;/td&gt;&lt;td port=&quot;datatype&quot;&gt;Datatype&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;unit&lt;/td&gt;&lt;td port=&quot;unit&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;conversion&lt;/td&gt;&lt;td port=&quot;conversion&quot;&gt;IdentityConversion | LinearConversion | EnumConversion | StringConversion&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;limits&lt;/td&gt;&lt;td port=&quot;limits&quot;&gt;Limits&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;shape&lt;/td&gt;&lt;td port=&quot;shape&quot;&gt;tuple[int, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;dimensions&lt;/td&gt;&lt;td port=&quot;dimensions&quot;&gt;tuple[Union[int, str], ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;bits&lt;/td&gt;&lt;td port=&quot;bits&quot;&gt;int | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;volatile&lt;/td&gt;&lt;td port=&quot;volatile&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;section&lt;/td&gt;&lt;td port=&quot;section&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;raster&lt;/td&gt;&lt;td port=&quot;raster&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;condition&lt;/td&gt;&lt;td port=&quot;condition&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;owner&lt;/td&gt;&lt;td port=&quot;owner&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;consumers&lt;/td&gt;&lt;td port=&quot;consumers&quot;&gt;tuple[str, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;local&lt;/td&gt;&lt;td port=&quot;local&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;a2l&lt;/td&gt;&lt;td port=&quot;a2l&quot;&gt;A2lObjectOptions&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
+   &quot;ddd.ir.ResolvedLeaf&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;ResolvedLeaf&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;path&lt;/td&gt;&lt;td port=&quot;path&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;instance&lt;/td&gt;&lt;td port=&quot;instance&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;instance_id&lt;/td&gt;&lt;td port=&quot;instance_id&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;kind&lt;/td&gt;&lt;td port=&quot;kind&quot;&gt;ObjectKind&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;datatype&lt;/td&gt;&lt;td port=&quot;datatype&quot;&gt;Datatype&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;unit&lt;/td&gt;&lt;td port=&quot;unit&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;conversion&lt;/td&gt;&lt;td port=&quot;conversion&quot;&gt;IdentityConversion | LinearConversion | EnumConversion | StringConversion&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;limits&lt;/td&gt;&lt;td port=&quot;limits&quot;&gt;Limits&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;shape&lt;/td&gt;&lt;td port=&quot;shape&quot;&gt;tuple[int, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;dimensions&lt;/td&gt;&lt;td port=&quot;dimensions&quot;&gt;tuple[Union[int, str], ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;bits&lt;/td&gt;&lt;td port=&quot;bits&quot;&gt;int | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;volatile&lt;/td&gt;&lt;td port=&quot;volatile&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;section&lt;/td&gt;&lt;td port=&quot;section&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;raster&lt;/td&gt;&lt;td port=&quot;raster&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;condition&lt;/td&gt;&lt;td port=&quot;condition&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;owner&lt;/td&gt;&lt;td port=&quot;owner&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;consumers&lt;/td&gt;&lt;td port=&quot;consumers&quot;&gt;tuple[str, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;local&lt;/td&gt;&lt;td port=&quot;local&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;a2l&lt;/td&gt;&lt;td port=&quot;a2l&quot;&gt;LeafA2lOptions&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
       tooltip=&quot;ddd.ir.ResolvedLeaf&amp;#xA;&amp;#xA;One member of one structured variable, at the end of one access path.&amp;#xA;&amp;#xA;The flattening. A structure \
 reaches the a2l as an object per member rather than as an a2l&amp;#xA;structure, so this is the form that backend consumes - an ordinary \
 object in every respect&amp;#xA;but its name, which is a path rather than an identifier.&amp;#xA;&quot;];
@@ -600,7 +603,13 @@ are the raw range of its datatype - which is what the a2l record states - and no
 a string exists. A byte has no reading of its&amp;#xA;own, so no reading is produced for it, as for the identity.&amp;#xA;&quot;];
    &quot;ddd.ir.ResolvedLeaf&quot;:conversion:e -&gt; &quot;ddd.models.conversion.StringConversion&quot;:_root:w   [arrowhead=noneteetee,
       arrowtail=nonenone];
-   &quot;ddd.ir.ResolvedLeaf&quot;:a2l:e -&gt; &quot;ddd.models.objects.A2lObjectOptions&quot;:_root:w   [arrowhead=noneteetee,
+   &quot;ddd.models.objects.LeafA2lOptions&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;LeafA2lOptions&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;export&lt;/td&gt;&lt;td port=&quot;export&quot;&gt;bool | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;format&lt;/td&gt;&lt;td port=&quot;format&quot;&gt;Optional[str]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;display_identifier&lt;/td&gt;&lt;td port=&quot;display_identifier&quot;&gt;Optional[str]&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
+      tooltip=&quot;ddd.models.objects.LeafA2lOptions&amp;#xA;&amp;#xA;The ``a2l`` block a leaf is published under, which the analysis resolves.&amp;#xA;&amp;#xA;The \
+block a member states, with ``export`` folded over the variable and every member above&amp;#xA;the leaf, ``format`` the innermost stated \
+one, and ``display_identifier`` a path where a&amp;#xA;member above the leaf states one: that member's identifier stands for its own \
+segment of&amp;#xA;the leaf's path, so ``V[1].j.b`` with ``j`` displayed ``J`` is ``V[1].J.b``. The block a&amp;#xA;project writes keeps \
+one plain identifier; this one is written by the analysis alone.&amp;#xA;&quot;];
+   &quot;ddd.ir.ResolvedLeaf&quot;:a2l:e -&gt; &quot;ddd.models.objects.LeafA2lOptions&quot;:_root:w   [arrowhead=noneteetee,
       arrowtail=nonenone];
    &quot;ddd.models.objects.Limits&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;Limits&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;min&lt;/td&gt;&lt;td port=&quot;min&quot;&gt;Union[int, float]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;max&lt;/td&gt;&lt;td port=&quot;max&quot;&gt;Union[int, float]&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
       tooltip=&quot;ddd.models.objects.Limits&amp;#xA;&amp;#xA;Physical lower/upper limit of a data object.&amp;#xA;&quot;];
@@ -639,7 +648,7 @@ document has nothing to do with.&amp;#xA;&quot;];
 <span class="w">   </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"object"</span><span class="p">,</span>
 <span class="w">   </span><span class="nt">"properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">      </span><span class="nt">"format"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">         </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="mi">9</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Version of this document format, raised only when the shape of the document changes.\n\nStamped so that a dictionary archived next to a delivery can be read back years later by\na version of DDD that can say \"this file is newer than I understand\" rather than misread\nit. It does not follow the version of the tool.\n\nA whole number of at least 1, and strictly that: ``\"9\"``, ``9.0`` and ``0`` are not\nversions any DDD ever wrote, and the check that refuses a dictionary from a newer DDD has\nno version to compare them with."</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"minimum"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Format"</span><span class="p">,</span>
@@ -1049,6 +1058,55 @@ document has nothing to do with.&amp;#xA;&quot;];
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"array"</span>
 <span class="w">            </span><span class="p">}</span>
 <span class="w">         </span><span class="p">]</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">"LeafA2lOptions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">         </span><span class="nt">"additionalProperties"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The ``a2l`` block a leaf is published under, which the analysis resolves.\n\nThe block a member states, with ``export`` folded over the variable and every member above\nthe leaf, ``format`` the innermost stated one, and ``display_identifier`` a path where a\nmember above the leaf states one: that member's identifier stands for its own segment of\nthe leaf's path, so ``V[1].j.b`` with ``j`` displayed ``J`` is ``V[1].J.b``. The block a\nproject writes keeps one plain identifier; this one is written by the analysis alone."</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">"export"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"boolean"</span>
+<span class="w">                  </span><span class="p">},</span>
+<span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"null"</span>
+<span class="w">                  </span><span class="p">}</span>
+<span class="w">               </span><span class="p">],</span>
+<span class="w">               </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Whether the object belongs in the a2l file; omitted, it does.\n\nThe one a2l option any component may state, not only the producer. Which signals a\ncalibration engineer needs to see is not a property of whoever happens to write the\nvariable: a component reading a value from a library it does not own has as good a claim\nto measuring it.\n\nStated by several, the answer is yes if any of them says so, and an object nobody\nmentions is exported: see \"Who asks for an export\" on the definition page."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Export"</span>
+<span class="w">            </span><span class="p">},</span>
+<span class="w">            </span><span class="nt">"format"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"pattern"</span><span class="p">:</span><span class="w"> </span><span class="s2">"^%[0-9]*\\.[0-9]+$"</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
+<span class="w">                  </span><span class="p">},</span>
+<span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"null"</span>
+<span class="w">                  </span><span class="p">}</span>
+<span class="w">               </span><span class="p">],</span>
+<span class="w">               </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"a2l ``FORMAT`` string, e.g. ``\"%8.3\"``: total width, then decimal places.\n\nRefused beside a ``string`` conversion, which has no decimals to display."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Format"</span>
+<span class="w">            </span><span class="p">},</span>
+<span class="w">            </span><span class="nt">"display_identifier"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"pattern"</span><span class="p">:</span><span class="w"> </span><span class="s2">"^[A-Za-z_][A-Za-z0-9_]*(?:\\[[0-9]+\\])*(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[[0-9]+\\])*)*$"</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
+<span class="w">                  </span><span class="p">},</span>
+<span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"null"</span>
+<span class="w">                  </span><span class="p">}</span>
+<span class="w">               </span><span class="p">],</span>
+<span class="w">               </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The name the calibration tool shows the leaf under: the member's own identifier, or the\npath a member above composes; nothing where neither states one.\n\nNot held to a length. The a2l's checks hold what reaches the file, and a leaf of a variable\nkept out of it is composed all the same, so a dictionary can carry a path past\n``MAX_IDENT`` or a part past ``MAX_PARTIAL_IDENT`` that nothing reported, and has to read\nback."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Display Identifier"</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">         </span><span class="p">},</span>
+<span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"LeafA2lOptions"</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"object"</span>
 <span class="w">      </span><span class="p">},</span>
 <span class="w">      </span><span class="nt">"Limits"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">         </span><span class="nt">"additionalProperties"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
@@ -1549,13 +1607,13 @@ document has nothing to do with.&amp;#xA;&quot;];
 <span class="w">               </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"boolean"</span>
 <span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">"a2l"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"$ref"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/A2lObjectOptions"</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"$ref"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/LeafA2lOptions"</span><span class="p">,</span>
 <span class="w">               </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">                  </span><span class="nt">"export"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
 <span class="w">                  </span><span class="nt">"format"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
 <span class="w">                  </span><span class="nt">"display_identifier"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
 <span class="w">               </span><span class="p">},</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The member's own a2l options; a member may be kept out of the file on its own."</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The member's a2l options resolved over the variable and the members above it; a member\nmay be kept out of the file on its own."</span>
 <span class="w">            </span><span class="p">}</span>
 <span class="w">         </span><span class="p">},</span>
 <span class="w">         </span><span class="nt">"required"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
@@ -2058,7 +2116,7 @@ document has nothing to do with.&amp;#xA;&quot;];
 </dl>
 <dl class="py attribute pydantic_field">
 <dt class="sig sig-object py" id="ddd.ir.DataDictionary.format">
-<span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">format</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Annotated</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Field</span><span class="p"><span class="pre">(</span></span><span class="n"><span class="pre">ge</span></span><span class="o"><span class="pre">=</span></span><span class="m"><span class="pre">1</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="n"><span class="pre">strict</span></span><span class="o"><span class="pre">=</span></span><span class="k"><span class="pre">True</span></span><span class="p"><span class="pre">)</span></span><span class="p"><span class="pre">]</span></span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">9</span></span><a class="headerlink" href="#ddd.ir.DataDictionary.format" title="Link to this definition"></a></dt>
+<span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">format</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Annotated</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Field</span><span class="p"><span class="pre">(</span></span><span class="n"><span class="pre">ge</span></span><span class="o"><span class="pre">=</span></span><span class="m"><span class="pre">1</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="n"><span class="pre">strict</span></span><span class="o"><span class="pre">=</span></span><span class="k"><span class="pre">True</span></span><span class="p"><span class="pre">)</span></span><span class="p"><span class="pre">]</span></span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">10</span></span><a class="headerlink" href="#ddd.ir.DataDictionary.format" title="Link to this definition"></a></dt>
 <dd><p>Version of this document format, raised only when the shape of the document changes.</p>
 <p>Stamped so that a dictionary archived next to a delivery can be read back years later by
 a version of DDD that can say “this file is newer than I understand” rather than misread
@@ -4374,7 +4432,7 @@ project named none. Empty in a dictionary from format 4 or older.</p>
 <p>The flattening. A structure reaches the a2l as an object per member rather than as an a2l
 structure, so this is the form that backend consumes - an ordinary object in every respect
 but its name, which is a path rather than an identifier.</p>
-<div class="graphviz"><img src="_images/graphviz-76204de907594567baf5c84403cce1d0e2c35272.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
+<div class="graphviz"><img src="_images/graphviz-e6af8c2b93d3c41b3686f22a87e887da18d52ca6.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
    graph [fontcolor=gray66,
       fontname=&quot;Times New Roman,Times,Liberation Serif,serif&quot;,
       fontsize=9,
@@ -4388,7 +4446,7 @@ but its name, which is a path rather than an identifier.</p>
       shape=plain
    ];
    edge [dir=both];
-   &quot;ddd.ir.ResolvedLeaf&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;ResolvedLeaf&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;path&lt;/td&gt;&lt;td port=&quot;path&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;instance&lt;/td&gt;&lt;td port=&quot;instance&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;instance_id&lt;/td&gt;&lt;td port=&quot;instance_id&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;kind&lt;/td&gt;&lt;td port=&quot;kind&quot;&gt;ObjectKind&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;datatype&lt;/td&gt;&lt;td port=&quot;datatype&quot;&gt;Datatype&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;unit&lt;/td&gt;&lt;td port=&quot;unit&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;conversion&lt;/td&gt;&lt;td port=&quot;conversion&quot;&gt;IdentityConversion | LinearConversion | EnumConversion | StringConversion&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;limits&lt;/td&gt;&lt;td port=&quot;limits&quot;&gt;Limits&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;shape&lt;/td&gt;&lt;td port=&quot;shape&quot;&gt;tuple[int, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;dimensions&lt;/td&gt;&lt;td port=&quot;dimensions&quot;&gt;tuple[Union[int, str], ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;bits&lt;/td&gt;&lt;td port=&quot;bits&quot;&gt;int | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;volatile&lt;/td&gt;&lt;td port=&quot;volatile&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;section&lt;/td&gt;&lt;td port=&quot;section&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;raster&lt;/td&gt;&lt;td port=&quot;raster&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;condition&lt;/td&gt;&lt;td port=&quot;condition&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;owner&lt;/td&gt;&lt;td port=&quot;owner&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;consumers&lt;/td&gt;&lt;td port=&quot;consumers&quot;&gt;tuple[str, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;local&lt;/td&gt;&lt;td port=&quot;local&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;a2l&lt;/td&gt;&lt;td port=&quot;a2l&quot;&gt;A2lObjectOptions&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
+   &quot;ddd.ir.ResolvedLeaf&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;ResolvedLeaf&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;path&lt;/td&gt;&lt;td port=&quot;path&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;instance&lt;/td&gt;&lt;td port=&quot;instance&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;instance_id&lt;/td&gt;&lt;td port=&quot;instance_id&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;kind&lt;/td&gt;&lt;td port=&quot;kind&quot;&gt;ObjectKind&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;datatype&lt;/td&gt;&lt;td port=&quot;datatype&quot;&gt;Datatype&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;description&lt;/td&gt;&lt;td port=&quot;description&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;unit&lt;/td&gt;&lt;td port=&quot;unit&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;conversion&lt;/td&gt;&lt;td port=&quot;conversion&quot;&gt;IdentityConversion | LinearConversion | EnumConversion | StringConversion&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;limits&lt;/td&gt;&lt;td port=&quot;limits&quot;&gt;Limits&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;shape&lt;/td&gt;&lt;td port=&quot;shape&quot;&gt;tuple[int, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;dimensions&lt;/td&gt;&lt;td port=&quot;dimensions&quot;&gt;tuple[Union[int, str], ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;bits&lt;/td&gt;&lt;td port=&quot;bits&quot;&gt;int | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;volatile&lt;/td&gt;&lt;td port=&quot;volatile&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;section&lt;/td&gt;&lt;td port=&quot;section&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;raster&lt;/td&gt;&lt;td port=&quot;raster&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;condition&lt;/td&gt;&lt;td port=&quot;condition&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;owner&lt;/td&gt;&lt;td port=&quot;owner&quot;&gt;str | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;consumers&lt;/td&gt;&lt;td port=&quot;consumers&quot;&gt;tuple[str, ...]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;local&lt;/td&gt;&lt;td port=&quot;local&quot;&gt;bool&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;a2l&lt;/td&gt;&lt;td port=&quot;a2l&quot;&gt;LeafA2lOptions&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
       tooltip=&quot;ddd.ir.ResolvedLeaf&amp;#xA;&amp;#xA;One member of one structured variable, at the end of one access path.&amp;#xA;&amp;#xA;The flattening. A structure \
 reaches the a2l as an object per member rather than as an a2l&amp;#xA;structure, so this is the form that backend consumes - an ordinary \
 object in every respect&amp;#xA;but its name, which is a path rather than an identifier.&amp;#xA;&quot;];
@@ -4417,11 +4475,13 @@ are the raw range of its datatype - which is what the a2l record states - and no
 a string exists. A byte has no reading of its&amp;#xA;own, so no reading is produced for it, as for the identity.&amp;#xA;&quot;];
    &quot;ddd.ir.ResolvedLeaf&quot;:conversion:e -&gt; &quot;ddd.models.conversion.StringConversion&quot;:_root:w   [arrowhead=noneteetee,
       arrowtail=nonenone];
-   &quot;ddd.models.objects.A2lObjectOptions&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;A2lObjectOptions&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;export&lt;/td&gt;&lt;td port=&quot;export&quot;&gt;bool | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;format&lt;/td&gt;&lt;td port=&quot;format&quot;&gt;Optional[str]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;display_identifier&lt;/td&gt;&lt;td port=&quot;display_identifier&quot;&gt;Optional[str]&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
-      tooltip=&quot;ddd.models.objects.A2lObjectOptions&amp;#xA;&amp;#xA;What a declaration asks of the a2l backend. Only that backend interprets it.&amp;#xA;&amp;#\
-xA;Nothing here changes the generated c or the meaning of the object; a project that&amp;#xA;generates no a2l can leave the whole block \
-out.&amp;#xA;&quot;];
-   &quot;ddd.ir.ResolvedLeaf&quot;:a2l:e -&gt; &quot;ddd.models.objects.A2lObjectOptions&quot;:_root:w   [arrowhead=noneteetee,
+   &quot;ddd.models.objects.LeafA2lOptions&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;LeafA2lOptions&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;export&lt;/td&gt;&lt;td port=&quot;export&quot;&gt;bool | None&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;format&lt;/td&gt;&lt;td port=&quot;format&quot;&gt;Optional[str]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;display_identifier&lt;/td&gt;&lt;td port=&quot;display_identifier&quot;&gt;Optional[str]&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
+      tooltip=&quot;ddd.models.objects.LeafA2lOptions&amp;#xA;&amp;#xA;The ``a2l`` block a leaf is published under, which the analysis resolves.&amp;#xA;&amp;#xA;The \
+block a member states, with ``export`` folded over the variable and every member above&amp;#xA;the leaf, ``format`` the innermost stated \
+one, and ``display_identifier`` a path where a&amp;#xA;member above the leaf states one: that member's identifier stands for its own \
+segment of&amp;#xA;the leaf's path, so ``V[1].j.b`` with ``j`` displayed ``J`` is ``V[1].J.b``. The block a&amp;#xA;project writes keeps \
+one plain identifier; this one is written by the analysis alone.&amp;#xA;&quot;];
+   &quot;ddd.ir.ResolvedLeaf&quot;:a2l:e -&gt; &quot;ddd.models.objects.LeafA2lOptions&quot;:_root:w   [arrowhead=noneteetee,
       arrowtail=nonenone];
    &quot;ddd.models.objects.Limits&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;Limits&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;min&lt;/td&gt;&lt;td port=&quot;min&quot;&gt;Union[int, float]&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;max&lt;/td&gt;&lt;td port=&quot;max&quot;&gt;Union[int, float]&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
       tooltip=&quot;ddd.models.objects.Limits&amp;#xA;&amp;#xA;Physical lower/upper limit of a data object.&amp;#xA;&quot;];
@@ -4633,67 +4693,16 @@ out.&amp;#xA;&quot;];
 <span class="w">         </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"boolean"</span>
 <span class="w">      </span><span class="p">},</span>
 <span class="w">      </span><span class="nt">"a2l"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">         </span><span class="nt">"$ref"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/A2lObjectOptions"</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"$ref"</span><span class="p">:</span><span class="w"> </span><span class="s2">"#/$defs/LeafA2lOptions"</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">            </span><span class="nt">"export"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
 <span class="w">            </span><span class="nt">"format"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
 <span class="w">            </span><span class="nt">"display_identifier"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
 <span class="w">         </span><span class="p">},</span>
-<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The member's own a2l options; a member may be kept out of the file on its own."</span>
+<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The member's a2l options resolved over the variable and the members above it; a member\nmay be kept out of the file on its own."</span>
 <span class="w">      </span><span class="p">}</span>
 <span class="w">   </span><span class="p">},</span>
 <span class="w">   </span><span class="nt">"$defs"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">      </span><span class="nt">"A2lObjectOptions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">         </span><span class="nt">"additionalProperties"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"What a declaration asks of the a2l backend. Only that backend interprets it.\n\nNothing here changes the generated c or the meaning of the object; a project that\ngenerates no a2l can leave the whole block out."</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">"properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">            </span><span class="nt">"export"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">                  </span><span class="p">{</span>
-<span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"boolean"</span>
-<span class="w">                  </span><span class="p">},</span>
-<span class="w">                  </span><span class="p">{</span>
-<span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"null"</span>
-<span class="w">                  </span><span class="p">}</span>
-<span class="w">               </span><span class="p">],</span>
-<span class="w">               </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Whether the object belongs in the a2l file; omitted, it does.\n\nThe one a2l option any component may state, not only the producer. Which signals a\ncalibration engineer needs to see is not a property of whoever happens to write the\nvariable: a component reading a value from a library it does not own has as good a claim\nto measuring it.\n\nStated by several, the answer is yes if any of them says so, and an object nobody\nmentions is exported: see \"Who asks for an export\" on the definition page."</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Export"</span>
-<span class="w">            </span><span class="p">},</span>
-<span class="w">            </span><span class="nt">"format"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">                  </span><span class="p">{</span>
-<span class="w">                     </span><span class="nt">"pattern"</span><span class="p">:</span><span class="w"> </span><span class="s2">"^%[0-9]*\\.[0-9]+$"</span><span class="p">,</span>
-<span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
-<span class="w">                  </span><span class="p">},</span>
-<span class="w">                  </span><span class="p">{</span>
-<span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"null"</span>
-<span class="w">                  </span><span class="p">}</span>
-<span class="w">               </span><span class="p">],</span>
-<span class="w">               </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"a2l ``FORMAT`` string, e.g. ``\"%8.3\"``: total width, then decimal places.\n\nRefused beside a ``string`` conversion, which has no decimals to display."</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Format"</span>
-<span class="w">            </span><span class="p">},</span>
-<span class="w">            </span><span class="nt">"display_identifier"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">                  </span><span class="p">{</span>
-<span class="w">                     </span><span class="nt">"maxLength"</span><span class="p">:</span><span class="w"> </span><span class="mi">128</span><span class="p">,</span>
-<span class="w">                     </span><span class="nt">"minLength"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
-<span class="w">                     </span><span class="nt">"pattern"</span><span class="p">:</span><span class="w"> </span><span class="s2">"^[A-Za-z_][A-Za-z0-9_]*$"</span><span class="p">,</span>
-<span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
-<span class="w">                  </span><span class="p">},</span>
-<span class="w">                  </span><span class="p">{</span>
-<span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"null"</span>
-<span class="w">                  </span><span class="p">}</span>
-<span class="w">               </span><span class="p">],</span>
-<span class="w">               </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Alternative name shown by the calibration tool."</span><span class="p">,</span>
-<span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Display Identifier"</span>
-<span class="w">            </span><span class="p">}</span>
-<span class="w">         </span><span class="p">},</span>
-<span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"A2lObjectOptions"</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"object"</span>
-<span class="w">      </span><span class="p">},</span>
 <span class="w">      </span><span class="nt">"Datatype"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The base datatypes DDD can allocate storage for."</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"enum"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
@@ -4815,6 +4824,55 @@ out.&amp;#xA;&quot;];
 <span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"IdentityConversion"</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"object"</span>
 <span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">"LeafA2lOptions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">         </span><span class="nt">"additionalProperties"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The ``a2l`` block a leaf is published under, which the analysis resolves.\n\nThe block a member states, with ``export`` folded over the variable and every member above\nthe leaf, ``format`` the innermost stated one, and ``display_identifier`` a path where a\nmember above the leaf states one: that member's identifier stands for its own segment of\nthe leaf's path, so ``V[1].j.b`` with ``j`` displayed ``J`` is ``V[1].J.b``. The block a\nproject writes keeps one plain identifier; this one is written by the analysis alone."</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">"export"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"boolean"</span>
+<span class="w">                  </span><span class="p">},</span>
+<span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"null"</span>
+<span class="w">                  </span><span class="p">}</span>
+<span class="w">               </span><span class="p">],</span>
+<span class="w">               </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Whether the object belongs in the a2l file; omitted, it does.\n\nThe one a2l option any component may state, not only the producer. Which signals a\ncalibration engineer needs to see is not a property of whoever happens to write the\nvariable: a component reading a value from a library it does not own has as good a claim\nto measuring it.\n\nStated by several, the answer is yes if any of them says so, and an object nobody\nmentions is exported: see \"Who asks for an export\" on the definition page."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Export"</span>
+<span class="w">            </span><span class="p">},</span>
+<span class="w">            </span><span class="nt">"format"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"pattern"</span><span class="p">:</span><span class="w"> </span><span class="s2">"^%[0-9]*\\.[0-9]+$"</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
+<span class="w">                  </span><span class="p">},</span>
+<span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"null"</span>
+<span class="w">                  </span><span class="p">}</span>
+<span class="w">               </span><span class="p">],</span>
+<span class="w">               </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"a2l ``FORMAT`` string, e.g. ``\"%8.3\"``: total width, then decimal places.\n\nRefused beside a ``string`` conversion, which has no decimals to display."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Format"</span>
+<span class="w">            </span><span class="p">},</span>
+<span class="w">            </span><span class="nt">"display_identifier"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">               </span><span class="nt">"anyOf"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"pattern"</span><span class="p">:</span><span class="w"> </span><span class="s2">"^[A-Za-z_][A-Za-z0-9_]*(?:\\[[0-9]+\\])*(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[[0-9]+\\])*)*$"</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span>
+<span class="w">                  </span><span class="p">},</span>
+<span class="w">                  </span><span class="p">{</span>
+<span class="w">                     </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"null"</span>
+<span class="w">                  </span><span class="p">}</span>
+<span class="w">               </span><span class="p">],</span>
+<span class="w">               </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The name the calibration tool shows the leaf under: the member's own identifier, or the\npath a member above composes; nothing where neither states one.\n\nNot held to a length. The a2l's checks hold what reaches the file, and a leaf of a variable\nkept out of it is composed all the same, so a dictionary can carry a path past\n``MAX_IDENT`` or a part past ``MAX_PARTIAL_IDENT`` that nothing reported, and has to read\nback."</span><span class="p">,</span>
+<span class="w">               </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Display Identifier"</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">         </span><span class="p">},</span>
+<span class="w">         </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"LeafA2lOptions"</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"object"</span>
+<span class="w">      </span><span class="p">},</span>
 <span class="w">      </span><span class="nt">"Limits"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">         </span><span class="nt">"additionalProperties"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
 <span class="w">         </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Physical lower/upper limit of a data object."</span><span class="p">,</span>
@@ -4928,7 +4986,7 @@ out.&amp;#xA;&quot;];
 </details></p><dl class="field-list simple">
 <dt class="field-odd">Fields<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><a class="reference internal" href="#ddd.ir.ResolvedLeaf.a2l" title="ddd.ir.ResolvedLeaf.a2l"><code class="xref py py-obj docutils literal notranslate"><span class="pre">a2l</span> <span class="pre">(ddd.models.objects.A2lObjectOptions)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#ddd.ir.ResolvedLeaf.a2l" title="ddd.ir.ResolvedLeaf.a2l"><code class="xref py py-obj docutils literal notranslate"><span class="pre">a2l</span> <span class="pre">(ddd.models.objects.LeafA2lOptions)</span></code></a></p></li>
 <li><p><a class="reference internal" href="#ddd.ir.ResolvedLeaf.bits" title="ddd.ir.ResolvedLeaf.bits"><code class="xref py py-obj docutils literal notranslate"><span class="pre">bits</span> <span class="pre">(int</span> <span class="pre">|</span> <span class="pre">None)</span></code></a></p></li>
 <li><p><a class="reference internal" href="#ddd.ir.ResolvedLeaf.condition" title="ddd.ir.ResolvedLeaf.condition"><code class="xref py py-obj docutils literal notranslate"><span class="pre">condition</span> <span class="pre">(str</span> <span class="pre">|</span> <span class="pre">None)</span></code></a></p></li>
 <li><p><a class="reference internal" href="#ddd.ir.ResolvedLeaf.consumers" title="ddd.ir.ResolvedLeaf.consumers"><code class="xref py py-obj docutils literal notranslate"><span class="pre">consumers</span> <span class="pre">(tuple[str,</span> <span class="pre">...])</span></code></a></p></li>
@@ -5099,8 +5157,11 @@ of its own.</p>
 
 <dl class="py attribute pydantic_field">
 <dt class="sig sig-object py" id="ddd.ir.ResolvedLeaf.a2l">
-<span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">a2l</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="data_contracts.html#ddd.models.A2lObjectOptions" title="ddd.models.A2lObjectOptions"><span class="pre">A2lObjectOptions</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">A2lObjectOptions(export=None,</span> <span class="pre">format=None,</span> <span class="pre">display_identifier=None)</span></span><a class="headerlink" href="#ddd.ir.ResolvedLeaf.a2l" title="Link to this definition"></a></dt>
-<dd><p>The member’s own a2l options; a member may be kept out of the file on its own.</p>
+<span class="property"><span class="pre">field</span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">a2l</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="data_contracts.html#ddd.models.LeafA2lOptions" title="ddd.models.LeafA2lOptions"><span class="pre">LeafA2lOptions</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">LeafA2lOptions(export=None,</span> <span class="pre">format=None,</span> <span class="pre">display_identifier=None)</span></span><a class="headerlink" href="#ddd.ir.ResolvedLeaf.a2l" title="Link to this definition"></a></dt>
+<dd><p>The member’s a2l options resolved over the variable and the members above it; a member
+may be kept out of the file on its own.</p>
+<p>The member’s a2l options resolved over the variable and the members above it; a member
+may be kept out of the file on its own.</p>
 </dd></dl>
 
 </dd></dl>

@@ -315,7 +315,7 @@ controller.ddd.json#component.interface[0].definition: warning[storage-mismatch]
 </pre></div>
 </div>
 <div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cm">/* ddd_globals.c */</span>
-<span class="kt">int16_t</span><span class="w"> </span><span class="n">InletTemperature</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">-400</span><span class="p">;</span>
+<span class="n">DDD_RETAIN</span><span class="w"> </span><span class="kt">int16_t</span><span class="w"> </span><span class="n">InletTemperature</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">-400</span><span class="p">;</span>
 </pre></div>
 </div>
 <p>If the disagreement is real and the project needs to see the generated files anyway - to
@@ -387,7 +387,11 @@ spelling out <code class="docutils literal notranslate"><span class="pre">dataty
 </pre></div>
 </div>
 <p>If all three consumers say <code class="docutils literal notranslate"><span class="pre">Temperature_t</span></code>, there is nothing left for them to disagree
-about. A type fixes exactly <code class="docutils literal notranslate"><span class="pre">datatype</span></code>, <code class="docutils literal notranslate"><span class="pre">unit</span></code>, <code class="docutils literal notranslate"><span class="pre">conversion</span></code> and <code class="docutils literal notranslate"><span class="pre">limits</span></code>; <code class="docutils literal notranslate"><span class="pre">kind</span></code>,
+about, which is also what it costs: <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code> cannot see two descriptions drift apart
+when there is one, so a rescale of the type is one edit that no reader’s description shows.
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span></code> against an archived baseline names it, and the example templates write the
+type’s factor and offset as macros in the header each reader includes, so the readers rebuild;
+<a class="reference internal" href="concept.html"><span class="doc">Concept</span></a> says what is detected and what is not. A type fixes exactly <code class="docutils literal notranslate"><span class="pre">datatype</span></code>, <code class="docutils literal notranslate"><span class="pre">unit</span></code>, <code class="docutils literal notranslate"><span class="pre">conversion</span></code> and <code class="docutils literal notranslate"><span class="pre">limits</span></code>; <code class="docutils literal notranslate"><span class="pre">kind</span></code>,
 <code class="docutils literal notranslate"><span class="pre">dimensions</span></code>, <code class="docutils literal notranslate"><span class="pre">init</span></code>, <code class="docutils literal notranslate"><span class="pre">volatile</span></code> and <code class="docutils literal notranslate"><span class="pre">a2l</span></code> stay on the variable, because two
 measurements of one type may well differ in whether an interrupt writes one of them. Naming
 a type and then restating what it fixes is an error rather than an override, so “where is
@@ -511,7 +515,7 @@ component that declares it - a group referencing a record that is not in the fil
 invalid as the record itself being missing. It is emphatically <em>not</em> absent from the
 generated c code:</p>
 <div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cm">/* ddd_globals.c */</span>
-<span class="kt">uint16_t</span><span class="w"> </span><span class="n">ValueD</span><span class="p">[</span><span class="mi">8</span><span class="p">];</span>
+<span class="n">DDD_RETAIN</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">ValueD</span><span class="p">[</span><span class="mi">8</span><span class="p">];</span>
 </pre></div>
 </div>
 <p>That asymmetry is deliberate. <code class="docutils literal notranslate"><span class="pre">export</span></code> describes what a calibration tool is shown; it says
@@ -560,13 +564,14 @@ the a2l the calibration tool is actually given.</p>
 <p>An image without debug information takes <code class="docutils literal notranslate"><span class="pre">--address-map</span></code> instead: a flat json object of
 symbol name to address, decimal or hexadecimal, produced from the linker output by whatever
 already parses it in your build:</p>
-<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"ValueE"</span><span class="p">:</span><span class="w"> </span><span class="s2">"0x20000100"</span><span class="p">,</span><span class="w"> </span><span class="nt">"AxisA"</span><span class="p">:</span><span class="w"> </span><span class="s2">"0x08004000"</span><span class="p">,</span><span class="w"> </span><span class="nt">"ParameterA"</span><span class="p">:</span><span class="w"> </span><span class="mi">134234112</span><span class="w"> </span><span class="p">}</span>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"ValueE"</span><span class="p">:</span><span class="w"> </span><span class="s2">"0x20000100"</span><span class="p">,</span><span class="w"> </span><span class="nt">"AxisA"</span><span class="p">:</span><span class="w"> </span><span class="s2">"0x08004000"</span><span class="p">,</span><span class="w"> </span><span class="nt">"ParameterA"</span><span class="p">:</span><span class="w"> </span><span class="mi">134234128</span><span class="w"> </span><span class="p">}</span>
 </pre></div>
 </div>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all examples/demo/demo.ddd.json -o gen -t examples/templates --address-map addresses.json
 addresses.json: warning[address-missing]: the address map has no entry for 'AxisB', 'BlockA', 'CurveA', 'CurveB', 'Diagnosis.faults' and 12 others; they reach the a2l at address 0
+&lt;project&gt;: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
 addresses.json: info[condition-left-out]: the address map has no entry for 'ValueG', which is only present in the build when 'defined(FEATURE_X)'; it is left out of the a2l
-1 warning, 1 info
+1 warning, 2 infos
 ...
 $ sed -n '/MEASUREMENT ValueE/,/end MEASUREMENT/p' gen/DemoDevice.a2l
     /begin MEASUREMENT ValueE "Measurement used as the input quantity of AxisA"
@@ -599,7 +604,10 @@ the page tells you to try it on. They are counted among the entries the a2l does
 the note under the warning above.</p>
 <p>The other route needs no map at all: <code class="docutils literal notranslate"><span class="pre">SYMBOL_LINK</span></code> is written for every object, always, so
 an a2l address patcher can resolve the symbols against the linked image itself and fill the
-addresses in afterwards. Both routes exist because projects differ in which tool owns the
+addresses in afterwards. A patcher that works from a linker map can do that for an object that
+is not a member of a structure, and for a member only once the a2l was written with <code class="docutils literal notranslate"><span class="pre">--image</span></code>,
+where the record names the variable’s symbol and the member’s offset from it; before the link
+the record of a member names a path no linker map can answer. Both routes exist because projects differ in which tool owns the
 linker output; neither of them requires editing the generated file by hand.</p>
 </section>
 <section id="why-is-the-address-of-my-variable-still-0x00000000">
@@ -647,7 +655,8 @@ dimensions cannot be described at all. DDD writes all of its dimensions out anyw
 only a 1.7 reader understands, and says so:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all buffers.ddd.json -o gen -t templates
 buffers.ddd.json#component.interface[1].definition: warning[a2l-unrepresentable]: 'Tesseract' has 4 dimensions, but the MATRIX_DIM of ASAP2 1.6.1 carries 3; the extra dimensions are written out and only a 1.7 reader understands them
-1 warning
+&lt;project&gt;: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+1 warning, 1 info
 wrote       gen/ddd_globals.c (created)
 ...
 </pre></div>
@@ -661,8 +670,10 @@ calibration tool would address the wrong element.</p>
 <p>The generated a2l says which DAQ event carries a measurement, and nothing about the
 protocol that reaches it: an exported measurement with a <a class="reference internal" href="file_formats/rasters.html"><span class="doc">raster</span></a> gets an <code class="docutils literal notranslate"><span class="pre">IF_DATA</span> <span class="pre">XCP</span></code> block naming its event channel, while the
 module level <code class="docutils literal notranslate"><span class="pre">DAQ</span></code> list defining the events, the <code class="docutils literal notranslate"><span class="pre">PROTOCOL_LAYER</span></code> and the transport
-come from whatever configures the XCP stack. No file DDD writes contains an <code class="docutils literal notranslate"><span class="pre">IF_DATA</span></code>
-section for CCP.</p>
+come from whatever configures the XCP stack, and reach the a2l in the project’s own
+<a class="reference internal" href="generated_artefacts.html#a2l-module-fragment"><span class="std std-ref">module fragment</span></a>, pasted at the head of the module with
+<code class="docutils literal notranslate"><span class="pre">--a2l-module-fragment</span></code> - the <code class="docutils literal notranslate"><span class="pre">A2ML</span></code> describing them with it. No file DDD writes
+contains an <code class="docutils literal notranslate"><span class="pre">IF_DATA</span></code> section for CCP.</p>
 </div>
 </section>
 <section id="how-large-may-an-array-be">
@@ -738,6 +749,8 @@ to a component: the definition file allocates exactly the variables of that imag
 a2l describes exactly its memory. Two images are two dictionaries, and mixing them would mean
 shipping a calibration description for variables the software does not contain.</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all sensor_only.ddd.json -o build/sensor -t templates -W unused-output=ignore
+&lt;project&gt;: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+1 info
 wrote       build/sensor/ddd_globals.c (created)
 wrote       build/sensor/ddd_globals.h (created)
 wrote       build/sensor/ddd_types.h (created)
@@ -745,6 +758,8 @@ wrote       build/sensor/SensorHub.h (created)
 wrote       build/sensor/SensorOnly.a2l (created)
 
 $ ddd generate all full.ddd.json -o build/full -t templates -W unused-output=ignore -W missing-producer=ignore
+&lt;project&gt;: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+1 info
 wrote       build/full/ddd_globals.c (created)
 wrote       build/full/ddd_globals.h (created)
 wrote       build/full/ddd_types.h (created)
@@ -759,9 +774,13 @@ overlook because they carry the same file names. A consumer header names the com
 produces each of its inputs, and that answer depends on what else is in the image:</p>
 <div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cm">/* build/full/Controller.h */</span>
 <span class="k">extern</span><span class="w"> </span><span class="kt">uint8_t</span><span class="w"> </span><span class="n">ValueA</span><span class="p">;</span><span class="w">  </span><span class="cm">/* produced by SensorHub */</span>
+<span class="cp">#define ValueA__FACTOR (0.5)</span>
+<span class="cp">#define ValueA__OFFSET (0.0)</span>
 
 <span class="cm">/* build/ctrl/Controller.h - an image that does not link SensorHub */</span>
 <span class="k">extern</span><span class="w"> </span><span class="kt">uint8_t</span><span class="w"> </span><span class="n">ValueA</span><span class="p">;</span><span class="w">  </span><span class="cm">/* produced by &lt;unresolved&gt; */</span>
+<span class="cp">#define ValueA__FACTOR (0.5)</span>
+<span class="cp">#define ValueA__OFFSET (0.0)</span>
 </pre></div>
 </div>
 <p>This is why the cmake integration refuses the ambiguous case instead of letting an include
@@ -783,6 +802,8 @@ written only when the bytes differ. An unchanged file therefore keeps its modifi
 and make, ninja or any other timestamp driven tool correctly concludes that nothing depending
 on it needs rebuilding:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all examples/demo/demo.ddd.json -o build/docs-check -t examples/templates
+&lt;project&gt;: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+1 info
 wrote       build/docs-check/ddd_globals.c (created)
 wrote       build/docs-check/ddd_globals.h (created)
 wrote       build/docs-check/ddd_types.h (created)
@@ -793,6 +814,8 @@ wrote       build/docs-check/EventLogger.h (created)
 wrote       build/docs-check/DemoDevice.a2l (created)
 
 $ ddd generate all examples/demo/demo.ddd.json -o build/docs-check -t examples/templates
+&lt;project&gt;: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+1 info
 unchanged   build/docs-check/ddd_globals.c
 unchanged   build/docs-check/ddd_globals.h
 unchanged   build/docs-check/ddd_types.h

@@ -62,7 +62,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#the-type-header">The type header</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#the-definition-file">The definition file</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#access-rules-are-a-visibility-problem">Access rules are a visibility problem</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#const-inputs"><code class="docutils literal notranslate"><span class="pre">--const-inputs</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#inputs-are-declared-as-they-are-defined">Inputs are declared as they are defined</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#conditional-declarations">Conditional declarations</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#calibration-data-is-const-and-volatile-when-a-tool-tunes-it">Calibration data is const, and volatile when a tool tunes it</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#regeneration-is-stable">Regeneration is stable</a></li>
@@ -80,6 +80,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#addresses">Addresses</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#conditional-objects">Conditional objects</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#keeping-an-object-out-of-the-a2l">Keeping an object out of the a2l</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#what-the-a2l-leaves-to-the-project">What the a2l leaves to the project</a></li>
 </ul>
 </li>
 </ul>
@@ -148,6 +149,8 @@ everybody.</p>
 <code class="docutils literal notranslate"><span class="pre">examples/demo</span></code>. Its c files are the ones the example templates in <code class="docutils literal notranslate"><span class="pre">examples/templates</span></code>
 produce, which is what every transcript below hands to <code class="docutils literal notranslate"><span class="pre">--template-dir</span></code>:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates
+&lt;project&gt;: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+1 info
 wrote       build/gen/ddd_globals.c (created)
 wrote       build/gen/ddd_globals.h (created)
 wrote       build/gen/ddd_types.h (created)
@@ -315,36 +318,36 @@ description change points at the component that changed:</p>
 
 <span class="cm">/* measurements */</span>
 <span class="cm">/** Measurement with a verbal conversion table */</span>
-<span class="kt">uint8_t</span><span class="w"> </span><span class="n">StateA</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0U</span><span class="p">;</span>
+<span class="n">DDD_RETAIN</span><span class="w"> </span><span class="kt">uint8_t</span><span class="w"> </span><span class="n">StateA</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0U</span><span class="p">;</span>
 <span class="cm">/** Name of the current state, as text */</span>
-<span class="kt">uint8_t</span><span class="w"> </span><span class="n">StateName</span><span class="p">[</span><span class="mi">16</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"OFF"</span><span class="p">;</span>
+<span class="n">DDD_RETAIN</span><span class="w"> </span><span class="kt">uint8_t</span><span class="w"> </span><span class="n">StateName</span><span class="p">[</span><span class="mi">16</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"OFF"</span><span class="p">;</span>
 <span class="cm">/** Measurement used as the input quantity of AxisA [Hz] */</span>
-<span class="k">volatile</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">ValueE</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0U</span><span class="p">;</span>
+<span class="n">DDD_RETAIN</span><span class="w"> </span><span class="k">volatile</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">ValueE</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0U</span><span class="p">;</span>
 <span class="cm">/** Signed measurement with a fixed point conversion [degC] */</span>
-<span class="kt">int16_t</span><span class="w"> </span><span class="n">ValueF</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">-400</span><span class="p">;</span>
+<span class="n">DDD_RETAIN</span><span class="w"> </span><span class="kt">int16_t</span><span class="w"> </span><span class="n">ValueF</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">-400</span><span class="p">;</span>
 <span class="cp">#if defined(FEATURE_X)</span>
 <span class="cm">/** Measurement that only exists when FEATURE_X is defined [V] */</span>
-<span class="kt">uint16_t</span><span class="w"> </span><span class="n">ValueG</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1000U</span><span class="p">;</span>
+<span class="n">DDD_RETAIN</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">ValueG</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1000U</span><span class="p">;</span>
 <span class="cp">#endif </span><span class="cm">/* defined(FEATURE_X) */</span>
 <span class="cm">/** Component local measurement of the controller [%] */</span>
-<span class="kt">int16_t</span><span class="w"> </span><span class="n">ValueH</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="n">DDD_RETAIN</span><span class="w"> </span><span class="kt">int16_t</span><span class="w"> </span><span class="n">ValueH</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
 
 <span class="cm">/* calibration data */</span>
 <span class="cm">/** Shared axis indexed by ValueE [Hz] (calibration axis, 6 points) */</span>
-<span class="k">const</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">AxisA</span><span class="p">[</span><span class="mi">6</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="mi">0U</span><span class="p">,</span><span class="w"> </span><span class="mi">3200U</span><span class="p">,</span><span class="w"> </span><span class="mi">6400U</span><span class="p">,</span><span class="w"> </span><span class="mi">12800U</span><span class="p">,</span><span class="w"> </span><span class="mi">19200U</span><span class="p">,</span><span class="w"> </span><span class="mi">32000U</span><span class="w"> </span><span class="p">};</span>
+<span class="n">DDD_RETAIN</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">AxisA</span><span class="p">[</span><span class="mi">6</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="mi">0U</span><span class="p">,</span><span class="w"> </span><span class="mi">3200U</span><span class="p">,</span><span class="w"> </span><span class="mi">6400U</span><span class="p">,</span><span class="w"> </span><span class="mi">12800U</span><span class="p">,</span><span class="w"> </span><span class="mi">19200U</span><span class="p">,</span><span class="w"> </span><span class="mi">32000U</span><span class="w"> </span><span class="p">};</span>
 <span class="cm">/** Component local axis indexed by ValueA [%] (calibration axis, 4 points) */</span>
-<span class="k">const</span><span class="w"> </span><span class="kt">uint8_t</span><span class="w"> </span><span class="n">AxisB</span><span class="p">[</span><span class="mi">4</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="mi">0U</span><span class="p">,</span><span class="w"> </span><span class="mi">60U</span><span class="p">,</span><span class="w"> </span><span class="mi">140U</span><span class="p">,</span><span class="w"> </span><span class="mi">200U</span><span class="w"> </span><span class="p">};</span>
+<span class="n">DDD_RETAIN</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">uint8_t</span><span class="w"> </span><span class="n">AxisB</span><span class="p">[</span><span class="mi">4</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="mi">0U</span><span class="p">,</span><span class="w"> </span><span class="mi">60U</span><span class="p">,</span><span class="w"> </span><span class="mi">140U</span><span class="p">,</span><span class="w"> </span><span class="mi">200U</span><span class="w"> </span><span class="p">};</span>
 <span class="cm">/** Calibratable curve over AxisA [ms] (calibration curve over AxisA) */</span>
-<span class="k">const</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">CurveA</span><span class="p">[</span><span class="mi">6</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="mi">1200U</span><span class="p">,</span><span class="w"> </span><span class="mi">900U</span><span class="p">,</span><span class="w"> </span><span class="mi">800U</span><span class="p">,</span><span class="w"> </span><span class="mi">750U</span><span class="p">,</span><span class="w"> </span><span class="mi">700U</span><span class="p">,</span><span class="w"> </span><span class="mi">650U</span><span class="w"> </span><span class="p">};</span>
+<span class="n">DDD_RETAIN</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">CurveA</span><span class="p">[</span><span class="mi">6</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="mi">1200U</span><span class="p">,</span><span class="w"> </span><span class="mi">900U</span><span class="p">,</span><span class="w"> </span><span class="mi">800U</span><span class="p">,</span><span class="w"> </span><span class="mi">750U</span><span class="p">,</span><span class="w"> </span><span class="mi">700U</span><span class="p">,</span><span class="w"> </span><span class="mi">650U</span><span class="w"> </span><span class="p">};</span>
 <span class="cm">/** Calibratable map over AxisA and AxisB [%] (calibration map over AxisA and AxisB) */</span>
-<span class="k">const</span><span class="w"> </span><span class="kt">int8_t</span><span class="w"> </span><span class="n">MapA</span><span class="p">[</span><span class="mi">4</span><span class="p">][</span><span class="mi">6</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="n">DDD_RETAIN</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">int8_t</span><span class="w"> </span><span class="n">MapA</span><span class="p">[</span><span class="mi">4</span><span class="p">][</span><span class="mi">6</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="mi">20</span><span class="p">,</span><span class="w"> </span><span class="mi">24</span><span class="p">,</span><span class="w"> </span><span class="mi">28</span><span class="p">,</span><span class="w"> </span><span class="mi">30</span><span class="p">,</span><span class="w"> </span><span class="mi">32</span><span class="p">,</span><span class="w"> </span><span class="mi">30</span><span class="w"> </span><span class="p">},</span>
 <span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="mi">18</span><span class="p">,</span><span class="w"> </span><span class="mi">22</span><span class="p">,</span><span class="w"> </span><span class="mi">26</span><span class="p">,</span><span class="w"> </span><span class="mi">28</span><span class="p">,</span><span class="w"> </span><span class="mi">30</span><span class="p">,</span><span class="w"> </span><span class="mi">28</span><span class="w"> </span><span class="p">},</span>
 <span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="mi">12</span><span class="p">,</span><span class="w"> </span><span class="mi">16</span><span class="p">,</span><span class="w"> </span><span class="mi">20</span><span class="p">,</span><span class="w"> </span><span class="mi">22</span><span class="p">,</span><span class="w"> </span><span class="mi">24</span><span class="p">,</span><span class="w"> </span><span class="mi">22</span><span class="w"> </span><span class="p">},</span>
 <span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="mi">6</span><span class="p">,</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="mi">14</span><span class="p">,</span><span class="w"> </span><span class="mi">16</span><span class="p">,</span><span class="w"> </span><span class="mi">18</span><span class="p">,</span><span class="w"> </span><span class="mi">16</span><span class="w"> </span><span class="p">}</span>
 <span class="p">};</span>
 <span class="cm">/** Single calibratable constant [Hz] (calibration parameter) */</span>
-<span class="k">const</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">ParameterA</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">3200U</span><span class="p">;</span>
+<span class="n">DDD_RETAIN</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">ParameterA</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">3200U</span><span class="p">;</span>
 </pre></div>
 </div>
 <p>Several details of that excerpt are deliberate, and they fall on both sides of the split
@@ -355,7 +358,10 @@ to open the json to find out that <code class="docutils literal notranslate"><sp
 is the template’s, and the examples put it in an ordinary <code class="docutils literal notranslate"><span class="pre">/*</span> <span class="pre">...</span> <span class="pre">*/</span></code> comment; whether the
 generated code should instead be documented in the form a documentation generator reads is a
 decision about the project’s sources rather than about its data, and it is made by writing the
-markers that generator expects in the template. The values are DDD’s again: every literal
+markers that generator expects in the template. So is the <code class="docutils literal notranslate"><span class="pre">DDD_RETAIN</span></code> before each
+definition, a macro the file defines empty unless the build defines it first, which a build
+linking with <code class="docutils literal notranslate"><span class="pre">--gc-sections</span></code> on ELF does so that the linker keeps what no code references
+(<a class="reference internal" href="templates.html"><span class="doc">Templates</span></a>). The values are DDD’s again: every literal
 carries the suffix its datatype asks for, in upper case as the coding standards common in the
 industry require: <code class="docutils literal notranslate"><span class="pre">U</span></code> for <code class="docutils literal notranslate"><span class="pre">uint8</span></code>, <code class="docutils literal notranslate"><span class="pre">uint16</span></code> and <code class="docutils literal notranslate"><span class="pre">uint32</span></code>, <code class="docutils literal notranslate"><span class="pre">ULL</span></code> and <code class="docutils literal notranslate"><span class="pre">LL</span></code> for the
 64 bit types, <code class="docutils literal notranslate"><span class="pre">F</span></code> for <code class="docutils literal notranslate"><span class="pre">float32</span></code>, nothing for the signed narrow types and for
@@ -393,8 +399,12 @@ this:</p>
 <span class="cm">/* inputs - produced elsewhere, UserInterface may only read them */</span>
 <span class="cm">/** Measurement used as the input quantity of AxisA [Hz] */</span>
 <span class="k">extern</span><span class="w"> </span><span class="k">volatile</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">ValueE</span><span class="p">;</span><span class="w">  </span><span class="cm">/* produced by Controller */</span>
+<span class="cp">#define ValueE__FACTOR (0.25)</span>
+<span class="cp">#define ValueE__OFFSET (0.0)</span>
 <span class="cm">/** Signed measurement with a fixed point conversion [degC] */</span>
 <span class="k">extern</span><span class="w"> </span><span class="kt">int16_t</span><span class="w"> </span><span class="n">ValueF</span><span class="p">;</span><span class="w">  </span><span class="cm">/* produced by Controller */</span>
+<span class="cp">#define ValueF__FACTOR (0.1)</span>
+<span class="cp">#define ValueF__OFFSET (0.0)</span>
 <span class="cm">/** Floating point measurement without a conversion [degC] */</span>
 <span class="k">extern</span><span class="w"> </span><span class="kt">float</span><span class="w"> </span><span class="n">ValueC</span><span class="p">;</span><span class="w">  </span><span class="cm">/* produced by SensorHub */</span>
 <span class="cm">/** Measurement with a verbal conversion table */</span>
@@ -403,14 +413,20 @@ this:</p>
 <span class="k">extern</span><span class="w"> </span><span class="kt">uint8_t</span><span class="w"> </span><span class="n">StateName</span><span class="p">[</span><span class="mi">16</span><span class="p">];</span><span class="w">  </span><span class="cm">/* produced by Controller */</span>
 <span class="cm">/** Array measurement with four elements [V] */</span>
 <span class="k">extern</span><span class="w"> </span><span class="k">volatile</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">ValueB</span><span class="p">[</span><span class="mi">4</span><span class="p">];</span><span class="w">  </span><span class="cm">/* produced by SensorHub */</span>
+<span class="cp">#define ValueB__FACTOR (0.001)</span>
+<span class="cp">#define ValueB__OFFSET (0.0)</span>
 <span class="cp">#if defined(FEATURE_X)</span>
 <span class="cm">/** Measurement that only exists when FEATURE_X is defined [V] */</span>
 <span class="k">extern</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">ValueG</span><span class="p">;</span><span class="w">  </span><span class="cm">/* produced by Controller */</span>
+<span class="cp">#define ValueG__FACTOR (0.001)</span>
+<span class="cp">#define ValueG__OFFSET (0.0)</span>
 <span class="cp">#endif </span><span class="cm">/* defined(FEATURE_X) */</span>
 <span class="cm">/** Counter written by the event logger */</span>
 <span class="k">extern</span><span class="w"> </span><span class="kt">uint8_t</span><span class="w"> </span><span class="n">ValueJ</span><span class="p">;</span><span class="w">  </span><span class="cm">/* produced by EventLogger */</span>
 <span class="cm">/** Shared axis indexed by ValueE [Hz] (calibration axis, 6 points) */</span>
 <span class="k">extern</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">AxisA</span><span class="p">[</span><span class="mi">6</span><span class="p">];</span><span class="w">  </span><span class="cm">/* produced by Controller */</span>
+<span class="cp">#define AxisA__FACTOR (0.25)</span>
+<span class="cp">#define AxisA__OFFSET (0.0)</span>
 
 <span class="cm">/* locals - owned exclusively by UserInterface */</span>
 <span class="cm">/** Second calibratable curve over the same shared axis [%] (calibration curve over AxisA) */</span>
@@ -446,45 +462,24 @@ to include its own header. What travels to a component is that directory and the
 usage needed to read what is in it, never a link edge.</p>
 </div>
 </section>
-<section id="const-inputs">
-<h3><code class="docutils literal notranslate"><span class="pre">--const-inputs</span></code><a class="headerlink" href="#const-inputs" title="Link to this heading"></a></h3>
+<section id="inputs-are-declared-as-they-are-defined">
+<h3>Inputs are declared as they are defined<a class="headerlink" href="#inputs-are-declared-as-they-are-defined" title="Link to this heading"></a></h3>
 <p>Visibility stops a component from touching a variable it never declared, but it does not
-stop it from writing to one it declared as an <code class="docutils literal notranslate"><span class="pre">input</span></code>. <code class="docutils literal notranslate"><span class="pre">--const-inputs</span></code> closes that gap
-by adding <code class="docutils literal notranslate"><span class="pre">const</span></code> to the input declarations of the consumer headers, which turns an
-assignment into a diagnostic the compiler issues at the offending line. It is the one c
-option left on the command line rather than in a template, because it changes what is
-declared and not how it is written: the qualifier is part of the declaration the model hands
-over, so any template that prints those declarations honours it. Generating the demo with
-<code class="docutils literal notranslate"><span class="pre">--const-inputs</span></code> opens the inputs section of <code class="docutils literal notranslate"><span class="pre">UserInterface.h</span></code> like this:</p>
-<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cm">/* inputs - produced elsewhere, UserInterface may only read them */</span>
-<span class="cm">/** Measurement used as the input quantity of AxisA [Hz] */</span>
-<span class="k">extern</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="k">volatile</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">ValueE</span><span class="p">;</span><span class="w">  </span><span class="cm">/* produced by Controller */</span>
-<span class="cm">/** Signed measurement with a fixed point conversion [degC] */</span>
-<span class="k">extern</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">int16_t</span><span class="w"> </span><span class="n">ValueF</span><span class="p">;</span><span class="w">  </span><span class="cm">/* produced by Controller */</span>
-<span class="cm">/** Floating point measurement without a conversion [degC] */</span>
-<span class="k">extern</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">float</span><span class="w"> </span><span class="n">ValueC</span><span class="p">;</span><span class="w">  </span><span class="cm">/* produced by SensorHub */</span>
-<span class="p">...</span>
-</pre></div>
-</div>
-<p>Note that <code class="docutils literal notranslate"><span class="pre">volatile</span></code> survives the transformation: <code class="docutils literal notranslate"><span class="pre">const</span> <span class="pre">volatile</span></code> is the correct
-qualification for a value that this translation unit may not write but that something else -
-here the producing component - changes underneath it, and dropping the <code class="docutils literal notranslate"><span class="pre">volatile</span></code> would let
-the optimiser cache a reading in a register. Objects that are already <code class="docutils literal notranslate"><span class="pre">const</span></code>, the
-calibration data, are left alone; a second <code class="docutils literal notranslate"><span class="pre">const</span></code> does not compile.</p>
-<div class="admonition warning">
-<p class="admonition-title">Warning</p>
-<p>The definition in <code class="docutils literal notranslate"><span class="pre">ddd_globals.c</span></code> stays non-const, because the producing component has
-to be able to write it. The consumer therefore sees <code class="docutils literal notranslate"><span class="pre">extern</span> <span class="pre">const</span> <span class="pre">int16_t</span> <span class="pre">ValueF;</span></code> while
-the object is defined as <code class="docutils literal notranslate"><span class="pre">int16_t</span> <span class="pre">ValueF</span> <span class="pre">=</span> <span class="pre">-400;</span></code>, and c requires that all declarations
-of the same object agree on their type qualifiers. This is a constraint violation, and a
-conforming compiler is entitled to reject it. In practice every embedded toolchain the
-tool has been used with accepts it - the declarations are in different translation units,
-the linker only matches names, and no compiler diagnoses across that boundary - but
-“accepted in practice” is not “correct”, which is why the behaviour is opt-in rather than
-the default. The repository verifies the claim rather than asserting it: the container
-target <code class="docutils literal notranslate"><span class="pre">compile-const</span></code> regenerates the demo with <code class="docutils literal notranslate"><span class="pre">--const-inputs</span></code> and compiles and
-links the result with <code class="docutils literal notranslate"><span class="pre">-std=c11</span> <span class="pre">-Wall</span> <span class="pre">-Wextra</span> <span class="pre">-Wpedantic</span> <span class="pre">-Werror</span> <span class="pre">-Wconversion</span> <span class="pre">-Wshadow</span>
-<span class="pre">-Wcast-qual</span> <span class="pre">-Wstrict-prototypes</span></code>.</p>
+stop it from writing to one it declared as an <code class="docutils literal notranslate"><span class="pre">input</span></code>. The generated headers do not try to:
+every declaration of an object carries the qualifiers its definition carries and no others,
+so a consumer sees <code class="docutils literal notranslate"><span class="pre">extern</span> <span class="pre">int16_t</span> <span class="pre">ValueF;</span></code> where <code class="docutils literal notranslate"><span class="pre">ddd_globals.c</span></code> defines
+<code class="docutils literal notranslate"><span class="pre">int16_t</span> <span class="pre">ValueF</span> <span class="pre">=</span> <span class="pre">-400;</span></code>. A header that declared the input <code class="docutils literal notranslate"><span class="pre">const</span></code> instead would leave two
+declarations of one object that disagree about their qualifiers, which c leaves undefined, and
+an optimising compiler may then read the variable once where its producer writes it in
+between. A write to a variable owned by somebody else is a matter for review.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Migrating from 0.11: <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">c</span> <span class="pre">--const-inputs</span></code>, <code class="docutils literal notranslate"><span class="pre">CONST_INPUTS</span></code> of
+<code class="docutils literal notranslate"><span class="pre">ddd_generate()</span></code>, <code class="docutils literal notranslate"><span class="pre">.const</span></code> of a header entry and <code class="docutils literal notranslate"><span class="pre">declaration(const=...)</span></code> of an
+object are refused in a sentence naming 0.12.0. Delete them; a template that printed
+<code class="docutils literal notranslate"><span class="pre">entry.line</span></code> needs nothing else. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">a2l</span> <span class="pre">--image</span></code> names, where the
+compiler records it, a header that declares a variable with a <code class="docutils literal notranslate"><span class="pre">const</span></code> its description
+does not state.</p>
 </div>
 </section>
 <section id="conditional-declarations">
@@ -495,7 +490,7 @@ declaration header and the header of every component that declares it - so that 
 templates emit the same <code class="docutils literal notranslate"><span class="pre">#if</span></code> around all of them:</p>
 <div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cp">#if defined(FEATURE_X)</span>
 <span class="cm">/** Measurement that only exists when FEATURE_X is defined [V] */</span>
-<span class="kt">uint16_t</span><span class="w"> </span><span class="n">ValueG</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1000U</span><span class="p">;</span>
+<span class="n">DDD_RETAIN</span><span class="w"> </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">ValueG</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1000U</span><span class="p">;</span>
 <span class="cp">#endif </span><span class="cm">/* defined(FEATURE_X) */</span>
 </pre></div>
 </div>
@@ -546,8 +541,7 @@ else does - so DDD composes them independently instead of letting one displace t
 </div>
 <p>Every <code class="docutils literal notranslate"><span class="pre">extern</span></code> declaration of the object is qualified to match, in <code class="docutils literal notranslate"><span class="pre">ddd_globals.h</span></code> and in
 the header of each component that declared it, so that the whole image is compiled against
-one statement about the value. This is the argument <code class="docutils literal notranslate"><span class="pre">--const-inputs</span></code> makes one section
-above, applied to the other half of the data: <code class="docutils literal notranslate"><span class="pre">const</span> <span class="pre">volatile</span></code> is the correct qualification
+one statement about the value. <code class="docutils literal notranslate"><span class="pre">const</span> <span class="pre">volatile</span></code> is the correct qualification
 for a value this translation unit may not write but that something else changes underneath
 it, and whether that something else is the producing component or the calibration tool
 connected to the running ecu makes no difference to the compiler.</p>
@@ -566,26 +560,29 @@ Across translation units without link time optimisation the load does survive, b
 that one across an opaque call, so a value that changes while the software runs cannot be
 observed to change between them - and with <code class="docutils literal notranslate"><span class="pre">-flto</span></code> it folds outright. Reading the parameter
 once into a ram copy at startup is no escape either: <code class="docutils literal notranslate"><span class="pre">RamGain</span> <span class="pre">=</span> <span class="pre">Gain;</span></code> is <code class="docutils literal notranslate"><span class="pre">mov</span> <span class="pre">eax,</span> <span class="pre">3</span></code>.</p>
-<p>What that costs is not a write that fails but a write nobody notices. A program that stores 7
-through the address of a plain <code class="docutils literal notranslate"><span class="pre">const</span></code> object prints, identically at <code class="docutils literal notranslate"><span class="pre">-O0</span></code>, <code class="docutils literal notranslate"><span class="pre">-O2</span></code> and
-<code class="docutils literal notranslate"><span class="pre">-Os</span></code>, that memory now holds <code class="docutils literal notranslate"><span class="pre">Gain=7</span></code> and that <code class="docutils literal notranslate"><span class="pre">apply(1)</span></code> still returns 3, which is
-exactly the failure a calibration engineer spends an afternoon on: the tool shows the new
-value, reads it back correctly, and the ecu behaves as it did before.</p>
-<p><code class="docutils literal notranslate"><span class="pre">volatile</span></code> is not free, and what it costs is the read only memory the <code class="docutils literal notranslate"><span class="pre">const</span></code> earned. gcc
-treats a volatile access as a side effect and takes the object out of the read only category
-altogether: <code class="docutils literal notranslate"><span class="pre">.section</span> <span class="pre">.rodata</span></code> becomes a plain <code class="docutils literal notranslate"><span class="pre">.data</span></code>, the section flags <code class="docutils literal notranslate"><span class="pre">readelf</span></code>
-reports go from <code class="docutils literal notranslate"><span class="pre">A</span></code> to <code class="docutils literal notranslate"><span class="pre">WA</span></code>, and the class <code class="docutils literal notranslate"><span class="pre">nm</span></code> prints goes from <code class="docutils literal notranslate"><span class="pre">R</span></code> to <code class="docutils literal notranslate"><span class="pre">D</span></code>.
-Measured with gcc 12.2.0 on DDD’s own generated demo with the flag set quoted above, <code class="docutils literal notranslate"><span class="pre">size</span>
-<span class="pre">-A</span> <span class="pre">ddd_globals.o</span></code> moved from <code class="docutils literal notranslate"><span class="pre">.rodata</span> <span class="pre">84</span></code> and <code class="docutils literal notranslate"><span class="pre">.data</span> <span class="pre">2</span></code> to <code class="docutils literal notranslate"><span class="pre">.data</span> <span class="pre">86</span></code> - every byte of
-the calibration data changing category. Those two counts are of the demo as it stood when the
-measurement was taken, and they move with whatever the demo declares; what does not move is
-that all of it goes across. Naming a section
-explicitly does not change this - a <code class="docutils literal notranslate"><span class="pre">.calib</span></code> section is emitted <code class="docutils literal notranslate"><span class="pre">A</span></code> when its contents are
-<code class="docutils literal notranslate"><span class="pre">const</span></code> and <code class="docutils literal notranslate"><span class="pre">WA</span></code> when they are <code class="docutils literal notranslate"><span class="pre">const</span> <span class="pre">volatile</span></code>. On a flash target with an ordinary
-linker script that means a ram address with a load region in flash and a copy at startup, so
-the calibration tool programs a page the code never reads and the next reset overwrites what
-the tool wrote. A project that calibrates online therefore places these objects itself, in
-its linker script.</p>
+<p>What a tool’s write then does was run as a hosted program (gcc 15.2.0, binutils 2.46) that stores
+7 through the address of <code class="docutils literal notranslate"><span class="pre">Gain</span></code> and prints what memory holds, what <code class="docutils literal notranslate"><span class="pre">Gain</span></code> reads and what
+<code class="docutils literal notranslate"><span class="pre">apply(1)</span></code> returns. On an ordinary hosted build the store faults, a segmentation fault, at
+<code class="docutils literal notranslate"><span class="pre">-O0</span></code>, <code class="docutils literal notranslate"><span class="pre">-O2</span></code> and <code class="docutils literal notranslate"><span class="pre">-Os</span></code>, for <code class="docutils literal notranslate"><span class="pre">const</span></code> and <code class="docutils literal notranslate"><span class="pre">const</span> <span class="pre">volatile</span></code> alike, because both lie in
+<code class="docutils literal notranslate"><span class="pre">.rodata</span></code>. With the page made writable first (<code class="docutils literal notranslate"><span class="pre">mprotect</span></code>, as an overlay or an emulation
+memory makes it for a tool), a plain <code class="docutils literal notranslate"><span class="pre">const</span></code> object reads 3 and <code class="docutils literal notranslate"><span class="pre">apply(1)</span></code> returns 3 at all
+three levels, while memory holds 7 at <code class="docutils literal notranslate"><span class="pre">-O0</span></code> and still 3 at <code class="docutils literal notranslate"><span class="pre">-O2</span></code> and <code class="docutils literal notranslate"><span class="pre">-Os</span></code>. A <code class="docutils literal notranslate"><span class="pre">const</span> <span class="pre">volatile</span></code> object reads 7 and <code class="docutils literal notranslate"><span class="pre">apply(1)</span></code> returns 7 at all
+three. What a particular target does with a store to flash is the target’s to say, and was not
+measured.</p>
+<p>Where the object lies is a separate question, and <code class="docutils literal notranslate"><span class="pre">volatile</span></code> does not answer it:
+<code class="docutils literal notranslate"><span class="pre">volatile</span></code> does not move a value to RAM on any toolchain measured. The committed ELF images
+the test suite reads, built by gcc 14.2.0 (x86_64, i686, aarch64, powerpc and s390x),
+arm-none-eabi-gcc 14.2.1 and clang 19.1.7, hold every <code class="docutils literal notranslate"><span class="pre">const</span> <span class="pre">volatile</span></code> object in <code class="docutils literal notranslate"><span class="pre">.rodata</span></code>,
+which is not writable, except the small ones on powerpc, which lie in <code class="docutils literal notranslate"><span class="pre">.sdata</span></code>, a writable
+section, as the plain <code class="docutils literal notranslate"><span class="pre">const</span></code> objects of their size do. <code class="docutils literal notranslate"><span class="pre">readelf</span></code> reports the flags <code class="docutils literal notranslate"><span class="pre">A</span></code>, not
+<code class="docutils literal notranslate"><span class="pre">WA</span></code>, for <code class="docutils literal notranslate"><span class="pre">.rodata</span></code>, and <code class="docutils literal notranslate"><span class="pre">nm</span></code> the class <code class="docutils literal notranslate"><span class="pre">R</span></code>, not <code class="docutils literal notranslate"><span class="pre">D</span></code>, on every image measured but
+the small objects of powerpc. Where the compiler
+places such an object depends on the target and on the compiler’s version, and no other
+version was measured: confirm it once on the toolchain a project ships with.</p>
+<p>Where a calibration parameter lives is the project’s to decide, by the <code class="docutils literal notranslate"><span class="pre">section</span></code> DDD writes
+and by the linker script, and a tool writes a parameter that stays in flash through an overlay
+or an emulation memory. A project that calibrates from RAM places the object there itself,
+with the startup copy that implies.</p>
 <p>DDD states no preference between the two answers and reports nothing about the choice. There
 is nothing in a description it could derive one from - unlike the limits, which follow from
 the datatype and the conversion - and the two answers have different costs, of which only the
@@ -638,6 +635,8 @@ use of that fact: it renders every artefact in memory, compares it with what is 
 disk and only writes the ones that actually differ. The report says which is which, and the
 exit code is unaffected:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates
+&lt;project&gt;: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+1 info
 unchanged   build/gen/ddd_globals.c
 unchanged   build/gen/ddd_globals.h
 unchanged   build/gen/ddd_types.h
@@ -655,6 +654,8 @@ invalidates the whole tree on every run, and an incremental build of a large ima
 degenerates into a full rebuild. With the comparison in place, only what genuinely changed is
 touched. Changing the description of one variable in <code class="docutils literal notranslate"><span class="pre">SensorHub</span></code> shows the granularity:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates  # after the edit
+&lt;project&gt;: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+1 info
 wrote       build/gen/ddd_globals.c (updated)
 wrote       build/gen/ddd_globals.h (updated)
 unchanged   build/gen/ddd_types.h
@@ -678,6 +679,8 @@ consistency checks and nothing else, so a job using it this way has to read the 
 than the status. Here the output directory did not exist yet, which is why every line says
 <code class="docutils literal notranslate"><span class="pre">created</span></code>:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates --dry-run
+&lt;project&gt;: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+1 info
 would write build/gen/ddd_globals.c (created)
 would write build/gen/ddd_globals.h (created)
 would write build/gen/ddd_types.h (created)
@@ -713,6 +716,7 @@ file of a component that has left is one nothing declares any more (see
 <code class="docutils literal notranslate"><span class="pre">.ddd-manifest.json</span></code> beside them, and the next run removes the recorded files it no longer
 writes, saying so:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates  # after the component left
+...
 wrote       build/gen/ddd_globals.c (updated)
 ...
 removed     build/gen/EventLogger.h
@@ -790,9 +794,14 @@ what they are reading.</p>
 <p>The whole project becomes a single <code class="docutils literal notranslate"><span class="pre">MODULE</span></code> named after the project, which is the right
 granularity here: a module is what a calibration tool connects to, and the components of the
 image are one target, not several. <code class="docutils literal notranslate"><span class="pre">BYTE_ORDER</span></code> follows <code class="docutils literal notranslate"><span class="pre">--byte-order</span></code>, which writes
-<code class="docutils literal notranslate"><span class="pre">MSB_LAST</span></code> for <code class="docutils literal notranslate"><span class="pre">little</span></code> (the default) and <code class="docutils literal notranslate"><span class="pre">MSB_FIRST</span></code> for <code class="docutils literal notranslate"><span class="pre">big</span></code>; the alignment values
-are the natural alignment of each width, which is what a compiler targeting a modern core
-does unless it is told to pack. The a2l is written by the <code class="docutils literal notranslate"><span class="pre">a2l</span></code> and <code class="docutils literal notranslate"><span class="pre">all</span></code> artefacts, and
+<code class="docutils literal notranslate"><span class="pre">MSB_LAST</span></code> for <code class="docutils literal notranslate"><span class="pre">little</span></code> (the default) and <code class="docutils literal notranslate"><span class="pre">MSB_FIRST</span></code> for <code class="docutils literal notranslate"><span class="pre">big</span></code>; a run that gives
+neither the option nor an image says at <code class="docutils literal notranslate"><span class="pre">info</span></code>, as <code class="docutils literal notranslate"><span class="pre">byte-order-defaulted</span></code>, that it
+assumed little endian (cmake’s <code class="docutils literal notranslate"><span class="pre">BYTE_ORDER</span></code> is the same choice). The alignment values are
+the natural alignment of each width by default, which is what a compiler targeting a modern
+core does unless it is told to pack. With <code class="docutils literal notranslate"><span class="pre">--image</span></code> the 64 bit ones come from the image’s
+machine: <code class="docutils literal notranslate"><span class="pre">ALIGNMENT_INT64</span></code> and <code class="docutils literal notranslate"><span class="pre">ALIGNMENT_FLOAT64_IEEE</span></code> are 4 for an i386 image, which
+aligns a 64 bit scalar to 4. For a machine and ABI the tool holds no alignment rule for, the
+defaults stand. The a2l is written by the <code class="docutils literal notranslate"><span class="pre">a2l</span></code> and <code class="docutils literal notranslate"><span class="pre">all</span></code> artefacts, and
 it is named after the project, so <code class="docutils literal notranslate"><span class="pre">DemoDevice</span></code> produces <code class="docutils literal notranslate"><span class="pre">DemoDevice.a2l</span></code>.</p>
 <p>A project that declares a <a class="reference internal" href="file_formats/constants.html"><span class="doc">constant vocabulary</span></a> gets a
 <code class="docutils literal notranslate"><span class="pre">MOD_PAR</span></code> after the <code class="docutils literal notranslate"><span class="pre">MOD_COMMON</span></code>, stating one <code class="docutils literal notranslate"><span class="pre">SYSTEM_CONSTANT</span></code> per declared constant
@@ -973,7 +982,11 @@ measured in different units are not the same conversion to a calibration tool - 
 readable in a tool rather than being a serial number, and a unit that is not a valid
 identifier is transliterated - <code class="docutils literal notranslate"><span class="pre">%</span></code> becomes <code class="docutils literal notranslate"><span class="pre">PCT</span></code>, <code class="docutils literal notranslate"><span class="pre">m/s^2</span></code> becomes <code class="docutils literal notranslate"><span class="pre">M_PER_S2</span></code>. When two
 different conversions share a unit, the second one gets a numeric suffix; the demo carries
-both <code class="docutils literal notranslate"><span class="pre">CM_LIN_PCT</span></code> (factor 0.5) and <code class="docutils literal notranslate"><span class="pre">CM_LIN_PCT_2</span></code> (factor 0.1). The display format is the
+both <code class="docutils literal notranslate"><span class="pre">CM_LIN_PCT</span></code> (factor 0.5) and <code class="docutils literal notranslate"><span class="pre">CM_LIN_PCT_2</span></code> (factor 0.1). The unsuffixed name goes
+to the object whose record the file writes first: the measurements, then the axes, then the
+other calibration objects, curves and maps among them, each in the dictionary’s order, with the members of structures after the plain
+objects of their kind. A measurement that comes before an axis in the file therefore keeps the
+plain name, whatever the axis’s curve is called. The display format is the
 third part of the key, because a method carries exactly one: it is derived from the datatype
 and the conversion - <code class="docutils literal notranslate"><span class="pre">%8.0</span></code> where every physical value is whole, <code class="docutils literal notranslate"><span class="pre">%8.3</span></code> otherwise - so an
 integer and a float object scaled the same way in the same unit get a method each, with the
@@ -982,7 +995,14 @@ same coefficients and the suffix telling them apart.</p>
 A description says <code class="docutils literal notranslate"><span class="pre">{&quot;kind&quot;:</span> <span class="pre">&quot;linear&quot;,</span> <span class="pre">&quot;factor&quot;:</span> <span class="pre">0.25,</span> <span class="pre">&quot;offset&quot;:</span> <span class="pre">0.0}</span></code>, which means
 <code class="docutils literal notranslate"><span class="pre">physical</span> <span class="pre">=</span> <span class="pre">raw</span> <span class="pre">*</span> <span class="pre">factor</span> <span class="pre">+</span> <span class="pre">offset</span></code>, and yet the coefficients written out are
 <code class="docutils literal notranslate"><span class="pre">0</span> <span class="pre">1</span> <span class="pre">0</span> <span class="pre">0</span> <span class="pre">0</span> <span class="pre">0.25</span></code>. The reason is that <code class="docutils literal notranslate"><span class="pre">RAT_FUNC</span></code> describes the conversion in the <em>other</em>
-direction. Its six coefficients <code class="docutils literal notranslate"><span class="pre">a</span> <span class="pre">b</span> <span class="pre">c</span> <span class="pre">d</span> <span class="pre">e</span> <span class="pre">f</span></code> define</p>
+direction.</p>
+<p>Writing <code class="docutils literal notranslate"><span class="pre">RAT_FUNC</span></code> for a linear conversion is a choice. The standard (ASAP2 1.6.1, the
+<code class="docutils literal notranslate"><span class="pre">COMPU_METHOD</span></code> record) says to use the conversion type <code class="docutils literal notranslate"><span class="pre">LINEAR</span></code> for linear functions, and
+<code class="docutils literal notranslate"><span class="pre">COEFFS_LINEAR</span> <span class="pre">a</span> <span class="pre">b</span></code> states <code class="docutils literal notranslate"><span class="pre">physical</span> <span class="pre">=</span> <span class="pre">a</span> <span class="pre">*</span> <span class="pre">raw</span> <span class="pre">+</span> <span class="pre">b</span></code>, the description’s own direction,
+which would leave nothing to explain here. DDD writes <code class="docutils literal notranslate"><span class="pre">RAT_FUNC</span></code> anyway and keeps
+doing so: a file written by an earlier version keeps the
+type of its methods, and the choice is not an option of the tool.</p>
+<p>Its six coefficients <code class="docutils literal notranslate"><span class="pre">a</span> <span class="pre">b</span> <span class="pre">c</span> <span class="pre">d</span> <span class="pre">e</span> <span class="pre">f</span></code> define</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>raw = (a * phys^2 + b * phys + c) / (d * phys^2 + e * phys + f)
 </pre></div>
 </div>
@@ -1105,7 +1125,8 @@ anyway, which is what ASAP2 1.7 expects and what a 1.7 reader will understand, a
 the situation rather than silently truncating:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all cube.ddd.json -o build/gen -t templates -W unused-output=ignore
 cube.ddd.json#component.interface[0].definition: warning[a2l-unrepresentable]: 'Cube' has 4 dimensions, but the MATRIX_DIM of ASAP2 1.6.1 carries 3; the extra dimensions are written out and only a 1.7 reader understands them
-1 warning
+&lt;project&gt;: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+1 warning, 1 info
 wrote       build/gen/ddd_globals.c (created)
 ...
 </pre></div>
@@ -1261,8 +1282,11 @@ address source - no <code class="docutils literal notranslate"><span class="pre"
 below - says so on the line under its <code class="docutils literal notranslate"><span class="pre">ASAP2_VERSION</span></code>, as the head of the file above does,
 since no <code class="docutils literal notranslate"><span class="pre">address-missing</span></code> can: there is nothing to miss.</p>
 <p>Three mechanisms exist to fix that up, and DDD offers all three because projects are split
-between them. The first is <code class="docutils literal notranslate"><span class="pre">SYMBOL_LINK</span></code>, which names the c symbol the record describes and is
-emitted for <strong>every</strong> object, always, whether or not an address is known. It is what an a2l
+between them. The first is <code class="docutils literal notranslate"><span class="pre">SYMBOL_LINK</span></code>, which names the linker symbol the record lies in,
+with the offset from it, and is emitted for <strong>every</strong> object, always, whether or not an address
+is known. A variable that is not a member names itself at offset 0; a structure member names the
+variable and its own offset when <code class="docutils literal notranslate"><span class="pre">--image</span></code> placed it, and its path at offset 0 before the link
+or with a map, which is a path no linker map can answer. It is what an a2l
 address patcher - a tool that reads the map file or the debug information of the linked image
 and rewrites the <code class="docutils literal notranslate"><span class="pre">ECU_ADDRESS</span></code> fields - matches on, so a build that patches its a2l after
 linking needs no configuration on the DDD side at all.</p>
@@ -1295,7 +1319,7 @@ whichever the tool producing it finds easier:</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
 <span class="w">  </span><span class="nt">"ValueE"</span><span class="p">:</span><span class="w"> </span><span class="s2">"0x20000100"</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"AxisA"</span><span class="p">:</span><span class="w"> </span><span class="s2">"0x08004000"</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">"ParameterA"</span><span class="p">:</span><span class="w"> </span><span class="mi">134234112</span>
+<span class="w">  </span><span class="nt">"ParameterA"</span><span class="p">:</span><span class="w"> </span><span class="mi">134234128</span>
 <span class="p">}</span>
 </pre></div>
 </div>
@@ -1327,7 +1351,7 @@ filled in:</p>
 /end AXIS_PTS
 
 /begin CHARACTERISTIC ParameterA "Single calibratable constant"
-  VALUE 0x08004000 RL_VALUES_UWORD 0 CM_LIN_HZ 500 1500
+  VALUE 0x08004010 RL_VALUES_UWORD 0 CM_LIN_HZ 500 1500
   SYMBOL_LINK "ParameterA" 0
 /end CHARACTERISTIC
 </pre></div>
@@ -1440,6 +1464,43 @@ demo’s calibration objects, <code class="docutils literal notranslate"><span c
 warning when a candidate delivery is measured against an archived baseline, because a
 calibration file prepared against the previous a2l may no longer apply cleanly.</p>
 </div>
+</section>
+<section id="what-the-a2l-leaves-to-the-project">
+<span id="a2l-module-fragment"></span><h3>What the a2l leaves to the project<a class="headerlink" href="#what-the-a2l-leaves-to-the-project" title="Link to this heading"></a></h3>
+<p>DDD writes what the data dictionary holds, and nothing about the target that reads the file.
+The <code class="docutils literal notranslate"><span class="pre">IF_DATA</span></code> blocks it writes on a measurement are described by an <code class="docutils literal notranslate"><span class="pre">A2ML</span></code>, the ASAM MCD-2
+MC metalanguage, which ASAP2 asks the file to carry; the module’s own <code class="docutils literal notranslate"><span class="pre">IF_DATA</span></code> - the protocol
+layer, the transport and the <code class="docutils literal notranslate"><span class="pre">DAQ</span></code> list of the XCP stack - is the stack’s; and what lets a tool
+trust that this file belongs to this image, an <code class="docutils literal notranslate"><span class="pre">EPK</span></code> with its <code class="docutils literal notranslate"><span class="pre">ADDR_EPK</span></code>, and the
+<code class="docutils literal notranslate"><span class="pre">MEMORY_SEGMENT</span></code> of each memory the target has, are the target’s as well. None of it is
+modelled. A project that needs any of it names a text file with <code class="docutils literal notranslate"><span class="pre">--a2l-module-fragment</span></code>, or
+<code class="docutils literal notranslate"><span class="pre">A2L_MODULE_FRAGMENT</span></code> in cmake, and the a2l holds that file once, unchanged, as the first thing
+inside the <code class="docutils literal notranslate"><span class="pre">MODULE</span></code>:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>ddd generate a2l project.ddd.json -o gen --a2l-module-fragment module.a2l
+</pre></div>
+</div>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>  /begin MODULE DemoDevice "..."
+/begin A2ML
+  ...
+/end A2ML
+
+    /begin MOD_COMMON "global variables of DemoDevice"
+    ...
+</pre></div>
+</div>
+<p>The text is pasted as it is - not indented, not checked and not reordered - with a final
+newline added if the file has none. It comes before every <code class="docutils literal notranslate"><span class="pre">IF_DATA</span></code> of the file, so a reader
+that parses an <code class="docutils literal notranslate"><span class="pre">IF_DATA</span></code> by the metalanguage has met the metalanguage first. DDD does not read
+the fragment’s keywords, with one exception: a <code class="docutils literal notranslate"><span class="pre">MOD_PAR</span></code> may appear once in a module, and
+<code class="docutils literal notranslate"><span class="pre">EPK</span></code>, <code class="docutils literal notranslate"><span class="pre">ADDR_EPK</span></code> and <code class="docutils literal notranslate"><span class="pre">MEMORY_SEGMENT</span></code> live inside it. DDD writes a <code class="docutils literal notranslate"><span class="pre">MOD_PAR</span></code> of its own
+wherever the project declares a <a class="reference internal" href="file_formats/constants.html"><span class="doc">named constant</span></a>, for its
+<code class="docutils literal notranslate"><span class="pre">SYSTEM_CONSTANT</span></code>s, so a fragment holding one beside a named constant is a usage error naming
+the fragment. In a project that declares no constant the fragment’s <code class="docutils literal notranslate"><span class="pre">MOD_PAR</span></code> is the module’s.
+A project with named constants therefore cannot carry an <code class="docutils literal notranslate"><span class="pre">EPK</span></code> through the fragment.</p>
+<p>A fragment that cannot be read, or is not UTF-8 text, is refused naming the file, as an address
+map is. In cmake the file is an input of whichever step writes the a2l, the run before the link
+or the one after it, so an edit to it writes the a2l again; it is the a2l’s alone, and is
+refused beside <code class="docutils literal notranslate"><span class="pre">NO_A2L</span></code> or <code class="docutils literal notranslate"><span class="pre">--without</span> <span class="pre">a2l</span></code>.</p>
 </section>
 </section>
 </section>

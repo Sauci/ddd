@@ -310,8 +310,9 @@ calibration parameter of its own with scope <code class="docutils literal notran
 </div>
 <p>Repeating the definition of <code class="docutils literal notranslate"><span class="pre">CabinTemperature</span></code> in the consumer looks redundant, and it is the
 point of the exercise: the consumer states what it <em>expects</em> to read, DDD compares that with
-what the producer promises to write, and a disagreement becomes a finding instead of a field
-report. Where the two sides differ, the declaration of the producing component is the
+what the producer promises to write, and a disagreement between the two descriptions becomes a
+finding instead of a field report. It compares descriptions, never a description with the
+consumer’s code. Where the two sides differ, the declaration of the producing component is the
 authoritative one - its definition is what gets generated, and the diagnostic points at the
 consumer that deviates.</p>
 <p><code class="docutils literal notranslate"><span class="pre">HeaterOnThreshold</span></code> is a different animal. Its <code class="docutils literal notranslate"><span class="pre">kind</span></code> is <code class="docutils literal notranslate"><span class="pre">parameter</span></code>, so the software
@@ -320,11 +321,11 @@ a2l as a <code class="docutils literal notranslate"><span class="pre">CHARACTERI
 <code class="docutils literal notranslate"><span class="pre">volatile</span></code> is about. The threshold here is meant to be tuned while the device runs, and
 <code class="docutils literal notranslate"><span class="pre">const</span></code> on its own would not allow that: the compiler is entitled to fold the 180 into the code
 that reads it, which it does even without optimisation wherever it can see the 180, so the tool
-would write a new value the software never picks up. The price is the read only memory: a value the
-compiler has to re-read is no longer constant data, so it leaves <code class="docutils literal notranslate"><span class="pre">.rodata</span></code> for <code class="docutils literal notranslate"><span class="pre">.data</span></code>, and
-on a flash target that is a ram address the project has to place deliberately in its linker
-script. A project whose parameters only ever change with a new build states <code class="docutils literal notranslate"><span class="pre">false</span></code> instead and
-keeps them in flash; DDD renders what the description says and reports nothing about the choice.
+would write a new value the software never picks up. Where it lies is a separate question:
+<code class="docutils literal notranslate"><span class="pre">volatile</span></code> does not move a value to RAM on any toolchain measured, and where a parameter lives
+is the project’s to decide, by the linker script, since the placement depends on the target and
+on the compiler’s version. A project whose parameters only ever change with a new build states
+<code class="docutils literal notranslate"><span class="pre">false</span></code> instead and keeps them in flash; DDD renders what the description says and reports nothing about the choice.
 Its scope is <code class="docutils literal notranslate"><span class="pre">local</span></code>, so it belongs to Controller alone and no other component will ever see
 it - the right choice for data that only parametrises the component that owns it. <code class="docutils literal notranslate"><span class="pre">init</span></code> is a
 raw value, so 180 means 18.0 degC.</p>
@@ -411,6 +412,8 @@ internal and takes no templates at all.</p>
 <p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code> runs exactly the same checks and then writes the artefacts into the directory
 given with <code class="docutils literal notranslate"><span class="pre">-o</span></code>, which is normally somewhere in the build tree rather than in the source tree:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all thermostat.ddd.json -o gen -t templates
+&lt;project&gt;: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+1 info
 wrote       gen/ddd_globals.c (created)
 wrote       gen/ddd_globals.h (created)
 wrote       gen/ddd_types.h (created)
@@ -421,6 +424,8 @@ wrote       gen/Thermostat.a2l (created)
 </div>
 <p>Run it a second time without touching the description files and nothing is written at all:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all thermostat.ddd.json -o gen -t templates
+&lt;project&gt;: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+1 info
 unchanged   gen/ddd_globals.c
 unchanged   gen/ddd_globals.h
 unchanged   gen/ddd_types.h
@@ -493,17 +498,31 @@ than written by hand so that no variable can be defined twice or defined by the 
 <span class="cm"> * file exactly once; DDD is the only owner of these storage locations.</span>
 <span class="cm"> */</span>
 
+<span class="cm">/*</span>
+<span class="cm"> * A link with --gc-sections drops a definition no code references, a</span>
+<span class="cm"> * measurement only the calibration tool reads among them, and the a2l then</span>
+<span class="cm"> * describes storage the image does not hold.  A project on ELF that links so</span>
+<span class="cm"> * defines DDD_RETAIN as __attribute__((used, retain)), with -D or in a header</span>
+<span class="cm"> * the build includes first, with a gcc that knows 'retain' and a binutils that</span>
+<span class="cm"> * keeps such a section; where gcc ignores 'retain' (PE), a reference to the</span>
+<span class="cm"> * object or a linker script that keeps its section does the same.  Left</span>
+<span class="cm"> * undefined it is empty, and the definitions are what they were.</span>
+<span class="cm"> */</span>
+<span class="cp">#ifndef DDD_RETAIN</span>
+<span class="cp">#define DDD_RETAIN</span>
+<span class="cp">#endif</span>
+
 <span class="cm">/* ---------------------------------------------------------------------------</span>
 <span class="cm"> * Controller - Decides when to heat, from the cabin temperature</span>
 <span class="cm"> * ------------------------------------------------------------------------ */</span>
 <span class="cm">/** Temperature below which the heater is switched on [degC] (calibration parameter) */</span>
-<span class="k">const</span><span class="w"> </span><span class="k">volatile</span><span class="w"> </span><span class="kt">int16_t</span><span class="w"> </span><span class="n">HeaterOnThreshold</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">180</span><span class="p">;</span>
+<span class="n">DDD_RETAIN</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="k">volatile</span><span class="w"> </span><span class="kt">int16_t</span><span class="w"> </span><span class="n">HeaterOnThreshold</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">180</span><span class="p">;</span>
 
 <span class="cm">/* ---------------------------------------------------------------------------</span>
 <span class="cm"> * SensorHub - Reads the sensors and publishes their conditioned values</span>
 <span class="cm"> * ------------------------------------------------------------------------ */</span>
 <span class="cm">/** Temperature measured in the cabin [degC] */</span>
-<span class="k">volatile</span><span class="w"> </span><span class="kt">int16_t</span><span class="w"> </span><span class="n">CabinTemperature</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="n">DDD_RETAIN</span><span class="w"> </span><span class="k">volatile</span><span class="w"> </span><span class="kt">int16_t</span><span class="w"> </span><span class="n">CabinTemperature</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
 </pre></div>
 </div>
 <p>The two component headers are where the access rules become physical. <code class="docutils literal notranslate"><span class="pre">SensorHub.h</span></code> contains
@@ -534,6 +553,8 @@ path:</p>
 <span class="cm">/* outputs - written by SensorHub, read by other components */</span>
 <span class="cm">/** Temperature measured in the cabin [degC] */</span>
 <span class="k">extern</span><span class="w"> </span><span class="k">volatile</span><span class="w"> </span><span class="kt">int16_t</span><span class="w"> </span><span class="n">CabinTemperature</span><span class="p">;</span>
+<span class="cp">#define CabinTemperature__FACTOR (0.1)</span>
+<span class="cp">#define CabinTemperature__OFFSET (0.0)</span>
 
 <span class="cp">#endif </span><span class="cm">/* DDD_COMPONENT_SENSORHUB_H */</span>
 </pre></div>
@@ -565,6 +586,8 @@ description files. The local parameter appears in its own section, and only here
 <span class="cm">/* inputs - produced elsewhere, Controller may only read them */</span>
 <span class="cm">/** Temperature measured in the cabin [degC] */</span>
 <span class="k">extern</span><span class="w"> </span><span class="k">volatile</span><span class="w"> </span><span class="kt">int16_t</span><span class="w"> </span><span class="n">CabinTemperature</span><span class="p">;</span><span class="w">  </span><span class="cm">/* produced by SensorHub */</span>
+<span class="cp">#define CabinTemperature__FACTOR (0.1)</span>
+<span class="cp">#define CabinTemperature__OFFSET (0.0)</span>
 
 <span class="cm">/* locals - owned exclusively by Controller */</span>
 <span class="cm">/** Temperature below which the heater is switched on [degC] (calibration parameter) */</span>
@@ -574,11 +597,10 @@ description files. The local parameter appears in its own section, and only here
 </pre></div>
 </div>
 <p>Controller can read <code class="docutils literal notranslate"><span class="pre">CabinTemperature</span></code> and can also write it, since the declaration in its
-header is not <code class="docutils literal notranslate"><span class="pre">const</span></code>; <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">c</span> <span class="pre">--const-inputs</span></code> declares inputs <code class="docutils literal notranslate"><span class="pre">extern</span> <span class="pre">const</span></code> in the
-consumer headers instead, so that writing to a variable owned by somebody else stops compiling
-rather than being caught in review. It is opt-in because the definition in <code class="docutils literal notranslate"><span class="pre">ddd_globals.c</span></code>
-stays non-const, which strict c calls a constraint violation even though the usual embedded
-toolchains accept it.</p>
+header is not <code class="docutils literal notranslate"><span class="pre">const</span></code>. That is deliberate: a header that declared it <code class="docutils literal notranslate"><span class="pre">const</span></code> while the
+definition in <code class="docutils literal notranslate"><span class="pre">ddd_globals.c</span></code> is not would leave two declarations of one object that c leaves
+undefined, so a write to a variable owned by somebody else is caught in review, not by the
+compiler.</p>
 <p>Everything about the shape of those files - the banner, the plain c comments, the section
 headings, the note naming the producer - comes from the templates copied into the project a
 moment ago, and they are now the project’s to change. Renaming <code class="docutils literal notranslate"><span class="pre">ddd_globals.c.jinja2</span></code> renames
@@ -645,7 +667,8 @@ agreed on are worse than no sources:</p>
 components/controller.ddd.json#component.interface[0].definition: error[definition-mismatch]: 'CabinTemperature' is declared differently by component 'Controller' than by 'SensorHub' (datatype: uint16 != sint16)
     note: components/sensor_hub.ddd.json#component.interface[0].definition: reference declaration
 components/controller.ddd.json#component.interface[0].definition.limits: warning[limits-out-of-range]: limits [-40, 85] exceed the range [0, 6553.5] that uint16 can represent with this conversion
-1 error, 1 warning
+&lt;project&gt;: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+1 error, 1 warning, 1 info
 </pre></div>
 </div>
 <div class="admonition warning">
@@ -675,7 +698,7 @@ thermostat used measurements and a parameter; the file formats also cover value 
 maps and their shared axes, enum conversions, preprocessor conditions and the per-object a2l
 settings.</p>
 <p><a class="reference internal" href="command_line_interface.html"><span class="doc">Command line interface</span></a> documents every command and every option, including the ones this
-page only mentioned in passing: <code class="docutils literal notranslate"><span class="pre">--const-inputs</span></code>, <code class="docutils literal notranslate"><span class="pre">--address-map</span></code>, the <code class="docutils literal notranslate"><span class="pre">-W</span></code> severity
+page only mentioned in passing: <code class="docutils literal notranslate"><span class="pre">--address-map</span></code>, the <code class="docutils literal notranslate"><span class="pre">-W</span></code> severity
 overrides, the machine readable <code class="docutils literal notranslate"><span class="pre">--format</span> <span class="pre">json</span></code> output for a ci job, and the commands that
 answer questions <code class="docutils literal notranslate"><span class="pre">check</span></code> does not - <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span></code> for whether a delivery may replace its
 predecessor, and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span></code> for the resolved data dictionary itself.</p>

@@ -756,7 +756,11 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   was written for; a range that moved both ways is a widening.  Calibration data, and a measurement
   nobody reads, keep `narrowed-limits` and a silent widening, and a measurement of a structured
   variable takes the variable's kind and readers.  The tolerance and the rule that limits are not
-  told beside a changed interface are as they were.  A project that relaxed `-W
+  told beside a changed interface are as they were, and this release holds a member's limits back
+  beside a change to its variable's interface as well: its kind, whether it is local, its type, its
+  shape or where its members lie, which is told once, at the variable, as a `changed-interface`.
+  A delivery that moved a member's limits and changed one of those meets the `changed-interface`
+  alone, and the limits are told again once it is resolved.  A project that relaxed `-W
   narrowed-limits=ignore` for a measurement a component reads no longer has it reach it, and a
   `--strict` run now stops on a widened measurement; the worked example of the comparing page prints
   a `widened-limits` of `SupplyVoltage` and a `narrowed-read-limits` of `ValveDuty` where it printed

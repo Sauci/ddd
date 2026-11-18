@@ -1689,10 +1689,15 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   value in a dumped baseline; the message of a condition replaced on an object nobody reads; and,
   in `tests/test_compare_deliveries.py`, a `tmp_path` and a `capsys` nothing uses and a module
   imported in the body of a test. Branch 16 lists `tests/*`.
-- **The cost of reading a float** (task 4; R93): the loader takes the mantissa of every float
-  literal to tell a non-zero one that reads as 0, about 0.073 s against 0.028 s over 500,000
-  floats, where taking it only for a value that reads as 0 would cost nothing. Branch 13 lists
-  `loading.py`.
+- **The cost of reading a float** (task 4; R93): the loader reads every float literal through a
+  Python hook, `_read_float`, which takes the mantissa to tell a non-zero literal that reads as 0
+  from a zero. The gap is the hook against the C reader alone, and the mantissa is part of it
+  only. Over 500,000 floats (`json.loads` of one document, the best of five; first the re-review's
+  run, then D0's): the C reader alone 0.069 s and 0.069 s, a `parse_float=float` of no more than
+  the C reader's own 0.068 s, `_read_float` 0.119 s and 0.120 s, and a hook that takes the mantissa
+  when a value reads as 0, and at no other time, at 0.096 s and 0.096 s. Taking the mantissa only at 0 would
+  recover about half the gap, 0.024 s of 0.051 s, and leave the rest to the Python call every
+  literal still makes. Branch 13 lists `loading.py` and starts from half.
 - **A member that states `export: false`** (D0): the sentences D0 corrected on what the a2l
   checks hold put a condition on skipping such a member, which is always skipped, nothing naming
   a member from outside. Branch 13 lists `consistency_checks.rst`, branch 15 the other pages.
@@ -2223,7 +2228,7 @@ Every departure from a task's text, with its reason, numbered `R1`, `R2`, and so
   was read where the baseline records a consumer: a component file records no reader of its
   outputs, so a grade waiting for one could never be given. Renamed, such an output is
   `renamed-read-object`, given a condition `narrowed-condition`, turned `volatile`
-  `changed-interface`, and its limits widened are `widened-limits` and narrowed
+  `changed-interface`, and a measurement's limits widened are `widened-limits` and narrowed
   `narrowed-read-limits`, each message saying the readers are not known; a local object and an
   input keep their grades. The price is a supplier's gate that stops on a change to an output
   nobody in the whole project reads.
@@ -2235,8 +2240,9 @@ Every departure from a task's text, with its reason, numbered `R1`, `R2`, and so
 | 1, `fix/edit-engine` | #84 | 2026-11-15, into master (`ac0fb9b0`) | Its four Criticals and the edit engine's Importants; the re-review's residuals carried into branch 2's D0 |
 | 2, `fix/build-integration` | #85 | 2026-11-15, into its stacked base; reached master through #87 (`7d1ff765`) the same day | `9:C1` and `1:C2`, every stale build of the review, and the module's guards; the re-review's residuals carried into branch 3's D0 |
 | 3, `fix/gui-values` | #86 | 2026-11-15, into its stacked base; reached master through #87 (`7d1ff765`) the same day | `3:C1` and `15:C1`, what the page writes when a person types, picks or pastes a value; the re-review's residuals carried into branch 4's D0 |
-| 4, `fix/elf-and-addresses` | #88 | not merged | Its Critical (`11:C1`) and what the branch covers: what is read from a linked image, and where an address comes from; the re-review's residuals carried into branch 5's D0; task 6a's four Importants, 8b and 6b stay with the maintainer after two safety stops |
-| 5, `fix/generated-artefacts` | #89 | not merged | Its Critical (`1:C1`) and what the branch covers: what the C and a2l writers produce, and the option that made the C undefined; the re-review's residuals carried into branch 6's D0; branch 2's four *Left open* entries that named its Files list are now the maintainer's, it having taken none of them |
+| 4, `fix/elf-and-addresses` | #88 | 2026-11-17, into master (`287f9d0b`) | Its Critical (`11:C1`) and what the branch covers: what is read from a linked image, and where an address comes from; the re-review's residuals carried into branch 5's D0; task 6a's four Importants, 8b and 6b stay with the maintainer after two safety stops |
+| 5, `fix/generated-artefacts` | #89 | 2026-11-17, into its stacked base (`1883c717`); not on master yet | Its Critical (`1:C1`) and what the branch covers: what the C and a2l writers produce, and the option that made the C undefined; the re-review's residuals carried into branch 6's D0; branch 2's four *Left open* entries that named its Files list are now the maintainer's, it having taken none of them |
+| 6, `fix/comparison-verdicts` | #90 | not merged | Its two Criticals (`1:C3`, `7:C1`) and what the branch covers: whether a delivery can replace another, for readers that may be precompiled (decision M1); the re-review's residuals carried into branch 7's D0 |
 
 ## Self-review
 

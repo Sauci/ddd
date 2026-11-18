@@ -706,7 +706,7 @@ def compare(
             location,
         )
 
-    bare = _compare_instances(
+    bare, changed = _compare_instances(
         baseline,
         candidate,
         bag,
@@ -733,6 +733,7 @@ def compare(
             now,
             baseline_alone=baseline_alone,
             candidate_analysed=candidate_analysed,
+            variable_changed=isinstance(old, ResolvedLeaf) and old.instance in changed,
         )
 
     _report_reused_names(was, now, paired, was.keys() & now.keys(), bag, location)
@@ -1343,6 +1344,7 @@ def _compare_object(
     *,
     baseline_alone: bool,
     candidate_analysed: bool,
+    variable_changed: bool,
 ) -> None:
     interface = differing(_interface_fields(old, new), old, new)
     references = _compare_references(old, new, was, now)
@@ -1377,9 +1379,10 @@ def _compare_object(
     # id: ``widened-limits``, ``narrowed-read-limits`` and ``narrowed-limits``. A measurement
     # nobody reads has no reader to promise anything to and is graded like calibration data.
     # When the interface already changed - references included - a different range is a
-    # consequence of it - reporting both would bury the cause under its own symptom. A member's
-    # kind is its variable's, compared at the variable rather than in its leaf's interface, and
-    # holds its limits back as an object's own kind does.
+    # consequence of it - reporting both would bury the cause under its own symptom. What a
+    # member's variable states - its kind, whether it is local, its type, its shape and where
+    # its members lie - is compared at the variable rather than in its leaf's interface, and
+    # holds the limits of its members back as an object's own interface does.
     #
     # Weighed with the tolerance the analysis weighs a derived limit with, because most
     # limits are derived and deriving one goes through a float: a baseline archived before
@@ -1390,10 +1393,11 @@ def _compare_object(
     # are the same number.
     narrowed = is_above(new.limits.min, old.limits.min) or is_below(new.limits.max, old.limits.max)
     widened = is_below(new.limits.min, old.limits.min) or is_above(new.limits.max, old.limits.max)
-    held = bool(interface) or references is not None or old.kind is not new.kind
+    held = bool(interface) or references is not None or variable_changed
     if (narrowed or widened) and not held:
         # Graded by the kind the candidate states, which is the baseline's too wherever a grade
-        # is given, a changed kind holding the limits back.
+        # is given, a changed kind holding the limits back: the plain object's in its own
+        # interface, a member's in its variable's.
         was_read = new.kind is ObjectKind.MEASUREMENT and _is_read(
             old, baseline_alone=baseline_alone
         )
@@ -1513,7 +1517,7 @@ def _compare_instances(
     *,
     baseline_alone: bool = False,
     candidate_analysed: bool = False,
-) -> list[tuple[ResolvedInstance, ResolvedInstance]]:
+) -> tuple[list[tuple[ResolvedInstance, ResolvedInstance]], set[str]]:
     """Compare the structured variables themselves, which their members cannot answer for.
 
     ``DataDictionary.comparable`` offers the plain objects and the leaves and never the
@@ -1548,7 +1552,10 @@ def _compare_instances(
     has no leaf, and nothing says anything of its variable: it is removed, renamed, reused and
     added as an object is, and graded as one, with a component read alone graded as it is for an
     object. What comes back is the pairs of such variables that were renamed or not, for the
-    migration map; the leaves hold the others' ids.
+    migration map; the leaves hold the others' ids. Beside them comes the set of the variables,
+    by their baseline names, whose interface the comparison said changed - kind, locality, type,
+    shape or layout - which a member's limits are held back beside, as a plain object's are
+    beside its own interface.
 
     An instance is said to have no leaf by the side the finding is about: the baseline's for a
     removal, a rename and a reused name, whose readers are the baseline's, and the candidate's
@@ -1559,9 +1566,12 @@ def _compare_instances(
     layouts = _Layouts(baseline, candidate)
     paired, removed, added = _pair(was, now)
     leafed = {leaf.instance for leaf in baseline.leaves}
+    changed: set[str] = set()
     for old, new in paired:
         interface = differing(_instance_interface_fields(old, new), old, new)
         moved = layouts.moved(old, new)
+        if interface or moved is not None:
+            changed.add(old.name)
         volatile, storage = _volatile_read(
             old, new, differing(_INSTANCE_STORAGE_FIELDS, old, new), baseline_alone=baseline_alone
         )
@@ -1610,7 +1620,7 @@ def _compare_instances(
     for new in added:
         if new.name not in arrived:
             _report_addition(new, candidate, bag, location)
-    return bare
+    return bare, changed
 
 
 _CONSTANT_FIELDS: tuple[ComparedField[ConstantDeclaration], ...] = (

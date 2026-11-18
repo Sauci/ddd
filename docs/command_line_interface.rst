@@ -789,8 +789,8 @@ back the checks that need the rest of the project - which is what lets a supplie
 component long before an integrator ever sees it. With ``--baseline`` the gate compares that
 component with its predecessor, and what it can know is what one file shows: an output a
 component drops, renames, puts under a new condition or turns ``volatile`` fails that gate,
-whoever reads it, and one whose limits it widens is warned of, while an input it stops reading
-does not fail it. That holds when the baseline is the component file itself; an archived dump
+whoever reads it, and the limits of a measurement it widens are warned of, while an input it
+stops reading does not fail it. That holds when the baseline is the component file itself; an archived dump
 of a component carries no mark of how it was read, and :doc:`comparing_deliveries` says what
 that costs.
 ``ddd generate`` takes no ``--standalone``: generating from a component is generating the c

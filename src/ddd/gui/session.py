@@ -1219,7 +1219,9 @@ def _refuse_plugin_change(described: Path, before: Any, after: Any, *, created: 
 def _plugins_named(data: Any) -> tuple[str, ...]:
     """The ``project.plugins`` entries of a description's document, in the order it names them,
     each a string: the code it runs. Empty where it states none, or the document is no project.
-    Ordered, so a reorder - which reorders the hooks that run - is a change."""
+    Ordered, so a reorder of the list - which reorders the hooks that run - is a change. Order
+    is held within one list alone: a reorder of ``includes`` is allowed, bringing in and dropping
+    nothing, though it reorders the plugins the included descriptions name."""
     block = data.get("project") if isinstance(data, dict) else None
     listed = block.get("plugins") if isinstance(block, dict) else None
     if not isinstance(listed, list):

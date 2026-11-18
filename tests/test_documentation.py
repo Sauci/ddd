@@ -5124,13 +5124,58 @@ class TestTheDevelopmentBuild:
         assert Version("0.10.0.dev57") < Version("0.10.0")
 
     @pytest.mark.parametrize(
-        "version", ["0.11.0rc1", "0.10.1.dev3", "0.10.0.post1", "0.10.0+g0123abc", "v0.10.0", ""]
+        "version",
+        [
+            "0.11.0a1",
+            "0.11.0b1",
+            "0.11.0rc1.dev3",
+            "0.10.1.dev3",
+            "0.10.0.post1",
+            "0.10.0+g0123abc",
+            "v0.10.0",
+            "",
+        ],
     )
     def test_a_version_with_no_next_patch_is_refused(self, version: str) -> None:
-        """A release candidate has two next versions, and the others are nothing a commit of
-        master states; guessing would publish a build that sorts where nobody expects it."""
-        with pytest.raises(ValueError, match="only a version of numbers alone"):
+        """None of these is anything a commit of master states - an alpha or a beta, a
+        development, post or local release - and guessing would publish a build that sorts where
+        nobody expects it."""
+        with pytest.raises(ValueError, match=r"only a release, such as 0\.10\.0, or a candidate"):
             dev_version.next_development(version, 57)
+
+    @pytest.mark.parametrize(
+        ("candidate", "run", "development"),
+        [("0.12.0rc1", 57, "0.12.0rc2.dev57"), ("1.0rc9", 3, "1.0rc10.dev3")],
+    )
+    def test_a_candidate_is_followed_by_the_next_candidate_s_development_build(
+        self, candidate: str, run: int, development: str
+    ) -> None:
+        """Ruling B8-13. A candidate was refused, and every wheel ci builds is stamped: while
+        master stated one, the gui leg of every run failed, a pull request's included."""
+        assert dev_version.next_development(candidate, run) == development
+
+    def test_it_sorts_after_the_candidate_and_before_whatever_follows_it(self) -> None:
+        """A candidate has two next versions, its next candidate and its release, and the next
+        candidate's development build sorts before both, and after the candidate itself - where
+        ``0.12.0.dev57`` would sort before the candidate."""
+        development = Version(dev_version.next_development("0.12.0rc1", 57))
+        assert Version("0.12.0rc1") < development < Version("0.12.0rc2") < Version("0.12.0")
+        assert Version("0.12.0.dev57") < Version("0.12.0rc1")
+
+    def test_a_candidate_s_tree_is_stamped_as_the_next_candidate_s_build(self, tree: Path) -> None:
+        """The three spellings and the commit, as for a release's tree."""
+        for name in STAMPED:
+            text = (
+                (tree / name).read_text(encoding="utf-8").replace(f'"{RELEASE}"', f'"{RELEASE}rc1"')
+            )
+            (tree / name).write_text(text, encoding="utf-8", newline="\n")
+        assert dev_version.stamp(tree, "57", COMMIT) == "1.2.3rc2.dev57"
+        project = tomllib.loads((tree / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+        assert (project["version"], project["urls"]["Commit"]) == ("1.2.3rc2.dev57", COMMIT_URL)
+        package = (tree / "src" / "ddd" / "__init__.py").read_text(encoding="utf-8")
+        assert '__version__ = "1.2.3rc2.dev57"' in package.splitlines()
+        module = (tree / "cmake" / "Ddd.cmake").read_text(encoding="utf-8")
+        assert 'set(DDD_MODULE_VERSION "1.2.3rc2.dev57")' in module.splitlines()
 
     def test_the_three_spellings_and_the_commit_are_all_that_changes(self, tree: Path) -> None:
         """``ddd --version`` prints ``__version__``, the module compares that with its own by
@@ -5398,10 +5443,13 @@ class TestTheDevelopmentBuild:
             "development version into its checkout, as ``dev-build`` stamps its own",
             "what its wheel says": "under a version that says it is a build of that commit and "
             "not a release",
-            "the candidate, gui too": "fails ``dev-build``, and the ubuntu leg of ``gui``, which "
-            "stamps the wheel it uploads the same way",
-            "a pull request's too": "and every pull request's as well, since ``gui`` tests a "
-            "pull request merged with ``master``",
+            "a candidate's number": "After a release candidate it is the next candidate's: after "
+            "``0.11.0rc1``, run 57 publishes ``0.11.0rc2.dev57``",
+            "where it sorts": "which sorts after the candidate and before both of what can "
+            "follow it, ``0.11.0rc2`` and ``0.11.0``",
+            "what is refused": "The script refuses a version it cannot number after: an alpha "
+            "or a beta, and a development, post or local release",
+            "a candidate fails no job": "so a candidate on ``master`` fails no job",
             "every wheel ci builds": "Every wheel ci builds is stamped so, and no other.",
             "the gui's number": "numbered as ``dev-build``'s of the same run and naming the "
             "commit it was built from - for a pull request, the merge ``gui`` tests",
@@ -5419,12 +5467,17 @@ class TestTheDevelopmentBuild:
         missing = [what for what, claim in claims.items() if claim not in said]
         assert not missing, f"the developer page no longer says {missing}"
 
-    def test_the_upload_is_this_runs_two_files(self, tmp_path: Path) -> None:
+    @pytest.mark.parametrize(
+        "version", ["0.10.1.dev57", "0.12.0rc2.dev57"], ids=["after a release", "after a candidate"]
+    )
+    def test_the_upload_is_this_runs_two_files(self, tmp_path: Path, version: str) -> None:
         check = step(job(CI_WORKFLOW, "dev-publish"), "Check what is about to be published")
         passed = run_step(
             check,
-            self.dist(tmp_path, WHEEL, SDIST),
-            VERSION="0.10.1.dev57",
+            self.dist(
+                tmp_path, f"ddd_tool-{version}-py3-none-any.whl", f"ddd_tool-{version}.tar.gz"
+            ),
+            VERSION=version,
             GITHUB_RUN_NUMBER="57",
         )
         assert passed.returncode == 0, passed.stdout + passed.stderr

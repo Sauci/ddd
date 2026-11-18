@@ -629,7 +629,10 @@ and that run's own upload refused; and the wheel has to name this run's commit a
 requirements an install line can print as they are. All of it is checked before the upload.
 
 **The version is the next patch, as a development release numbered by the run.** After 0.10.0,
-run 57 publishes ``0.10.1.dev57``. The commit cannot be part of the version: PEP 440 refuses
+run 57 publishes ``0.10.1.dev57``. After a release candidate it is the next candidate's: after
+``0.11.0rc1``, run 57 publishes ``0.11.0rc2.dev57``, which sorts after the candidate and before
+both of what can follow it, ``0.11.0rc2`` and ``0.11.0``. The commit cannot be part of the
+version: PEP 440 refuses
 ``0.10.0-<sha>``, and PyPI and TestPyPI both refuse a local label such as ``0.10.0+g<sha>``. The
 build's metadata carries it instead, as the ``Commit`` link of the project, and the run's
 summary maps the version to it. The base is the next patch because ``0.10.0.dev57`` would sort
@@ -651,19 +654,19 @@ the file - so its uploads are refused until the numbers, or the next release, mo
 versions already published.
 
 ``tools/dev_version.py`` writes that version into the checkout of the job running it, and
-nothing it rewrites is committed. It writes it into the three places the installed package compares at
-run time: ``pyproject.toml``; ``src/ddd/__init__.py``, so that ``ddd --version`` prints ``ddd
-0.10.1.dev57``, in the format it always has; and ``cmake/Ddd.cmake``, whose
+nothing it rewrites is committed. It writes it into the three places the installed package
+compares at run time: ``pyproject.toml``; ``src/ddd/__init__.py``, so that ``ddd --version``
+prints ``ddd 0.10.1.dev57``, in the format it always has; and ``cmake/Ddd.cmake``, whose
 ``DDD_MODULE_VERSION`` the module compares with that output by exact string, refusing a tool of
 any other release. Nothing compares the other spellings, listed under
 :ref:`publishing-a-release`, at run time: the extension's manifest and lock file reach no
 installed package, and the rest is prose - the README's included, which the wheel carries as
-its description. The script refuses a version with no next patch, and a release candidate is
-one: a run whose commit states a candidate in ``__version__`` fails ``dev-build``, and the ubuntu
-leg of ``gui``, which stamps the wheel it uploads the same way. That is every run of ``master``
-for as long as the candidate stands there, and every pull request's as well, since ``gui`` tests
-a pull request merged with ``master``. ``tests/test_documentation.py`` holds the script to all
-of this, and runs the checks ``dev-publish`` makes.
+its description. The script refuses a version it cannot number after: an alpha or a beta, and a
+development, post or local release, none of which a commit of ``master`` states. A run whose
+commit states one fails ``dev-build``, and the ubuntu leg of ``gui``, which stamps the wheel it
+uploads the same way. A release candidate it numbers, so a candidate on ``master`` fails no job.
+``tests/test_documentation.py`` holds the script to all of this, and runs the checks
+``dev-publish`` makes.
 
 **Every wheel ci builds is stamped so, and no other.** ``dev-build``'s is, and so is the one the
 ``gui`` job uploads as ``ddd-tool-<commit>``, numbered as ``dev-build``'s of the same run and

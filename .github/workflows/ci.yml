@@ -257,8 +257,9 @@ jobs:
       # its build job builds the wheel it ships, and installs and checks it, so a release's run
       # carries no second wheel of its commit.
       #
-      # Stamped first, as dev-build stamps its own: <next patch>.dev<run number>, with the commit
-      # it is built from named in its metadata - for a pull request, the merge this job tests.
+      # Stamped first, as dev-build stamps its own: <next patch>.dev<run number>, or after a
+      # release candidate the next candidate's, with the commit it is built from named in its
+      # metadata - for a pull request, the merge this job tests.
       # Unstamped, it was a wheel of the last release's version holding every commit since, and
       # said it was that release to ddd --version, to the banner of every file it generated, to
       # the module's handshake and to pip. Into this job's checkout once the journeys have run
@@ -327,8 +328,9 @@ jobs:
   # and after one has expired. A run in which any other job fails publishes nothing, and neither
   # does one that a newer push cancels before its upload has begun; a dev-publish that fails
   # once its upload has begun leaves on TestPyPI whatever it had uploaded. tools/dev_version.py
-  # numbers the build, <next patch>.dev<run number>, and says why the commit cannot be part of
-  # the number; the build's metadata and the run's summary carry it.
+  # numbers the build, <next patch>.dev<run number> - after a release candidate, the next
+  # candidate's - and says why the commit cannot be part of the number; the build's metadata
+  # and the run's summary carry it.
   #
   # Two jobs, the way publish.yml builds a release and then uploads it. `npm ci` runs the install
   # scripts of every package the pages depend on, and a build runs whatever its backend is, so
@@ -426,7 +428,8 @@ jobs:
           name: ddd-tool-${{ needs.dev-build.outputs.version }}
           path: dist/
       # Everything dev-build hands over was made where the pages' packages ran their install
-      # scripts, so nothing of it is taken on trust here. The version has to be this run's, and
+      # scripts, so nothing of it is taken on trust here. The version has to be this run's - a
+      # release's next patch, or a candidate's next candidate, as a development release - and
       # dist/ has to hold its wheel and its sdist and nothing else: a file left there for a later
       # run's version would be uploaded under it, and that run's own upload refused. What is
       # printed of either is stripped to characters that cannot start a line of their own.
@@ -435,9 +438,9 @@ jobs:
           VERSION: ${{ needs.dev-build.outputs.version }}
         run: |
           shopt -s nullglob dotglob
-          pattern="^[0-9]+(\.[0-9]+)*\.dev${GITHUB_RUN_NUMBER}\$"
+          pattern="^[0-9]+(\.[0-9]+)*(rc[0-9]+)?\.dev${GITHUB_RUN_NUMBER}\$"
           if [[ ! $VERSION =~ $pattern ]]; then
-            echo "::error::run $GITHUB_RUN_NUMBER publishes <next patch>.dev$GITHUB_RUN_NUMBER, and dev-build handed over ${VERSION//[^0-9A-Za-z.+-]/?}"
+            echo "::error::run $GITHUB_RUN_NUMBER publishes <next patch or candidate>.dev$GITHUB_RUN_NUMBER, and dev-build handed over ${VERSION//[^0-9A-Za-z.+-]/?}"
             exit 1
           fi
           wheel="ddd_tool-$VERSION-py3-none-any.whl"

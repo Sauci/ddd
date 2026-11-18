@@ -5494,6 +5494,10 @@ class TestTheDevelopmentBuild:
             ("0.10.1.dev57", [WHEEL, SDIST, ".pypirc"]),
             ("0.10.1.dev57", [f"{WHEEL}/", SDIST]),
             ("0.10.1.dev57\n::add-mask::0.10.1.dev57", [WHEEL, SDIST]),
+            (
+                "0.12.0a2.dev57",
+                ["ddd_tool-0.12.0a2.dev57-py3-none-any.whl", "ddd_tool-0.12.0a2.dev57.tar.gz"],
+            ),
         ],
         ids=[
             "a wheel for a later run",
@@ -5502,6 +5506,7 @@ class TestTheDevelopmentBuild:
             "a hidden file",
             "a directory for a wheel",
             "a version spanning lines",
+            "an alpha's build, which the stamp never numbers",
         ],
     )
     def test_anything_else_is_refused_before_the_upload(

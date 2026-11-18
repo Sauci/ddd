@@ -2802,11 +2802,18 @@ class TestTheStandardLibrarysLimits:
         assert status_of(server, headed(server, 99)) == 401
 
 
-def whole_answer(server: GuiServer, sent: bytes) -> tuple[str, dict[str, str], bytes]:
+def whole_answer(
+    server: GuiServer, sent: bytes, *, ended: bool = False
+) -> tuple[str, dict[str, str], bytes]:
     """The status line, the headers and the body ``server`` answers ``sent`` with, over a
-    connection of its own, read to its end."""
+    connection of its own, read to its end. Where ``ended``, the client's sending side is closed
+    once ``sent`` is, which ends the request for a standard library that reads on for headers
+    after a request line naming no version, as python 3.12's does: the end of the file ends them,
+    and no byte is left for the server to leave unread."""
     with socket.create_connection(("127.0.0.1", server.port), timeout=10) as connection:
         connection.sendall(sent)
+        if ended:
+            connection.shutdown(socket.SHUT_WR)
         with connection.makefile("rb") as answer:
             data = answer.read()
     head, _, body = data.partition(b"\r\n\r\n")
@@ -2896,7 +2903,7 @@ class TestTheStandardLibrarysAnswers:
     def test_a_request_naming_no_version_is_answered_with_a_status_line_and_headers(
         self, server
     ) -> None:
-        status, headers, body = whole_answer(server, b"GET /\r\n")
+        status, headers, body = whole_answer(server, b"GET /\r\n", ended=True)
         assert (status, body) == ("HTTP/1.1 421 Misdirected Request", b"misdirected request")
         assert headers["Content-Security-Policy"] == server.policy
         assert headers["Cache-Control"] == "no-store"

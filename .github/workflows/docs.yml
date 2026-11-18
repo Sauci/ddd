@@ -17,8 +17,12 @@ name: Documentation
 # version pyproject.toml does not - or failed was published here all the same, and crowned
 # stable, sending a reader at the root of the site to a version PyPI never received. So a
 # release starts nothing here: Publish's run completing does, and this goes on only if that
-# run was a release's and succeeded. GitHub documents what a run started that way
-# (`workflow_run`) is given, and of the release it holds only what Publish's run reports:
+# run was a release's and succeeded. A release tagged on a commit from before this file
+# waited for Publish - a fix on a line branched earlier - is the exception, as GitHub runs a
+# release's workflows from its tag: that commit's own docs.yml still publishes it on the
+# release event, whatever Publish does, and this file publishes it again once Publish
+# succeeds. GitHub documents what a run started by Publish's completion (`workflow_run`) is
+# given, and of the release it holds only what Publish's run reports:
 #
 #   - it runs this file as the default branch has it, never the tag's, and so only once this
 #     file is on master;

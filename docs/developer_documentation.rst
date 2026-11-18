@@ -709,7 +709,11 @@ both workflows started on the release itself, neither waiting for the other, suc
 was published on the site all the same, and became the version its root redirects to, though
 PyPI never received it. So the release starts no documentation run. Publish's run completing
 starts one, which builds and deploys only if Publish's run was a release's and succeeded -
-from the commit the release's tag names, and under the tag.
+from the commit the release's tag names, and under the tag. A release tagged on a commit older
+than this arrangement - a fix on a line branched before it - is the exception: GitHub runs a
+release's workflows from its tag, so that commit's own ``docs.yml`` still publishes it on the
+release event, whatever Publish then does, and once Publish succeeds this one publishes it
+again.
 
 A release Publish failed is published when a re-run of that Publish run passes, with *Re-run
 failed jobs*, which runs again only the jobs that failed. *Re-run all jobs* cannot pass once the

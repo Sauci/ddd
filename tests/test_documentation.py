@@ -4178,6 +4178,8 @@ class TestPublishedDocumentation:
             "when a release's run goes on": "builds and deploys only if Publish's run was a "
             "release's and succeeded",
             "what it builds": "from the commit the release's tag names, and under the tag",
+            "what an older release still does": "GitHub runs a release's workflows from its tag, "
+            "so that commit's own ``docs.yml`` still publishes it on the release event",
             "what re-run publishes a failed release": "with *Re-run failed jobs*, which runs "
             "again only the jobs that failed",
             "why re-running every job cannot": "*Re-run all jobs* cannot pass once the release is "

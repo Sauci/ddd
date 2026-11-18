@@ -923,8 +923,9 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   anything binds, saying what to give instead: `ddd gui` listens on `127.0.0.1` alone or on every
   interface.  `--help` and the command line page say so.  A `--host` naming any other address, a
   single interface of the container's own among them, gives `--host 0.0.0.0` instead, its port
-  published on the host's loopback, as the security page's section on a container says; a build
-  script or a CI job that passed one must change.
+  published on the host's loopback, as the security page's section on a container says, though in
+  a container attached to several networks `0.0.0.0` listens on all of them; a build script or a
+  CI job that passed one must change.
 
 * **Every answer of `ddd gui` carries its content security policy, `nosniff` and no referrer, and
   every refusal is `no-store`.**  The standard library's own refusals of a request `ddd gui` cannot

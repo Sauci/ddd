@@ -60,6 +60,7 @@ from ddd.editing import (
 from ddd.file_names import uncreatable
 from ddd.ir import DataDictionary
 from ddd.loading import (
+    DDD_SUFFIX,
     FILE_KINDS,
     FileRead,
     fingerprint,
@@ -1107,10 +1108,11 @@ def _refuse_generated(revision: Revision, changes: Sequence[FileChange]) -> None
 def _refuse_plugins(revision: Revision, changes: Sequence[FileChange]) -> None:
     """Refuse an edit after which the open project would name plugins other than it names now,
     before any file is touched (decision M7): a change of a description's ``plugins`` list, the
-    project's or a sub-project's; a created file whose document names plugins, or a file of no
-    kind of description ``ddd gui`` creates; or a change of ``includes`` that brings in or drops
-    a description naming plugins. So the token no longer chooses the code that runs - ``ddd gui``
-    runs what a project names, as ``make`` runs what a Makefile names.
+    project's or a sub-project's; a created file whose document names plugins, or one that is no
+    description ``ddd gui`` creates - its content no kind of description, or its name not a
+    description's - ; or a change of ``includes`` that brings in or drops a description naming
+    plugins. So the token no longer chooses the code that runs - ``ddd gui`` runs what a project
+    names, as ``make`` runs what a Makefile names.
 
     Each change is read as it would leave its file (:func:`ddd.editing.edited`), in memory, from
     the confined changes so a file beyond what the session serves was refused already. Only a
@@ -1129,6 +1131,16 @@ def _refuse_plugins(revision: Revision, changes: Sequence[FileChange]) -> None:
                     INVALID,
                     f"{change.path.as_posix()} cannot be created: ddd gui creates a project's "
                     "description files, and this is not one",
+                )
+            # Besides its content: a description is named *.ddd.json, the one name every create
+            # flow writes (:data:`ddd.loading.DDD_SUFFIX`). kind_of reads a name that is not a
+            # plugin's by its content alone, so this is what keeps a valid description from being
+            # written under any other name.
+            if not change.path.name.lower().endswith(DDD_SUFFIX):
+                raise EditError(
+                    INVALID,
+                    f"{change.path.as_posix()} cannot be created: ddd gui names a description it "
+                    f"creates '*{DDD_SUFFIX}'",
                 )
             _refuse_plugin_change(change.path, None, after)
         elif kinds.get(change.path) == "project":

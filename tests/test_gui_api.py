@@ -3252,6 +3252,78 @@ class TestACreatedFileIsADescription:
         )
         assert contents(root) == before
 
+    def test_a_file_an_edit_creates_is_named_as_a_description_is(
+        self, api: Api, root: Path
+    ) -> None:
+        """A file an edit creates is named ``*.ddd.json``, the one name every create flow writes,
+        besides holding a description: a valid description written under another name is refused,
+        with nothing written, so none is left under a name told apart by its content alone."""
+        before = contents(root)
+        doc = json.dumps({"units": ["rpm"]})
+        reply = post(api, "/api/edit", creating_doc(root, "fresh.json", doc, at=2))
+        assert reply == Reply(
+            409,
+            {
+                "error": "invalid",
+                "message": f"{(root / 'fresh.json').resolve().as_posix()} cannot be created: "
+                "ddd gui names a description it creates '*.ddd.json'",
+            },
+        )
+        assert contents(root) == before
+
+
+class TestAFilesPlanAsksThePluginsRefusal:
+    """``GET /api/files-plan`` asks the edit's own plugins refusal, so an add or a creation the
+    Apply would refuse is refused on the plan too, before the reader presses (12:I2)."""
+
+    def test_an_add_of_a_description_that_names_plugins_is_refused(self, tmp_path: Path) -> None:
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A"),
+                "sub.ddd.json": project("Sub", plugins=["x.py"]),
+            },
+        )
+        reply = get(api, "/api/files-plan", action="add", path="sub.ddd.json")
+        assert reply == Reply(409, {"error": "plugins", "message": REFUSED_PLUGINS})
+
+    def test_an_add_of_a_description_naming_no_plugins_still_plans(self, tmp_path: Path) -> None:
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A"),
+                "c.ddd.json": component("C"),
+            },
+        )
+        assert get(api, "/api/files-plan", action="add", path="c.ddd.json").status == 200
+
+    def test_a_plan_asked_after_the_description_changed_on_disk_says_so_in_its_own_words(
+        self, tmp_path: Path
+    ) -> None:
+        """The plugins refusal is the one the plan's early check answers: a description changed on
+        disk since the analysis is the plan's own judgement's to report, in its own sentence."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A"),
+                "c.ddd.json": component("C"),
+            },
+        )
+        saved = project("P", "a.ddd.json", description="saved in an editor")
+        (tmp_path / "p.ddd.json").write_text(json.dumps(saved), encoding="utf-8")
+        reply = get(api, "/api/files-plan", action="add", path="c.ddd.json")
+        assert reply == Reply(
+            409,
+            {
+                "error": "stale",
+                "message": "p.ddd.json changed since the project was analysed, so the change "
+                "cannot be judged until the project is analysed again",
+            },
+        )
+
 
 class TestUndoing:
     def test_the_state_says_what_there_is_to_undo(self, api: Api, root: Path) -> None:

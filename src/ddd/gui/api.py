@@ -144,6 +144,7 @@ from ddd.gui.session import (
     Undoable,
     _name_in,
     _read_json,
+    _refuse_plugins,
     _served,
     _source,
     find_projects,
@@ -1201,7 +1202,10 @@ class Api:
         ``not-found`` answered 404 and every other 409; a judgement a file saved or come since the
         revision would falsify is refused ``stale``. Every one of the three writes the project's
         description, so where a build generates it each is refused ``generated`` once the plan's
-        own refusals are asked, and before anything is judged.
+        own refusals are asked, and before anything is judged - and where it would change which
+        plugins the project runs, ``plugins``, by the edit's own check
+        (:func:`ddd.gui.session._refuse_plugins`), so an add or a creation the Apply would refuse
+        is refused here too, before the reader presses.
         """
         revision = self._opened()
         cache: dict[Path, Document] = {}
@@ -1213,6 +1217,26 @@ class Api:
                 (edit.path for edit in edits if edit.creates),
             )
             self._refuse_unanalysed(revision, (edit.path for edit in edits))
+            derived = self._derive(revision)
+            try:
+                _refuse_plugins(
+                    revision,
+                    [
+                        FileChange(
+                            edit.path,
+                            None if edit.creates else derived.stamps.get(edit.path),
+                            edit.operations,
+                        )
+                        for edit in edits
+                    ],
+                )
+            except EditError as refused:
+                # The plugins refusal is the one this early check answers. A description changed
+                # on disk since the analysis read it, or no longer read as utf-8, is the plan's
+                # own judgement's to report, in its own words, as it did before this was asked;
+                # the edit refuses either all the same.
+                if refused.code == PLUGINS:
+                    raise
 
         try:
             plan = _files_plan_of(query.root, revision, cache, refuse)

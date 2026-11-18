@@ -18,10 +18,11 @@ minutes and needs nothing but python.
 Installation
 ------------
 
-DDD is a python package and needs **python 3.12 or newer**; its only runtime dependencies are
-pydantic, which parses and validates the description files, and jinja2, which renders the
-generated artefacts. Both are installed with it, and nothing else is required - in particular
-no compiler, since DDD writes c code but never builds it.
+DDD is a python package and needs **python 3.12 or newer**; its runtime dependencies are
+pydantic, which parses and validates the description files, jinja2, which renders the
+generated artefacts, and pyelftools, which reads a linked ELF image for ``ddd tool from-elf``
+and for ``ddd generate`` given ``--image``. All three are installed with it, and nothing else is
+required - in particular no compiler, since DDD writes c code but never builds it.
 
 .. code-block:: bash
 
@@ -29,8 +30,8 @@ no compiler, since DDD writes c code but never builds it.
    pip install ./ddd_tool-0.11.0-py3-none-any.whl     # from a delivered wheel, no network
 
 The second form is the one to use behind a firewall or in an air-gapped build environment: the
-wheel carries everything DDD needs apart from pydantic and jinja2, which have to be reachable
-in some form as well. Once the installation succeeded, the tool answers with the release it
+wheel carries everything DDD needs apart from those three, which have to be reachable in some
+form as well. Once the installation succeeded, the tool answers with the release it
 was built from, and that release is what the header of every generated file mentions:
 
 .. code-block:: text
@@ -53,16 +54,19 @@ Running from a source checkout
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The examples of this documentation live in the source distribution rather than in the wheel,
-and while evaluating the tool it is often convenient not to install anything at all. From a
-checkout or an unpacked sdist, the package runs directly out of ``src``:
+and while evaluating the tool it is often convenient not to install it. From a checkout or an
+unpacked sdist, the package runs directly out of ``src``, once the runtime dependencies
+``requirements.txt`` lists are installed - which installs nothing of DDD itself:
 
 .. code-block:: text
 
+   $ pip install -r requirements.txt  # pydantic, jinja2 and pyelftools
    $ PYTHONPATH=src python -m ddd --version  # from a checkout of the sources
    ddd 0.11.0
 
-``PYTHONPATH=src python -m ddd`` and ``ddd`` are the same program invoked in two ways, and
-every command shown below works with either. The transcripts use the installed form for
+Without them, the version and the help still answer, and ``check`` fails, naming the
+``pydantic`` it cannot import. With them, ``PYTHONPATH=src python -m ddd`` and ``ddd`` are the
+same program invoked in two ways, and every command shown below works with either. The transcripts use the installed form for
 readability; if you follow along in a checkout, put ``PYTHONPATH=src python -m`` in front of
 each of them. A checkout also gives you a bigger project to look at than the one built on this
 page - ``examples/demo/demo.ddd.json`` exercises every kind of data object DDD knows:

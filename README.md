@@ -71,12 +71,14 @@ hand-written project description is passed with `PROJECT`, and CMake 3.30 when t
 collected from the link graph.
 
 The examples used below are part of the source distribution rather than the wheel. To follow
-along, clone the repository or unpack the sdist, and from there the tool also runs without
-being installed at all:
+along, clone the repository or unpack the sdist: from there the tool also runs without being
+installed, once its runtime dependencies are. Without them, `--version` and `--help` still
+answer, and `check` fails, naming the `pydantic` it cannot import.
 
 ```bash
 git clone https://github.com/Sauci/ddd && cd ddd
-PYTHONPATH=src python -m ddd --help
+pip install -r requirements.txt      # pydantic, jinja2 and pyelftools, and nothing of ddd
+PYTHONPATH=src python -m ddd check examples/demo/demo.ddd.json
 ```
 
 ## Quick start

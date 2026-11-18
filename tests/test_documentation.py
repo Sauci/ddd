@@ -14,6 +14,7 @@ import dataclasses
 import io
 import itertools
 import json
+import os
 import re
 import shlex
 import shutil
@@ -1658,6 +1659,107 @@ class TestPackaging:
                 assert phrase in text, (
                     f"{page.name} no longer states the trust boundary: {phrase!r}"
                 )
+
+
+class TestRunningFromTheSources:
+    """20:M2. The README and the getting started page let a reader run the tool out of a checkout
+    without installing it, and the page said that every command it shows works so. Without the
+    runtime dependencies only the version and the help answer: ``check`` ended in a traceback,
+    ``No module named 'pydantic'``. Both pages now say what is installed first, and these tests
+    hold what they say of the tool without it to the tool."""
+
+    @staticmethod
+    def from_the_sources(*arguments: str) -> subprocess.CompletedProcess[str]:
+        """``PYTHONPATH=src python -m ddd`` in this checkout, run by an interpreter that sees no
+        installed package: ``-S`` leaves the site directories off its path, and every runtime
+        dependency with them, as an environment holding nothing would."""
+        return subprocess.run(
+            [sys.executable, "-S", "-m", "ddd", *arguments],
+            cwd=ROOT,
+            env={**os.environ, "PYTHONPATH": str(ROOT / "src")},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    def test_the_interpreter_they_run_under_sees_no_dependency(self) -> None:
+        """The control under the two below: an interpreter that reached pydantic would have them
+        weigh nothing."""
+        ran = subprocess.run(
+            [sys.executable, "-S", "-c", "import pydantic"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert ran.returncode != 0, "pydantic is importable without the site directories"
+        assert "No module named 'pydantic'" in ran.stderr
+
+    @pytest.mark.parametrize(
+        ("arguments", "answer"),
+        [(["--version"], f"ddd {__version__}\n"), (["--help"], "usage: ddd ")],
+        ids=["the version", "the help"],
+    )
+    def test_without_its_dependencies_the_version_and_the_help_still_answer(
+        self, arguments: list[str], answer: str
+    ) -> None:
+        ran = self.from_the_sources(*arguments)
+        assert ran.returncode == 0, ran.stderr
+        assert ran.stdout.startswith(answer), ran.stdout
+
+    def test_without_them_check_fails_naming_pydantic(self) -> None:
+        ran = self.from_the_sources("check", "examples/demo/demo.ddd.json")
+        assert ran.returncode != 0, ran.stdout
+        assert "No module named 'pydantic'" in ran.stderr
+
+    def test_the_requirements_install_nothing_of_ddd(self) -> None:
+        """What both pages have the reader install first: the runtime requirements alone, and
+        nothing that installs the project from the checkout."""
+        lines = [
+            line.strip()
+            for line in (ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.startswith("#")
+        ]
+        assert lines, "requirements.txt lists nothing"
+        assert not [line for line in lines if line.startswith(("-e", ".", "ddd"))], lines
+
+    def test_both_pages_say_what_is_installed_first(self) -> None:
+        """What runs from the sources once the dependencies are installed, what does not
+        without them, and, on the getting started page, which they are."""
+        readme = flattened(README)
+        started = flattened(PAGES["docs/getting_started.rst"])
+        claims = {
+            "the README, once": "from there the tool also runs without being installed, once its "
+            "runtime dependencies are",
+            "the README, without them": "Without them, `--version` and `--help` still answer, "
+            "and `check` fails, naming the `pydantic` it cannot import.",
+            "the README, the install": "pip install -r requirements.txt",
+            "the page, once": "once the runtime dependencies ``requirements.txt`` lists are "
+            "installed - which installs nothing of DDD itself",
+            "the page, the install": "$ pip install -r requirements.txt # pydantic, jinja2 and "
+            "pyelftools",
+            "the page, without them": "Without them, the version and the help still answer, and "
+            "``check`` fails, naming the ``pydantic`` it cannot import.",
+            "the page, with them": "With them, ``PYTHONPATH=src python -m ddd`` and ``ddd`` are "
+            "the same program invoked in two ways",
+            "the page, the dependencies": "its runtime dependencies are pydantic, which parses and "
+            "validates the description files, jinja2, which renders the generated artefacts, and "
+            "pyelftools, which reads a linked ELF image",
+            "the page, all three": "All three are installed with it",
+            "the page, offline": "the wheel carries everything DDD needs apart from those three",
+        }
+        missing = [
+            what
+            for what, claim in claims.items()
+            if claim not in (readme if what.startswith("the README") else started)
+        ]
+        assert not missing, f"the pages no longer say {missing}"
+        assert "without being installed at all" not in readme
+        assert "its only runtime dependencies" not in started
+        installation = started.split("Installation ---", 1)[1].split(".. code-block::", 1)[0]
+        for line in (ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines():
+            if line.strip() and not line.startswith("#"):
+                name = re.split(r"[<>=!~ ]", line, maxsplit=1)[0]
+                assert name in installation, f"the getting started page does not name {name}"
 
 
 class TestCommandLineHelp:

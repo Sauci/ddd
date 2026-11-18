@@ -561,12 +561,15 @@ Nothing in the toolchain moves on its own. Every ``uses:`` is pinned by a major 
 extension's and the browser interface's lock files pin their dependencies exactly, and
 ``ruff`` and ``mypy`` are capped to a minor in ``requirements-dev.txt`` - those two are gates
 rather than libraries, so a release of either fails the lint job on the day it is published
-rather than on the day somebody upgrades it. What proposes the moves instead is
+rather than on the day somebody upgrades it. ``sphinx`` is pinned to one release in
+``requirements-docs.txt`` for the same reason: the documentation is built with ``-W``, so a
+sphinx that warns about anything new fails the documentation's build, and on the wrong day
+that build is a release's. What proposes the moves instead is
 ``.github/dependabot.yml``, weekly, for the actions, the requirements files, the extension and
 the browser interface: a bump then arrives as a pull request that ci has already run, which is
 the difference between upgrading a tool and discovering on a release day that one has moved on
-without you. A test holds every action to one version across the three workflows, and both
-caps to being caps.
+without you. A test holds every action to one version across the three workflows, both caps
+to being caps, and sphinx to one release.
 
 .. _development-builds:
 

@@ -1,4 +1,8 @@
-sphinx>=7.2
+# Exact, unlike every other line here: the documentation is built with -W, so a sphinx that
+# warns about anything new fails the build on the day it is released rather than on the day
+# somebody upgrades it - and on the wrong day, that build is a release's documentation. Moving
+# it is a pull request .github/dependabot.yml opens, on which the documentation is built.
+sphinx==9.1.0
 sphinx-rtd-theme>=2.0
 sphinxcontrib-autoprogram>=0.1.9
 autodoc-pydantic>=2.1

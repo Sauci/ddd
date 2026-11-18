@@ -3475,6 +3475,35 @@ class TestWhatKeepsTheToolchainMoving:
             f"red on the day it is released rather than on the day somebody upgrades it"
         )
 
+    def test_the_documentation_is_built_with_one_sphinx(self) -> None:
+        """20:M13. The documentation is built with ``-W``, so a sphinx release that warns about
+        anything the pages do fails the build, as the two gates above fail the lint job. A lower
+        bound took whichever sphinx was newest on the day, and on the wrong day that is a
+        release's documentation. Exact, the pin is moved by a pull request dependabot opens,
+        which builds the documentation with the new one before it is merged."""
+        requirements = (ROOT / "requirements-docs.txt").read_text(encoding="utf-8")
+        line = next(
+            line.strip()
+            for line in requirements.splitlines()
+            if re.match(r"sphinx\s*[<>=!~]", line.strip(), re.IGNORECASE)
+        )
+        assert re.fullmatch(r"sphinx==\d+(?:\.\d+)+", line), (
+            f"{line} takes whichever sphinx is newest on the day the documentation is built"
+        )
+        assert "/" in dependabot()["pip"], "nothing proposes moving the pin"
+
+    def test_the_page_says_the_documentation_s_sphinx_is_one_release(self) -> None:
+        """Where the maintainer reads what is pinned, and what a pin is held to."""
+        said = flattened(PAGES["docs/developer_documentation.rst"])
+        claims = {
+            "the pin": "``sphinx`` is pinned to one release in ``requirements-docs.txt``",
+            "why": "the documentation is built with ``-W``, so a sphinx that warns about "
+            "anything new fails the documentation's build",
+            "what holds it": "both caps to being caps, and sphinx to one release",
+        }
+        missing = [what for what, claim in claims.items() if claim not in said]
+        assert not missing, f"the developer page no longer says {missing}"
+
     def test_an_action_is_pinned_at_one_version_across_the_workflows(self) -> None:
         """Three workflows, one toolchain: a version bumped in two of them and not the third
         is how ci ran an upload two majors behind the one the release used."""

@@ -2871,11 +2871,18 @@ class TestEdit:
         assert includes == ["b.ddd.json", "a.ddd.json"]
 
 
-REFUSED_PLUGINS: Final = (
-    "ddd gui does not change which plugins a project runs; change the plugins list in a text editor"
-)
-"""The one sentence every shape of the plugins refusal takes (``ddd.gui.session._PLUGINS_REFUSED``):
-``ddd gui`` does not choose the code a project runs, and the reader changes the list by hand."""
+_PLUGINS_SAID: Final = "ddd gui does not change which plugins a project runs; "
+"""What every shape of the plugins refusal opens with (``ddd.gui.session._PLUGINS_SAID``): each
+then says what the reader changes in a text editor instead."""
+
+REFUSED_LIST: Final = f"{_PLUGINS_SAID}change the plugins list in a text editor"
+"""A change of a ``plugins`` list, or a document rewritten to name plugins among them."""
+
+REFUSED_CREATED: Final = f"{_PLUGINS_SAID}create a file that names plugins in a text editor"
+"""A file an edit creates whose document names plugins."""
+
+REFUSED_INCLUDES: Final = f"{_PLUGINS_SAID}change the includes in a text editor"
+"""A change of ``includes`` that brings in or drops a description naming plugins."""
 
 
 def plugins_op(
@@ -2937,7 +2944,7 @@ class TestTheTokenDoesNotChooseWhichPluginsRun:
                 root, {"op": "set", "pointer": "project.plugins", "raw": json.dumps(["x.py"])}
             ),
         )
-        assert reply == Reply(409, {"error": "plugins", "message": REFUSED_PLUGINS})
+        assert reply == Reply(409, {"error": "plugins", "message": REFUSED_LIST})
         assert contents(root) == before
 
     def test_adding_to_a_plugins_list_is_refused(self, tmp_path: Path) -> None:
@@ -2957,7 +2964,7 @@ class TestTheTokenDoesNotChooseWhichPluginsRun:
                 {"op": "insert", "pointer": "project.plugins[1]", "raw": json.dumps("two.py")},
             ),
         )
-        assert reply == Reply(409, {"error": "plugins", "message": REFUSED_PLUGINS})
+        assert reply == Reply(409, {"error": "plugins", "message": REFUSED_LIST})
         assert contents(tmp_path) == before
 
     def test_removing_from_a_plugins_list_is_refused(self, tmp_path: Path) -> None:
@@ -2973,7 +2980,7 @@ class TestTheTokenDoesNotChooseWhichPluginsRun:
             "/api/edit",
             plugins_op(tmp_path, {"op": "remove", "pointer": "project.plugins[1]"}),
         )
-        assert reply == Reply(409, {"error": "plugins", "message": REFUSED_PLUGINS})
+        assert reply == Reply(409, {"error": "plugins", "message": REFUSED_LIST})
 
     def test_reordering_a_plugins_list_is_refused(self, tmp_path: Path) -> None:
         """A reorder changes which hook runs first, so it changes which code runs in what order:
@@ -2990,7 +2997,7 @@ class TestTheTokenDoesNotChooseWhichPluginsRun:
             "/api/edit",
             plugins_op(tmp_path, {"op": "move", "pointer": "project.plugins[0]", "to": 1}),
         )
-        assert reply == Reply(409, {"error": "plugins", "message": REFUSED_PLUGINS})
+        assert reply == Reply(409, {"error": "plugins", "message": REFUSED_LIST})
 
     def test_setting_the_whole_project_object_to_change_plugins_is_refused(
         self, tmp_path: Path
@@ -3012,7 +3019,7 @@ class TestTheTokenDoesNotChooseWhichPluginsRun:
                 tmp_path, {"op": "set", "pointer": "project", "raw": json.dumps(new_project)}
             ),
         )
-        assert reply == Reply(409, {"error": "plugins", "message": REFUSED_PLUGINS})
+        assert reply == Reply(409, {"error": "plugins", "message": REFUSED_LIST})
 
     def test_an_edit_touching_no_plugins_list_still_passes(self, api: Api, root: Path) -> None:
         assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
@@ -3045,7 +3052,7 @@ class TestTheTokenDoesNotChooseWhichPluginsRun:
         before = contents(root)
         sub = json.dumps({"project": {"name": "Sub", "plugins": ["x.py"]}})
         reply = post(api, "/api/edit", creating_doc(root, "sub.ddd.json", sub, at=2))
-        assert reply == Reply(409, {"error": "plugins", "message": REFUSED_PLUGINS})
+        assert reply == Reply(409, {"error": "plugins", "message": REFUSED_CREATED})
         assert contents(root) == before
 
     def test_including_an_existing_description_that_names_plugins_is_refused(
@@ -3072,7 +3079,7 @@ class TestTheTokenDoesNotChooseWhichPluginsRun:
                 },
             ),
         )
-        assert reply == Reply(409, {"error": "plugins", "message": REFUSED_PLUGINS})
+        assert reply == Reply(409, {"error": "plugins", "message": REFUSED_INCLUDES})
         assert contents(tmp_path) == before
 
     def test_including_an_existing_description_that_only_sub_includes_a_plugin_namer_is_refused(
@@ -3102,7 +3109,7 @@ class TestTheTokenDoesNotChooseWhichPluginsRun:
                 },
             ),
         )
-        assert reply == Reply(409, {"error": "plugins", "message": REFUSED_PLUGINS})
+        assert reply == Reply(409, {"error": "plugins", "message": REFUSED_INCLUDES})
 
     def test_dropping_an_included_description_that_names_plugins_is_refused(
         self, tmp_path: Path
@@ -3120,7 +3127,113 @@ class TestTheTokenDoesNotChooseWhichPluginsRun:
             "/api/edit",
             plugins_op(tmp_path, {"op": "remove", "pointer": "project.includes[1]"}),
         )
-        assert reply == Reply(409, {"error": "plugins", "message": REFUSED_PLUGINS})
+        assert reply == Reply(409, {"error": "plugins", "message": REFUSED_INCLUDES})
+
+    @pytest.mark.parametrize(
+        "doc",
+        [
+            pytest.param({"component": {"name": "A", "interface": []}}, id="component"),
+            pytest.param({"units": ["rpm"]}, id="units"),
+            pytest.param({"types": []}, id="types"),
+            pytest.param({"notes": 1}, id="a-file-of-no-description-kind"),
+        ],
+    )
+    def test_an_included_description_rewritten_into_a_project_naming_plugins_is_refused(
+        self, tmp_path: Path, doc: dict[str, Any]
+    ) -> None:
+        """A description already in the includes, of whatever kind, rewritten into a project that
+        names plugins would make the project name them: the whole document is compared, not the
+        kind it was before the edit, so each such rewrite is refused with nothing written. The
+        plugin named does not exist, so a regression reaches the loader and imports nothing."""
+        api = opened(tmp_path, {"p.ddd.json": project("P", "a.ddd.json"), "a.ddd.json": doc})
+        before = contents(tmp_path)
+        target = tmp_path / "a.ddd.json"
+        made = json.dumps({"project": {"name": "A", "plugins": ["nothere.py"]}})
+        edit = {
+            "changes": [
+                {
+                    "file": target.as_posix(),
+                    "fingerprint": fingerprint(target.read_bytes()),
+                    "operations": [{"op": "set", "pointer": "", "raw": made}],
+                }
+            ],
+            "label": "the file rewritten",
+        }
+        reply = post(api, "/api/edit", edit)
+        assert reply == Reply(409, {"error": "plugins", "message": REFUSED_LIST})
+        assert contents(tmp_path) == before
+
+    def test_an_included_description_made_a_project_naming_plugins_by_two_operations_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        """The same by two operations, the component taken out and a project set in its place:
+        the after document is what is compared, not the operations."""
+        api = opened(
+            tmp_path, {"p.ddd.json": project("P", "a.ddd.json"), "a.ddd.json": component("A")}
+        )
+        before = contents(tmp_path)
+        target = tmp_path / "a.ddd.json"
+        edit = {
+            "changes": [
+                {
+                    "file": target.as_posix(),
+                    "fingerprint": fingerprint(target.read_bytes()),
+                    "operations": [
+                        {"op": "remove", "pointer": "component"},
+                        {
+                            "op": "set",
+                            "pointer": "project",
+                            "raw": json.dumps({"name": "A", "plugins": ["nothere.py"]}),
+                        },
+                    ],
+                }
+            ],
+            "label": "the file rewritten",
+        }
+        reply = post(api, "/api/edit", edit)
+        assert reply == Reply(409, {"error": "plugins", "message": REFUSED_LIST})
+        assert contents(tmp_path) == before
+
+    def test_an_included_description_rewritten_into_a_project_including_a_plugin_namer_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        """A description rewritten into a project that includes a description naming plugins would
+        bring those plugins in too: refused, by the includes shape of the refusal."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A"),
+                "deep.ddd.json": project("Deep", plugins=["nothere.py"]),
+            },
+        )
+        before = contents(tmp_path)
+        target = tmp_path / "a.ddd.json"
+        made = json.dumps({"project": {"name": "A", "includes": ["deep.ddd.json"]}})
+        edit = {
+            "changes": [
+                {
+                    "file": target.as_posix(),
+                    "fingerprint": fingerprint(target.read_bytes()),
+                    "operations": [{"op": "set", "pointer": "", "raw": made}],
+                }
+            ],
+            "label": "the file rewritten",
+        }
+        reply = post(api, "/api/edit", edit)
+        assert reply == Reply(409, {"error": "plugins", "message": REFUSED_INCLUDES})
+        assert contents(tmp_path) == before
+
+    def test_an_includes_entry_holding_a_nul_is_answered_as_it_was(self, tmp_path: Path) -> None:
+        """The walk for plugins reads what the next analysis reads and raises on nothing it would
+        not: an includes entry the system cannot represent as a path - one holding a NUL - is
+        answered as the analysis answers it, a located finding, never a server error."""
+        api = opened(
+            tmp_path, {"p.ddd.json": project("P", "a.ddd.json"), "a.ddd.json": component("A")}
+        )
+        entry = json.dumps("a\x00b.ddd.json")
+        insert = {"op": "insert", "pointer": "project.includes[1]", "raw": entry}
+        assert post(api, "/api/edit", plugins_op(tmp_path, insert)).status == 200
 
     def test_including_an_existing_description_naming_no_plugins_is_allowed(
         self, tmp_path: Path
@@ -3286,7 +3399,24 @@ class TestAFilesPlanAsksThePluginsRefusal:
             },
         )
         reply = get(api, "/api/files-plan", action="add", path="sub.ddd.json")
-        assert reply == Reply(409, {"error": "plugins", "message": REFUSED_PLUGINS})
+        assert reply == Reply(409, {"error": "plugins", "message": REFUSED_INCLUDES})
+
+    def test_an_add_of_a_description_that_only_sub_includes_a_plugin_namer_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        """The plan walks the include tree of the file it would add, as the edit does: a
+        description that names no plugin of its own but includes one that does is refused too."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A"),
+                "mid.ddd.json": project("Mid", "deep.ddd.json"),
+                "deep.ddd.json": project("Deep", plugins=["x.py"]),
+            },
+        )
+        reply = get(api, "/api/files-plan", action="add", path="mid.ddd.json")
+        assert reply == Reply(409, {"error": "plugins", "message": REFUSED_INCLUDES})
 
     def test_an_add_of_a_description_naming_no_plugins_still_plans(self, tmp_path: Path) -> None:
         api = opened(

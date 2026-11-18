@@ -102,14 +102,23 @@ PLUGINS: Final = "plugins"
 (:func:`_refuse_plugins`): a change of a description's ``plugins`` list, a created file whose
 document names plugins, or a change of ``includes`` that brings in or drops a description naming
 plugins. Answered 409. ``ddd gui`` runs what a project names, as ``make`` runs what a Makefile
-names, so the token no longer chooses the code that runs (decision M7); the list is changed in a
-text editor."""
+names, so the token no longer chooses the code that runs (decision M7); each shape says what the
+reader changes in a text editor instead."""
 
-_PLUGINS_REFUSED: Final = (
-    "ddd gui does not change which plugins a project runs; change the plugins list in a text editor"
-)
-"""The sentence every shape of a :data:`PLUGINS` refusal takes: ``ddd gui`` does not choose the
-code a project runs, and the reader changes the list by hand."""
+_PLUGINS_SAID: Final = "ddd gui does not change which plugins a project runs; "
+"""What every :data:`PLUGINS` refusal opens with: ``ddd gui`` does not choose the code a project
+runs. Each shape then says what the reader changes by hand instead."""
+
+_PLUGINS_LIST: Final = f"{_PLUGINS_SAID}change the plugins list in a text editor"
+"""A change of a description's ``plugins`` list, the project's or a sub-project's - a document
+rewritten to name plugins among them."""
+
+_PLUGINS_CREATED: Final = f"{_PLUGINS_SAID}create a file that names plugins in a text editor"
+"""A file an edit creates whose document names plugins."""
+
+_PLUGINS_INCLUDES: Final = f"{_PLUGINS_SAID}change the includes in a text editor"
+"""A change of a description's ``includes`` that brings in or drops a description naming
+plugins: the reader touched no plugins list, and the includes are what names it."""
 
 _CMAKE_CACHE: Final = "CMakeCache.txt"
 """The file CMake writes at the top of every build tree it configures: what says where a build
@@ -1115,14 +1124,16 @@ def _refuse_plugins(revision: Revision, changes: Sequence[FileChange]) -> None:
     names, as ``make`` runs what a Makefile names.
 
     Each change is read as it would leave its file (:func:`ddd.editing.edited`), in memory, from
-    the confined changes so a file beyond what the session serves was refused already. Only a
-    project description carries a ``plugins`` or an ``includes`` list, so a change of any other
-    kind is passed over: an existing file's kind is the one its analysis read
-    (:attr:`Revision.files`), a created file's the one its own document states. A description
-    brought in or dropped is read for the plugins it names and those its own includes bring, by
-    the loader's reading of json alone and never by importing one
-    (:func:`_subtree_names_plugins`): the files the next analysis would read, and no other."""
-    kinds = {file.path: file.kind for file in revision.files}
+    the confined changes so a file beyond what the session serves was refused already. Every
+    existing description the edit changes is compared before and after, whatever kind it is now:
+    a document rewritten from any other kind into a project naming plugins, or into one that
+    includes a description naming plugins, names other plugins the next analysis would load, and
+    its kind before the edit is not what the next analysis reads it as. ``_plugins_named`` and
+    ``_includes_of`` answer ``()`` for a document that is no project, so a change touching
+    neither is passed over all the same. A description brought in or dropped is read for the
+    plugins it names and those its own includes bring, by the loader's reading of json alone and
+    never by importing one (:func:`_subtree_names_plugins`): the files the next analysis would
+    read, and no other."""
     for change in changes:
         if change.fingerprint is None:
             after = _parsed(edited(change)[1])
@@ -1142,29 +1153,31 @@ def _refuse_plugins(revision: Revision, changes: Sequence[FileChange]) -> None:
                     f"{change.path.as_posix()} cannot be created: ddd gui names a description it "
                     f"creates '*{DDD_SUFFIX}'",
                 )
-            _refuse_plugin_change(change.path, None, after)
-        elif kinds.get(change.path) == "project":
+            _refuse_plugin_change(change.path, None, after, created=True)
+        else:
             original, new = edited(change)
             # `original` is never None here: a change with a fingerprint edits a file that is
             # there, where `edited` returns its bytes; None is a file the edit creates, above.
             assert original is not None
-            _refuse_plugin_change(change.path, _parsed(original), _parsed(new))
+            _refuse_plugin_change(change.path, _parsed(original), _parsed(new), created=False)
 
 
-def _refuse_plugin_change(described: Path, before: Any, after: Any) -> None:
-    """Refuse where a project description would name plugins other than it names now: its own
-    ``plugins`` list changed, in order so a reorder of the hooks counts, or a change of its
-    ``includes`` bringing in or dropping a description that names plugins (:data:`PLUGINS`).
-    ``before`` is ``None`` for a file the edit creates, which named none before."""
+def _refuse_plugin_change(described: Path, before: Any, after: Any, *, created: bool) -> None:
+    """Refuse where a description would name plugins other than it names now: its ``plugins`` list
+    changed, in order so a reorder of the hooks counts; a file the edit creates whose document
+    names plugins; or a change of its ``includes`` bringing in or dropping a description that
+    names plugins (:data:`PLUGINS`). ``before`` is ``None`` for a file the edit creates, which
+    named none before, and ``created`` says which the refusal is, so each says what the reader
+    changes by hand."""
     if _plugins_named(before) != _plugins_named(after):
-        raise EditError(PLUGINS, _PLUGINS_REFUSED)
+        raise EditError(PLUGINS, _PLUGINS_CREATED if created else _PLUGINS_LIST)
     # Seeded with the edited description, so a tree that leads back to it is not read for the
     # plugins it already names, which this edit of its includes does not change.
     seen = {described}
     for entry in set(_includes_of(before)) ^ set(_includes_of(after)):
         for included in included_files(described, entry):
             if _subtree_names_plugins(resolve_path(included), seen):
-                raise EditError(PLUGINS, _PLUGINS_REFUSED)
+                raise EditError(PLUGINS, _PLUGINS_INCLUDES)
 
 
 def _plugins_named(data: Any) -> tuple[str, ...]:
@@ -1350,7 +1363,11 @@ def _skipped(name: str) -> bool:
 def _read_json(path: Path) -> Any:
     try:
         return _parsed(path.read_bytes())
-    except OSError:
+    except (OSError, ValueError):
+        # ValueError as much as OSError: a path holding a NUL byte makes `read_bytes` raise, as
+        # the loader's own read of a file (`ddd.loading._read_bytes`) and `resolve_path` both
+        # catch it and go on - the walk for plugins reads what the next analysis would read and
+        # raises on nothing the next analysis would not.
         return None
 
 

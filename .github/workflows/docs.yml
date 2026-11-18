@@ -32,9 +32,17 @@ name: Documentation
 #
 # Publish completes for every run it makes - a dispatch's dry run, a release it refused or
 # failed, each re-run - and so does a workflow called Publish in a pull request from a fork:
-# each starts a run here, and all but a published release's skip both jobs. A re-run of
-# Publish that succeeds completes it again, which is what publishes a release Publish failed
-# once the failure is fixed.
+# each starts a run here, and all but a published release's skip both jobs. GitHub delivers a
+# re-run's completion too (only `requested` is not delivered for one), so a release Publish
+# failed is published by a re-run of that run that passes: Re-run failed jobs, which runs
+# again only the jobs that failed. Re-run all jobs cannot pass once the release is on PyPI. It
+# runs the upload again, an index takes a file name once, and publish.yml asks for no
+# skip-existing, so every such attempt fails the same way. A release no re-run can finish -
+# what failed is in the tagged commit, which every re-run builds again, or every attempt left
+# would repeat the upload - is published by hand: a dispatch of this workflow from master
+# naming the release's tag (`inputs.tag`, below) builds the commit the tag names, refuses a
+# tag that is not `v` and the version pyproject.toml states there, as Publish does, and
+# publishes it through every check a release's run makes.
 #
 # A build produces one version, and the site is all of them, so the versions that are not
 # being built have to come from somewhere: the `gh-pages` branch holds them. That branch is
@@ -51,7 +59,16 @@ on:
   workflow_run:
     workflows: [Publish]
     types: [completed]
+  # Naming a release's tag, a dispatch from master publishes that release's documentation by
+  # hand, for a release no re-run of its Publish can finish. With no tag, a dispatch builds the
+  # ref it is run on and deploys `latest` from master alone, as it always has.
   workflow_dispatch:
+    inputs:
+      tag:
+        description: A release's tag, to publish its documentation when no re-run of its Publish can
+        type: string
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -63,13 +80,15 @@ permissions:
 # the run it replaced would have. A release's run waiting there, though, was cancelled by
 # the next push, with nothing red and no directory for the release - so each release's
 # run is alone in a group of its own, named after the run, where nothing can wait for it
-# or replace it. A release's deploy and master's can then run at once, which the push to
-# gh-pages below allows for. Superseding a pull request build is free, and those deploy
-# nothing.
+# or replace it: a run Publish's completion started, and a dispatch naming a release's tag.
+# A release's deploy and master's can then run at once, which the push to gh-pages below
+# allows for. Superseding a pull request build is free, and those deploy nothing.
 concurrency:
   group: >-
     docs-${{ github.event_name == 'pull_request' && github.ref
-    || github.event_name == 'workflow_run' && format('release-{0}', github.run_id)
+    || (github.event_name == 'workflow_run'
+    || github.event_name == 'workflow_dispatch' && inputs.tag != '')
+    && format('release-{0}', github.run_id)
     || 'publish' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
@@ -82,20 +101,49 @@ jobs:
       || (github.event.workflow_run.event == 'release'
       && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
+    # The commit this build is of, which the deploy job names in its own: only this job knows
+    # it, since for a release it is not the run's own.
+    outputs:
+      commit: ${{ steps.commit.outputs.commit }}
     steps:
-      # A release is built from the commit its tag names, which Publish ran on. Every other
-      # run's own commit is the one to build, and `ref` is empty for them, which leaves
-      # checkout to that default; a run Publish's completion started is given master's newest
-      # commit as its own, so the release's is named.
+      # A release is built from the commit its tag names. Publish's run reports the commit it
+      # ran on, which a run Publish's completion started has to name, being given master's
+      # newest commit as its own. A dispatch naming a release's tag runs on master too, and
+      # names the tag, as `refs/tags/...` so that a branch of that name is never what is built.
+      # Every other run's own commit is the one to build, and `ref` is empty for them, which
+      # leaves checkout to that default.
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event.workflow_run.head_sha || inputs.tag && format('refs/tags/{0}', inputs.tag) }}
+      - name: Say which commit this build is of
+        id: commit
+        run: echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
           # What `.[docs]` resolves to: the metadata hook reads both files.
           cache-dependency-path: requirements*.txt
+
+      # A release's tag has to be `v` and the version its commit states in pyproject.toml, as
+      # Publish insists before it uploads anything. A release Publish published has passed that
+      # already, and passes it again here; a tag named on a dispatch has been through no
+      # Publish, and this is what refuses one naming a version its commit does not state -
+      # documentation of a version PyPI never received, which the index would crown stable.
+      - name: Check the tag names the version its commit states
+        if: >-
+          github.event_name == 'workflow_run'
+          || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
+        env:
+          TAG: ${{ github.event.workflow_run.head_branch || inputs.tag }}
+        run: |
+          version=$(python3 -c 'import tomllib,pathlib; print(tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["version"])')
+          if [ "$TAG" != "v$version" ]; then
+            echo "::error::tag $TAG is not v$version, the version pyproject.toml states at the"
+            echo "::error::commit it names. A release's documentation is published under its tag,"
+            echo "::error::which has to be v and that version; name the tag of a release."
+            exit 1
+          fi
 
       # graphviz draws the entity relationship figures erdantic emits, and plantuml draws the
       # `.. uml::` diagrams, bringing the headless jre it runs on with it. docs/conf.py uses
@@ -122,8 +170,10 @@ jobs:
     needs: build
     # Never from a feature branch, and never from a pull request, which on a fork would mean
     # publishing somebody else's revision of the documentation as the product's own - and a
-    # release only once Publish has published it. A run Publish's completion started is given
-    # master as its ref, so the branch alone would let every one of those through.
+    # release only once Publish has published it, or by hand, from a dispatch on master that
+    # names its tag (which the last clause lets through, as any dispatch on master). A run
+    # Publish's completion started is given master as its ref, so the branch alone would let
+    # every one of those through.
     if: >-
       (github.event_name == 'workflow_run'
       && github.event.workflow_run.event == 'release'
@@ -147,20 +197,20 @@ jobs:
 
       # A release is written under its own tag and frozen there; master is the moving one and
       # always lands in the same place. The tag is the `head_branch` of Publish's run, since
-      # this run's own ref is master's.
+      # this run's own ref is master's, or the one a dispatch names.
       #
       # The tag has to start with `v`, because the version index below lists only the
       # directories that do. Publishing under any other name would succeed, and produce a
       # complete copy of the documentation at a url that nothing on the site links to and the
       # menu never offers - so this refuses instead, which is the failure that can be seen.
-      # Publish refuses such a tag before it can succeed; this goes on refusing it whatever
-      # Publish checks.
+      # Publish refuses such a tag before it can succeed, and so does the build's check of a
+      # named one; this goes on refusing it whatever they check.
       - name: Choose the directory this build is published under
         id: slot
         env:
-          TAG: ${{ github.event.workflow_run.head_branch }}
+          TAG: ${{ github.event.workflow_run.head_branch || inputs.tag }}
         run: |
-          if [ "$GITHUB_EVENT_NAME" = workflow_run ]; then
+          if [ "$GITHUB_EVENT_NAME" = workflow_run ] || [ -n "$TAG" ]; then
             case "$TAG" in
               v[0-9]*) ;;
               *)
@@ -234,8 +284,8 @@ jobs:
       # and does not need the file; it is written anyway so that the archive branch is
       # servable on its own, which is what lets the Pages source move to it.
       #
-      # The commit says which commit of the repository it publishes: a release's own, which a
-      # run Publish's completion started is not given as its sha - that is master's newest.
+      # The commit says which commit of the repository it publishes: the one the build checked
+      # out, which for a release is not the run's own sha - that is master's newest.
       #
       # A release's deploy and master's can push at once, each holding the branch as its
       # checkout found it, so the second to push is refused. A merge would not do: both
@@ -247,7 +297,7 @@ jobs:
       - name: Publish this build on the site
         env:
           SLOT: ${{ steps.slot.outputs.name }}
-          SOURCE: ${{ github.event.workflow_run.head_sha || github.sha }}
+          SOURCE: ${{ needs.build.outputs.commit }}
         run: |
           place() {
             rm -rf "site/${SLOT}"

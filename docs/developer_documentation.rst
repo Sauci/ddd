@@ -709,8 +709,18 @@ both workflows started on the release itself, neither waiting for the other, suc
 was published on the site all the same, and became the version its root redirects to, though
 PyPI never received it. So the release starts no documentation run. Publish's run completing
 starts one, which builds and deploys only if Publish's run was a release's and succeeded -
-from the commit the release's tag names, and under the tag. A release Publish failed is
-published once a re-run of Publish succeeds.
+from the commit the release's tag names, and under the tag.
+
+A release Publish failed is published when a re-run of that Publish run passes, with *Re-run
+failed jobs*, which runs again only the jobs that failed. *Re-run all jobs* cannot pass once the
+release is on PyPI: it runs the upload again, an index accepts a file name once and for ever,
+and ``publish.yml`` asks for no ``skip-existing``, so every such attempt fails the same way. A
+release no re-run can finish - what failed is in the tagged commit, which every re-run builds
+again, or every attempt left would repeat the upload - is published by hand: run
+*Documentation* from ``master`` with the release's tag as ``tag``. That run builds the commit
+the tag names, refuses a tag that is not ``v`` followed by the version ``pyproject.toml`` states
+at that commit, as Publish does, and publishes the release under its tag through every check a
+release's run makes.
 
 A release's run is alone in a concurrency group of its own, so a push to ``master`` cannot
 cancel it. GitHub keeps one run going and one waiting in a group, and cancels the waiting one

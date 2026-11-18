@@ -3627,19 +3627,23 @@ TAGGED = "2" * 40
 """The commit a release's tag names, which Publish's run for that release ran on."""
 
 
-def started_by(event_name: str, ref: str) -> dict[str, Any]:
+def started_by(event_name: str, ref: str, tag: str = "", run_id: str = "41") -> dict[str, Any]:
     """The context a run of the documentation workflow is given by an event of its own: that
-    event's ref, and the newest commit on it."""
-    return {
+    event's ref, and the newest commit on it. A dispatch has its inputs, the tag it names an
+    empty string when it names none, as an input's empty default is; no other event has any."""
+    context: dict[str, Any] = {
         "github": {
             "event_name": event_name,
             "ref": ref,
             "ref_name": ref.split("/", 2)[2],
             "sha": MASTER_HEAD,
-            "run_id": "41",
+            "run_id": run_id,
             "event": {},
         }
     }
+    if event_name == "workflow_dispatch":
+        context["inputs"] = {"tag": tag}
+    return context
 
 
 def completed(
@@ -3716,6 +3720,8 @@ class TestPublishedDocumentation:
             (started_by("pull_request", "refs/pull/5/merge"), True, False),
             (started_by("workflow_dispatch", "refs/heads/master"), True, True),
             (started_by("workflow_dispatch", "refs/heads/feature"), True, False),
+            (started_by("workflow_dispatch", "refs/heads/master", tag="v0.12.0"), True, True),
+            (started_by("workflow_dispatch", "refs/heads/feature", tag="v0.12.0"), True, False),
             (completed(), True, True),
             (completed(conclusion="failure"), False, False),
             (completed(conclusion="cancelled"), False, False),
@@ -3728,6 +3734,8 @@ class TestPublishedDocumentation:
             "a pull request",
             "a dispatch on master",
             "a dispatch on a branch",
+            "a dispatch from master naming a release",
+            "a dispatch from a branch naming a release",
             "a release Publish published",
             "a release Publish failed or refused",
             "a release whose Publish was cancelled",
@@ -3790,36 +3798,91 @@ class TestPublishedDocumentation:
             "the documentation starts before Publish's run has completed"
         )
 
-    @pytest.mark.parametrize(
-        "context",
-        [
-            started_by("push", "refs/heads/master"),
-            started_by("pull_request", "refs/pull/5/merge"),
-            started_by("workflow_dispatch", "refs/heads/feature"),
-            completed(),
-        ],
-        ids=["a push to master", "a pull request", "a dispatch", "a release Publish published"],
-    )
-    def test_a_release_is_built_from_the_commit_its_tag_names(
-        self, context: dict[str, Any]
-    ) -> None:
-        """A run Publish's completion starts is given master's newest commit as its own, and
-        ``actions/checkout`` with no ``ref`` checks out the run's own commit: so the release's
-        commit is named, from Publish's run. Every other run leaves ``ref`` empty, which is
-        checkout's own default - the event's commit, as before."""
+    @staticmethod
+    def handed(context: dict[str, Any]) -> str:
+        """The ``ref`` the build job hands ``actions/checkout`` over ``context``; empty is
+        checkout's own default, the run's own commit."""
         checkout = re.search(
             r"- uses: actions/checkout@\S+\n((?:        .*\n)*)", job(DOCS_WORKFLOW, "build")
         )
         assert checkout is not None, "the build job checks nothing out"
         ref = setting(checkout.group(1), "ref", 10)
-        named = "" if ref is None else text_of(evaluated(ref, context))
-        if context["github"]["event_name"] == "workflow_run":
-            assert (named or context["github"]["sha"]) == TAGGED, (
-                "a release's documentation is built from master's newest commit, not from the "
-                "commit its tag names"
-            )
-        else:
-            assert named == "", f"a {context['github']['event_name']} run builds {named}"
+        return "" if ref is None else text_of(evaluated(ref, context))
+
+    def built(self, context: dict[str, Any]) -> str:
+        """The commit the build job checks out over ``context``, as checkout resolves the
+        ``ref`` it is handed: the run's own commit for an empty one, a commit as itself, and a
+        release's tag as the commit it names, which is ``TAGGED`` here."""
+        ref = self.handed(context)
+        if not ref:
+            return str(context["github"]["sha"])
+        return TAGGED if ref.startswith("refs/tags/") else ref
+
+    @pytest.mark.parametrize(
+        ("context", "ref"),
+        [
+            (started_by("push", "refs/heads/master"), ""),
+            (started_by("pull_request", "refs/pull/5/merge"), ""),
+            (started_by("workflow_dispatch", "refs/heads/feature"), ""),
+            (
+                started_by("workflow_dispatch", "refs/heads/master", tag="v0.12.0"),
+                "refs/tags/v0.12.0",
+            ),
+            (completed(), TAGGED),
+        ],
+        ids=[
+            "a push to master",
+            "a pull request",
+            "a dispatch",
+            "a dispatch naming a release",
+            "a release Publish published",
+        ],
+    )
+    def test_a_release_is_built_from_the_commit_its_tag_names(
+        self, context: dict[str, Any], ref: str
+    ) -> None:
+        """A run Publish's completion starts is given master's newest commit as its own, and
+        ``actions/checkout`` with no ``ref`` checks out the run's own commit: so the release's
+        commit is named, from Publish's run. A dispatch naming a release is given the commit of
+        the ref it was run on, master's, and checks out the tag it names, as a tag rather than
+        anything else of that name. Every other run leaves ``ref`` empty, which is checkout's own
+        default - the event's commit, as before."""
+        assert self.handed(context) == ref, (
+            f"the build checks out {self.handed(context) or 'the run s own commit'}, not {ref}"
+        )
+
+    def test_the_build_says_which_commit_it_built(
+        self, tmp_path: Path, git: dict[str, str]
+    ) -> None:
+        """The deploy job names in its commit the commit the build was of, and only the build
+        knows which that is - the run's own, a release's or a tag's - so the build hands it
+        over: its step reporting what it checked out, run in a repository here, and its job's
+        ``outputs:`` read over what that step wrote."""
+        build = job(DOCS_WORKFLOW, "build")
+        report = step(build, "Say which commit this build is of")
+        name = re.search(r"^        id: (\S+)$", report, re.M)
+        assert name is not None, "the step reporting the commit has no id to be read by"
+        self.git_in(tmp_path, "init", "--quiet")
+        (tmp_path / "page").write_bytes(b"a page\n")
+        self.git_in(tmp_path, "add", "page")
+        signed = ("-c", "user.name=build", "-c", "user.email=build@example.com")
+        self.git_in(tmp_path, *signed, "commit", "--quiet", "--message", "a commit")
+        head = self.git_in(tmp_path, "rev-parse", "HEAD").strip()
+        done = run_step(report, tmp_path, **git, GITHUB_OUTPUT="output")
+        assert done.returncode == 0, done.stdout + done.stderr
+        written = dict(
+            line.split("=", 1)
+            for line in (tmp_path / "output").read_text(encoding="utf-8").splitlines()
+        )
+        outputs = re.search(r"^    outputs:\n((?:      .*\n)+)", build, re.M)
+        assert outputs is not None, "the build job hands the deploy job nothing"
+        commit = setting(outputs.group(1), "commit", 6)
+        assert commit is not None, "the build job hands over no commit"
+        context = {
+            **started_by("push", "refs/heads/master"),
+            "steps": {name.group(1): {"outputs": written}},
+        }
+        assert evaluated(commit, context) == head
 
     def chosen(self, cwd: Path, context: dict[str, Any]) -> subprocess.CompletedProcess[str]:
         """The deploy job's step choosing the directory, run over ``context``."""
@@ -3835,24 +3898,42 @@ class TestPublishedDocumentation:
             (started_by("workflow_dispatch", "refs/heads/master"), "latest"),
             (completed(), "v0.12.0"),
             (completed(head_branch="v0.10.0rc1"), "v0.10.0rc1"),
+            (started_by("workflow_dispatch", "refs/heads/master", tag="v0.12.0"), "v0.12.0"),
         ],
-        ids=["a push to master", "a dispatch on master", "a release", "a release candidate"],
+        ids=[
+            "a push to master",
+            "a dispatch on master",
+            "a release",
+            "a release candidate",
+            "a release named by hand",
+        ],
     )
     def test_a_release_is_published_under_its_tag(
         self, tmp_path: Path, context: dict[str, Any], directory: str
     ) -> None:
         """A release's tag is the ``head_branch`` of Publish's run, since the run itself is
         given master as its ref: a step choosing by the run's own event or ref would put the
-        release over ``latest``."""
+        release over ``latest``. A dispatch naming a release's tag is run on master as well, and
+        is published under the tag it names, not as ``latest``."""
         done = self.chosen(tmp_path, context)
         assert done.returncode == 0, done.stdout + done.stderr
         assert (tmp_path / "output").read_text(encoding="utf-8") == f"name={directory}\n"
 
-    def test_a_release_tag_without_its_prefix_is_still_refused(self, tmp_path: Path) -> None:
-        """The check the release event's runs made, kept for the runs Publish starts: a tag
-        the version menu would never list is refused rather than published at a url nothing
-        links to (``test_a_release_tag_has_to_carry_its_prefix``)."""
-        done = self.chosen(tmp_path, completed(head_branch="0.12.0"))
+    @pytest.mark.parametrize(
+        "context",
+        [
+            completed(head_branch="0.12.0"),
+            started_by("workflow_dispatch", "refs/heads/master", tag="0.12.0"),
+        ],
+        ids=["a release Publish published", "a release named by hand"],
+    )
+    def test_a_release_tag_without_its_prefix_is_still_refused(
+        self, tmp_path: Path, context: dict[str, Any]
+    ) -> None:
+        """The check the release event's runs made, kept for the runs Publish starts and for a
+        release named by hand: a tag the version menu would never list is refused rather than
+        published at a url nothing links to (``test_a_release_tag_has_to_carry_its_prefix``)."""
+        done = self.chosen(tmp_path, context)
         assert done.returncode == 1, done.stdout + done.stderr
         assert done.stdout.startswith("::error::release tag 0.12.0 does not start with a v")
         assert not (tmp_path / "output").exists()
@@ -3915,8 +3996,10 @@ class TestPublishedDocumentation:
         self, workspace: Path, context: dict[str, Any], git: dict[str, str]
     ) -> subprocess.CompletedProcess[str]:
         """The deploy job's steps from the one choosing the directory to the last before the
-        read back, run in order over ``context`` as the runner runs them; the first to fail
+        read back, run in order over ``context`` as the runner runs them, handed the commit the
+        build checked out (``test_the_build_says_which_commit_it_built``); the first to fail
         ends the job."""
+        context = {**context, "needs": {"build": {"outputs": {"commit": self.built(context)}}}}
         done = self.chosen(workspace, context)
         assert done.returncode == 0, done.stdout + done.stderr
         name = (workspace / "output").read_text(encoding="utf-8").removeprefix("name=").strip()
@@ -3983,6 +4066,97 @@ class TestPublishedDocumentation:
             "a deploy changing nothing pushed"
         )
 
+    def test_a_dispatch_can_name_a_release_s_tag(self) -> None:
+        """The route for a release no re-run of its Publish can finish: a dispatch names the
+        release's tag. The input is optional and empty by default, so that a dispatch naming
+        none is the dispatch it always was."""
+        dispatch = events(DOCS_WORKFLOW)["workflow_dispatch"]
+        tag = re.search(r"^      tag:\n((?:        .*\n)+)", dispatch, re.M)
+        assert tag is not None, "a dispatch cannot name a release's tag"
+        assert setting(tag.group(1), "type", 8) == "string"
+        assert setting(tag.group(1), "required", 8) == "false"
+        assert setting(tag.group(1), "default", 8) == '""'
+
+    @staticmethod
+    def check_of_the_tag() -> str:
+        return step(
+            job(DOCS_WORKFLOW, "build"), "Check the tag names the version its commit states"
+        )
+
+    @pytest.mark.parametrize(
+        ("context", "checks"),
+        [
+            (started_by("push", "refs/heads/master"), False),
+            (started_by("pull_request", "refs/pull/5/merge"), False),
+            (started_by("workflow_dispatch", "refs/heads/master"), False),
+            (started_by("workflow_dispatch", "refs/heads/master", tag="v0.12.0"), True),
+            (completed(), True),
+        ],
+        ids=[
+            "a push to master",
+            "a pull request",
+            "a dispatch",
+            "a release named by hand",
+            "a release Publish published",
+        ],
+    )
+    def test_only_a_release_s_run_checks_its_tag(
+        self, context: dict[str, Any], checks: bool
+    ) -> None:
+        """Master's documentation, a pull request's and an ordinary dispatch's name no tag to
+        check; a release's run does, whichever of the two routes started it."""
+        assert holds(setting(self.check_of_the_tag(), "if", 8), context) == checks
+
+    @pytest.mark.parametrize(
+        "context",
+        [completed(), started_by("workflow_dispatch", "refs/heads/master", tag="v0.12.0")],
+        ids=["a release Publish published", "a release named by hand"],
+    )
+    def test_a_tag_naming_another_version_than_its_commit_is_refused(
+        self, tmp_path: Path, context: dict[str, Any]
+    ) -> None:
+        """Publish refuses a release whose tag is not ``v`` and the version ``pyproject.toml``
+        states, before it uploads anything. A release named by hand has been through no
+        Publish, so the build makes the same check of the tree it checked out, and refuses to
+        publish documentation under a version that commit does not state; a release Publish
+        published passes it again."""
+        verdicts = {}
+        for version in ("0.12.0", "0.12.1"):
+            tree = tmp_path / version
+            tree.mkdir()
+            (tree / "pyproject.toml").write_bytes(
+                f'[project]\nname = "ddd-tool"\nversion = "{version}"\n'.encode()
+            )
+            check = self.check_of_the_tag()
+            verdicts[version] = run_step(check, tree, **step_environment(check, context))
+        assert verdicts["0.12.0"].returncode == 0, verdicts["0.12.0"].stdout
+        refused = verdicts["0.12.1"]
+        assert refused.returncode == 1, refused.stdout + refused.stderr
+        assert refused.stdout.startswith("::error::tag v0.12.0 is not v0.12.1, the version")
+
+    def test_a_release_named_by_hand_lands_under_its_tag(
+        self, tmp_path: Path, git: dict[str, str]
+    ) -> None:
+        """The deploy job's steps for a dispatch from master naming a release's tag, over the
+        site a release finds: it lands as a release Publish published does - under its tag, the
+        index crowning it - and the commit saying so names the commit the tag names, not
+        master's, which the dispatch ran on."""
+        origin = self.site(tmp_path)
+        dispatched = started_by("workflow_dispatch", "refs/heads/master", tag="v0.12.0")
+        done = self.publish(self.workspace(tmp_path, origin, "release"), dispatched, git)
+        assert done.returncode == 0, done.stdout + done.stderr
+        held = self.git_in(origin, "ls-tree", "--name-only", "gh-pages").split()
+        assert "v0.12.0" in held, f"the release is not published under its tag: the site is {held}"
+        assert self.git_in(origin, "show", "gh-pages:v0.12.0/index.html") == "release\n"
+        assert self.git_in(origin, "show", "gh-pages:latest/index.html") == "latest as it was\n"
+        assert json.loads(self.git_in(origin, "show", "gh-pages:versions.json")) == {
+            "stable": "v0.12.0",
+            "versions": ["latest", "v0.12.0", "v0.11.0"],
+        }
+        assert self.git_in(origin, "log", "-1", "--format=%s", "gh-pages") == (
+            f"docs: publish v0.12.0 from {TAGGED}\n"
+        )
+
     @staticmethod
     def publishing_this_documentation() -> str:
         """The developer page's section on the site, its line breaks flattened."""
@@ -4004,7 +4178,17 @@ class TestPublishedDocumentation:
             "when a release's run goes on": "builds and deploys only if Publish's run was a "
             "release's and succeeded",
             "what it builds": "from the commit the release's tag names, and under the tag",
-            "what a failed Publish costs": "published once a re-run of Publish succeeds",
+            "what re-run publishes a failed release": "with *Re-run failed jobs*, which runs "
+            "again only the jobs that failed",
+            "why re-running every job cannot": "*Re-run all jobs* cannot pass once the release is "
+            "on PyPI",
+            "what publishes a release no re-run can finish": "is published by hand: run "
+            "*Documentation* from ``master`` with the release's tag as ``tag``",
+            "what that run builds and refuses": "builds the commit the tag names, refuses a tag "
+            "that is not ``v`` followed by the version ``pyproject.toml`` states at that commit, "
+            "as Publish does",
+            "what else it goes through": "publishes the release under its tag through every "
+            "check a release's run makes",
             "what writes a version": "that release, once Publish has published it",
             "what rewrites one": "only by that release's own runs",
             "what the deploy job names": "the Publish run it waits for",
@@ -4024,14 +4208,20 @@ class TestPublishedDocumentation:
         assert group is not None and cancels is not None, "the workflow has no concurrency group"
         return text_of(evaluated(group, context)), truthy(evaluated(cancels, context))
 
-    def test_a_release_s_run_is_alone_in_its_group(self) -> None:
+    @pytest.mark.parametrize(
+        "release",
+        [completed(), started_by("workflow_dispatch", "refs/heads/master", "v0.12.0", "45")],
+        ids=["a release Publish published", "a release named by hand"],
+    )
+    def test_a_release_s_run_is_alone_in_its_group(self, release: dict[str, Any]) -> None:
         """20:M5. GitHub keeps one run going and one waiting in a concurrency group, and cancels
         the waiting one when another arrives. A release's run waiting behind master's was
         therefore cancelled by the next push to master, with nothing red and no directory for
         the release. Alone in a group of its own, a release's run never waits, and so is never
         the waiting run anything replaces - not master's, not another release's, not a re-run
-        of its own Publish."""
-        release, cancels = self.group(completed())
+        of its own Publish - whether Publish's completion started it or a dispatch naming its
+        tag did."""
+        group, cancels = self.group(release)
         others = {
             self.group(other)[0]
             for other in (
@@ -4039,11 +4229,12 @@ class TestPublishedDocumentation:
                 started_by("workflow_dispatch", "refs/heads/master"),
                 started_by("workflow_dispatch", "refs/heads/feature"),
                 started_by("pull_request", "refs/pull/5/merge"),
+                started_by("workflow_dispatch", "refs/heads/master", "v0.12.0", "46"),
                 completed(run_id="43"),
                 completed(head_branch="v0.11.1", run_id="44"),
             )
         }
-        assert release not in others, f"a release's run waits in {release} with other runs"
+        assert group not in others, f"a release's run waits in {group} with other runs"
         assert not cancels, "a release's run cancels the run going in its group"
 
     def test_master_s_runs_still_queue_and_a_pull_request_s_are_superseded(self) -> None:

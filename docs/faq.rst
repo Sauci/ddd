@@ -384,7 +384,7 @@ say - in the collected CMake mode the project description exists only in the bui
 beside its artefacts, and the language server searches the build directories for that
 record: the ones named with ``-b`` (the ``ddd.buildDirectories`` setting in VS Code), or the
 conventional directory names next to the workspace. The editor then reports exactly what the
-build reports. A file no build claims is checked under the nearest containing project, and a
+build reports. A file no build claims is checked under the outermost containing project, and a
 file with no project at all is checked alone, with the checks that need the whole project
 held back. The full story is in :doc:`editor_integration`.
 

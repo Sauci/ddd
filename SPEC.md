@@ -2962,13 +2962,17 @@ mistakes; where their severities differ they really are saying two different thi
 are published. A file no
 build record claims is looked for in a containing project instead: the server walks from
 the file's directory up to the workspace root, and the file is checked under the project
-descriptions of the nearest directory that include it - the candidates of a directory being
+descriptions of the outermost directory that include it - the candidates of a directory being
 its `*.ddd.json` files in sorted order, the opened file itself excluded - under the default
 severities of [section 4](#4-consistency-checks), since the `-W` and `--strict` of a build
-are properties of a build and no record named this file. A file that is itself a project
-description is checked as the project it is, under those same default severities: it lists
-its components, so every check has what it needs, and the checks that need the whole project
-are exactly the ones somebody opening a project file is asking about. A file
+are properties of a build and no record named this file. A description nearer the file that
+includes it as well is a sub-project of the outer one and is dropped: it does not know what
+the rest of the outer project produces, and `ddd check` of the outer project is what the file
+shows. A file that is itself a project description is searched for above like any file, and is
+checked as the project it is, under those same default severities, where no description
+above includes it: it lists its components, so every check has what it needs, and the checks
+that need the whole project are exactly the ones somebody opening a project file is asking
+about. A file
 belonging to no build, to no such project and declaring no project of its own is still
 checked, on its own, with the nine checks that
 need every component of a project ([section 4](#4-consistency-checks)) held back: a

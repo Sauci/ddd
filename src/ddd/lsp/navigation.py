@@ -413,7 +413,7 @@ class Containing:
     """What the search for a document's project found, including what it could not read."""
 
     projects: tuple[Loaded, ...] = ()
-    """The descriptions that turned out to include the document, nearest first, as read."""
+    """The descriptions of the outermost directory that include the document, as read."""
 
     failed: dict[Path, str] = field(default_factory=dict)
     """Candidate -> why reading it stopped, for the candidates a plugin defect stopped.
@@ -509,6 +509,11 @@ def resolve_projects(document: Path, root: Path | None = None) -> Containing:
     where no build has been configured - in which the alternative is a component cut off from
     the shared vocabularies, whose declarations of shared types resolve to nothing at all.
 
+    The outermost directory holding a description that includes the document answers, so a
+    component of a sub-project is checked under the project that holds the sub-project, as
+    ``ddd check`` of that project checks it. The walk therefore goes to the root even after a
+    hit, and a description nearer the document is dropped.
+
     The read itself is handed back, which is what makes this the one place a project above a
     document is loaded: the findings go to the diagnostics, the workspace answers the hovers
     and the jumps, and neither has to read the file a second time to have it.
@@ -535,6 +540,7 @@ def resolve_projects(document: Path, root: Path | None = None) -> Containing:
         current = current.parent
 
     failed: dict[Path, str] = {}
+    outermost: list[Loaded] = []
     for directory in directories:
         found = []
         for candidate in sorted(directory.glob("*.ddd.json")):
@@ -544,10 +550,12 @@ def resolve_projects(document: Path, root: Path | None = None) -> Containing:
             if loaded is not None and resolved in loaded.workspace.sources():
                 found.append(loaded)
         if found:
-            # The nearest wins; one further up as well is a sub-project of it, and answering
-            # from both would say everything twice.
-            return Containing(tuple(found), failed)
-    return Containing((), failed)
+            # Every level is walked, and the last one that included the document answers: a
+            # description nearer the document is a sub-project of the one further up, and the
+            # sub-project alone does not know what its siblings produce. Answering from both
+            # would say everything twice, so the nearer one is dropped.
+            outermost = found
+    return Containing(tuple(outermost), failed)
 
 
 def variable_at(document: Document, pointer: str) -> str | None:

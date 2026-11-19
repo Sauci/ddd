@@ -241,11 +241,13 @@ opened through a junction, a `subst` drive, a symlink or with a different case g
 squiggles on the document you actually have open.
 
 A file no build claims is looked for in a project instead: the server walks up from it to the
-workspace folder and checks it through the nearest project description that includes it,
-under the **default** severities - a `-W` or a `--strict` belongs to a build, and no build
-record named this file.  A project description opened directly is checked as the project it
-is, which is what makes opening `project.ddd.json` in a tree nobody has built yet show the
-missing producers and the unused outputs rather than hide them.
+workspace folder and checks it through the outermost project description that includes it
+(a sub-project nearer the file is dropped, so the file shows what `ddd check` of the outer
+project shows), under the **default** severities - a `-W` or a `--strict` belongs to a build,
+and no build record named this file.  A project description no description above includes is
+checked as the project it is, which is what makes opening `project.ddd.json` in a tree
+nobody has built yet show the missing producers and the unused outputs rather than hide
+them.
 
 A file that no build and no project above it claims is still checked, on its own, but only
 for what one file can decide.

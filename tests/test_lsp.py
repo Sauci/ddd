@@ -4427,6 +4427,29 @@ class TestServer:
         assert server._handle({"jsonrpc": "2.0", "method": "textDocument/didSave", "params": saved})
         assert published(writer)[a.as_uri()] == []
 
+    def test_the_demos_sub_project_component_shows_what_ddd_check_shows(
+        self, tmp_path: Path
+    ) -> None:
+        """The outermost description that includes a document answers for it.
+
+        ``subsystems/logging`` is a sub-project of the demo, and its component reads values the
+        demo's other components produce. Checked under the sub-project alone, the nearest
+        description, a clean tree showed errors in the component for values that
+        the demo's other components do write; ``ddd check`` of the top project is clean.
+        """
+        demo = tmp_path / "demo"
+        shutil.copytree(EXAMPLES / "demo", demo)
+        logger = demo / "subsystems" / "logging" / "event_logger.ddd.json"
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=demo)
+        assert server._handle(self.handshake(demo))
+        assert server._handle(self.opened(logger))
+        assert main(["check", str(demo / "demo.ddd.json")]) == EXIT_OK  # the tree is clean
+        errors = [
+            d["code"] for d in published(writer).get(logger.as_uri(), []) if d["severity"] == 1
+        ]
+        assert errors == [], f"a clean project shows {errors}"
+
     def test_a_deleted_file_is_withdrawn_once_and_not_refreshed(self, tmp_path: Path) -> None:
         """A pull that changes one file and deletes another, with nothing open.
 

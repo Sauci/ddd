@@ -205,11 +205,14 @@ three stages:
   same ``-W`` for.
 * **A containing project.** A file no build record claims is looked for in a containing
   project instead: the server walks from the file's directory up to the workspace root and
-  checks the file under the project descriptions of the nearest directory that include it.
-  A file that is itself a project description is checked as the project it is, rather than
-  searched for above: it lists its components, so every check has what it needs, and the
-  checks that need the whole project are exactly the ones somebody opening a project file is
-  asking about.
+  checks the file under the project descriptions of the outermost directory that include it.
+  A description nearer the file that includes it as well is a sub-project of the outer one
+  and is dropped: it does not know what the rest of the outer project produces, so the file
+  shows what ``ddd check`` of the outer project shows.
+  A file that is itself a project description is searched for above like any file, and is
+  checked as the project it is where no description above includes it: it lists its
+  components, so every check has what it needs, and the checks that need the whole project
+  are exactly the ones somebody opening a project file is asking about.
   This stage applies the **default** severities of the :doc:`checks <consistency_checks>` -
   no ``-W``, no ``--strict`` - because those are properties of a build and no build record
   named this file.

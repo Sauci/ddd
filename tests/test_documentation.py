@@ -1673,6 +1673,73 @@ class TestPackaging:
                 )
 
 
+class TestWhichDescriptionAnswersForAFile:
+    """10:I2. The server walks to the root and answers from the outermost description that
+    includes a file, so a component of a sub-project shows what ``ddd check`` of the top project
+    shows. Every page that says how the server finds a file's project says so."""
+
+    STATED: ClassVar[dict[str, tuple[str, tuple[str, ...]]]] = {
+        "SPEC.md": (
+            SPEC,
+            (
+                "checked under the project descriptions of the outermost directory that include it",
+                "A description nearer the file that includes it as well is a sub-project of the "
+                "outer one and is dropped",
+                "A file that is itself a project description is searched for above like any file",
+            ),
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            (
+                "checks the file under the project descriptions of the outermost directory that "
+                "include it",
+                "A description nearer the file that includes it as well is a sub-project of the "
+                "outer one and is dropped",
+                "A file that is itself a project description is searched for above like any file",
+            ),
+        ),
+        "README.md": (
+            README,
+            (
+                "through the outermost project description that includes it",
+                "a sub-project nearer the file is dropped",
+                "A project description no description above includes is checked as the project "
+                "it is",
+            ),
+        ),
+        "editors/vscode/README.md": (
+            (ROOT / "editors" / "vscode" / "README.md").read_text(encoding="utf-8"),
+            (
+                "checked through the outermost project description above it that includes it",
+                "a project description no description above includes is checked as the project "
+                "it is",
+            ),
+        ),
+        "docs/faq.rst": (
+            (ROOT / "docs" / "faq.rst").read_text(encoding="utf-8"),
+            ("checked under the outermost containing project",),
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(STATED))
+    def test_the_page_says_the_outermost_description_answers(self, page: str) -> None:
+        text, phrases = self.STATED[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"
+
+    @pytest.mark.parametrize("page", sorted(STATED))
+    def test_no_page_still_says_the_nearest_one_answers(self, page: str) -> None:
+        said = flattened(self.STATED[page][0])
+        for stale in (
+            "descriptions of the nearest directory",
+            "through the nearest project description",
+            "under the nearest containing project",
+            "rather than searched for above",
+        ):
+            assert stale not in said, f"{page} still says: {stale!r}"
+
+
 class TestWhatThePolicySaysOfAnAdvisory:
     """20:I4. ``SECURITY.md`` said which release is supported and how to report a vulnerability
     privately, and nothing of an advisory: which versions one names, or where one is published.

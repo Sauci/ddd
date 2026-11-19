@@ -1035,6 +1035,18 @@ In order, each step waiting for the one before it:
    ``## <version>``, and that section is the release's notes. Merge the commit through its pull
    request, and wait for ci on ``master`` once more: the commit it runs on is the one the tag
    names.
+#. **Rehearse the release**, optionally, before it is created: dispatch *Publish* from
+   ``master`` with ``target: testpypi``, the dry run above. It is the one rehearsal of the
+   release path before a tag exists. On the commit the tag will name, it runs ``ci`` through the
+   call, then ``build`` - the pages, the pointing step, the wheel and the sdist, ``twine check``
+   and the installed check - and uploads to TestPyPI alone, which spends the version there and
+   nowhere else: a second rehearsal of that version is refused at its upload, and pypi.org is
+   untouched. It shows GitHub starting Publish with the call - the permissions the call grants,
+   checked as the run starts, and ``build`` waiting on ``ci`` with the development builds
+   skipped - and the build's checks passing on a runner. It does not show the tag check, which a
+   dispatch from a branch skips, the ``.vsix``, which ``extension`` attaches to a release alone,
+   the upload to pypi.org and the ``pypi`` environment's protection, or *Documentation*, which
+   publishes nothing for a dry run.
 #. **Create the release** on GitHub, on that commit, with a new tag ``v<version>`` - ``v`` and
    the version ``pyproject.toml`` states, exactly, or Publish refuses it - and the notes of
    ``## <version>``, and publish it.
@@ -1062,8 +1074,8 @@ In order, each step waiting for the one before it:
    checks, or the upload itself, refused before it began, as for ``invalid-publisher`` until the
    registration is corrected: *Re-run failed jobs* on Publish's run, for a failure that comes and
    goes or one corrected outside the tree; for one in the tagged commit, delete the release and
-   its tag, fix ``master``, and create the release again, its version unchanged, since no index
-   holds it. A tag Publish refused is remade so too. Once a file is on pypi.org no run of the
+   its tag, fix ``master``, and create the release again, its version unchanged, since pypi.org
+   does not hold it. A tag Publish refused is remade so too. Once a file is on pypi.org no run of the
    upload passes again, an index taking a file name once: *Re-run failed jobs* runs again only
    what failed and what waits for it, so it serves a failed ``extension`` beside an upload that
    passed, and *Re-run all jobs* cannot pass. A release on pypi.org that no re-run can finish

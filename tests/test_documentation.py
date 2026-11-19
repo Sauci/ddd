@@ -6893,6 +6893,7 @@ class TestTheStepsOfARelease:
         "Wait for ci",
         "Bump the version",
         "Write the notes",
+        "Rehearse the release",
         "Create the release",
         "Publish runs",
         "Documentation publishes",
@@ -6977,6 +6978,52 @@ class TestTheStepsOfARelease:
                 "``master`` once more: the commit it runs on is the one the tag names.",
             },
         )
+
+    def test_a_rehearsal_is_publish_s_dry_run_before_the_tag_exists(self) -> None:
+        """The one rehearsal of the release path before a tag exists, which a maintainer may
+        take or leave: Publish dispatched from master with ``target: testpypi``. What the step
+        says it runs, spends, shows and leaves unshown is held to the workflows: the gates
+        through the call, the development builds skipped there, the build without the tag
+        check, the upload to TestPyPI alone and with no ``skip-existing``, and no documentation
+        for a dry run's completion."""
+        self.said(
+            "Rehearse the release",
+            {
+                "what": "**Rehearse the release**, optionally, before it is created: dispatch "
+                "*Publish* from ``master`` with ``target: testpypi``, the dry run above.",
+                "why": "It is the one rehearsal of the release path before a tag exists.",
+                "what it runs": "it runs ``ci`` through the call, then ``build`` - the pages, the "
+                "pointing step, the wheel and the sdist, ``twine check`` and the installed check - "
+                "and uploads to TestPyPI alone",
+                "what it spends": "which spends the version there and nowhere else: a second "
+                "rehearsal of that version is refused at its upload, and pypi.org is untouched.",
+                "what it shows": "It shows GitHub starting Publish with the call - the "
+                "permissions the call grants, checked as the run starts, and ``build`` waiting on "
+                "``ci`` with the development builds skipped - and the build's checks passing on a "
+                "runner.",
+                "what it does not": "It does not show the tag check, which a dispatch from a "
+                "branch skips, the ``.vsix``, which ``extension`` attaches to a release alone, the "
+                "upload to pypi.org and the ``pypi`` environment's protection, or "
+                "*Documentation*, which publishes nothing for a dry run.",
+            },
+        )
+        rehearsal = publish_run("workflow_dispatch", "refs/heads/master", "testpypi")
+        jobs = PUBLISH_WORKFLOW.split("\njobs:\n", 1)[1]
+        names = re.findall(r"^  ([a-z][\w-]*):\n", jobs, re.M)
+        running = [name for name in names if job_runs(PUBLISH_WORKFLOW, name, rehearsal)]
+        assert running == ["ci", "build", "publish-testpypi"]
+        checked = step(job(PUBLISH_WORKFLOW, "build"), "Check tag matches package version")
+        assert not holds(setting(checked, "if", 8), rehearsal), "a rehearsal checks a tag"
+        called = publish_run("workflow_dispatch", "refs/heads/master", "testpypi", called=True)
+        gates = job_names(CI_WORKFLOW)
+        skipped = [name for name in gates if not job_runs(CI_WORKFLOW, name, called)]
+        assert skipped == ["dev-build", "dev-publish"]
+        uploading = uncommented(job(PUBLISH_WORKFLOW, "publish-testpypi"))
+        assert "repository-url: https://test.pypi.org/legacy/" in uploading
+        assert "skip-existing" not in uploading, "a second rehearsal of a version would pass"
+        finished = completed(event="workflow_dispatch", head_branch="master")
+        assert not job_runs(DOCS_WORKFLOW, "build", finished)
+        assert not job_runs(DOCS_WORKFLOW, "deploy", finished)
 
     def test_the_tag_is_the_one_publish_checks_for(self) -> None:
         self.said(
@@ -7100,7 +7147,7 @@ class TestTheStepsOfARelease:
                 "failure that comes and goes or one corrected outside the tree",
                 "one in the commit": "for one in the tagged commit, delete the release and its "
                 "tag, fix ``master``, and create the release again, its version unchanged, since "
-                "no index holds it",
+                "pypi.org does not hold it",
                 "a refused tag": "A tag Publish refused is remade so too.",
                 "after the upload": "Once a file is on pypi.org no run of the upload passes "
                 "again, an index taking a file name once",

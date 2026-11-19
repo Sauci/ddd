@@ -1331,7 +1331,6 @@ maintainer has:
     until they are enabled.
   - `20:M14`: `pypi`'s protection.
   - The other half of `20:M13`: pinning actions by sha.
-  - Private vulnerability reporting, which is still off.
 - **The releases:**
   - `20:M8`: what a release is: Pre-release or stable, the classifier, and whether `preview` stays the
     GUI's word.
@@ -1789,6 +1788,72 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
 - **Two notes the page's gates print** (task 3; R119): Vite's warning on a chunk's size and a
   deprecation biome reports, both from before the branch, and no task names them. The
   maintainer's.
+
+**Branch 8:**
+- **The terminal's line on a launch code presented again** (D0, `12:I3`): it ends saying that
+  this run's address, opened since, does not take the token back, and no longer says whose
+  token; the security page names the winner as the one a restart takes it from. Branch 10,
+  which lists `gui/*.py`, may reword it.
+- **The security page's sign for a launch with no project** (D0, `12:I3`): its bullet on that
+  line says the browser is signed out instead of landing on the project, inexact for a launch
+  with no project, which lands on the start page, though the sign it describes still holds.
+  Branch 15 lists `docs/*.rst`.
+- **"Their builds" and "its own directory"** (D0, `12:I4`; R114): both read ambiguously in
+  `_readable_project`'s docstring and in branch 7's entry above on the directories a record is
+  read under. Branch 10 lists `gui/*.py`, for the docstring; the entry's wording is branch 9's
+  D0's.
+- **The opening's items held to their entries** (task 1, `4:I8`; R132, R139, R150): the opening of
+  Unreleased names about eighty migrations a second time, each beside its entry, and nothing
+  holds an item to the entry it names, though later branches will rewrite entries. A test that
+  every item names exactly one entry's lead, whole or by a prefix, is branch 15's, whose task 11
+  plans an entry naming every migration the sixteen branches make; how long the opening stays is
+  for whoever curates 0.12.0's notes.
+- **The release tools' refusals** (tasks 2 and 4; R134, R148): the refusals of
+  `tools/installed_wheel.py` - a wheel without one `METADATA` or a version, a `ddd` that cannot
+  run or hangs, a `ddd gui` that does not answer at the address it printed or prints another line
+  where its address should be - and two of `tools/dev_version.py`'s are what a maintainer reads
+  on a release day, and no test reaches them, the coverage gate measuring `src/ddd` alone. The
+  refusal of `gui/scripts/licenses.mjs` where the installed packages and the lock file disagree
+  was shown once, by hand. Branch 16 lists `tests/*`, for the Python half; no later branch lists
+  `gui/scripts/`, so the script's is the maintainer's.
+- **`installed_wheel.main()` blaming the wheel** (task 4): it reports any `OSError` or
+  `ValueError` of its checks as the wheel's fault, though only a fault of the environment
+  reaches it: the step is a failure whichever is blamed, and its message names what went
+  wrong. No later branch lists `tools/`, so it is the maintainer's.
+- **The licence walk's two refusals** (task 2): the one for a package missing from the lock file
+  can print a package twice, and the one for a lock file the installed packages disagree with
+  could say to run `npm ci`, as the changelog does. The maintainer's, `gui/scripts/` being in no
+  later branch's list.
+- **ci's two `pip install build`** (task 4, `20:M13`): the `gui` job and `dev-build` install
+  `build` at whatever version is newest, where Publish installs it from
+  `requirements-release.txt`; harmless while the backend, which decides the wheel, is pinned. No
+  later branch lists `.github/workflows/`, so it is the maintainer's.
+- **What Dependabot reaches** (task 4, `20:M13`; R130): its first weekly runs show whether it
+  moves `requirements-release.txt` and the `[build-system]` table, and vsce, written into an
+  `npx` command, is moved by hand, as the developer page says. The maintainer's.
+- **A candidate's version in the extension's manifest** (task 4; R143, R151): `0.12.0rc1`,
+  which a test would have `editors/vscode/package.json` state as `__version__` does, is not a
+  semver version, and packaging most likely refuses it, failing the `extension` job in ci's
+  runs and in Publish's; the page calls that untried. A rule for spelling the manifest's
+  version under a candidate is the maintainer's to make once a candidate is planned: branch 9
+  lists the manifest, but such a rule reaches all ten files that spell the version, and their
+  tests.
+- **Four suggestions on Publish** (task 4; R148): letting a re-run of `publish-pypi` skip the
+  files already on pypi.org, as `dev-publish` does, which would let *Re-run failed jobs*
+  complete an upload that stopped partway; checking the tag before calling ci, which would
+  refuse a wrong tag at once rather than after the gates; a time limit on each of Publish's
+  jobs, as ci's jobs have; and a way to ship a release's `.vsix` when its tagged commit fails
+  to package one. Each is the maintainer's call.
+- **What only a release shows** (tasks 3 and 4; R135, R152): GitHub starting Publish with the
+  call - the permissions it checks as the run starts, the name and the group ci is given there,
+  and `build` waiting on `ci` with the development builds skipped; *Re-run failed jobs* inside the
+  called workflow; the build's new steps on a runner; Documentation's run on Publish's
+  completion, its payload, its firing on a re-run's completion, the group of its own a
+  release's run is put in, and a release's deploy running beside master's; the dispatch
+  naming a tag, its pypi.org check with it; and a release candidate through the `extension`
+  job. The documentation under sphinx 9.1.1 is first built by this branch's pull request, and
+  Dependabot's first proposals come with its weekly runs. The dry run among the steps of a
+  release shows the first and the third before a tag exists. The maintainer's, at 0.12.0.
 
 ## Rulings taken
 
@@ -2430,6 +2495,127 @@ Every departure from a task's text, with its reason, numbered `R1`, `R2`, and so
   under *Left open* (branch 7): one set of directories for a record's readers, and the create
   rule's place, to branch 10; a description's suffix compared without regard to case, to branch
   14's task 4; and a test's server that takes up to half a second to stop, to branch 16.
+
+**Branch 8:**
+- **R127.** Branch 8 runs a D0 first, then tasks 1 to 6 in order, then its changelog as D1 (R4),
+  then the whole-branch review and one final wave, the order of branches 2 to 7 (R27, R42, R61,
+  R73, R87, R102). D0 carries what branch 7's re-review left and the progress log's rows for #91
+  to #93, held to ruling B7-7 and scanned against pass 12 as branch 7's own commits were, those
+  items being branch 7's (ruling B8-11).
+- **R128.** Task 2 takes `20:M3` from task 5 (ruling B8-1): the entries the licence walk skipped
+  and the paths npm's redaction breaks are both its reading of npm's output, so the walk is
+  rewritten once, its directories taken from the lock file's keys. Task 5 keeps its other five
+  findings.
+- **R129.** Task 4 reads "a wheel built from master carries a dev version" as every wheel ci
+  builds being stamped with a development version, as `dev-build` stamps its own (ruling B8-2).
+  Master's source keeps the last release's version between releases, as the developer page's
+  walk of the version has it, so a wheel built from it locally carries that version, and the
+  page says so.
+- **R130.** Task 4's pins reach the files that pin each tool, beyond its Files list:
+  `requirements-docs.txt` for sphinx, and `editors/vscode/package.json`, whose scripts run vsce
+  (ruling B8-3). Pinning the actions by sha stays the maintainer's (*Not in any branch*).
+- **R131.** Task 1 was to have SPEC 7 say dictionary format 9, as the task asks, with a test
+  holding every format number SPEC states to the tool's, so that no statement could drift
+  (ruling B8-4, which R138 corrects). Its cost: one fact stated in two sections of SPEC, where
+  `5:I1` asked for one.
+- **R132.** "Unreleased gains its Migration line" is read as an opening of the section, as
+  0.11.0's section opens, saying what the entries' migrations come to read together, each named
+  by its entry; branches 1 to 7's entries keep their migration sentences where they stand
+  (ruling B8-5, as R139 amends it). The cost: Unreleased's entries do not end in 0.11.0's
+  **Migration:** form.
+- **R133.** Task 4 keeps in `publish.yml` what task 3's crowning waits on (ruling B8-6): the
+  workflow's name, its `release: published` trigger and its run's success, which a test holds.
+- **R134.** Task 2's test of the walk runs where the pages' gates run, beside the script under
+  `gui/`, since the licences file is built and not tracked, and reads the lock file's non-dev
+  packages against the walk's list (ruling B8-7). It came as a check inside
+  `gui/scripts/licenses.mjs`, run by every build of the pages: each of ci's legs shows it
+  passing, and no committed test shows its refusal (*Left open*, branch 8).
+- **R135.** No task runs a release (ruling B8-8): no tag is pushed, no release published, and no
+  workflow dispatched against PyPI or `gh-pages`. The workflows' changes are shown by reading
+  them, by the tests, which evaluate their expressions and run their steps' scripts, and by ci's
+  own runs of `ci.yml`, so a release is the first to exercise the rest (R152).
+- **R136.** Task 5 corrects each sentence where it lives, beyond its Files list too, by R100's
+  rule: `docs/getting_started.rst`, `requirements.txt` and `src/ddd/addresses.py` among them
+  (ruling B8-9). The FAQ sentence `20:M12` shares with `4:M4` waits for branch 15's task 8.
+- **R137.** Task 6 drafts the advisory for 0.11.0 to a file, for the controller's pull request
+  body: what 0.11.0 lacks, by what master's changelog says publicly, branch 7's entries among
+  them, and what to do (ruling B8-10). It says nothing of pass 12's findings beyond what branch
+  7's entries say (decision M4, ruling B7-7), and publishing it is the maintainer's (decision
+  20.1). The cost: the advisory says less than a reader might want. R146 corrects the versions it
+  names.
+- **R138.** SPEC 7 already states the tool's dictionary format, `10`, as section 5.3 does, since
+  branch 5 made it 10 (R92); the plan's "9" was the tool's when the plan was written. So task 1
+  writes the guard alone: every format number SPEC states, the dictionary's and each other
+  format it names, is held to the tool's own constant, so that none can drift again (ruling
+  B8-4, corrected).
+- **R139.** The opening may be a list, one item per migration an entry names, each said as its
+  entry says it and naming the entry by its lead, so that a reader who stops there misses no
+  work (ruling B8-5, amended in task 1's round). The cost is an opening longer than 0.10.0's
+  (R150).
+- **R140.** Task 3 takes the plan's reading of `20:I3`, that the site crowns a release only once
+  Publish has succeeded, over the lighter one pass 20 offers, which compares the tag with the
+  version in Documentation's own build or has the page say how to remove a directory: the
+  plan's text binds, and the lighter change leaves crowned a release whose tests failed. The
+  cost: Documentation's release path moves to Publish's completion, an event no run here can
+  exercise.
+- **R141.** A release's documentation waits for every job of Publish's run to pass, the
+  `.vsix`'s among them, the `.vsix` being part of what the release makes; task 3's round adds a
+  route by hand for a release no re-run of its Publish can finish, Documentation dispatched from
+  master naming the release's tag, and the page and the workflow's comments name the re-run that
+  works and why *Re-run all jobs* cannot (as R149 corrects it). The cost: a second way to deploy
+  a release's documentation.
+- **R142.** A pin's version is, in order, what ci itself installed in its latest green run that
+  installed the tool, read off that run's log; the version in pip's cache on the Linux PC; or the
+  newest release the index's json names (ruling B8-12). Nothing is installed or committed from a
+  download, and task 4's report names each pin's source: `build` 1.6.1 and `twine` 7.0.0 from
+  Publish's run for v0.11.0, `hatchling` 1.33.0 and `hatch-requirements-txt` 0.4.1 from ci's
+  latest green run, vsce 4.1.1 from the npm registry, and sphinx 9.1.1 as the documentation's
+  workflow installed it. The cost: a pin may be older or newer than what a release last used,
+  until Dependabot moves it.
+- **R143.** A development build after a release candidate is numbered as the next candidate's
+  development build, `0.12.0rc2.dev<run>` after `0.12.0rc1`, which sorts after the candidate
+  and before both the next candidate and the release, in `tools/dev_version.py` and
+  `dev-publish`'s version pattern (ruling B8-13, as R151 restates its aim): with the `gui` job's
+  wheel stamped (R129), the stamp's old refusal of a candidate would have reached every run.
+- **R144.** Publish's call of `ci.yml` keeps `id-token: write`: GitHub checks a called workflow's
+  nested permissions as the run starts, whatever a job's `if:`, and `dev-publish`, the one job
+  asking for it, cannot run in Publish's run, `dev-build` being skipped there. The cost: one line
+  allows more than any job of the call uses.
+- **R145.** Three of task 4's review's points on the developer page go to task 5, which rewrites
+  the page's release machinery as steps: its claim that a candidate on master fails no job, where
+  packaging the extension needs a semver version; `dependabot.yml`'s comment on the backend,
+  against the page and `pyproject.toml`; and its claim that the `gui` job's wheel is numbered as
+  `dev-build`'s, true of a push and not of every pull request.
+- **R146.** The advisory names 0.11.0 alone as affected, the first release with `ddd gui`, where
+  task 6's notes said 0.11.0 and earlier: no `src/ddd/gui` exists at v0.10.0 (R137).
+- **R147.** The final wave takes the whole-branch review's Important, the route by hand held to
+  a release pypi.org holds (R149), and five of its Minors in the files the wave rewrites: what
+  writes a published release's directory again, the tests reading `ci.yml`'s name, Publish's dry
+  run among the steps of a release (R152), and the release gate's item and the `docs` extra in
+  the changelog; with them the stale line under *Not in any branch*, and these records. The
+  cost: a larger wave.
+- **R148.** The final wave leaves the rest of the review's points under *Left open* (branch 8):
+  the release tools' refusals that no test runs to branch 16 and the maintainer, the opening's
+  items unheld to their entries to branch 15, whose task 11 overlaps them, and four suggestions
+  on Publish to the maintainer.
+- **R149.** The route by hand lacked the release path's defining check, that Publish uploaded the
+  version, and was offered where nothing had reached pypi.org, a gate failing in the tagged
+  commit included (correcting R141). The final wave limits it to a release pypi.org holds: the
+  dispatch reads pypi.org's json for the tag's version before anything is built and refuses one
+  it holds no file of, or one it gives no answer for, and the workflow, the page and the
+  changelog say what the route checks and cannot. A release pypi.org never received is deleted
+  with its tag and created again.
+- **R150.** The opening runs about 340 lines, and gives each migration a second home that no test
+  ties to its entry (R139): whoever curates 0.12.0's notes decides its length, and branch 15's
+  planning is told it exists (*Left open*, branch 8). The cost: an item and its entry may drift
+  apart until branch 15.
+- **R151.** B8-13 removes the stamp's refusal of a candidate (R143); a candidate on master still
+  needs a rule for spelling the extension's manifest version, which packaging needs as semver,
+  and making it is the maintainer's once a candidate is planned (*Left open*, branch 8).
+- **R152.** The final wave cuts B8-8's cost (R135) with an optional step among the steps of a
+  release: Publish dispatched from master to TestPyPI before the tag exists, which runs most of
+  the release path and spends the version on TestPyPI alone. The pull request recommends it
+  before 0.12.0's tag.
 
 ## Progress log
 

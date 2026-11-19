@@ -1041,12 +1041,12 @@ In order, each step waiting for the one before it:
    call, then ``build`` - the pages, the description's links pointed at ``v<version>/``, the
    wheel and the sdist, ``twine check`` and the installed check - and uploads to TestPyPI alone,
    which spends the version there and nowhere else: a second rehearsal of that version is refused
-   at its upload, and pypi.org is untouched. It shows GitHub starting Publish with the call - the permissions the call grants,
-   checked as the run starts, and ``build`` waiting on ``ci`` with the development builds
-   skipped - and the build's checks passing on a runner. It does not show the tag check, which a
-   dispatch from a branch skips, the ``.vsix``, which ``extension`` attaches to a release alone,
-   the upload to pypi.org and the ``pypi`` environment's protection, or *Documentation*, which
-   publishes nothing for a dry run.
+   at its upload, and pypi.org is untouched. It shows GitHub starting Publish with the call - the
+   permissions the call grants, checked as the run starts, and ``build`` waiting on ``ci`` with
+   the development builds skipped - and the build's checks passing on a runner. It does not show
+   the tag check, which a dispatch from a branch skips, the ``.vsix``, which ``extension``
+   attaches to a release alone, the upload to pypi.org and the ``pypi`` environment's
+   protection, or *Documentation*, which publishes nothing for a dry run.
 #. **Create the release** on GitHub, on that commit, with a new tag ``v<version>`` - ``v`` and
    the version ``pyproject.toml`` states, exactly, or Publish refuses it - and the notes of
    ``## <version>``, and publish it.
@@ -1075,12 +1075,12 @@ In order, each step waiting for the one before it:
    registration is corrected: *Re-run failed jobs* on Publish's run, for a failure that comes and
    goes or one corrected outside the tree; for one in the tagged commit, delete the release and
    its tag, fix ``master``, and create the release again, its version unchanged, since pypi.org
-   does not hold it. A tag Publish refused is remade so too. Once a file is on pypi.org no run of the
-   upload passes again, an index taking a file name once: *Re-run failed jobs* runs again only
-   what failed and what waits for it, so it serves a failed ``extension`` beside an upload that
-   passed, and *Re-run all jobs* cannot pass. A release on pypi.org that no re-run can finish
-   has its documentation published by hand: *Documentation*, run from ``master`` with the
-   release's tag as ``tag``, which refuses a version pypi.org holds no file of. A run of
+   does not hold it. A tag Publish refused is remade so too. Once a file is on pypi.org no run of
+   the upload passes again, an index taking a file name once: *Re-run failed jobs* runs again
+   only what failed and what waits for it, so it serves a failed ``extension`` beside an upload
+   that passed, and *Re-run all jobs* cannot pass. A release on pypi.org that no re-run can
+   finish has its documentation published by hand: *Documentation*, run from ``master`` with
+   the release's tag as ``tag``, which refuses a version pypi.org holds no file of. A run of
    *Documentation* that fails on its own is re-run as it is. A file no re-run can upload - the
    wheel on pypi.org and the sdist refused, say - waits for the next version: every route here
    uploads the whole of ``dist``, and an index takes a file that landed once.

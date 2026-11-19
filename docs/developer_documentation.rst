@@ -821,11 +821,14 @@ switches between them:
      - every push
    * - ``v0.5.0``, ``v0.6.0``, ...
      - that release, once Publish has published it
-     - only by that release's own runs
+     - only by a re-run of that release's run, or by a dispatch naming its tag
 
-Old documentation describes old code, so nothing rebuilds a released version. That is not
-only a saving: a tag from two years ago would have to keep building under the sphinx of the
-day, and the run that failed would be the one publishing the *current* release.
+Old documentation describes old code, so nothing rebuilds a released version but a re-run of
+that release's run, or a dispatch naming its tag, which builds the tag's commit with what its
+requirements allow that day and replaces the directory whole, so that a dispatch naming the
+wrong tag rewrites that release's documentation. That is not only a saving: a tag from two
+years ago would have to keep building under the sphinx of the day, and the run that failed
+would be the one publishing the *current* release.
 
 A build produces one version and the site is all of them, so the versions that are not being
 built have to come from somewhere: the ``gh-pages`` branch holds them. The branch is the site

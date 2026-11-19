@@ -4891,7 +4891,12 @@ class TestPublishedDocumentation:
             "published by hand",
             "what is done with one": "it is deleted with its tag and created again",
             "what writes a version": "that release, once Publish has published it",
-            "what rewrites one": "only by that release's own runs",
+            "what rewrites one": "only by a re-run of that release's run, or by a dispatch "
+            "naming its tag",
+            "what rebuilds one": "nothing rebuilds a released version but a re-run of that "
+            "release's run, or a dispatch naming its tag",
+            "what a dispatch replaces": "replaces the directory whole, so that a dispatch naming "
+            "the wrong tag rewrites that release's documentation",
             "what the deploy job names": "the Publish run it waits for",
             "why the Publish run is read": "a workflow called Publish in a pull request from a "
             "fork completes as well",
@@ -4902,6 +4907,26 @@ class TestPublishedDocumentation:
         assert "every check a release's run makes" not in said, (
             "the page still has the route by hand make every check a release's run makes"
         )
+        assert "nothing rebuilds a released version." not in said, (
+            "the page still has nothing rebuild a released version"
+        )
+
+    def test_the_workflow_says_which_runs_write_a_release_s_directory_again(self) -> None:
+        """A release's directory is written once Publish has published it, and again only by a
+        re-run of that release's run or by a dispatch naming its tag, which builds the tag's
+        commit and replaces the directory whole. The workflow said nothing else writes it again,
+        which a dispatch naming the wrong tag would make untrue in silence."""
+        said = comments_of(DOCS_WORKFLOW)
+        claims = {
+            "what writes it again": "which is written again only by a re-run of that release's "
+            "run, or by a dispatch naming its tag (below), which builds the tag's commit and "
+            "replaces the directory whole",
+            "what a wrong tag costs": "so a dispatch naming the wrong tag rewrites that release's "
+            "documentation",
+        }
+        missing = [what for what, claim in claims.items() if claim not in said]
+        assert not missing, f"docs.yml no longer says {missing}"
+        assert "nothing else writes to that directory again" not in said
 
     def group(self, context: dict[str, Any]) -> tuple[str, bool]:
         """The concurrency group a run is put in over ``context``, and whether it cancels the

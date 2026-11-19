@@ -7,10 +7,13 @@ name: Documentation
 # disappearing from the page.
 #
 # The site keeps one directory per version. A push to master rewrites `latest`; a release,
-# once Publish has published it, writes a directory named after its tag, and nothing else
-# writes to that directory again. Old documentation describes old code, so rebuilding it would
-# only expose it to a toolchain that has moved on - a two year old tag that no longer builds
-# under the sphinx of the day would take the deployment of the current one down with it.
+# once Publish has published it, writes a directory named after its tag, which is written
+# again only by a re-run of that release's run, or by a dispatch naming its tag (below), which
+# builds the tag's commit and replaces the directory whole, so a dispatch naming the wrong tag
+# rewrites that release's documentation. Nothing else rebuilds one. Old documentation
+# describes old code, so rebuilding it would only expose it to a toolchain that has moved on -
+# a two year old tag that no longer builds under the sphinx of the day would take the
+# deployment of the current one down with it.
 #
 # A release's documentation waits for Publish. Both workflows used to start on the release
 # itself, and neither waited for the other: a release Publish then refused - its tag naming a

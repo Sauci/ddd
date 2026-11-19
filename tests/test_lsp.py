@@ -4383,6 +4383,89 @@ class TestServer:
             "params": {"textDocument": {"uri": path.as_uri()}},
         }
 
+    def test_opening_a_file_of_another_project_keeps_this_ones_findings(
+        self, tmp_path: Path
+    ) -> None:
+        """A refresh withdraws what its own run reported on, and nothing else.
+
+        With no record, a run covers the document and the project above it. The other
+        project's file is outside it, so its empty answer is not "fixed": the run never looked.
+        One refresh per document, driven message by message, so that no later batching of
+        refreshes can make this pass without the rule.
+        """
+        write_tree(
+            tmp_path,
+            {
+                "one/p.ddd.json": project("One", "a.ddd.json"),
+                "one/a.ddd.json": component("A", declare("input", "X")),
+                "two/p.ddd.json": project("Two", "b.ddd.json"),
+                "two/b.ddd.json": component("B", declare("input", "Y")),
+            },
+        )
+        a, b = tmp_path / "one" / "a.ddd.json", tmp_path / "two" / "b.ddd.json"
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(self.handshake(tmp_path))
+        assert server._handle(self.opened(a))
+        assert server._handle(self.opened(b))
+        final = published(writer)
+        assert [d["code"] for d in final[b.as_uri()]] == ["missing-producer"]
+        assert [d["code"] for d in final[a.as_uri()]] == ["missing-producer"], (
+            "a's error was withdrawn"
+        )
+        # What was kept is still withdrawable: fixing a and saving it empties its list.
+        write_tree(
+            tmp_path,
+            {
+                "one/p.ddd.json": project("One", "a.ddd.json", "c.ddd.json"),
+                "one/c.ddd.json": component("C", declare("output", "X")),
+            },
+        )
+        writer = io.BytesIO()
+        server.writer = writer
+        saved = {"textDocument": {"uri": a.as_uri()}}
+        assert server._handle({"jsonrpc": "2.0", "method": "textDocument/didSave", "params": saved})
+        assert published(writer)[a.as_uri()] == []
+
+    def test_a_deleted_file_is_withdrawn_once_and_not_refreshed(self, tmp_path: Path) -> None:
+        """A pull that changes one file and deletes another, with nothing open.
+
+        The deleted file's findings leave the screen with one empty list, and no run is
+        started from its path: that run is what reported a file that is not there.
+        """
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("input", "X")),
+                "b.ddd.json": component("B", declare("input", "Y")),
+            },
+        )
+        a, b = tmp_path / "a.ddd.json", tmp_path / "b.ddd.json"
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(self.handshake(tmp_path))
+        assert server._handle(self.opened(a))
+        assert [d["code"] for d in published(writer)[b.as_uri()]] == ["missing-producer"]
+        server._handle(
+            {
+                "jsonrpc": "2.0",
+                "method": "textDocument/didClose",
+                "params": {"textDocument": {"uri": a.as_uri()}},
+            }
+        )
+        b.unlink()
+        writer = io.BytesIO()
+        server.writer = writer
+        assert server._handle(
+            {
+                "jsonrpc": "2.0",
+                "method": "workspace/didChangeWatchedFiles",
+                "params": {"changes": [{"uri": b.as_uri(), "type": 3}]},
+            }
+        )
+        assert published(writer) == {b.as_uri(): []}
+
     def test_opening_the_project_file_does_not_withdraw_the_project_wide_findings(
         self, tmp_path: Path
     ) -> None:

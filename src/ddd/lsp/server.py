@@ -433,8 +433,9 @@ class Server:
             )
             for change in changes
         ]
-        for document in sorted(self._open) or touched:
+        for document in sorted(self._open) or [path for path in touched if path.exists()]:
             self.refresh(document)
+        self._withdraw_deleted()
 
     def _cache(self, path: Path | None = None) -> dict[Path, Document]:
         """A document cache seeded with every open buffer, under both spellings of its path.
@@ -547,12 +548,27 @@ class Server:
             [document],
             self._root_for(document),
         )
-        # Only files with something to say, plus the ones that had something to say last time
-        # and no longer do - those need an empty list to withdraw what is on screen.
+        # Only files with something to say, plus the ones this run reported on that had
+        # something to say last time and no longer do - those need an empty list to withdraw
+        # what is on screen. A file this run never reported on keeps what it has: with no record
+        # covering it, a run looks at the document and the project above it, and says nothing
+        # of another project, which is not the same as saying it is fine.
         current = {path for path, findings in reports.items() if findings}
-        for path in sorted(current | self._published):
+        for path in sorted(current | (self._published & set(reports))):
             self._publish(path, reports.get(path, []))
-        self._published = current
+        self._published = (self._published - set(reports)) | current
+        self._withdraw_deleted()
+
+    def _withdraw_deleted(self) -> None:
+        """Empty the list of a file that is no longer there, once.
+
+        No run reports on a deleted file again, so without this its findings would stay on
+        screen for good. Nothing is checked from its path: a run started there is what
+        published a finding about a file that does not exist.
+        """
+        for path in sorted(path for path in self._published if not path.exists()):
+            self._publish(path, [])
+            self._published.discard(path)
 
     def _announce(self, builds: Sequence[BuildInfo]) -> None:
         """Say which projects were found, once, and again whenever that changes.

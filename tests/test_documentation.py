@@ -6738,11 +6738,13 @@ class TestTheStepsOfARelease:
                 "what": "**Leave master's version** as the release's: nothing is bumped after a "
                 "release.",
                 "until when": "``master`` states it until the next release commit",
-                "its builds": "its development builds number themselves after it, "
-                "``<next patch>.dev<run>``.",
+                "its builds": "its development builds number themselves after it: ``<next "
+                "patch>.dev<run>`` after a release, and after a release candidate the next "
+                "candidate's, ``0.12.0rc2.dev<run>`` after ``0.12.0rc1``.",
             },
         )
         assert dev_version.next_development("0.12.0", 57) == "0.12.1.dev57"
+        assert dev_version.next_development("0.12.0rc1", 3) == "0.12.0rc2.dev3"
 
 
 LAUNCH = """\

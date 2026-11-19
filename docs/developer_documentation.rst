@@ -1058,7 +1058,8 @@ In order, each step waiting for the one before it:
    as ``tag``. A run of *Documentation* that fails on its own is re-run as it is.
 #. **Leave master's version** as the release's: nothing is bumped after a release. ``master``
    states it until the next release commit, and its development builds number themselves after
-   it, ``<next patch>.dev<run>``.
+   it: ``<next patch>.dev<run>`` after a release, and after a release candidate the next
+   candidate's, ``0.12.0rc2.dev<run>`` after ``0.12.0rc1``.
 
 Delivering the editor extension
 -------------------------------

@@ -6488,8 +6488,13 @@ def ci_run(
     event_name: str, ref: str, run_id: str = "44", os: str = "Linux", repeat: int = 1
 ) -> dict[str, Any]:
     """The context a run of ``ci.yml`` started by an event of its own gives a job on one runner:
-    its own name, CI, in ``github.workflow``, a dispatch's ``repeat``, by default its default,
-    and a pull request from a branch of this repository."""
+    its own name in ``github.workflow``, as its ``name:`` gives it, a dispatch's ``repeat``, by
+    default its default, and a pull request from a branch of this repository. The name is read,
+    not written here: ``ci.yml``'s expressions compare it with a literal to tell its own runs
+    from Publish's, so a rename the literals do not follow changes what its own runs do - the
+    ``gui`` job's wheel, the cancelling of a superseded run - and fails the tests of both."""
+    named = re.search(r"^name: (.+)$", CI_WORKFLOW, re.M)
+    assert named is not None, "ci.yml gives itself no name"
     context: dict[str, Any] = {
         "github": {
             "event_name": event_name,
@@ -6497,7 +6502,7 @@ def ci_run(
             "ref_name": ref.split("/", 2)[2],
             "sha": MASTER_HEAD,
             "run_id": run_id,
-            "workflow": "CI",
+            "workflow": named.group(1),
             "repository": "Sauci/ddd",
             "event": {},
         },

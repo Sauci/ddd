@@ -80,12 +80,13 @@ artifacts = ["/src/ddd/gui/static"]
 # out here is not a smaller archive, it is a suite that stops at collection and a build that
 # fails on a missing image.
 #
-# Three files at the root are read by nothing in the suite, and travel all the same. The
+# Two files at the root are read by nothing in the suite, and travel all the same. The
 # archive carries docker/, the compose file and the compiled pages, so .dockerignore is what
 # keeps an image built from it as one built from a checkout: without it the pages in
 # src/ddd/gui/static are copied in beside the ones the image compiles. .gitattributes keeps
 # the lf endings the image's scripts need, once the unpacked archive is put under git on
-# windows. SECURITY.md is how the reader of the archive reports a vulnerability privately.
+# windows. SECURITY.md, whose sentences the suite holds, is how the reader of the archive
+# reports a vulnerability privately.
 include = [
     "/src/ddd",
     "/assets",

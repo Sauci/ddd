@@ -1606,8 +1606,10 @@ class TestPackaging:
     ) -> None:
         """20:M6. The archive is what an evaluator is sent, and it carries ``docker/``, the
         compose file and the pages compiled into ``src/ddd/gui/static``. Three files at the
-        root say how the tree is to be built and reported on, and none of the suite reads
-        them, so no test above could notice their absence."""
+        root say how the tree is to be built and reported on. None of the suite reads
+        ``.dockerignore`` or ``.gitattributes``, so no test above could notice their absence;
+        ``SECURITY.md`` is read for its sentences alone, and held here as well, so that its
+        place in the archive does not hang on a test of its wording."""
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         shipped = {
             pattern.lstrip("/")
@@ -1669,6 +1671,26 @@ class TestPackaging:
                 assert phrase in text, (
                     f"{page.name} no longer states the trust boundary: {phrase!r}"
                 )
+
+
+class TestWhatThePolicySaysOfAnAdvisory:
+    """20:I4. ``SECURITY.md`` said which release is supported and how to report a vulnerability
+    privately, and nothing of an advisory: which versions one names, or where one is published.
+    Two sentences of its *Supported versions* say so now, and these tests hold them."""
+
+    POLICY: ClassVar[str] = flattened((ROOT / "SECURITY.md").read_text(encoding="utf-8"))
+    """``SECURITY.md``, its line breaks flattened."""
+
+    def test_an_advisory_names_the_versions_it_covers_supported_or_not(self) -> None:
+        """Only the latest release is supported, and an advisory may cover older ones too."""
+        assert "An advisory names the versions it covers, supported or not." in self.POLICY
+
+    def test_one_appears_on_the_security_tab_and_in_the_release_that_fixes_it(self) -> None:
+        assert (
+            "Advisories appear on this repository's **Security** tab, as GitHub security "
+            "advisories, and, for a release that fixes one, in that release's entries in "
+            "[the changelog](CHANGELOG.md)."
+        ) in self.POLICY
 
 
 class TestRunningFromTheSources:

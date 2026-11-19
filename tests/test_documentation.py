@@ -7023,8 +7023,8 @@ class TestTheStepsOfARelease:
                 "*Publish* from ``master`` with ``target: testpypi``, the dry run above.",
                 "why": "It is the one rehearsal of the release path before a tag exists.",
                 "what it runs": "it runs ``ci`` through the call, then ``build`` - the pages, the "
-                "pointing step, the wheel and the sdist, ``twine check`` and the installed check - "
-                "and uploads to TestPyPI alone",
+                "description's links pointed at ``v<version>/``, the wheel and the sdist, ``twine "
+                "check`` and the installed check - and uploads to TestPyPI alone",
                 "what it spends": "which spends the version there and nowhere else: a second "
                 "rehearsal of that version is refused at its upload, and pypi.org is untouched.",
                 "what it shows": "It shows GitHub starting Publish with the call - the "

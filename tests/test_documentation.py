@@ -6485,6 +6485,13 @@ class TestWhatPublishRunsBeforeItUploads:
             f"README.md links {release} {len(links)} times, in place of latest/ and the root, and "
             "pyproject.toml names it as its Documentation url\n"
         )
+        # A tree the step pointed is what a release's sdist holds: run over it again, the step
+        # finds the site's root under the url it wrote, and leaves both files as they are.
+        again = run_step(step(job(PUBLISH_WORKFLOW, "build"), self.POINTING), tmp_path)
+        assert again.returncode == 0, again.stdout + again.stderr
+        assert (tmp_path / "README.md").read_bytes().decode("utf-8") == pointed
+        assert (tmp_path / "pyproject.toml").read_bytes().decode("utf-8") == named
+        assert again.stdout.startswith(f"README.md links {release} 0 times,"), again.stdout
 
     def test_the_readme_and_the_page_say_which_version_the_links_follow(self) -> None:
         """The README is read in two places, the repository and a release's page on the index,

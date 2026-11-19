@@ -2562,8 +2562,11 @@ Every departure from a task's text, with its reason, numbered `R1`, `R2`, and so
   `.vsix`'s among them, the `.vsix` being part of what the release makes; task 3's round adds a
   route by hand for a release no re-run of its Publish can finish, Documentation dispatched from
   master naming the release's tag, and the page and the workflow's comments name the re-run that
-  works and why *Re-run all jobs* cannot (as R149 corrects it). The cost: a second way to deploy
-  a release's documentation.
+  works and why *Re-run all jobs* cannot. As first ruled, the route went through whatever
+  the release path checks, with Publish's comparison of the tag to the version included, and its
+  cost was that a release's documentation could now be deployed in two ways, both under the same
+  checks; R149 corrects that: the route lacked the check that defines the release path, that
+  Publish uploaded the version, and the final wave limits it to a release pypi.org holds.
 - **R142.** A pin's version is, in order, what ci itself installed in its latest green run that
   installed the tool, read off that run's log; the version in pip's cache on the Linux PC; or the
   newest release the index's json names (ruling B8-12). Nothing is installed or committed from a
@@ -2575,8 +2578,10 @@ Every departure from a task's text, with its reason, numbered `R1`, `R2`, and so
 - **R143.** A development build after a release candidate is numbered as the next candidate's
   development build, `0.12.0rc2.dev<run>` after `0.12.0rc1`, which sorts after the candidate
   and before both the next candidate and the release, in `tools/dev_version.py` and
-  `dev-publish`'s version pattern (ruling B8-13, as R151 restates its aim): with the `gui` job's
-  wheel stamped (R129), the stamp's old refusal of a candidate would have reached every run.
+  `dev-publish`'s version pattern (ruling B8-13): with the `gui` job's wheel stamped (R129), the
+  stamp's old refusal of a candidate would have reached every run, and B8-13's stated aim was
+  that a candidate on master fails no job; R151 restates that aim, as removing the stamp's
+  refusal, which leaves a candidate's manifest version to a rule still to be made.
 - **R144.** Publish's call of `ci.yml` keeps `id-token: write`: GitHub checks a called workflow's
   nested permissions as the run starts, whatever a job's `if:`, and `dev-publish`, the one job
   asking for it, cannot run in Publish's run, `dev-build` being skipped there. The cost: one line

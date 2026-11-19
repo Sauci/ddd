@@ -4559,9 +4559,9 @@ class TestPublishedDocumentation:
         )
 
     def test_a_dispatch_can_name_a_release_s_tag(self) -> None:
-        """The route for a release no re-run of its Publish can finish: a dispatch names the
-        release's tag. The input is optional and empty by default, so that a dispatch naming
-        none is the dispatch it always was."""
+        """The route for a release pypi.org holds and no re-run of its Publish can finish: a
+        dispatch names the release's tag. The input is optional and empty by default, so that a
+        dispatch naming none is the dispatch it always was."""
         dispatch = events(DOCS_WORKFLOW)["workflow_dispatch"]
         tag = re.search(r"^      tag:\n((?:        .*\n)+)", dispatch, re.M)
         assert tag is not None, "a dispatch cannot name a release's tag"
@@ -4569,7 +4569,8 @@ class TestPublishedDocumentation:
         assert setting(tag.group(1), "required", 8) == "false"
         assert setting(tag.group(1), "default", 8) == '""'
         assert setting(tag.group(1), "description", 8) == (
-            "A release's tag, to publish its documentation when no re-run of its Publish can"
+            "The tag of a release pypi.org holds, to publish its documentation when no re-run of "
+            "its Publish can"
         ), "the dispatch no longer says what its tag is for"
 
     @staticmethod
@@ -4637,6 +4638,191 @@ class TestPublishedDocumentation:
             "::error::which has to be v and that version; name the tag of a release.",
         ]
 
+    @staticmethod
+    def asking_pypi() -> str:
+        """The build's step asking pypi.org for the version a release named by hand states."""
+        return step(job(DOCS_WORKFLOW, "build"), "Check pypi.org holds the version the tag names")
+
+    @pytest.mark.parametrize(
+        ("context", "asks"),
+        [
+            (started_by("push", "refs/heads/master"), False),
+            (started_by("pull_request", "refs/pull/5/merge"), False),
+            (started_by("workflow_dispatch", "refs/heads/master"), False),
+            (started_by("workflow_dispatch", "refs/heads/master", tag="v0.12.0"), True),
+            (completed(), False),
+        ],
+        ids=[
+            "a push to master",
+            "a pull request",
+            "a dispatch",
+            "a release named by hand",
+            "a release Publish published",
+        ],
+    )
+    def test_only_a_release_named_by_hand_asks_pypi_org(
+        self, context: dict[str, Any], asks: bool
+    ) -> None:
+        """A release Publish published is on pypi.org, as Publish's success, which the build's
+        ``if:`` reads, says. A release named by hand has no run of Publish to read, so its run
+        asks the index itself; no other run names a release."""
+        assert holds(setting(self.asking_pypi(), "if", 8), context) == asks
+
+    def test_pypi_org_is_asked_before_anything_is_built(self) -> None:
+        """After the tag is held to the version its commit states, the version asked for, and
+        before the diagram tools, the documentation's requirements and sphinx are installed or
+        run: a release pypi.org does not hold costs a refusal, and no build."""
+        build = job(DOCS_WORKFLOW, "build")
+        steps = [
+            "- name: Check the tag names the version its commit states",
+            "- name: Check pypi.org holds the version the tag names",
+            "- name: Install the diagram tools",
+            '- run: pip install -e ".[docs]"',
+            "- run: sphinx-build",
+        ]
+        missing = [one for one in steps if one not in build]
+        assert not missing, f"the build has no {missing}"
+        order = [build.index(one) for one in steps]
+        assert order == sorted(order), "pypi.org is asked once the documentation is building"
+
+    @staticmethod
+    def pypi_answering(status: str, body: str) -> str:
+        """bash standing in for ``curl`` as pypi.org answers it: ``body`` written to the file
+        ``-o`` names, ``status`` printed as ``-w '%{http_code}'`` prints one, and the arguments
+        it was given kept in ``asked``. With no status no answer comes, as where pypi.org cannot
+        be reached: curl prints ``000`` and exits 6."""
+        answer = f"printf %s {shlex.quote(status)}" if status else "printf 000\n  return 6"
+        return (
+            "curl() {\n"
+            '  printf "%s\\n" "$*" >> asked\n'
+            '  while [ "$#" -gt 0 ]; do\n'
+            f'    if [ "$1" = -o ]; then printf %s {shlex.quote(body)} > "$2"; fi\n'
+            "    shift\n"
+            "  done\n"
+            f"  {answer}\n"
+            "}\n"
+        )
+
+    HELD = json.dumps(
+        {
+            "info": {"name": "ddd-tool", "version": "0.12.0"},
+            "urls": [
+                {"filename": "ddd_tool-0.12.0-py3-none-any.whl"},
+                {"filename": "ddd_tool-0.12.0.tar.gz"},
+            ],
+        }
+    )
+    """What pypi.org's json says of a version it holds, as it says it of 0.11.0: the version,
+    and its files under ``urls``."""
+
+    @pytest.mark.parametrize(
+        ("status", "body", "outcome"),
+        [
+            ("200", HELD, "held"),
+            ("404", '{"message": "Not Found"}', "not held"),
+            ("200", json.dumps({"info": {"version": "0.12.0"}, "urls": []}), "not held"),
+            ("503", "", "unknown"),
+            ("", "", "unknown"),
+        ],
+        ids=[
+            "a version pypi.org holds",
+            "a version pypi.org lacks",
+            "a version it lists with no file",
+            "pypi.org failing",
+            "pypi.org out of reach",
+        ],
+    )
+    def test_a_release_named_by_hand_is_published_only_where_pypi_org_holds_it(
+        self, tmp_path: Path, status: str, body: str, outcome: str
+    ) -> None:
+        """20:I3 by the route by hand. A release's run goes on once Publish has succeeded,
+        which says its version reached pypi.org; a dispatch naming a release's tag has no such
+        run, so the build asks pypi.org's json for the tag's version, run under bash here with
+        the answer faked. Where pypi.org holds a file of it, the build goes on. Where it holds
+        none, the build refuses: the documentation of a version pip cannot install would be
+        published, and crowned stable were it the newest. Its reader is sent where the steps of
+        a release send a release that never reached pypi.org: made again, its tag with it.
+        Where pypi.org gives no answer to read, nothing is known, and it refuses as well, to be
+        dispatched again."""
+        (tmp_path / "runner-temp").mkdir()
+        dispatched = started_by("workflow_dispatch", "refs/heads/master", tag="v0.12.0")
+        asking = self.asking_pypi()
+        done = run_step(
+            asking,
+            tmp_path,
+            stand_ins=self.pypi_answering(status, body),
+            **step_environment(asking, dispatched),
+            RUNNER_TEMP="runner-temp",
+        )
+        asked = (tmp_path / "asked").read_text(encoding="utf-8").splitlines()
+        assert [line.split()[-1] for line in asked] == [
+            "https://pypi.org/pypi/ddd-tool/0.12.0/json"
+        ], f"pypi.org was asked {asked}"
+        said = {
+            "held": ["pypi.org holds ddd-tool 0.12.0: 2 file(s)"],
+            "not held": [
+                "::error::pypi.org holds no file of ddd-tool 0.12.0: the release v0.12.0 has",
+                "::error::not reached it, so its documentation would describe a version pip",
+                "::error::cannot install. Only a release pypi.org holds is published by hand.",
+                "::error::Delete the release and its tag, fix master and create the release",
+                "::error::again, as the steps of a release say: its documentation is then",
+                "::error::published once its Publish succeeds.",
+            ],
+            "unknown": [
+                f"::error::pypi.org gave {status or 'no answer'} when asked for ddd-tool 0.12.0,"
+                " so whether",
+                "::error::it holds the release v0.12.0 is not known, and nothing is published.",
+                "::error::Run this dispatch again once pypi.org answers.",
+            ],
+        }[outcome]
+        assert done.returncode == (0 if outcome == "held" else 1), done.stdout + done.stderr
+        assert done.stdout.splitlines() == said
+
+    def test_the_workflow_says_which_release_is_published_by_hand_and_what_that_checks(
+        self,
+    ) -> None:
+        """20:I3 in the workflow's own words: the route by hand is for a release pypi.org holds,
+        and refuses before anything is built a version pypi.org holds no file of; what a
+        release's run reads besides, it cannot check; and a release pypi.org never received is
+        made again instead. The tag check says what it refuses, and no more."""
+        said = comments_of(DOCS_WORKFLOW)
+        claims = {
+            "which release": "A release pypi.org holds whose Publish no re-run can finish",
+            "what it refuses": "and refuses, before anything is built, a version pypi.org holds "
+            "no file of.",
+            "what it cannot check": "What it cannot check is what a release's run reads "
+            "besides, Publish's success, every job of it",
+            "a release pypi.org never received": "A release that never reached pypi.org is not "
+            "published by hand",
+            "the dispatch": "for a release pypi.org holds whose Publish no re-run can finish",
+            "why the build asks": "a dispatch naming a tag has no run of Publish to read, so it "
+            "asks pypi.org's json for the version the tag names",
+            "what the tag check refuses": "this is what refuses one naming a version its commit "
+            "does not state, whose documentation would be published under another version's name",
+        }
+        missing = [what for what, claim in claims.items() if claim not in said]
+        assert not missing, f"docs.yml no longer says {missing}"
+        assert "every check a release's run makes" not in said
+        assert "does not state - documentation of a version PyPI never received" not in said
+
+    def test_the_changelog_says_which_release_is_published_by_hand(self) -> None:
+        """20:I3 in the entry, and in the opening's item naming it: what the route by hand
+        refuses, and what becomes of a release pypi.org never received."""
+        said = flattened(UNRELEASED)
+        claims = {
+            "the entry, what it refuses": "and refuses, before anything is built, a version "
+            "pypi.org holds no file of.",
+            "the entry, a release pypi.org never received": "A release that never reached "
+            "pypi.org is not published so: it is deleted with its tag and created again, as the "
+            "developer page's steps of a release say.",
+            "the opening's item": "naming the release's tag as `tag`, which refuses a version "
+            "pypi.org holds no file of; a release that never reached pypi.org is deleted with its "
+            "tag and created again.",
+        }
+        missing = [what for what, claim in claims.items() if claim not in said]
+        assert not missing, f"the changelog no longer says {missing}"
+        assert "through the checks a release's run makes" not in said
+
     def test_a_release_named_by_hand_lands_under_its_tag(
         self, tmp_path: Path, git: dict[str, str]
     ) -> None:
@@ -4670,7 +4856,8 @@ class TestPublishedDocumentation:
     def test_the_page_says_a_release_s_documentation_waits_for_publish(self) -> None:
         """20:I3 where a maintainer reads it: what deploys, why a release waits for Publish
         and what not waiting cost, what starts a release's run and what it builds, what a
-        failed Publish costs, and what writes a version's directory."""
+        failed Publish costs, which release is published by hand and what that run checks and
+        cannot, and what writes a version's directory."""
         said = self.publishing_this_documentation()
         claims = {
             "what deploys": "deploys on a push to ``master`` and for a release - the release "
@@ -4687,13 +4874,22 @@ class TestPublishedDocumentation:
             "again only the jobs that failed",
             "why re-running every job cannot": "*Re-run all jobs* cannot pass once the release is "
             "on PyPI",
+            "which release is published by hand": "A release pypi.org holds whose Publish no "
+            "re-run can finish",
             "what publishes a release no re-run can finish": "is published by hand: run "
             "*Documentation* from ``master`` with the release's tag as ``tag``",
             "what that run builds and refuses": "builds the commit the tag names, refuses a tag "
             "that is not ``v`` followed by the version ``pyproject.toml`` states at that commit, "
             "as Publish does",
-            "what else it goes through": "publishes the release under its tag through every "
-            "check a release's run makes",
+            "what it asks pypi.org": "and refuses, before anything is built, a version pypi.org "
+            "holds no file of, read off the index's json",
+            "what it cannot check": "What it cannot check is what a release's run reads "
+            "besides, Publish's success, every job of it",
+            "what that costs": "a release whose ``.vsix`` was never attached is published all "
+            "the same",
+            "a release pypi.org never received": "A release that never reached pypi.org is not "
+            "published by hand",
+            "what is done with one": "it is deleted with its tag and created again",
             "what writes a version": "that release, once Publish has published it",
             "what rewrites one": "only by that release's own runs",
             "what the deploy job names": "the Publish run it waits for",
@@ -4703,6 +4899,9 @@ class TestPublishedDocumentation:
         missing = [what for what, claim in claims.items() if claim not in said]
         assert not missing, f"the developer page no longer says {missing}"
         assert "a published release" not in said, "the page still has a release deploy itself"
+        assert "every check a release's run makes" not in said, (
+            "the page still has the route by hand make every check a release's run makes"
+        )
 
     def group(self, context: dict[str, Any]) -> tuple[str, bool]:
         """The concurrency group a run is put in over ``context``, and whether it cancels the
@@ -5111,7 +5310,9 @@ def step(job_text: str, name: str) -> str:
     return re.split(r"\n      - ", job_text.split(f"- name: {name}\n", 1)[1], maxsplit=1)[0]
 
 
-def run_step(step_text: str, cwd: Path, **variables: str) -> subprocess.CompletedProcess[str]:
+def run_step(
+    step_text: str, cwd: Path, *, stand_ins: str = "", **variables: str
+) -> subprocess.CompletedProcess[str]:
     """A step's ``run:`` script, a ``|`` block or a single line, run the way the runner runs
     one: ``bash -e``, in ``cwd``.
 
@@ -5119,7 +5320,9 @@ def run_step(step_text: str, cwd: Path, **variables: str) -> subprocess.Complete
     of the process, so that a bash that does not inherit it - WSL's, on windows - sees them too.
     ``python3`` and ``python`` are this interpreter: the runner's own is what a step calls
     ``python3``, a job's setup-python is what it calls ``python``, and a windows machine may
-    have neither by those names.
+    have neither by those names. ``stand_ins`` is bash defining functions that stand in for the
+    programs a step calls, ``curl`` asking an index, say: bash runs a function before a program
+    of its name.
     """
     block = re.search(r"^        run: (?:\|\n((?: {10}.*\n|\n)*)|(.+)\n)", step_text + "\n", re.M)
     assert block is not None, "the step runs no script"
@@ -5130,7 +5333,7 @@ def run_step(step_text: str, cwd: Path, **variables: str) -> subprocess.Complete
     interpreter = shlex.quote(Path(sys.executable).as_posix())
     pythons = f'python3() {{ {interpreter} "$@"; }}\npython() {{ {interpreter} "$@"; }}\n'
     return subprocess.run(
-        [bash, "-e", "-c", pythons + exports + script],
+        [bash, "-e", "-c", pythons + stand_ins + exports + script],
         cwd=cwd,
         capture_output=True,
         text=True,
@@ -6859,7 +7062,8 @@ class TestTheStepsOfARelease:
     def test_a_failure_is_met_by_the_routes_the_workflows_offer(self) -> None:
         """What the step has a maintainer do is what the workflows allow: a re-run of what
         failed, a release made again while no index holds it, no upload passing twice, and a
-        release's documentation published by hand from a dispatch naming its tag."""
+        release's documentation published by hand from a dispatch naming its tag, where pypi.org
+        holds it."""
         self.said(
             "When a job fails",
             {
@@ -6879,8 +7083,9 @@ class TestTheStepsOfARelease:
                 "failed and what waits for it, so it serves a failed ``extension`` beside an "
                 "upload that passed",
                 "what a re-run of everything cannot": "and *Re-run all jobs* cannot pass.",
-                "by hand": "A release no re-run can finish has its documentation published by "
-                "hand: *Documentation*, run from ``master`` with the release's tag as ``tag``.",
+                "by hand": "A release on pypi.org that no re-run can finish has its documentation "
+                "published by hand: *Documentation*, run from ``master`` with the release's tag "
+                "as ``tag``, which refuses a version pypi.org holds no file of.",
                 "documentation's own failure": "A run of *Documentation* that fails on its own "
                 "is re-run as it is.",
                 "a file no re-run uploads": "A file no re-run can upload - the wheel on pypi.org "

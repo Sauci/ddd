@@ -784,12 +784,17 @@ A release Publish failed is published when a re-run of that Publish run passes, 
 failed jobs*, which runs again only the jobs that failed. *Re-run all jobs* cannot pass once the
 release is on PyPI: it runs the upload again, an index accepts a file name once and for ever,
 and ``publish.yml`` asks for no ``skip-existing``, so every such attempt fails the same way. A
-release no re-run can finish - what failed is in the tagged commit, which every re-run builds
-again, or every attempt left would repeat the upload - is published by hand: run
-*Documentation* from ``master`` with the release's tag as ``tag``. That run builds the commit
-the tag names, refuses a tag that is not ``v`` followed by the version ``pyproject.toml`` states
-at that commit, as Publish does, and publishes the release under its tag through every check a
-release's run makes.
+release pypi.org holds whose Publish no re-run can finish - what failed is in the tagged commit,
+which every re-run builds again, or every attempt left would repeat the upload - is published
+by hand: run *Documentation* from ``master`` with the release's tag as ``tag``. That run builds
+the commit the tag names, refuses a tag that is not ``v`` followed by the version
+``pyproject.toml`` states at that commit, as Publish does, and refuses, before anything is
+built, a version pypi.org holds no file of, read off the index's json. What it cannot check is
+what a release's run reads besides, Publish's success, every job of it: there is no such run to
+read, so a release whose ``.vsix`` was never attached is published all the same. A release that
+never reached pypi.org is not published by hand, which would put the documentation of a version
+pip cannot install on the site, crowned stable were it the newest: it is deleted with its tag
+and created again, as :ref:`the steps of a release <the-steps-of-a-release>` say.
 
 A release's run is alone in a concurrency group of its own, so a push to ``master`` cannot
 cancel it. GitHub keeps one run going and one waiting in a group, and cancels the waiting one
@@ -1058,11 +1063,12 @@ In order, each step waiting for the one before it:
    holds it. A tag Publish refused is remade so too. Once a file is on pypi.org no run of the
    upload passes again, an index taking a file name once: *Re-run failed jobs* runs again only
    what failed and what waits for it, so it serves a failed ``extension`` beside an upload that
-   passed, and *Re-run all jobs* cannot pass. A release no re-run can finish has its
-   documentation published by hand: *Documentation*, run from ``master`` with the release's tag
-   as ``tag``. A run of *Documentation* that fails on its own is re-run as it is. A file no re-run
-   can upload - the wheel on pypi.org and the sdist refused, say - waits for the next version:
-   every route here uploads the whole of ``dist``, and an index takes a file that landed once.
+   passed, and *Re-run all jobs* cannot pass. A release on pypi.org that no re-run can finish
+   has its documentation published by hand: *Documentation*, run from ``master`` with the
+   release's tag as ``tag``, which refuses a version pypi.org holds no file of. A run of
+   *Documentation* that fails on its own is re-run as it is. A file no re-run can upload - the
+   wheel on pypi.org and the sdist refused, say - waits for the next version: every route here
+   uploads the whole of ``dist``, and an index takes a file that landed once.
 #. **Leave master's version** as the release's: nothing is bumped after a release. ``master``
    states it until the next release commit, and its development builds number themselves after
    it: ``<next patch>.dev<run>`` after a release, and after a release candidate the next

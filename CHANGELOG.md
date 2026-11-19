@@ -352,7 +352,8 @@ A build of DDD from its sources, and a release of it:
     master no longer cancels it": a release's documentation appears once Publish's run for it has
     succeeded; a release whose Publish reached PyPI and then failed is published by *Re-run failed
     jobs* of that run, and one no re-run can finish by a dispatch of Documentation from master
-    naming the release's tag as `tag`.
+    naming the release's tag as `tag`, which refuses a version pypi.org holds no file of; a release
+    that never reached pypi.org is deleted with its tag and created again.
 
 * **`ddd id --assign` writes a description the way `ddd gui` does.**  It staged its text beside
   the file and renamed it into place by a writer of its own, which lacked what the page's has.  On
@@ -1367,8 +1368,10 @@ A build of DDD from its sources, and a release of it:
   *Re-run all jobs* not passing once the index holds the version; and one no re-run can finish,
   where what failed is in the tagged commit, by a dispatch of Documentation from master naming the
   release's tag as `tag`, which builds the commit the tag names, refuses a tag that is not `v` and
-  the version `pyproject.toml` states there, as Publish does, and publishes it through the checks a
-  release's run makes.  A dispatch naming no tag is what it was.
+  the version `pyproject.toml` states there, as Publish does, and refuses, before anything is
+  built, a version pypi.org holds no file of.  A release that never reached pypi.org is not
+  published so: it is deleted with its tag and created again, as the developer page's steps of a
+  release say.  A dispatch naming no tag is what it was.
 
 * **`SECURITY.md` says where an advisory appears, and which versions it names.**  The policy said
   which release is supported and how to report a vulnerability privately, and nothing of an

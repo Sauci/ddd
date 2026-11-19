@@ -41,12 +41,17 @@ name: Documentation
 # failed is published by a re-run of that run that passes: Re-run failed jobs, which runs
 # again only the jobs that failed. Re-run all jobs cannot pass once the release is on PyPI. It
 # runs the upload again, an index takes a file name once, and publish.yml asks for no
-# skip-existing, so every such attempt fails the same way. A release no re-run can finish -
-# what failed is in the tagged commit, which every re-run builds again, or every attempt left
-# would repeat the upload - is published by hand: a dispatch of this workflow from master
-# naming the release's tag (`inputs.tag`, below) builds the commit the tag names, refuses a
-# tag that is not `v` and the version pyproject.toml states there, as Publish does, and
-# publishes it through every check a release's run makes.
+# skip-existing, so every such attempt fails the same way. A release pypi.org holds whose
+# Publish no re-run can finish - what failed is in the tagged commit, which every re-run builds
+# again, or every attempt left would repeat the upload - is published by hand: a dispatch of
+# this workflow from master naming the release's tag (`inputs.tag`, below) builds the commit
+# the tag names, refuses a tag that is not `v` and the version pyproject.toml states there, as
+# Publish does, and refuses, before anything is built, a version pypi.org holds no file of.
+# What it cannot check is what a release's run reads besides, Publish's success, every job of
+# it: there is no such run to read, so a release whose .vsix was never attached is published
+# all the same. A release that never reached pypi.org is not published by hand, which would put
+# the documentation of a version pip cannot install on the site: it is deleted with its tag and
+# created again, as the developer page's steps of a release say.
 #
 # A build produces one version, and the site is all of them, so the versions that are not
 # being built have to come from somewhere: the `gh-pages` branch holds them. That branch is
@@ -64,12 +69,13 @@ on:
     workflows: [Publish]
     types: [completed]
   # Naming a release's tag, a dispatch from master publishes that release's documentation by
-  # hand, for a release no re-run of its Publish can finish. With no tag, a dispatch builds the
-  # ref it is run on and deploys `latest` from master alone, as it always has.
+  # hand, for a release pypi.org holds whose Publish no re-run can finish. With no tag, a
+  # dispatch builds the ref it is run on and deploys `latest` from master alone, as it always
+  # has.
   workflow_dispatch:
     inputs:
       tag:
-        description: A release's tag, to publish its documentation when no re-run of its Publish can
+        description: The tag of a release pypi.org holds, to publish its documentation when no re-run of its Publish can
         type: string
         required: false
         default: ""
@@ -135,8 +141,9 @@ jobs:
       # A release's tag has to be `v` and the version its commit states in pyproject.toml, as
       # Publish insists before it uploads anything. A release Publish published has passed that
       # already, and passes it again here; a tag named on a dispatch has been through no
-      # Publish, and this is what refuses one naming a version its commit does not state -
-      # documentation of a version PyPI never received, which the index would crown stable.
+      # Publish, and this is what refuses one naming a version its commit does not state, whose
+      # documentation would be published under another version's name. Whether pypi.org holds
+      # the version is the next step's to ask.
       - name: Check the tag names the version its commit states
         if: >-
           github.event_name == 'workflow_run'
@@ -149,6 +156,42 @@ jobs:
             echo "::error::tag $TAG is not v$version, the version pyproject.toml states at the"
             echo "::error::commit it names. A release's documentation is published under its tag,"
             echo "::error::which has to be v and that version; name the tag of a release."
+            exit 1
+          fi
+
+      # Only a release pypi.org holds is published by hand. A release's run goes on once Publish
+      # has succeeded, which says the version reached pypi.org; a dispatch naming a tag has no
+      # run of Publish to read, so it asks pypi.org's json for the version the tag names, and
+      # refuses one pypi.org holds no file of: the documentation of a version pip cannot
+      # install, which the index would crown stable were it the newest. Where pypi.org gives no
+      # answer to read, nothing is known, and it refuses as well.
+      - name: Check pypi.org holds the version the tag names
+        if: github.event_name == 'workflow_dispatch' && inputs.tag != ''
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          version="${TAG#v}"
+          project=https://pypi.org/pypi/ddd-tool
+          answer=$(curl -sS --retry 3 -o "$RUNNER_TEMP/pypi.json" -w '%{http_code}' \
+            "${project}/${version}/json") || answer="no answer"
+          files=0
+          if [ "$answer" = 200 ]; then
+            files=$(python3 -c 'import json, sys; print(len(json.load(open(sys.argv[1], encoding="utf-8"))["urls"]))' "$RUNNER_TEMP/pypi.json")
+          fi
+          if [ "$files" -gt 0 ]; then
+            echo "pypi.org holds ddd-tool ${version}: ${files} file(s)"
+          elif [ "$answer" = 200 ] || [ "$answer" = 404 ]; then
+            echo "::error::pypi.org holds no file of ddd-tool ${version}: the release ${TAG} has"
+            echo "::error::not reached it, so its documentation would describe a version pip"
+            echo "::error::cannot install. Only a release pypi.org holds is published by hand."
+            echo "::error::Delete the release and its tag, fix master and create the release"
+            echo "::error::again, as the steps of a release say: its documentation is then"
+            echo "::error::published once its Publish succeeds."
+            exit 1
+          else
+            echo "::error::pypi.org gave ${answer} when asked for ddd-tool ${version}, so whether"
+            echo "::error::it holds the release ${TAG} is not known, and nothing is published."
+            echo "::error::Run this dispatch again once pypi.org answers."
             exit 1
           fi
 

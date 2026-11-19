@@ -6840,6 +6840,31 @@ class TestWhatPublishRunsBeforeItUploads:
         names = ("extension", "publish-testpypi", "publish-pypi")
         assert [name for name in names if job_runs(PUBLISH_WORKFLOW, name, context)] == uploads
 
+    def test_the_changelog_says_what_a_failed_gate_and_the_pinned_sphinx_cost(self) -> None:
+        """The entry on a release's gates and pins, and the opening's item naming it, each give a
+        failed gate both of its routes - a re-run, or the release made again where the fault is
+        in the tagged commit and nothing has reached pypi.org - and each says that the ``docs``
+        extra brings the pinned sphinx too, as it does: the metadata hook reads that extra from
+        ``requirements-docs.txt``."""
+        said = flattened(UNRELEASED)
+        routes = (
+            "a failing gate fails Publish's run, to be run again as *Re-run failed jobs*, or, "
+            "where the fault is in the tagged commit and nothing has reached pypi.org, its "
+            "release deleted and created again"
+        )
+        assert said.count(routes) == 2, "the entry or its item gives a failed gate one route"
+        claims = {
+            "the item": "an environment installing `requirements-docs.txt`, or the `docs` extra, "
+            "has its sphinx replaced by 9.1.1",
+            "the entry": "an environment that installs `requirements-docs.txt`, or the `docs` "
+            "extra, has its sphinx replaced by 9.1.1",
+        }
+        missing = [what for what, claim in claims.items() if claim not in said]
+        assert not missing, f"the changelog no longer names the docs extra in {missing}"
+        hooks = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["tool"]
+        extras = hooks["hatch"]["metadata"]["hooks"]["requirements_txt"]["optional-dependencies"]
+        assert extras["docs"] == ["requirements-docs.txt"]
+
     def test_the_page_says_what_publish_runs_before_it_uploads(self) -> None:
         """Where the maintainer reads it: what Publish runs and how, what the run it calls is
         given and does otherwise, and how the wheel is installed and held to itself."""

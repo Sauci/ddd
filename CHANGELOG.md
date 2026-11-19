@@ -344,10 +344,12 @@ A build of DDD from its sources, and a release of it:
     it does not, exits 1 naming each, and `npm ci` makes the two agree.
   - "A release is built only once every job of ci has passed on its commit, and its wheel is
     installed and run before anything is uploaded": a release waits for the whole of ci, and a
-    failing gate fails Publish's run, which *Re-run failed jobs* runs again; a build of the project
-    from its sources by any frontend that isolates its build takes `hatchling` 1.33.0 and
-    `hatch-requirements-txt` 0.4.1, so one with no index to reach has those two versions in what it
-    reaches; and an environment installing `requirements-docs.txt` has its sphinx replaced by 9.1.1.
+    failing gate fails Publish's run, to be run again as *Re-run failed jobs*, or, where the fault
+    is in the tagged commit and nothing has reached pypi.org, its release deleted and created
+    again; a build of the project from its sources by any frontend that isolates its build takes
+    `hatchling` 1.33.0 and `hatch-requirements-txt` 0.4.1, so one with no index to reach has those
+    two versions in what it reaches; and an environment installing `requirements-docs.txt`, or the
+    `docs` extra, has its sphinx replaced by 9.1.1.
   - "A release's documentation is published once Publish's run for it has succeeded, and a push to
     master no longer cancels it": a release's documentation appears once Publish's run for it has
     succeeded; a release whose Publish reached PyPI and then failed is published by *Re-run failed
@@ -1315,8 +1317,8 @@ A build of DDD from its sources, and a release of it:
   in order.  A build of the project from its sources, a source archive among them, by any frontend
   that isolates its build, takes `hatchling` 1.33.0 and `hatch-requirements-txt` 0.4.1, so a build
   that has no index to reach needs those two versions in what it reaches.  And an environment that
-  installs `requirements-docs.txt` has its sphinx replaced by 9.1.1, the release the documentation
-  is built with.
+  installs `requirements-docs.txt`, or the `docs` extra, has its sphinx replaced by 9.1.1, the
+  release the documentation is built with.
 
 * **Every wheel ci builds and uploads says it is a development build.**  The `gui` job of ci uploads
   the wheel of every run as `ddd-tool-<commit>`, and between releases master states the last

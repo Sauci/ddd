@@ -4,10 +4,13 @@
 master, and of every push to this repository's own pull requests, to TestPyPI, so that such a
 commit installs with ``pip install`` - its compiled pages included, and no node anywhere.  Its
 ``dev-build`` job runs this in its own checkout before it builds; ``dev-publish`` checks what it
-is handed, and writes the run's summary from what it checked.  Nothing this rewrites is ever
-committed.
+is handed, and writes the run's summary from what it checked.  The ubuntu leg of its ``gui`` job
+runs it as well, before it builds the wheel it uploads as ``ddd-tool-<commit>``: every wheel ci
+builds says it is a development build of its commit, and only a release's own build says it is
+the release.  Nothing this rewrites is ever committed.
 
-The version is ``<next patch>.dev<run number>``: after 0.10.0, run 57 builds ``0.10.1.dev57``.
+The version is ``<next patch>.dev<run number>``: after 0.10.0, run 57 builds ``0.10.1.dev57``,
+and after a release candidate, the next candidate's: after 0.11.0rc1, ``0.11.0rc2.dev57``.
 The commit cannot be part of it - PEP 440 refuses ``0.10.0-<sha>``, and PyPI and TestPyPI both
 refuse a local label such as ``0.10.0+g<sha>`` - so the build's metadata carries it instead, as
 the ``Commit`` url of ``[project.urls]``, and the summary of the run maps the version to it.  The
@@ -42,24 +45,31 @@ ROOT = Path(__file__).resolve().parents[1]
 """The checkout this script is part of, which is the one it stamps from the command line."""
 
 RELEASE = re.compile(r"\d+(?:\.\d+)*")
-"""A version of numbers alone: the only kind with a next patch to build towards."""
+"""A version of numbers alone: a release, which has a next patch to build towards."""
+
+CANDIDATE = re.compile(r"(\d+(?:\.\d+)*)rc(\d+)")
+"""A release candidate, as PEP 440 normalises one: the release it leads to, then ``rc<n>``."""
 
 COMMIT = re.compile(r"[0-9a-f]{40}")
 """A commit the way ci names one: the forty hexadecimal digits of its sha."""
 
 
 def next_development(version: str, run: int) -> str:
-    """The version run ``run`` builds after release ``version``: its next patch, ``.dev<run>``.
+    """The version run ``run`` builds after ``version``: the next patch of a release, or the next
+    candidate of a release candidate, as a development release ``.dev<run>``.
 
-    Only a version of numbers alone has a next patch.  A release candidate such as ``0.11.0rc1``
-    has two next versions - its next candidate and its release - and ``0.11.0.dev57`` would sort
-    before the candidate itself; a development, post or local release is nothing a commit of
-    master states.  Each is refused rather than guessed at.
+    A release candidate such as ``0.11.0rc1`` has two next versions - its next candidate and its
+    release - and ``0.11.0rc2.dev57`` sorts after it and before both, where ``0.11.0.dev57``
+    would sort before the candidate itself.  An alpha or a beta, and a development, post or local
+    release, are nothing a commit of master states: each is refused rather than guessed at.
     """
+    candidate = CANDIDATE.fullmatch(version)
+    if candidate is not None:
+        return f"{candidate.group(1)}rc{int(candidate.group(2)) + 1}.dev{run}"
     if not RELEASE.fullmatch(version):
         raise ValueError(
-            f"cannot number a development build after {version!r}: only a version of numbers "
-            f"alone, such as 0.10.0, has a next patch to build towards"
+            f"cannot number a development build after {version!r}: only a release, such as "
+            f"0.10.0, or a candidate, such as 0.10.0rc1, has a next version to build towards"
         )
     *head, last = (int(part) for part in version.split("."))
     return ".".join(str(part) for part in (*head, last + 1)) + f".dev{run}"

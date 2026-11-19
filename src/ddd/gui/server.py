@@ -1014,10 +1014,9 @@ _NOT_A_TARGET: Final = "the request's target cannot be read"
 _INTERNAL: Final = "ddd gui failed on this request; the terminal it runs in shows why"
 _CODE_REUSED: Final = (
     "ddd gui: a launch code that already signed a browser in was presented again. If the "
-    "browser ddd gui opened landed on the project, nothing more is needed. If it says it is "
-    "signed out, stop ddd gui (Ctrl+C), start it again and open the address it prints then: "
-    "another program on this computer may hold this run's token, which this run's address, "
-    "opened since, does not take back"
+    "browser ddd gui opened is signed in, nothing more is needed; if it says it is signed out, "
+    "stop ddd gui (Ctrl+C), start it again and open the address it prints then: this run's "
+    "address, opened since, does not take the token back"
 )
 
 

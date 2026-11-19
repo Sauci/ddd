@@ -1,0 +1,6 @@
+# What .github/workflows/publish.yml builds and checks a release with, each at one version: the
+# day a release of either changed what it builds or what it accepts, a release whose suite had
+# passed would have been built or refused by it. These are the versions Publish installed for
+# 0.11.0. .github/dependabot.yml proposes each move as a pull request.
+build==1.6.1
+twine==7.0.0

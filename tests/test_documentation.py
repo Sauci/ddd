@@ -14,6 +14,7 @@ import dataclasses
 import io
 import itertools
 import json
+import os
 import re
 import shlex
 import shutil
@@ -27,6 +28,7 @@ from pathlib import Path
 from typing import Any, ClassVar, Literal, NamedTuple
 
 import dev_version
+import installed_wheel
 import jsonschema
 import pytest
 import site_versions
@@ -37,6 +39,7 @@ from pydantic import BaseModel, ValidationError
 from conftest import DEMO
 from ddd import __version__
 from ddd.analysis import _MAX_LEAVES
+from ddd.backends.c.backend import example_template_directory
 from ddd.backends.c.model import (
     CodeModel,
     ConversionView,
@@ -44,7 +47,7 @@ from ddd.backends.c.model import (
     MemberView,
     ObjectView,
 )
-from ddd.cli import EXIT_OK, _build_parser, main, schema_models
+from ddd.cli import EXIT_OK, EXIT_USAGE, _build_parser, cmake_module_directory, main, schema_models
 from ddd.diagnostics import CHECKS, Severity
 from ddd.loading import FILE_KINDS
 from ddd.models import MAX_ELEMENTS, Component, DataObject, Datatype, ObjectKind, ScalarType
@@ -1578,6 +1581,43 @@ class TestPackaging:
                 f"documentation build fails for whoever installs from the archive"
             )
 
+    @pytest.mark.parametrize(
+        ("name", "without_it"),
+        [
+            (
+                "SECURITY.md",
+                "whoever reads the archive has no way of reporting a vulnerability privately",
+            ),
+            (
+                ".dockerignore",
+                "an image built from the unpacked archive copies in the compiled pages it holds, "
+                "which docker/Dockerfile says the build context never has",
+            ),
+            (
+                ".gitattributes",
+                "the unpacked archive put under git on windows checks the image's scripts out "
+                "with the crlf endings their shebangs fail on",
+            ),
+        ],
+        ids=["SECURITY.md", ".dockerignore", ".gitattributes"],
+    )
+    def test_the_sdist_carries_its_policy_and_what_its_builds_are_told(
+        self, name: str, without_it: str
+    ) -> None:
+        """20:M6. The archive is what an evaluator is sent, and it carries ``docker/``, the
+        compose file and the pages compiled into ``src/ddd/gui/static``. Three files at the
+        root say how the tree is to be built and reported on. None of the suite reads
+        ``.dockerignore`` or ``.gitattributes``, so no test above could notice their absence;
+        ``SECURITY.md`` is read for its sentences alone, and held here as well, so that its
+        place in the archive does not hang on a test of its wording."""
+        metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        shipped = {
+            pattern.lstrip("/")
+            for pattern in metadata["tool"]["hatch"]["build"]["targets"]["sdist"]["include"]
+        }
+        assert (ROOT / name).is_file(), f"{name} is not in the tree"
+        assert name in shipped, f"the sdist leaves out {name}, so {without_it}"
+
     def test_the_runtime_requirements_are_what_the_package_imports(self) -> None:
         """The three runtime dependencies are a deliberate claim of the README, so a fourth one
         appearing in requirements.txt has to be a decision rather than a drive-by addition.
@@ -1589,6 +1629,16 @@ class TestPackaging:
             if line.strip() and not line.startswith("#")
         }
         assert listed == {"pydantic", "jinja2", "pyelftools"}
+
+    def test_the_requirements_name_both_commands_that_read_an_image(self) -> None:
+        """20:M12. The comment on pyelftools named ``ddd tool from-elf`` alone, "today", as though
+        it were the one reader of an image: ``ddd generate`` given ``--image`` is the other."""
+        said = comments_of((ROOT / "requirements.txt").read_text(encoding="utf-8"))
+        assert (
+            "What DDD reads ELF images and their DWARF with: `ddd tool from-elf`, and `ddd "
+            "generate` given `--image`."
+        ) in said
+        assert "today" not in said
 
     def test_the_extension_declines_an_untrusted_workspace_and_the_pages_say_why(self) -> None:
         """A description file names the plugins the server runs, and the server imports the
@@ -1621,6 +1671,128 @@ class TestPackaging:
                 assert phrase in text, (
                     f"{page.name} no longer states the trust boundary: {phrase!r}"
                 )
+
+
+class TestWhatThePolicySaysOfAnAdvisory:
+    """20:I4. ``SECURITY.md`` said which release is supported and how to report a vulnerability
+    privately, and nothing of an advisory: which versions one names, or where one is published.
+    Two sentences of its *Supported versions* say so now, and these tests hold them."""
+
+    POLICY: ClassVar[str] = flattened((ROOT / "SECURITY.md").read_text(encoding="utf-8"))
+    """``SECURITY.md``, its line breaks flattened."""
+
+    def test_an_advisory_names_the_versions_it_covers_supported_or_not(self) -> None:
+        """Only the latest release is supported, and an advisory may cover older ones too."""
+        assert "An advisory names the versions it covers, supported or not." in self.POLICY
+
+    def test_one_appears_on_the_security_tab_and_in_the_release_that_fixes_it(self) -> None:
+        assert (
+            "Advisories appear on this repository's **Security** tab, as GitHub security "
+            "advisories, and, for a release that fixes one, in that release's entries in "
+            "[the changelog](CHANGELOG.md)."
+        ) in self.POLICY
+
+
+class TestRunningFromTheSources:
+    """20:M2. The README and the getting started page let a reader run the tool out of a checkout
+    without installing it, and the page said that every command it shows works so. Without the
+    runtime dependencies the version and the help still answer, and so does ``cmake-dir``, while
+    ``check`` ended in a traceback, ``No module named 'pydantic'``, as ``list``, ``checks``,
+    ``templates-dir`` and ``schema`` do. Both pages now say what is installed first, and these
+    tests hold what they say of the tool without it to the tool."""
+
+    @staticmethod
+    def from_the_sources(*arguments: str) -> subprocess.CompletedProcess[str]:
+        """``PYTHONPATH=src python -m ddd`` in this checkout, run by an interpreter that sees no
+        installed package: ``-S`` leaves the site directories off its path, and every runtime
+        dependency with them, as an environment holding nothing would."""
+        return subprocess.run(
+            [sys.executable, "-S", "-m", "ddd", *arguments],
+            cwd=ROOT,
+            env={**os.environ, "PYTHONPATH": str(ROOT / "src")},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    def test_the_interpreter_they_run_under_sees_no_dependency(self) -> None:
+        """The control under the two below: an interpreter that reached pydantic would have them
+        weigh nothing."""
+        ran = subprocess.run(
+            [sys.executable, "-S", "-c", "import pydantic"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert ran.returncode != 0, "pydantic is importable without the site directories"
+        assert "No module named 'pydantic'" in ran.stderr
+
+    @pytest.mark.parametrize(
+        ("arguments", "answer"),
+        [(["--version"], f"ddd {__version__}\n"), (["--help"], "usage: ddd ")],
+        ids=["the version", "the help"],
+    )
+    def test_without_its_dependencies_the_version_and_the_help_still_answer(
+        self, arguments: list[str], answer: str
+    ) -> None:
+        ran = self.from_the_sources(*arguments)
+        assert ran.returncode == 0, ran.stderr
+        assert ran.stdout.startswith(answer), ran.stdout
+
+    def test_without_them_check_fails_naming_pydantic(self) -> None:
+        ran = self.from_the_sources("check", "examples/demo/demo.ddd.json")
+        assert ran.returncode != 0, ran.stdout
+        assert "No module named 'pydantic'" in ran.stderr
+
+    def test_the_requirements_install_nothing_of_ddd(self) -> None:
+        """What both pages have the reader install first: the runtime requirements alone, and
+        nothing that installs the project from the checkout."""
+        lines = [
+            line.strip()
+            for line in (ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.startswith("#")
+        ]
+        assert lines, "requirements.txt lists nothing"
+        assert not [line for line in lines if line.startswith(("-e", ".", "ddd"))], lines
+
+    def test_both_pages_say_what_is_installed_first(self) -> None:
+        """What runs from the sources once the dependencies are installed, what does not
+        without them, and, on the getting started page, which they are."""
+        readme = flattened(README)
+        started = flattened(PAGES["docs/getting_started.rst"])
+        claims = {
+            "the README, once": "from there the tool also runs without being installed, once its "
+            "runtime dependencies are",
+            "the README, without them": "Without them, `--version` and `--help` still answer, "
+            "and `check` fails, naming the `pydantic` it cannot import.",
+            "the README, the install": "pip install -r requirements.txt",
+            "the page, once": "once the runtime dependencies ``requirements.txt`` lists are "
+            "installed - which installs nothing of DDD itself",
+            "the page, the install": "$ pip install -r requirements.txt # pydantic, jinja2 and "
+            "pyelftools",
+            "the page, without them": "Without them, the version and the help still answer, and "
+            "``check`` fails, naming the ``pydantic`` it cannot import.",
+            "the page, with them": "With them, ``PYTHONPATH=src python -m ddd`` and ``ddd`` are "
+            "the same program invoked in two ways",
+            "the page, the dependencies": "its runtime dependencies are pydantic, which parses and "
+            "validates the description files, jinja2, which renders the generated artefacts, and "
+            "pyelftools, which reads a linked ELF image",
+            "the page, all three": "All three are installed with it",
+            "the page, offline": "the wheel carries everything DDD needs apart from those three",
+        }
+        missing = [
+            what
+            for what, claim in claims.items()
+            if claim not in (readme if what.startswith("the README") else started)
+        ]
+        assert not missing, f"the pages no longer say {missing}"
+        assert "without being installed at all" not in readme
+        assert "its only runtime dependencies" not in started
+        installation = started.split("Installation ---", 1)[1].split(".. code-block::", 1)[0]
+        for line in (ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines():
+            if line.strip() and not line.startswith("#"):
+                name = re.split(r"[<>=!~ ]", line, maxsplit=1)[0]
+                assert name in installation, f"the getting started page does not name {name}"
 
 
 class TestCommandLineHelp:
@@ -2234,6 +2406,17 @@ class TestTheReleaseNote:
             f"the release note announces dictionary format {sorted(set(stated))}, and the "
             f"tool writes {DICTIONARY_FORMAT}"
         )
+
+    def test_it_names_both_commands_that_import_pyelftools(self) -> None:
+        """20:M12. The toolbox's entry said that every other command runs without importing
+        pyelftools, beside the entry for ``ddd generate a2l --image``, which reads its image
+        through the same reader. Held to the whole changelog rather than to the topmost section,
+        since the entry stays in the section of the release that carries it."""
+        said = flattened(CHANGELOG)
+        assert (
+            "every command but it and `ddd generate` given `--image` runs without importing it"
+        ) in said
+        assert "every other command runs without importing it" not in said
 
 
 def exported_models() -> list[str]:
@@ -3243,6 +3426,46 @@ class TestPackagedResources:
         assert named is not None, "the developer page no longer says which licences are accepted"
         assert re.split(r", | or ", named.group(1)) == re.findall(r'"([^"]+)"', listed.group(1))
 
+    def test_the_developer_page_says_what_the_licence_walk_lists_and_refuses(self) -> None:
+        """20:M11. The page called the canvas's two packages MIT like every other bundled one,
+        where the lock file's production packages are Apache-2.0, ISC, BSD-3-Clause and 0BSD as
+        well, and it said nothing of what the walk lists: since 20:I2, every installed production
+        package of the lock file, the build refusing one it missed. Held to the script, for what
+        the page says it reads and refuses, and to the lock file, for the two licences."""
+        said = flattened(PAGES["docs/developer_documentation.rst"])
+        claims = {
+            "what it writes": "The build writes the licence of every package the pages bundle "
+            "into ``third-party-licenses.txt``, beside them",
+            "what it lists": "It lists every production package of ``gui/package-lock.json`` "
+            "that is installed",
+            "how": "it walks npm's own tree of them, reads each one's directory off the lock "
+            "file rather than off a path npm prints",
+            "what it refuses": "refuses, naming each, a production package of the lock file the "
+            "walk did not list - which would ship without its notice, and past the licence check "
+            "- and a package it listed that the lock file does not hold",
+            "the canvas": "laid out with ``@dagrejs/dagre``, both MIT.",
+        }
+        missing = [what for what, claim in claims.items() if claim not in said]
+        assert not missing, f"the developer page no longer says {missing}"
+        assert "like every other bundled package" not in said
+        script = (ROOT / "gui" / "scripts" / "licenses.mjs").read_text(encoding="utf-8")
+        for read in (
+            "npm ls --omit=dev --all --long --json",
+            'readFileSync(join(root, "package-lock.json")',
+            "const directory = join(root, key);",
+            "not listed, a production package of the lock file",
+            "not in the lock file",
+            "third-party-licenses.txt",
+        ):
+            assert read in script, f"gui/scripts/licenses.mjs no longer has {read!r}"
+        lock = json.loads((ROOT / "gui" / "package-lock.json").read_text(encoding="utf-8"))
+        licences = {
+            key.rpartition("node_modules/")[2]: entry.get("license")
+            for key, entry in lock["packages"].items()
+            if key and not entry.get("dev")
+        }
+        assert licences["@xyflow/react"] == licences["@dagrejs/dagre"] == "MIT"
+
 
 class TestTheCompileService:
     """The container that compiles what the c backend generates, and the README's account of it.
@@ -3440,6 +3663,147 @@ class TestWhatKeepsTheToolchainMoving:
             f"red on the day it is released rather than on the day somebody upgrades it"
         )
 
+    def test_the_documentation_is_built_with_one_sphinx(self) -> None:
+        """20:M13. The documentation is built with ``-W``, so a sphinx release that warns about
+        anything the pages do fails the build, as the two gates above fail the lint job. A lower
+        bound took whichever sphinx was newest on the day, and on the wrong day that is a
+        release's documentation. Exact, the pin is moved by a pull request dependabot opens,
+        which builds the documentation with the new one before it is merged."""
+        requirements = (ROOT / "requirements-docs.txt").read_text(encoding="utf-8")
+        line = next(
+            line.strip()
+            for line in requirements.splitlines()
+            if re.match(r"sphinx\s*[<>=!~]", line.strip(), re.IGNORECASE)
+        )
+        assert re.fullmatch(r"sphinx==\d+(?:\.\d+)+", line), (
+            f"{line} takes whichever sphinx is newest on the day the documentation is built"
+        )
+        assert "/" in dependabot()["pip"], "nothing proposes moving the pin"
+
+    def test_publish_installs_the_release_s_tools_at_one_version(self) -> None:
+        """20:M13. Publish installed whichever pip, build and twine were newest on the morning of
+        a release, after the suite had passed: a build or a twine that changed what it writes or
+        accepts changed the release, or failed it. They come from ``requirements-release.txt``,
+        every line of which is one version, and which dependabot reads, as it reads every
+        requirements file at the root."""
+        requirements = (ROOT / "requirements-release.txt").read_text(encoding="utf-8")
+        pinned = [
+            line.strip()
+            for line in requirements.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+        assert sorted(line.split("==", 1)[0] for line in pinned) == ["build", "twine"]
+        assert all(re.fullmatch(r"[\w-]+==\d+(?:\.\d+)+", line) for line in pinned), pinned
+        build = uncommented(job(PUBLISH_WORKFLOW, "build"))
+        assert "python -m pip install -r requirements-release.txt" in build
+        installs = re.findall(r"pip install[^\n]*", build)
+        # By the words of each line: an option's dashes are no word, so a pattern looking for
+        # --upgrade between word boundaries never finds it.
+        loose = [
+            found
+            for found in installs
+            if {"build", "twine", "--upgrade", "-U"} & set(found.split())
+        ]
+        assert not loose, f"the release installs a tool at whatever version is newest: {loose}"
+        assert "/" in dependabot()["pip"], "nothing proposes moving the pins"
+
+    def test_the_build_backend_is_one_version(self) -> None:
+        """20:M13. ``pyproject.toml`` required hatchling and hatch-requirements-txt at whatever
+        was newest, so a release of the backend changed the wheel every build of the project
+        wrote - the release's among them - on the day it came out."""
+        metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        requires = metadata["build-system"]["requires"]
+        assert sorted(line.split("==", 1)[0] for line in requires) == [
+            "hatch-requirements-txt",
+            "hatchling",
+        ]
+        assert all(re.fullmatch(r"[\w-]+==\d+(?:\.\d+)+", line) for line in requires), requires
+
+    def test_the_extension_is_packaged_by_one_vsce(self) -> None:
+        """20:M13. The extension's scripts ran ``npx --yes @vscode/vsce``, whichever vsce was
+        newest: on the day a release of it changed what it packages or refuses, so did the
+        ``.vsix`` the release attaches. Every script naming it names one version."""
+        manifest = json.loads(
+            (ROOT / "editors" / "vscode" / "package.json").read_text(encoding="utf-8")
+        )
+        named = [
+            found
+            for command in manifest["scripts"].values()
+            for found in re.findall(r"@vscode/vsce(\S*)", command)
+        ]
+        assert named, "no script of the extension runs vsce"
+        assert len(set(named)) == 1, f"the scripts run vsce at {sorted(set(named))}"
+        assert re.fullmatch(r"@\d+(?:\.\d+)+", named[0]), f"vsce is run as @vscode/vsce{named[0]}"
+
+    def test_the_page_says_the_documentation_s_sphinx_is_one_release(self) -> None:
+        """Where the maintainer reads what is pinned, and what a pin is held to."""
+        said = flattened(PAGES["docs/developer_documentation.rst"])
+        claims = {
+            "the pin": "``sphinx`` is pinned to one release in ``requirements-docs.txt``",
+            "why": "the documentation is built with ``-W``, so a sphinx that warns about "
+            "anything new fails the documentation's build",
+            "what holds it": "both caps to being caps, and sphinx",
+        }
+        missing = [what for what, claim in claims.items() if claim not in said]
+        assert not missing, f"the developer page no longer says {missing}"
+
+    def test_the_page_says_where_the_release_s_tools_are_pinned(self) -> None:
+        """Each pin's home, and the two dependabot may not move."""
+        said = flattened(PAGES["docs/developer_documentation.rst"])
+        claims = {
+            "build and twine": "``build`` and ``twine`` in ``requirements-release.txt``, which "
+            "``publish.yml`` installs them from",
+            "the backend": "``hatchling`` and ``hatch-requirements-txt`` in the "
+            "``[build-system]`` table of ``pyproject.toml``",
+            "vsce": "``@vscode/vsce`` in the scripts of ``editors/vscode/package.json``",
+            "what dependabot may not reach": "Dependabot may not reach the backend, since its "
+            "documentation says nothing of ``[build-system]``",
+            "what holds them": "the release's tools each to one version",
+        }
+        missing = [what for what, claim in claims.items() if claim not in said]
+        assert not missing, f"the developer page no longer says {missing}"
+
+    def test_the_three_say_alike_what_dependabot_may_not_reach(self) -> None:
+        """``dependabot.yml`` said its pip entry does not reach the backend ``pyproject.toml``
+        pins in ``[build-system]``, where the page and ``pyproject.toml`` said it may not.
+        Dependabot's documentation says nothing of that table, so the three now say what holds:
+        perhaps, which its first weekly run shows; and of vsce, inside an ``npx`` command, that
+        no entry reaches it."""
+        config = comments_of((ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8"))
+        manifest = comments_of((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        page = flattened(PAGES["docs/developer_documentation.rst"])
+        claims = {
+            "dependabot.yml, the backend": (
+                config,
+                "Perhaps the backend that pyproject.toml pins in [build-system] as well: "
+                "Dependabot's documentation says nothing of that table, so its first weekly run "
+                "shows whether it proposes a move there.",
+            ),
+            "dependabot.yml, vsce": (
+                config,
+                "Not the vsce the extension's scripts name: a version inside an npx command is no "
+                "dependency.",
+            ),
+            "pyproject.toml": (
+                manifest,
+                "Dependabot's documentation says nothing of this table, so a move here may have "
+                "to be made by hand.",
+            ),
+            "the page, the backend": (
+                page,
+                "Dependabot may not reach the backend, since its documentation says nothing of "
+                "``[build-system]`` - its first weekly run shows whether it does -",
+            ),
+            "the page, vsce": (
+                page,
+                "and cannot reach vsce, since a version written into an ``npx`` command is no "
+                "dependency it reads: vsce is moved by hand, and the backend may have to be.",
+            ),
+        }
+        missing = [what for what, (text, claim) in claims.items() if claim not in text]
+        assert not missing, f"no longer said: {missing}"
+        assert "Not the backend" not in config
+
     def test_an_action_is_pinned_at_one_version_across_the_workflows(self) -> None:
         """Three workflows, one toolchain: a version bumped in two of them and not the third
         is how ci ran an upload two majors behind the one the release used."""
@@ -3473,6 +3837,131 @@ class TestContinuousIntegration:
         assert tested == advertised, (
             f"ci tests python {sorted(tested)} but the package advertises {sorted(advertised)}"
         )
+
+    def test_every_advertised_system_is_tested(self) -> None:
+        """20:M12, decision 20.6. The package claimed to run on any system, and ci runs ubuntu
+        and windows alone: no cell runs macOS. Its classifiers name the two systems the matrix
+        runs, and a system added to either without the other fails here."""
+        metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        advertised = {
+            classifier
+            for classifier in metadata["project"]["classifiers"]
+            if classifier.startswith("Operating System ::")
+        }
+        listed = re.search(r"^        os: \[([^]]*)\]$", CI_WORKFLOW, re.M)
+        assert listed is not None, "the ci matrix no longer lists the systems"
+        systems = {
+            "ubuntu-latest": "Operating System :: POSIX :: Linux",
+            "windows-latest": "Operating System :: Microsoft :: Windows",
+        }
+        tested = {
+            systems.get(runner, f"a system for {runner}")
+            for runner in re.findall(r"[\w.-]+", listed.group(1))
+        }
+        assert tested == advertised, (
+            f"ci tests {sorted(tested)} but the package advertises {sorted(advertised)}"
+        )
+
+    def test_the_workflow_and_the_page_say_which_systems_are_claimed(self) -> None:
+        said = comments_of(CI_WORKFLOW)
+        page = flattened(PAGES["docs/developer_documentation.rst"])
+        claims = {
+            "the workflow": "The package claims python 3.12, 3.13 and 3.14, on Windows and "
+            "Linux, which its classifiers list.",
+            "the workflow, macOS": "No cell runs macOS, and the package does not claim it.",
+            "the page": "the six combinations the classifiers in ``pyproject.toml`` advertise: "
+            "Windows and Linux, and not macOS, which no cell runs",
+            "the page, the test": "so advertising a new interpreter or a new system without "
+            "testing it fails",
+        }
+        missing = [
+            what
+            for what, claim in claims.items()
+            if claim not in (said if what.startswith("the workflow") else page)
+        ]
+        assert not missing, f"no longer said: {missing}"
+        assert "os independent" not in said
+
+
+class TestWhatThePageSaysOfCi:
+    """20:M11. The developer page's account of ``ci.yml`` counted two jobs and five more where
+    the workflow has eight, never described ``gui-screenshots``, and left it out of the jobs
+    ``dev-build`` waits for; and it gave the suite a couple of minutes where it takes about
+    seven. Each count and list is held here to the workflow it describes."""
+
+    @staticmethod
+    def section() -> str:
+        """The page's section on continuous integration, its line breaks flattened."""
+        page = PAGES["docs/developer_documentation.rst"]
+        section = page.split("\nContinuous integration\n", 1)[1]
+        return flattened(section.split("\n.. _development-builds:", 1)[0])
+
+    def test_it_counts_every_job_of_ci_and_names_each(self) -> None:
+        said = self.section()
+        counted = re.search(r"in (\w+) jobs, ``test`` and ``lint``, and (\w+) more", said)
+        assert counted is not None, "the page no longer counts the jobs of ci.yml"
+        names = job_names(CI_WORKFLOW)
+        total = NUMBER_WORDS[counted.group(1)] + NUMBER_WORDS[counted.group(2)]
+        assert total == len(names), f"the page counts {total} jobs, and ci.yml has {names}"
+        unnamed = [name for name in names if f"``{name}``" not in said]
+        assert not unnamed, f"the page's section on ci never names {unnamed}"
+
+    def test_it_says_what_gui_screenshots_does(self) -> None:
+        said = self.section()
+        claims = {
+            "what it does": "``gui-screenshots`` photographs every story of ``gui/`` and "
+            "compares each with its reference image, committed in ``gui/screenshots/references`` "
+            "beside the spec that photographs them",
+            "where": "in Playwright's own Linux image, of the version ``gui/package.json`` pins, "
+            "which is the one place those images are made",
+            "what it catches": "a look that changes by accident fails here, and one changed on "
+            "purpose arrives with its new references in the same pull request",
+            "what a failure leaves": "A run of it that fails uploads the differences as "
+            "``screenshots-diff``.",
+        }
+        missing = [what for what, claim in claims.items() if claim not in said]
+        assert not missing, f"the developer page no longer says {missing}"
+        assert "name: screenshots-diff" in job(CI_WORKFLOW, "gui-screenshots")
+        # Where the references are: the screenshot run's own directory, the spec's, as its
+        # configuration places them, and not beside the stories in src/.
+        config = (ROOT / "gui" / "playwright.screenshots.config.ts").read_text(encoding="utf-8")
+        assert 'testDir: "screenshots"' in config
+        assert 'snapshotPathTemplate: "{testDir}/references/{arg}{ext}"' in config
+        assert (ROOT / "gui" / "screenshots" / "stories.spec.ts").is_file()
+        assert sorted((ROOT / "gui" / "screenshots" / "references").glob("*.png"))
+        commented = comments_of(job(CI_WORKFLOW, "gui-screenshots"))
+        assert (
+            "compared with its reference image, committed in gui/screenshots/references beside "
+            "the spec that photographs them"
+        ) in commented
+        assert "beside the stories" not in commented + said
+
+    def test_it_lists_every_job_dev_build_waits_for(self) -> None:
+        """The development builds' section names what ``dev-build`` waits for, which its
+        ``needs`` states: a job added to ``ci.yml`` joins both, or this fails."""
+        said = flattened(PAGES["docs/developer_documentation.rst"])
+        listed = re.search(r"``dev-build`` waits for every other job of the run - (.+?) - so", said)
+        assert listed is not None, "the page no longer lists what dev-build waits for"
+        named = re.findall(r"``([\w-]+)``", listed.group(1))
+        waited = re.search(r"^    needs: \[([^]\n]*)\]$", job(CI_WORKFLOW, "dev-build"), re.M)
+        assert waited is not None, "dev-build no longer lists the jobs it waits for"
+        assert named == waited.group(1).split(", ")
+        assert (
+            "a test holds a job added to ``ci.yml`` to joining the list, and another holds this "
+            "one to it"
+        ) in said
+
+    def test_it_gives_the_suite_the_minutes_it_was_timed_at(self) -> None:
+        """Timed on a fresh checkout of the branch that wrote it, at c5adc2e0: 9670 tests in
+        6 m 55 s, and 6 m 35 s for the gates of the two commits after it, in the warm checkout. A
+        couple of minutes was neither."""
+        said = flattened(PAGES["docs/developer_documentation.rst"])
+        assert (
+            "The whole suite takes minutes rather than seconds, how many varying with the "
+            "machine - about seven, in a fresh checkout, on the Linux machine it was last timed "
+            "on -"
+        ) in said
+        assert "a couple of minutes" not in said
 
 
 SKIPPING = {"skip", "skipif", "importorskip", "xfail"}
@@ -3620,6 +4109,64 @@ class TestTheSuiteRunsEverythingEverywhere:
         )
 
 
+MASTER_HEAD = "1" * 40
+"""master's newest commit, which a run Publish's completion starts is given as its own."""
+
+TAGGED = "2" * 40
+"""The commit a release's tag names, which Publish's run for that release ran on."""
+
+
+def started_by(event_name: str, ref: str, tag: str = "", run_id: str = "41") -> dict[str, Any]:
+    """The context a run of the documentation workflow is given by an event of its own: that
+    event's ref, and the newest commit on it. A dispatch has its inputs, the tag it names an
+    empty string when it names none, as an input's empty default is; no other event has any."""
+    context: dict[str, Any] = {
+        "github": {
+            "event_name": event_name,
+            "ref": ref,
+            "ref_name": ref.split("/", 2)[2],
+            "sha": MASTER_HEAD,
+            "run_id": run_id,
+            "event": {},
+        }
+    }
+    if event_name == "workflow_dispatch":
+        context["inputs"] = {"tag": tag}
+    return context
+
+
+def completed(
+    event: str = "release",
+    conclusion: str = "success",
+    head_branch: str = "v0.12.0",
+    run_id: str = "42",
+) -> dict[str, Any]:
+    """The context a run Publish's completion starts is given, as GitHub documents
+    ``workflow_run``: its own ref and commit are the default branch's - master's newest commit,
+    whatever Publish ran on - and Publish's run is in the payload, with the event that started
+    it, its conclusion, the commit it ran on and, as ``head_branch``, a release's tag. Publish's
+    run for v0.11.0, 35957643647, reads ``"event": "release", "head_branch": "v0.11.0"`` and the
+    commit ``v0.11.0`` names as ``head_sha``."""
+    return {
+        "github": {
+            "event_name": "workflow_run",
+            "ref": "refs/heads/master",
+            "ref_name": "master",
+            "sha": MASTER_HEAD,
+            "run_id": run_id,
+            "event": {
+                "workflow_run": {
+                    "name": "Publish",
+                    "event": event,
+                    "conclusion": conclusion,
+                    "head_branch": head_branch,
+                    "head_sha": TAGGED,
+                }
+            },
+        }
+    }
+
+
 class TestPublishedDocumentation:
     """The documentation is a deliverable with an address, published by ci.
 
@@ -3632,13 +4179,16 @@ class TestPublishedDocumentation:
         """A customer reaches the documentation through the package metadata on the index.
 
         Nothing resolves that url at build time, so a wrong one is a 404 with the product's
-        name on it, found by whoever was trying to read the manual.
+        name on it, found by whoever was trying to read the manual. The repository names the
+        site's root; a release's sdist carries the ``pyproject.toml`` Publish's build pointed at
+        the release's own directory (20:M7), which the suite runs from as well.
         """
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         developer_documentation = (ROOT / "docs" / "developer_documentation.rst").read_text(
             encoding="utf-8"
         )
-        assert metadata["project"]["urls"]["Documentation"] == DOCS_URL
+        stated = metadata["project"]["urls"]["Documentation"]
+        assert stated in (DOCS_URL, f"{DOCS_URL}v{__version__}/"), stated
         assert DOCS_URL in README
         assert DOCS_URL in developer_documentation
 
@@ -3655,22 +4205,864 @@ class TestPublishedDocumentation:
             f"the published documentation is built without -W: {command.strip()}"
         )
 
-    def test_only_master_and_a_release_are_ever_published(self) -> None:
-        """The deploy job names the two things it publishes rather than only an event.
+    @pytest.mark.parametrize(
+        ("context", "built", "deployed"),
+        [
+            (started_by("push", "refs/heads/master"), True, True),
+            (started_by("pull_request", "refs/pull/5/merge"), True, False),
+            (started_by("workflow_dispatch", "refs/heads/master"), True, True),
+            (started_by("workflow_dispatch", "refs/heads/feature"), True, False),
+            (started_by("workflow_dispatch", "refs/heads/master", tag="v0.12.0"), True, True),
+            (started_by("workflow_dispatch", "refs/heads/feature", tag="v0.12.0"), True, False),
+            (completed(), True, True),
+            (completed(conclusion="failure"), False, False),
+            (completed(conclusion="cancelled"), False, False),
+            (completed(event="workflow_dispatch", head_branch="master"), False, False),
+            (completed(event="workflow_dispatch"), False, False),
+            (completed(event="pull_request"), False, False),
+        ],
+        ids=[
+            "a push to master",
+            "a pull request",
+            "a dispatch on master",
+            "a dispatch on a branch",
+            "a dispatch from master naming a release",
+            "a dispatch from a branch naming a release",
+            "a release Publish published",
+            "a release Publish failed or refused",
+            "a release whose Publish was cancelled",
+            "Publish's dry run",
+            "Publish dispatched from a tag",
+            "a pull request's own workflow called Publish",
+        ],
+    )
+    def test_only_master_and_a_release_publish_published_are_ever_deployed(
+        self, context: dict[str, Any], built: bool, deployed: bool
+    ) -> None:
+        """Which runs build the documentation and which deploy it, read off both jobs' ``if:``
+        as the runner evaluates them, over the context GitHub gives each run.
 
         A pull request from a fork proposes arbitrary content and runs on this workflow
-        definition. Guarding the deployment by event alone would leave opening one enough to
-        publish somebody else's revision as the product's documentation - and ``pull_request``
-        is neither of the two conditions below, which is the whole point of spelling them out.
+        definition, so it builds and never deploys: opening one would otherwise be enough to
+        publish somebody else's revision as the product's documentation. A release deploys
+        once Publish has published it (20:I3), and only then: Publish completes for every run
+        it makes - a dispatch's dry run, a release it refused or failed - and so does a
+        workflow called Publish in a pull request from a fork, which is why the event that
+        started Publish's run is read as well as its conclusion. A run Publish's completion
+        starts is given master as its own ref, so a condition resting on the ref alone would
+        deploy every one of them. The deploy job's own condition says so too, so that the
+        build's being skipped is not all that keeps a refused release off the site.
         """
-        deploy = DOCS_WORKFLOW.split("\n  deploy:\n", 1)[1]
-        condition = next(line for line in deploy.splitlines() if line.strip().startswith("if:"))
-        assert "github.ref == 'refs/heads/master'" in condition, (
-            f"the deployment is not guarded by the branch: {condition.strip()}"
+        deploys = holds(setting(job(DOCS_WORKFLOW, "deploy"), "if", 4), context)
+        assert (
+            job_runs(DOCS_WORKFLOW, "build", context),
+            job_runs(DOCS_WORKFLOW, "deploy", context),
+            deploys,
+        ) == (built, deployed, deployed), "(builds, deploys, the deploy job's own if holds)"
+
+    def test_a_release_publishes_no_documentation_by_itself(self) -> None:
+        """20:I3. Publish and the documentation both ran on ``release: published``, and neither
+        waited for the other. Publish refused a tag naming a version ``pyproject.toml`` did not,
+        and failed when its tests or its build did; the documentation, waiting for none of it,
+        pushed the release's directory to ``gh-pages`` all the same - where
+        ``tools/site_versions.py``, reading what is on disk, crowned it stable and pointed the
+        root of the site at it."""
+        assert "release" not in events(DOCS_WORKFLOW), (
+            "a published release starts the documentation itself, before Publish has said "
+            "whether the release is published at all"
         )
-        assert "github.event_name == 'release'" in condition, (
-            f"a release does not deploy its own documentation: {condition.strip()}"
+
+    def test_a_release_s_documentation_waits_for_publish(self) -> None:
+        """What starts a release's documentation is Publish's run completing, watched by the
+        name ``publish.yml`` gives itself."""
+        triggers = events(DOCS_WORKFLOW)
+        assert "workflow_run" in triggers, (
+            "nothing starts the documentation when Publish completes, so a release's "
+            "documentation either does not wait for Publish or is never published"
         )
+        watched = re.search(r"^    workflows: \[([^]\n]*)\]$", triggers["workflow_run"], re.M)
+        named = re.search(r"^name: (.+)$", PUBLISH_WORKFLOW, re.M)
+        assert watched is not None and named is not None
+        assert watched.group(1).split(", ") == [named.group(1)], (
+            f"the documentation waits for {watched.group(1)}, and publish.yml is {named.group(1)}"
+        )
+        assert re.search(r"^    types: \[completed\]$", triggers["workflow_run"], re.M), (
+            "the documentation starts before Publish's run has completed"
+        )
+
+    @staticmethod
+    def handed(context: dict[str, Any]) -> str:
+        """The ``ref`` the build job hands ``actions/checkout`` over ``context``; empty is
+        checkout's own default, the run's own commit."""
+        checkout = re.search(
+            r"- uses: actions/checkout@\S+\n((?:        .*\n)*)", job(DOCS_WORKFLOW, "build")
+        )
+        assert checkout is not None, "the build job checks nothing out"
+        ref = setting(checkout.group(1), "ref", 10)
+        return "" if ref is None else text_of(evaluated(ref, context))
+
+    def built(self, context: dict[str, Any]) -> str:
+        """The commit the build job checks out over ``context``, as checkout resolves the
+        ``ref`` it is handed: the run's own commit for an empty one, a commit as itself, and a
+        release's tag as the commit it names, which is ``TAGGED`` here."""
+        ref = self.handed(context)
+        if not ref:
+            return str(context["github"]["sha"])
+        return TAGGED if ref.startswith("refs/tags/") else ref
+
+    @pytest.mark.parametrize(
+        ("context", "ref"),
+        [
+            (started_by("push", "refs/heads/master"), ""),
+            (started_by("pull_request", "refs/pull/5/merge"), ""),
+            (started_by("workflow_dispatch", "refs/heads/feature"), ""),
+            (
+                started_by("workflow_dispatch", "refs/heads/master", tag="v0.12.0"),
+                "refs/tags/v0.12.0",
+            ),
+            (completed(), TAGGED),
+        ],
+        ids=[
+            "a push to master",
+            "a pull request",
+            "a dispatch",
+            "a dispatch naming a release",
+            "a release Publish published",
+        ],
+    )
+    def test_a_release_is_built_from_the_commit_its_tag_names(
+        self, context: dict[str, Any], ref: str
+    ) -> None:
+        """A run Publish's completion starts is given master's newest commit as its own, and
+        ``actions/checkout`` with no ``ref`` checks out the run's own commit: so the release's
+        commit is named, from Publish's run. A dispatch naming a release is given the commit of
+        the ref it was run on, master's, and checks out the tag it names, as a tag rather than
+        anything else of that name. Every other run leaves ``ref`` empty, which is checkout's own
+        default - the event's commit, as before."""
+        assert self.handed(context) == ref, (
+            f"the build checks out {self.handed(context) or 'the run s own commit'}, not {ref}"
+        )
+
+    def test_the_build_says_which_commit_it_built(
+        self, tmp_path: Path, git: dict[str, str]
+    ) -> None:
+        """The deploy job names in its commit the commit the build was of, and only the build
+        knows which that is - the run's own, a release's or a tag's - so the build hands it
+        over: its step reporting what it checked out, run in a repository here, and its job's
+        ``outputs:`` read over what that step wrote."""
+        build = job(DOCS_WORKFLOW, "build")
+        report = step(build, "Say which commit this build is of")
+        name = re.search(r"^        id: (\S+)$", report, re.M)
+        assert name is not None, "the step reporting the commit has no id to be read by"
+        self.git_in(tmp_path, "init", "--quiet")
+        (tmp_path / "page").write_bytes(b"a page\n")
+        self.git_in(tmp_path, "add", "page")
+        signed = ("-c", "user.name=build", "-c", "user.email=build@example.com")
+        self.git_in(tmp_path, *signed, "commit", "--quiet", "--message", "a commit")
+        head = self.git_in(tmp_path, "rev-parse", "HEAD").strip()
+        done = run_step(report, tmp_path, **git, GITHUB_OUTPUT="output")
+        assert done.returncode == 0, done.stdout + done.stderr
+        written = dict(
+            line.split("=", 1)
+            for line in (tmp_path / "output").read_text(encoding="utf-8").splitlines()
+        )
+        outputs = re.search(r"^    outputs:\n((?:      .*\n)+)", build, re.M)
+        assert outputs is not None, "the build job hands the deploy job nothing"
+        commit = setting(outputs.group(1), "commit", 6)
+        assert commit is not None, "the build job hands over no commit"
+        context = {
+            **started_by("push", "refs/heads/master"),
+            "steps": {name.group(1): {"outputs": written}},
+        }
+        assert evaluated(commit, context) == head
+
+    def chosen(self, cwd: Path, context: dict[str, Any]) -> subprocess.CompletedProcess[str]:
+        """The deploy job's step choosing the directory, run over ``context``."""
+        chooser = step(
+            job(DOCS_WORKFLOW, "deploy"), "Choose the directory this build is published under"
+        )
+        return run_step(chooser, cwd, **step_environment(chooser, context), GITHUB_OUTPUT="output")
+
+    @pytest.mark.parametrize(
+        ("context", "directory"),
+        [
+            (started_by("push", "refs/heads/master"), "latest"),
+            (started_by("workflow_dispatch", "refs/heads/master"), "latest"),
+            (completed(), "v0.12.0"),
+            (completed(head_branch="v0.10.0rc1"), "v0.10.0rc1"),
+            (started_by("workflow_dispatch", "refs/heads/master", tag="v0.12.0"), "v0.12.0"),
+        ],
+        ids=[
+            "a push to master",
+            "a dispatch on master",
+            "a release",
+            "a release candidate",
+            "a release named by hand",
+        ],
+    )
+    def test_a_release_is_published_under_its_tag(
+        self, tmp_path: Path, context: dict[str, Any], directory: str
+    ) -> None:
+        """A release's tag is the ``head_branch`` of Publish's run, since the run itself is
+        given master as its ref: a step choosing by the run's own event or ref would put the
+        release over ``latest``. A dispatch naming a release's tag is run on master as well, and
+        is published under the tag it names, not as ``latest``."""
+        done = self.chosen(tmp_path, context)
+        assert done.returncode == 0, done.stdout + done.stderr
+        assert (tmp_path / "output").read_text(encoding="utf-8") == f"name={directory}\n"
+
+    @pytest.mark.parametrize(
+        "context",
+        [
+            completed(head_branch="0.12.0"),
+            started_by("workflow_dispatch", "refs/heads/master", tag="0.12.0"),
+        ],
+        ids=["a release Publish published", "a release named by hand"],
+    )
+    def test_a_release_tag_without_its_prefix_is_still_refused(
+        self, tmp_path: Path, context: dict[str, Any]
+    ) -> None:
+        """The check the release event's runs made, kept for the runs Publish starts and for a
+        release named by hand: a tag the version menu would never list is refused rather than
+        published at a url nothing links to (``test_a_release_tag_has_to_carry_its_prefix``)."""
+        done = self.chosen(tmp_path, context)
+        assert done.returncode == 1, done.stdout + done.stderr
+        assert done.stdout.startswith("::error::release tag 0.12.0 does not start with a v")
+        assert not (tmp_path / "output").exists()
+
+    @pytest.fixture
+    def git(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
+        """git configured by nothing but each repository's own settings, here and in the steps
+        run: a developer's signing key or line-ending rule has no business in what is asserted."""
+        assert shutil.which("git") is not None, "the deploy job's steps run git, so git is needed"
+        empty = tmp_path / "gitconfig"
+        empty.write_bytes(b"")
+        isolated = {"GIT_CONFIG_GLOBAL": empty.as_posix(), "GIT_CONFIG_NOSYSTEM": "1"}
+        for name, value in isolated.items():
+            monkeypatch.setenv(name, value)
+        return isolated
+
+    @staticmethod
+    def git_in(cwd: Path, *arguments: str) -> str:
+        done = subprocess.run(
+            ["git", *arguments], cwd=cwd, capture_output=True, text=True, check=False
+        )
+        assert done.returncode == 0, f"git {' '.join(arguments)}: {done.stderr}"
+        return done.stdout
+
+    def site(self, tmp_path: Path) -> Path:
+        """``gh-pages`` as a deploy finds it - master's documentation and v0.11.0's, indexed -
+        in a bare repository standing for GitHub's."""
+        seed = tmp_path / "seed"
+        for name in ("latest", "v0.11.0"):
+            (seed / name).mkdir(parents=True)
+            (seed / name / "index.html").write_bytes(f"{name} as it was\n".encode())
+        site_versions.write_index(seed)
+        (seed / ".nojekyll").write_bytes(b"")
+        origin = tmp_path / "origin.git"
+        self.git_in(
+            tmp_path, "init", "--quiet", "--bare", "--initial-branch=gh-pages", "origin.git"
+        )
+        self.git_in(seed, "init", "--quiet", "--initial-branch=gh-pages")
+        self.git_in(seed, "add", "--all")
+        signed = ("-c", "user.name=site", "-c", "user.email=site@example.com")
+        self.git_in(seed, *signed, "commit", "--quiet", "--message", "the site")
+        self.git_in(seed, "push", "--quiet", origin.as_uri(), "gh-pages")
+        return origin
+
+    def workspace(self, tmp_path: Path, origin: Path, build: str, page: str = "") -> Path:
+        """A deploy job's workspace as its first steps leave it: the script writing the index,
+        the build - a page saying ``page``, or the workspace's name - and ``gh-pages`` checked
+        out as checkout leaves it, one commit deep."""
+        workspace = tmp_path / build
+        (workspace / "repository" / "tools").mkdir(parents=True)
+        shutil.copy(ROOT / "tools" / "site_versions.py", workspace / "repository" / "tools")
+        (workspace / "html").mkdir()
+        (workspace / "html" / "index.html").write_bytes(f"{page or build}\n".encode())
+        self.git_in(
+            workspace, "clone", "--quiet", "--depth=1", "--branch=gh-pages", origin.as_uri(), "site"
+        )
+        return workspace
+
+    def publish(
+        self, workspace: Path, context: dict[str, Any], git: dict[str, str]
+    ) -> subprocess.CompletedProcess[str]:
+        """The deploy job's steps from the one choosing the directory to the last before the
+        read back, run in order over ``context`` as the runner runs them, handed the commit the
+        build checked out (``test_the_build_says_which_commit_it_built``); the first to fail
+        ends the job."""
+        context = {**context, "needs": {"build": {"outputs": {"commit": self.built(context)}}}}
+        done = self.chosen(workspace, context)
+        assert done.returncode == 0, done.stdout + done.stderr
+        name = (workspace / "output").read_text(encoding="utf-8").removeprefix("name=").strip()
+        context = {**context, "steps": {"slot": {"outputs": {"name": name}}}}
+        deploy = steps_of(job(DOCS_WORKFLOW, "deploy"))
+        first = next(n for n, one in enumerate(deploy) if "uses: actions/download-artifact" in one)
+        last = next(n for n, one in enumerate(deploy) if one.startswith("name: Ask Pages where"))
+        for one in deploy[first + 1 : last]:
+            if holds(setting(one, "if", 8), context):
+                done = run_step(one, workspace, **step_environment(one, context), **git)
+                if done.returncode != 0:
+                    break
+        return done
+
+    def test_a_release_lands_under_its_tag_beside_what_was_there(
+        self, tmp_path: Path, git: dict[str, str]
+    ) -> None:
+        """The deploy job's steps for a release Publish published, over a site holding master's
+        documentation and the release before: the release lands under its tag, nothing else is
+        touched, the index crowns it, and the commit saying so names the release's commit
+        rather than the run's own, which is master's. Its push lands, so the step stops there,
+        with no account of a refusal that never happened."""
+        origin = self.site(tmp_path)
+        done = self.publish(self.workspace(tmp_path, origin, "release"), completed(), git)
+        assert done.returncode == 0, done.stdout + done.stderr
+        assert not re.search(r"^attempt \d+:", done.stdout, re.M), (
+            f"a push that landed is reported as refused: {done.stdout}"
+        )
+        held = self.git_in(origin, "ls-tree", "--name-only", "gh-pages").split()
+        assert "v0.12.0" in held, f"the release is not published under its tag: the site is {held}"
+        assert self.git_in(origin, "show", "gh-pages:v0.12.0/index.html") == "release\n"
+        assert self.git_in(origin, "show", "gh-pages:latest/index.html") == "latest as it was\n"
+        assert json.loads(self.git_in(origin, "show", "gh-pages:versions.json")) == {
+            "stable": "v0.12.0",
+            "versions": ["latest", "v0.12.0", "v0.11.0"],
+        }
+        assert self.git_in(origin, "log", "-1", "--format=%s", "gh-pages") == (
+            f"docs: publish v0.12.0 from {TAGGED}\n"
+        )
+
+    @pytest.mark.parametrize(
+        "context",
+        [started_by("push", "refs/heads/master"), completed()],
+        ids=["master's", "a release's"],
+    )
+    def test_a_deploy_that_would_change_nothing_pushes_nothing(
+        self, tmp_path: Path, git: dict[str, str], context: dict[str, Any]
+    ) -> None:
+        """A deploy with nothing to change on the site - a push to master touching no page, or
+        the re-run a failed read-back calls for - commits and pushes nothing, and the step
+        passes saying why: committing with nothing staged would fail the step under ``bash -e``
+        before the read-back. The second deploy here checks the site out after the first has
+        pushed, as a re-run's fresh runner does, and publishes the same build."""
+        origin = self.site(tmp_path)
+        first = self.publish(self.workspace(tmp_path, origin, "first"), context, git)
+        assert first.returncode == 0, first.stdout + first.stderr
+        tip = self.git_in(origin, "rev-parse", "gh-pages")
+        again = self.workspace(tmp_path, origin, "again", page="first")
+        done = self.publish(again, context, git)
+        assert done.returncode == 0, done.stdout + done.stderr
+        assert "the site is already in this state, nothing to archive" in done.stdout
+        assert not re.search(r"^attempt \d+:", done.stdout, re.M), done.stdout
+        assert self.git_in(origin, "rev-parse", "gh-pages") == tip, (
+            "a deploy changing nothing pushed"
+        )
+
+    def test_a_dispatch_can_name_a_release_s_tag(self) -> None:
+        """The route for a release pypi.org holds and no re-run of its Publish can finish: a
+        dispatch names the release's tag. The input is optional and empty by default, so that a
+        dispatch naming none is the dispatch it always was."""
+        dispatch = events(DOCS_WORKFLOW)["workflow_dispatch"]
+        tag = re.search(r"^      tag:\n((?:        .*\n)+)", dispatch, re.M)
+        assert tag is not None, "a dispatch cannot name a release's tag"
+        assert setting(tag.group(1), "type", 8) == "string"
+        assert setting(tag.group(1), "required", 8) == "false"
+        assert setting(tag.group(1), "default", 8) == '""'
+        assert setting(tag.group(1), "description", 8) == (
+            "The tag of a release pypi.org holds, to publish its documentation when no re-run of "
+            "its Publish can"
+        ), "the dispatch no longer says what its tag is for"
+
+    @staticmethod
+    def check_of_the_tag() -> str:
+        return step(
+            job(DOCS_WORKFLOW, "build"), "Check the tag names the version its commit states"
+        )
+
+    @pytest.mark.parametrize(
+        ("context", "checks"),
+        [
+            (started_by("push", "refs/heads/master"), False),
+            (started_by("pull_request", "refs/pull/5/merge"), False),
+            (started_by("workflow_dispatch", "refs/heads/master"), False),
+            (started_by("workflow_dispatch", "refs/heads/master", tag="v0.12.0"), True),
+            (completed(), True),
+        ],
+        ids=[
+            "a push to master",
+            "a pull request",
+            "a dispatch",
+            "a release named by hand",
+            "a release Publish published",
+        ],
+    )
+    def test_only_a_release_s_run_checks_its_tag(
+        self, context: dict[str, Any], checks: bool
+    ) -> None:
+        """Master's documentation, a pull request's and an ordinary dispatch's name no tag to
+        check; a release's run does, whichever of the two routes started it."""
+        assert holds(setting(self.check_of_the_tag(), "if", 8), context) == checks
+
+    @pytest.mark.parametrize(
+        ("tag", "version", "refused"),
+        [("v0.12.0", "0.12.0", False), ("v0.12.0", "0.12.1", True), ("0.12.0", "0.12.0", True)],
+        ids=["the tag of the version", "another version's tag", "the version without its v"],
+    )
+    @pytest.mark.parametrize("route", ["a release Publish published", "a release named by hand"])
+    def test_a_tag_naming_another_version_than_its_commit_is_refused(
+        self, tmp_path: Path, route: str, tag: str, version: str, refused: bool
+    ) -> None:
+        """Publish refuses a release whose tag is not ``v`` and the version ``pyproject.toml``
+        states, before it uploads anything - the whole tag, its ``v`` included, as
+        ``test_a_release_tag_has_to_carry_its_prefix`` pins there. A release named by hand has
+        been through no Publish, so the build makes the same check of the tree it checked out,
+        and refuses to publish documentation under a version that commit does not state; a
+        release Publish published passes it again."""
+        context = (
+            completed(head_branch=tag)
+            if route == "a release Publish published"
+            else started_by("workflow_dispatch", "refs/heads/master", tag=tag)
+        )
+        (tmp_path / "pyproject.toml").write_bytes(
+            f'[project]\nname = "ddd-tool"\nversion = "{version}"\n'.encode()
+        )
+        check = self.check_of_the_tag()
+        done = run_step(check, tmp_path, **step_environment(check, context))
+        if not refused:
+            assert done.returncode == 0, done.stdout + done.stderr
+            return
+        assert done.returncode == 1, done.stdout + done.stderr
+        assert done.stdout.splitlines() == [
+            f"::error::tag {tag} is not v{version}, the version pyproject.toml states at the",
+            "::error::commit it names. A release's documentation is published under its tag,",
+            "::error::which has to be v and that version; name the tag of a release.",
+        ]
+
+    @staticmethod
+    def asking_pypi() -> str:
+        """The build's step asking pypi.org for the version a release named by hand states."""
+        return step(job(DOCS_WORKFLOW, "build"), "Check pypi.org holds the version the tag names")
+
+    @pytest.mark.parametrize(
+        ("context", "asks"),
+        [
+            (started_by("push", "refs/heads/master"), False),
+            (started_by("pull_request", "refs/pull/5/merge"), False),
+            (started_by("workflow_dispatch", "refs/heads/master"), False),
+            (started_by("workflow_dispatch", "refs/heads/master", tag="v0.12.0"), True),
+            (completed(), False),
+        ],
+        ids=[
+            "a push to master",
+            "a pull request",
+            "a dispatch",
+            "a release named by hand",
+            "a release Publish published",
+        ],
+    )
+    def test_only_a_release_named_by_hand_asks_pypi_org(
+        self, context: dict[str, Any], asks: bool
+    ) -> None:
+        """A release Publish published is on pypi.org, as Publish's success, which the build's
+        ``if:`` reads, says. A release named by hand has no run of Publish to read, so its run
+        asks the index itself; no other run names a release."""
+        assert holds(setting(self.asking_pypi(), "if", 8), context) == asks
+
+    def test_pypi_org_is_asked_before_anything_is_built(self) -> None:
+        """After the tag is held to the version its commit states, the version asked for, and
+        before the diagram tools, the documentation's requirements and sphinx are installed or
+        run: a release pypi.org does not hold costs a refusal, and no build."""
+        build = job(DOCS_WORKFLOW, "build")
+        steps = [
+            "- name: Check the tag names the version its commit states",
+            "- name: Check pypi.org holds the version the tag names",
+            "- name: Install the diagram tools",
+            '- run: pip install -e ".[docs]"',
+            "- run: sphinx-build",
+        ]
+        missing = [one for one in steps if one not in build]
+        assert not missing, f"the build has no {missing}"
+        order = [build.index(one) for one in steps]
+        assert order == sorted(order), "pypi.org is asked once the documentation is building"
+
+    @staticmethod
+    def pypi_answering(status: str, body: str) -> str:
+        """bash standing in for ``curl`` as pypi.org answers it: ``body`` written to the file
+        ``-o`` names, ``status`` printed as ``-w '%{http_code}'`` prints one, and the arguments
+        it was given kept in ``asked``. With no status no answer comes, as where pypi.org cannot
+        be reached: curl prints ``000`` and exits 6."""
+        answer = f"printf %s {shlex.quote(status)}" if status else "printf 000\n  return 6"
+        return (
+            "curl() {\n"
+            '  printf "%s\\n" "$*" >> asked\n'
+            '  while [ "$#" -gt 0 ]; do\n'
+            f'    if [ "$1" = -o ]; then printf %s {shlex.quote(body)} > "$2"; fi\n'
+            "    shift\n"
+            "  done\n"
+            f"  {answer}\n"
+            "}\n"
+        )
+
+    HELD = json.dumps(
+        {
+            "info": {"name": "ddd-tool", "version": "0.12.0"},
+            "urls": [
+                {"filename": "ddd_tool-0.12.0-py3-none-any.whl"},
+                {"filename": "ddd_tool-0.12.0.tar.gz"},
+            ],
+        }
+    )
+    """What pypi.org's json says of a version it holds, as it says it of 0.11.0: the version,
+    and its files under ``urls``."""
+
+    @pytest.mark.parametrize(
+        ("status", "body", "outcome"),
+        [
+            ("200", HELD, "held"),
+            ("404", '{"message": "Not Found"}', "not held"),
+            ("200", json.dumps({"info": {"version": "0.12.0"}, "urls": []}), "not held"),
+            ("503", "", "unknown"),
+            ("", "", "unknown"),
+        ],
+        ids=[
+            "a version pypi.org holds",
+            "a version pypi.org lacks",
+            "a version it lists with no file",
+            "pypi.org failing",
+            "pypi.org out of reach",
+        ],
+    )
+    def test_a_release_named_by_hand_is_published_only_where_pypi_org_holds_it(
+        self, tmp_path: Path, status: str, body: str, outcome: str
+    ) -> None:
+        """20:I3 by the route by hand. A release's run goes on once Publish has succeeded,
+        which says its version reached pypi.org; a dispatch naming a release's tag has no such
+        run, so the build asks pypi.org's json for the tag's version, run under bash here with
+        the answer faked. Where pypi.org holds a file of it, the build goes on. Where it holds
+        none, the build refuses: the documentation of a version pip cannot install would be
+        published, and crowned stable were it the newest. Its reader is sent where the steps of
+        a release send a release that never reached pypi.org: made again, its tag with it.
+        Where pypi.org gives no answer to read, nothing is known, and it refuses as well, to be
+        dispatched again."""
+        (tmp_path / "runner-temp").mkdir()
+        dispatched = started_by("workflow_dispatch", "refs/heads/master", tag="v0.12.0")
+        asking = self.asking_pypi()
+        done = run_step(
+            asking,
+            tmp_path,
+            stand_ins=self.pypi_answering(status, body),
+            **step_environment(asking, dispatched),
+            RUNNER_TEMP="runner-temp",
+        )
+        asked = (tmp_path / "asked").read_text(encoding="utf-8").splitlines()
+        assert [line.split()[-1] for line in asked] == [
+            "https://pypi.org/pypi/ddd-tool/0.12.0/json"
+        ], f"pypi.org was asked {asked}"
+        said = {
+            "held": ["pypi.org holds ddd-tool 0.12.0: 2 file(s)"],
+            "not held": [
+                "::error::pypi.org holds no file of ddd-tool 0.12.0: the release v0.12.0 has",
+                "::error::not reached it, so its documentation would describe a version pip",
+                "::error::cannot install. Only a release pypi.org holds is published by hand.",
+                "::error::Delete the release and its tag, fix master and create the release",
+                "::error::again, as the steps of a release say: its documentation is then",
+                "::error::published once its Publish succeeds.",
+            ],
+            "unknown": [
+                f"::error::pypi.org gave {status or 'no answer'} when asked for ddd-tool 0.12.0,"
+                " so whether",
+                "::error::it holds the release v0.12.0 is not known, and nothing is published.",
+                "::error::Run this dispatch again once pypi.org answers.",
+            ],
+        }[outcome]
+        assert done.returncode == (0 if outcome == "held" else 1), done.stdout + done.stderr
+        assert done.stdout.splitlines() == said
+
+    def test_the_workflow_says_which_release_is_published_by_hand_and_what_that_checks(
+        self,
+    ) -> None:
+        """20:I3 in the workflow's own words: the route by hand is for a release pypi.org holds,
+        and refuses before anything is built a version pypi.org holds no file of; what a
+        release's run reads besides, it cannot check; and a release pypi.org never received is
+        made again instead. The tag check says what it refuses, and no more."""
+        said = comments_of(DOCS_WORKFLOW)
+        claims = {
+            "which release": "A release pypi.org holds whose Publish no re-run can finish",
+            "what it refuses": "and refuses, before anything is built, a version pypi.org holds "
+            "no file of.",
+            "what it cannot check": "What it cannot check is what a release's run reads "
+            "besides, Publish's success, every job of it",
+            "a release pypi.org never received": "A release that never reached pypi.org is not "
+            "published by hand",
+            "the dispatch": "for a release pypi.org holds whose Publish no re-run can finish",
+            "why the build asks": "a dispatch naming a tag has no run of Publish to read, so it "
+            "asks pypi.org's json for the version the tag names",
+            "what would crown it": "which the site's version index would crown stable were it the "
+            "newest",
+            "what the tag check refuses": "this is what refuses one naming a version its commit "
+            "does not state, whose documentation would be published under another version's name",
+        }
+        missing = [what for what, claim in claims.items() if claim not in said]
+        assert not missing, f"docs.yml no longer says {missing}"
+        assert "every check a release's run makes" not in said
+        assert "does not state - documentation of a version PyPI never received" not in said
+
+    def test_the_changelog_says_which_release_is_published_by_hand(self) -> None:
+        """20:I3 in the entry, and in the opening's item naming it: what the route by hand
+        refuses, and what becomes of a release pypi.org never received."""
+        said = flattened(UNRELEASED)
+        claims = {
+            "the entry, what it refuses": "and refuses, before anything is built, a version "
+            "pypi.org holds no file of.",
+            "the entry, a release pypi.org never received": "A release that never reached "
+            "pypi.org is not published so: it is deleted with its tag and created again, as the "
+            "developer page's steps of a release say.",
+            "the opening's item": "naming the release's tag as `tag`, which refuses a version "
+            "pypi.org holds no file of; a release that never reached pypi.org is deleted with its "
+            "tag and created again.",
+        }
+        missing = [what for what, claim in claims.items() if claim not in said]
+        assert not missing, f"the changelog no longer says {missing}"
+        assert "through the checks a release's run makes" not in said
+
+    def test_a_release_named_by_hand_lands_under_its_tag(
+        self, tmp_path: Path, git: dict[str, str]
+    ) -> None:
+        """The deploy job's steps for a dispatch from master naming a release's tag, over the
+        site a release finds: it lands as a release Publish published does - under its tag, the
+        index crowning it - and the commit saying so names the commit the tag names, not
+        master's, which the dispatch ran on."""
+        origin = self.site(tmp_path)
+        dispatched = started_by("workflow_dispatch", "refs/heads/master", tag="v0.12.0")
+        done = self.publish(self.workspace(tmp_path, origin, "release"), dispatched, git)
+        assert done.returncode == 0, done.stdout + done.stderr
+        held = self.git_in(origin, "ls-tree", "--name-only", "gh-pages").split()
+        assert "v0.12.0" in held, f"the release is not published under its tag: the site is {held}"
+        assert self.git_in(origin, "show", "gh-pages:v0.12.0/index.html") == "release\n"
+        assert self.git_in(origin, "show", "gh-pages:latest/index.html") == "latest as it was\n"
+        assert json.loads(self.git_in(origin, "show", "gh-pages:versions.json")) == {
+            "stable": "v0.12.0",
+            "versions": ["latest", "v0.12.0", "v0.11.0"],
+        }
+        assert self.git_in(origin, "log", "-1", "--format=%s", "gh-pages") == (
+            f"docs: publish v0.12.0 from {TAGGED}\n"
+        )
+
+    @staticmethod
+    def publishing_this_documentation() -> str:
+        """The developer page's section on the site, its line breaks flattened."""
+        page = PAGES["docs/developer_documentation.rst"]
+        section = page.split("\nPublishing this documentation\n", 1)[1]
+        return flattened(section.split("\n.. _publishing-a-release:", 1)[0])
+
+    def test_the_page_says_a_release_s_documentation_waits_for_publish(self) -> None:
+        """20:I3 where a maintainer reads it: what deploys, why a release waits for Publish
+        and what not waiting cost, what starts a release's run and what it builds, what a
+        failed Publish costs, which release is published by hand and what that run checks and
+        cannot, and what writes a version's directory."""
+        said = self.publishing_this_documentation()
+        claims = {
+            "what deploys": "deploys on a push to ``master`` and for a release - the release "
+            "once ``publish.yml`` has published it",
+            "why a release waits": "a release can be one Publish refuses",
+            "what not waiting cost": "became the version its root redirects to",
+            "what a release starts": "the release starts no documentation run",
+            "when a release's run goes on": "builds and deploys only if Publish's run was a "
+            "release's and succeeded",
+            "what it builds": "from the commit the release's tag names, and under the tag",
+            "what an older release still does": "GitHub runs a release's workflows from its tag, "
+            "so that commit's own ``docs.yml`` still publishes it on the release event",
+            "what re-run publishes a failed release": "with *Re-run failed jobs*, which runs "
+            "again only the jobs that failed",
+            "why re-running every job cannot": "*Re-run all jobs* cannot pass once the release is "
+            "on PyPI",
+            "which release is published by hand": "A release pypi.org holds whose Publish no "
+            "re-run can finish",
+            "what publishes a release no re-run can finish": "is published by hand: run "
+            "*Documentation* from ``master`` with the release's tag as ``tag``",
+            "what that run builds and refuses": "builds the commit the tag names, refuses a tag "
+            "that is not ``v`` followed by the version ``pyproject.toml`` states at that commit, "
+            "as Publish does",
+            "what it asks pypi.org": "and refuses, before anything is built, a version pypi.org "
+            "holds no file of, read off the index's json",
+            "what it cannot check": "What it cannot check is what a release's run reads "
+            "besides, Publish's success, every job of it",
+            "what that costs": "a release whose ``.vsix`` was never attached is published all "
+            "the same",
+            "a release pypi.org never received": "A release that never reached pypi.org is not "
+            "published by hand",
+            "what is done with one": "it is deleted with its tag and created again",
+            "what writes a version": "that release, once Publish has published it",
+            "what rewrites one": "only by a re-run of that release's run, or by a dispatch "
+            "naming its tag",
+            "what rebuilds one": "nothing rebuilds a released version but a re-run of that "
+            "release's run, or a dispatch naming its tag",
+            "what a dispatch replaces": "replaces the directory whole, so that a dispatch naming "
+            "the wrong tag rewrites that release's documentation",
+            "what the deploy job names": "the Publish run it waits for",
+            "why the Publish run is read": "a workflow called Publish in a pull request from a "
+            "fork completes as well",
+        }
+        missing = [what for what, claim in claims.items() if claim not in said]
+        assert not missing, f"the developer page no longer says {missing}"
+        assert "a published release" not in said, "the page still has a release deploy itself"
+        assert "every check a release's run makes" not in said, (
+            "the page still has the route by hand make every check a release's run makes"
+        )
+        assert "nothing rebuilds a released version." not in said, (
+            "the page still has nothing rebuild a released version"
+        )
+
+    def test_the_workflow_says_which_runs_write_a_release_s_directory_again(self) -> None:
+        """A release's directory is written once Publish has published it, and again only by a
+        re-run of that release's run or by a dispatch naming its tag, which builds the tag's
+        commit and replaces the directory whole. The workflow said nothing else writes it again,
+        which a dispatch naming the wrong tag would make untrue in silence."""
+        said = comments_of(DOCS_WORKFLOW)
+        claims = {
+            "what writes it again": "which is written again only by a re-run of that release's "
+            "run, or by a dispatch naming its tag (below), which builds the tag's commit and "
+            "replaces the directory whole",
+            "what a wrong tag costs": "so a dispatch naming the wrong tag rewrites that release's "
+            "documentation",
+        }
+        missing = [what for what, claim in claims.items() if claim not in said]
+        assert not missing, f"docs.yml no longer says {missing}"
+        assert "nothing else writes to that directory again" not in said
+
+    def group(self, context: dict[str, Any]) -> tuple[str, bool]:
+        """The concurrency group a run is put in over ``context``, and whether it cancels the
+        run going in it."""
+        top = DOCS_WORKFLOW.split("\nconcurrency:\n", 1)[1]
+        block = re.split(r"\n(?=\S)", top, maxsplit=1)[0] + "\n"
+        group, cancels = setting(block, "group", 2), setting(block, "cancel-in-progress", 2)
+        assert group is not None and cancels is not None, "the workflow has no concurrency group"
+        return text_of(evaluated(group, context)), truthy(evaluated(cancels, context))
+
+    @pytest.mark.parametrize(
+        "release",
+        [completed(), started_by("workflow_dispatch", "refs/heads/master", "v0.12.0", "45")],
+        ids=["a release Publish published", "a release named by hand"],
+    )
+    def test_a_release_s_run_is_alone_in_its_group(self, release: dict[str, Any]) -> None:
+        """20:M5. GitHub keeps one run going and one waiting in a concurrency group, and cancels
+        the waiting one when another arrives. A release's run waiting behind master's was
+        therefore cancelled by the next push to master, with nothing red and no directory for
+        the release. Alone in a group of its own, a release's run never waits, and so is never
+        the waiting run anything replaces - not master's, not another release's, not a re-run
+        of its own Publish - whether Publish's completion started it or a dispatch naming its
+        tag did."""
+        group, cancels = self.group(release)
+        others = {
+            self.group(other)[0]
+            for other in (
+                started_by("push", "refs/heads/master"),
+                started_by("workflow_dispatch", "refs/heads/master"),
+                started_by("workflow_dispatch", "refs/heads/feature"),
+                started_by("pull_request", "refs/pull/5/merge"),
+                started_by("workflow_dispatch", "refs/heads/master", "v0.12.0", "46"),
+                completed(run_id="43"),
+                completed(head_branch="v0.11.1", run_id="44"),
+            )
+        }
+        assert group not in others, f"a release's run waits in {group} with other runs"
+        assert not cancels, "a release's run cancels the run going in its group"
+
+    def test_master_s_runs_still_queue_and_a_pull_request_s_are_superseded(self) -> None:
+        """What did not change: master's deploys wait behind one another, so that two never
+        push at once, and a pull request's newer build replaces the one it supersedes."""
+        queued = ("docs-publish", False)
+        assert self.group(started_by("push", "refs/heads/master")) == queued
+        assert self.group(started_by("workflow_dispatch", "refs/heads/master")) == queued
+        assert self.group(started_by("pull_request", "refs/pull/5/merge")) == (
+            "docs-refs/pull/5/merge",
+            True,
+        )
+
+    @pytest.mark.parametrize(
+        ("first", "directory", "versions"),
+        [
+            (started_by("push", "refs/heads/master"), "latest", ["latest", "v0.12.0", "v0.11.0"]),
+            (
+                completed(head_branch="v0.11.1", run_id="43"),
+                "v0.11.1",
+                ["latest", "v0.12.0", "v0.11.1", "v0.11.0"],
+            ),
+        ],
+        ids=["master's", "another release's"],
+    )
+    def test_a_deploy_the_branch_moved_under_publishes_over_what_it_now_holds(
+        self,
+        tmp_path: Path,
+        git: dict[str, str],
+        first: dict[str, Any],
+        directory: str,
+        versions: list[str],
+    ) -> None:
+        """20:M5's second half. With a release's run waiting in no group, its deploy and
+        another can run at once, each holding ``gh-pages`` as its checkout found it: the second
+        to push is refused, and a merge would not do, since both rewrote ``versions.json`` and
+        the root redirect. Both deploys check the site out here before either pushes, and the
+        second publishes over what the first left - the first's directory kept, the index
+        rewritten over both, and the branch's history unbroken."""
+        origin = self.site(tmp_path)
+        release = self.workspace(tmp_path, origin, "release")
+        other = self.workspace(tmp_path, origin, "other")
+        landed = self.publish(other, first, git)
+        assert landed.returncode == 0, landed.stdout + landed.stderr
+        done = self.publish(release, completed(), git)
+        assert done.returncode == 0, done.stdout + done.stderr
+        assert "attempt 1: the push was refused" in done.stdout, "the branch never moved"
+        assert json.loads(self.git_in(origin, "show", "gh-pages:versions.json")) == {
+            "stable": "v0.12.0",
+            "versions": versions,
+        }
+        assert self.git_in(origin, "show", f"gh-pages:{directory}/index.html") == "other\n"
+        assert self.git_in(origin, "show", "gh-pages:v0.12.0/index.html") == "release\n"
+        published = self.git_in(origin, "log", "--format=%s", "gh-pages").splitlines()
+        assert published[0] == f"docs: publish v0.12.0 from {TAGGED}"
+        assert published[1].startswith(f"docs: publish {directory} from ")
+
+    def test_a_push_refused_every_time_fails_saying_so(
+        self, tmp_path: Path, git: dict[str, str]
+    ) -> None:
+        """Taking the branch again is for a branch that moved: a push the remote refuses every
+        time - a token that may not write, a protected branch - is tried five times, and the
+        run then fails saying what happened, with the site as it was."""
+        origin = self.site(tmp_path)
+        hook = origin / "hooks" / "pre-receive"
+        hook.write_bytes(b"#!/bin/sh\necho 'refused by the test'\nexit 1\n")
+        hook.chmod(0o755)
+        done = self.publish(self.workspace(tmp_path, origin, "release"), completed(), git)
+        assert done.returncode == 1, done.stdout + done.stderr
+        attempts = re.findall(r"^attempt (\d+): the push was refused", done.stdout, re.M)
+        assert attempts == ["1", "2", "3", "4", "5"], done.stdout
+        assert "::error::gh-pages refused the push of v0.12.0 five times" in done.stdout
+        assert "Nothing of v0.12.0 is published" in done.stdout
+        held = self.git_in(origin, "ls-tree", "--name-only", "gh-pages").split()
+        assert "v0.12.0" not in held, f"a refused push published something: {held}"
+
+    def test_the_page_says_a_push_to_master_cannot_cancel_a_release_s_run(self) -> None:
+        """20:M5 where a maintainer reads it, beside what a release's documentation does: what
+        GitHub does with a group's waiting run, what that cost a release, what holds now, and
+        what two deploys at once do."""
+        said = self.publishing_this_documentation()
+        claims = {
+            "what holds": "A release's run is alone in a concurrency group of its own, so a push "
+            "to ``master`` cannot cancel it.",
+            "what GitHub does": "cancels the waiting one when another arrives",
+            "why master's may queue": "``master``'s runs share a group, where that costs nothing",
+            "what queueing cost a release": "a release's run waiting there was cancelled by the "
+            "next merge",
+            "what a dispatch off master costs": "A dispatch on another branch naming no tag waits "
+            "in ``master``'s group as well, and deploys nothing, so when it replaces ``master``'s "
+            "waiting run, ``latest`` stays a push behind until the next push",
+            "what follows": "A release's deploy and ``master``'s can therefore run at once",
+            "what a refused push does": "puts its own directory back on it, rewrites the index "
+            "from that, and pushes again",
+        }
+        missing = [what for what, claim in claims.items() if claim not in said]
+        assert not missing, f"the developer page no longer says {missing}"
 
     def test_the_deployment_is_read_back_from_the_site_it_published_to(self) -> None:
         """The branch is the site, and a push that lands is still not proof that it is served.
@@ -3784,6 +5176,23 @@ class TestPublishedDocumentation:
         assert "git -C site push origin gh-pages" in DOCS_WORKFLOW, (
             "the workflow no longer publishes by pushing the branch Pages serves"
         )
+
+    def test_the_workflow_says_why_the_branch_needs_its_nojekyll(self) -> None:
+        """20:M12. The comment beside ``.nojekyll`` said that an artifact this workflow uploaded
+        was served without Jekyll, and that the file was written so that the Pages source could
+        move to the branch. The source has moved: Pages serves the branch, the workflow uploads
+        no artifact Pages serves, and the file is what keeps Jekyll off the site."""
+        said = comments_of(DOCS_WORKFLOW)
+        claims = {
+            "why it is needed": "Pages serves this branch, so the .nojekyll at its root is what "
+            "keeps Jekyll off every version the branch holds",
+            "what would not notice": "the read-back below asks for a page and the version index, "
+            "and would not notice its loss",
+        }
+        missing = [what for what, claim in claims.items() if claim not in said]
+        assert not missing, f"docs.yml no longer says {missing}"
+        assert "currently uploads" not in said
+        assert "touch site/.nojekyll" in uncommented(DOCS_WORKFLOW)
 
 
 class TestTheVersionIndexOfTheSite:
@@ -3915,33 +5324,303 @@ def uncommented(text: str) -> str:
     return "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
 
 
+def comments_of(text: str) -> str:
+    """What a workflow, a requirements file or a manifest says in its comments, as one line of
+    prose: each comment line without its ``#``, the lines flattened as a page's are."""
+    said = [line.lstrip()[1:] for line in text.splitlines() if line.lstrip().startswith("#")]
+    return flattened(" ".join(said)).strip()
+
+
 def step(job_text: str, name: str) -> str:
     """One step of a job, from its ``- name:`` line to the next step."""
     assert f"- name: {name}\n" in job_text, f"the job has no step called {name}"
     return re.split(r"\n      - ", job_text.split(f"- name: {name}\n", 1)[1], maxsplit=1)[0]
 
 
-def run_step(step_text: str, cwd: Path, **variables: str) -> subprocess.CompletedProcess[str]:
-    """A step's ``run: |`` script, run the way the runner runs one: ``bash -e``, in ``cwd``.
+def run_step(
+    step_text: str, cwd: Path, *, stand_ins: str = "", **variables: str
+) -> subprocess.CompletedProcess[str]:
+    """A step's ``run:`` script, a ``|`` block or a single line, run the way the runner runs
+    one: ``bash -e``, in ``cwd``.
 
     The variables are exported by the script itself rather than handed over in the environment
     of the process, so that a bash that does not inherit it - WSL's, on windows - sees them too.
-    ``python3`` is this interpreter: the runner's own is what a step calls by that name, and a
-    windows machine may have none by it.
+    ``python3`` and ``python`` are this interpreter: the runner's own is what a step calls
+    ``python3``, a job's setup-python is what it calls ``python``, and a windows machine may
+    have neither by those names. ``stand_ins`` is bash defining functions that stand in for the
+    programs a step calls, ``curl`` asking an index, say: bash runs a function before a program
+    of its name.
     """
-    block = re.search(r"^        run: \|\n((?: {10}.*\n|\n)*)", step_text + "\n", re.M)
+    block = re.search(r"^        run: (?:\|\n((?: {10}.*\n|\n)*)|(.+)\n)", step_text + "\n", re.M)
     assert block is not None, "the step runs no script"
+    script = block.group(2) + "\n" if block.group(1) is None else textwrap.dedent(block.group(1))
     bash = shutil.which("bash")
     assert bash is not None, "the workflow's scripts are bash, so bash is needed to run them"
     exports = "".join(f"export {name}={shlex.quote(value)}\n" for name, value in variables.items())
-    python3 = f'python3() {{ {shlex.quote(Path(sys.executable).as_posix())} "$@"; }}\n'
+    interpreter = shlex.quote(Path(sys.executable).as_posix())
+    pythons = f'python3() {{ {interpreter} "$@"; }}\npython() {{ {interpreter} "$@"; }}\n'
     return subprocess.run(
-        [bash, "-e", "-c", python3 + exports + textwrap.dedent(block.group(1))],
+        [bash, "-e", "-c", pythons + stand_ins + exports + script],
         cwd=cwd,
         capture_output=True,
         text=True,
         check=False,
     )
+
+
+def steps_of(job_text: str) -> list[str]:
+    """Every step of a job in order, each from the line after its ``- `` to the next step."""
+    return re.split(r"^      - ", job_text.split("\n    steps:\n", 1)[1], flags=re.M)[1:]
+
+
+def setting(text: str, key: str, indent: int) -> str | None:
+    """The value of ``key`` at ``indent`` spaces of a workflow's text - a plain one as written, a
+    folded one (``>-``) joined as YAML joins it - or None where the key is not set."""
+    pad = " " * indent
+    found = re.search(
+        rf"^{pad}{re.escape(key)}: *(?:>-\n((?:{pad}  .*\n)+)|(.+)\n)", text + "\n", re.M
+    )
+    if found is None:
+        return None
+    if found.group(1) is None:
+        return found.group(2).strip()
+    return " ".join(line.strip() for line in found.group(1).splitlines())
+
+
+def events(workflow: str) -> dict[str, str]:
+    """The events a workflow runs on, each with the lines configuring it."""
+    block = re.split(r"\n(?=\S)", workflow.split("\non:\n", 1)[1], maxsplit=1)[0]
+    found = re.split(r"^  ([a-z_]+):", block, flags=re.M)
+    return dict(zip(found[1::2], found[2::2], strict=True))
+
+
+CONTEXTS = frozenset({"github", "inputs", "steps", "needs", "env", "vars", "matrix", "runner"})
+"""The contexts an expression may read: a word naming none of them - ``true``, a function this
+reader does not know - is refused, rather than read as a property nothing holds."""
+
+JSON_NUMBER = re.compile(r"-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?")
+
+
+def truthy(value: Any) -> bool:
+    """GitHub's truth: null, false, 0 and the empty string are false, and nothing else is."""
+    return value not in (None, False, 0, "")
+
+
+def text_of(value: Any) -> str:
+    """A value as GitHub writes it into a string: null as nothing, a boolean in lower case."""
+    if value is None:
+        return ""
+    return str(value).lower() if isinstance(value, bool) else str(value)
+
+
+def number_of(value: Any) -> float | None:
+    """A value as GitHub turns one into a number to compare it with a value of another type:
+    null and the empty string are 0, a boolean 1 or 0, a string the number it spells; None
+    stands for NaN, which is equal to nothing."""
+    if value is None or value == "":
+        return 0.0
+    if isinstance(value, bool | int | float):
+        return float(value)
+    if isinstance(value, str) and JSON_NUMBER.fullmatch(value.strip()):
+        return float(value)
+    return None
+
+
+def equal(left: Any, right: Any) -> bool:
+    """``==`` as GitHub has it: two strings whatever their case, two values of one type as they
+    are, and values of two types as numbers."""
+    if isinstance(left, str) and isinstance(right, str):
+        return left.casefold() == right.casefold()
+    if type(left) is type(right):
+        return bool(left == right)
+    number = number_of(left)
+    return number is not None and number == number_of(right)
+
+
+def ordered(left: Any, operator: str, right: Any) -> bool:
+    """``<``, ``<=``, ``>`` or ``>=`` as GitHub has them: both values read as numbers, the way
+    ``==`` reads values of two types, and NaN in no order with anything. Two strings, which it
+    compares otherwise, are refused rather than read wrong."""
+    assert not (isinstance(left, str) and isinstance(right, str)), f"{left!r} {operator} {right!r}"
+    first, second = number_of(left), number_of(right)
+    if first is None or second is None:
+        return False
+    return {
+        "<": first < second,
+        "<=": first <= second,
+        ">": first > second,
+        ">=": first >= second,
+    }[operator]
+
+
+class Expression:
+    """A GitHub Actions expression, evaluated over a context as the runner evaluates one.
+
+    It reads what the workflows write - string and number literals, the contexts' dotted names,
+    ``!``, ``<``, ``<=``, ``>``, ``>=``, ``==``, ``!=``, ``&&``, ``||``, parentheses,
+    ``format()`` and ``startsWith()`` - and refuses anything else, so that a condition it cannot
+    read fails the test reading it instead of being read wrong. As GitHub documents the
+    language: the comparisons bind tighter than ``==`` and ``!=``, ``&&`` tighter than ``||``,
+    both of which evaluate to one of their operands, and a property the context does not hold
+    is null.
+    """
+
+    TOKEN = re.compile(
+        r"\s*('(?:[^']|'')*'|==|!=|<=|>=|&&|\|\||[!(),<>]|\d+(?:\.\d+)?|[A-Za-z_][\w.-]*)"
+    )
+
+    def __init__(self, text: str, context: dict[str, Any]) -> None:
+        self.text, self.context, self.at = text.strip(), context, 0
+        self.tokens: list[str] = []
+        position = 0
+        while position < len(self.text):
+            found = self.TOKEN.match(self.text, position)
+            assert found is not None, f"cannot read {self.text[position:]!r} in {self.text!r}"
+            self.tokens.append(found.group(1))
+            position = found.end()
+
+    def value(self) -> Any:
+        result = self.alternative()
+        assert self.at == len(self.tokens), f"cannot read {self.tokens[self.at :]} in {self.text!r}"
+        return result
+
+    def peek(self) -> str | None:
+        return self.tokens[self.at] if self.at < len(self.tokens) else None
+
+    def take(self) -> str:
+        assert self.at < len(self.tokens), f"{self.text!r} ends where something more is expected"
+        self.at += 1
+        return self.tokens[self.at - 1]
+
+    def alternative(self) -> Any:
+        left = self.conjunction()
+        while self.peek() == "||":
+            self.take()
+            right = self.conjunction()
+            left = left if truthy(left) else right
+        return left
+
+    def conjunction(self) -> Any:
+        left = self.comparison()
+        while self.peek() == "&&":
+            self.take()
+            right = self.comparison()
+            left = right if truthy(left) else left
+        return left
+
+    def comparison(self) -> Any:
+        left = self.relation()
+        while self.peek() in ("==", "!="):
+            same = self.take() == "=="
+            left = equal(left, self.relation()) == same
+        return left
+
+    def relation(self) -> Any:
+        left = self.negation()
+        while self.peek() in ("<", "<=", ">", ">="):
+            operator = self.take()
+            left = ordered(left, operator, self.negation())
+        return left
+
+    def negation(self) -> Any:
+        if self.peek() == "!":
+            self.take()
+            return not truthy(self.negation())
+        return self.operand()
+
+    def operand(self) -> Any:
+        token = self.take()
+        if token == "(":
+            inner = self.alternative()
+            assert self.take() == ")", f"a parenthesis is left open in {self.text!r}"
+            return inner
+        if token.startswith("'"):
+            return token[1:-1].replace("''", "'")
+        if token[0].isdigit():
+            return float(token)
+        if self.peek() == "(":
+            assert token in ("format", "startsWith"), f"{token}() is not read, in {self.text!r}"
+            self.take()
+            arguments = [self.alternative()]
+            while self.peek() == ",":
+                self.take()
+                arguments.append(self.alternative())
+            assert self.take() == ")", f"a call is left open in {self.text!r}"
+            if token == "startsWith":
+                # Case aside, as every comparison of strings GitHub makes.
+                text, start = (text_of(argument).casefold() for argument in arguments)
+                return text.startswith(start)
+            return re.sub(
+                r"\{\{|\}\}|\{(\d+)\}",
+                lambda found: (
+                    found.group(0)[0]
+                    if found.group(1) is None
+                    else text_of(arguments[1 + int(found.group(1))])
+                ),
+                text_of(arguments[0]),
+            )
+        root, *path = token.split(".")
+        assert root in CONTEXTS, f"{token} is not read here, in {self.text!r}"
+        found: Any = self.context.get(root)
+        for key in path:
+            found = found.get(key) if isinstance(found, dict) else None
+        return found
+
+
+def evaluated(text: str, context: dict[str, Any]) -> Any:
+    """A workflow value over ``context``: an expression standing alone keeps its type, as an
+    ``if:`` or a ``cancel-in-progress:`` has it, and one inside other text is written into it."""
+    alone = re.fullmatch(r"\$\{\{(.*)\}\}", text.strip(), re.S)
+    if alone is not None and "${{" not in alone.group(1):
+        return Expression(alone.group(1), context).value()
+    return re.sub(
+        r"\$\{\{(.*?)\}\}",
+        lambda found: text_of(Expression(found.group(1), context).value()),
+        text,
+        flags=re.S,
+    )
+
+
+def holds(condition: str | None, context: dict[str, Any]) -> bool:
+    """Whether an ``if:`` holds over ``context``: one written without ``${{ }}`` is an
+    expression all the same, and a job or a step with none runs."""
+    if condition is None:
+        return True
+    return truthy(
+        evaluated(condition if "${{" in condition else f"${{{{ {condition} }}}}", context)
+    )
+
+
+def job_runs(workflow: str, name: str, context: dict[str, Any]) -> bool:
+    """Whether a job of a workflow runs over ``context``: every job it needs ran, and its own
+    ``if:`` holds. GitHub reads a condition calling no status function as ``success() && (it)``,
+    which is what skips a job whose dependency was skipped; the reader above knows no status
+    function, so a condition calling one is refused rather than read without it."""
+    body = job(workflow, name)
+    needed = re.findall(r"[\w-]+", setting(body, "needs", 4) or "")
+    return all(job_runs(workflow, other, context) for other in needed) and holds(
+        setting(body, "if", 4), context
+    )
+
+
+def step_environment(step_text: str, context: dict[str, Any]) -> dict[str, str]:
+    """What a step runs with: the variables the runner sets for every step, from the run's
+    context, and the step's own ``env:``, evaluated over that context."""
+    github = context["github"]
+    variables = {
+        "GITHUB_EVENT_NAME": github["event_name"],
+        "GITHUB_REF": github["ref"],
+        "GITHUB_REF_NAME": github["ref_name"],
+        "GITHUB_SHA": github["sha"],
+        "GITHUB_RUN_ID": github["run_id"],
+        "GITHUB_REPOSITORY": "Sauci/ddd",
+    }
+    env = re.search(r"^        env:\n((?: {10}\S.*\n)+)", step_text + "\n", re.M)
+    for line in env.group(1).splitlines() if env is not None else []:
+        if not line.lstrip().startswith("#"):
+            name, value = line.strip().split(": ", 1)
+            variables[name] = text_of(evaluated(value, context))
+    return variables
 
 
 STAMPED = ("pyproject.toml", "src/ddd/__init__.py", "cmake/Ddd.cmake")
@@ -3975,15 +5654,16 @@ class TestTheDevelopmentBuild:
     more files, or with more code around the token, than it should.
     """
 
-    @pytest.fixture
-    def tree(self, tmp_path: Path) -> Path:
-        """A copy of the three files the stamp rewrites, stating ``RELEASE`` and no commit."""
+    @staticmethod
+    def stating(where: Path, version: str) -> Path:
+        """A copy of the three files the stamp rewrites in ``where``, stating ``version`` and no
+        commit."""
         spellings = {
-            "pyproject.toml": (r'^version = "[^"]*"$', f'version = "{RELEASE}"'),
-            "src/ddd/__init__.py": (r'^__version__ = "[^"]*"$', f'__version__ = "{RELEASE}"'),
+            "pyproject.toml": (r'^version = "[^"]*"$', f'version = "{version}"'),
+            "src/ddd/__init__.py": (r'^__version__ = "[^"]*"$', f'__version__ = "{version}"'),
             "cmake/Ddd.cmake": (
                 r'^set\(DDD_MODULE_VERSION "[^"]*"\)$',
-                f'set(DDD_MODULE_VERSION "{RELEASE}")',
+                f'set(DDD_MODULE_VERSION "{version}")',
             ),
         }
         for name, (pattern, spelled) in spellings.items():
@@ -3992,10 +5672,15 @@ class TestTheDevelopmentBuild:
             assert count == 1, f"{name} no longer states its version on a line of its own"
             # What a stamped tree's project table carries besides its version.
             text = re.sub(r'^Commit = "[^"]*"\n', "", text, flags=re.MULTILINE)
-            target = tmp_path / name
+            target = where / name
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(text, encoding="utf-8", newline="\n")
-        return tmp_path
+        return where
+
+    @pytest.fixture
+    def tree(self, tmp_path: Path) -> Path:
+        """A copy of the three files the stamp rewrites, stating ``RELEASE`` and no commit."""
+        return self.stating(tmp_path, RELEASE)
 
     @staticmethod
     def contents(tree: Path) -> dict[str, bytes]:
@@ -4057,13 +5742,58 @@ class TestTheDevelopmentBuild:
         assert Version("0.10.0.dev57") < Version("0.10.0")
 
     @pytest.mark.parametrize(
-        "version", ["0.11.0rc1", "0.10.1.dev3", "0.10.0.post1", "0.10.0+g0123abc", "v0.10.0", ""]
+        "version",
+        [
+            "0.11.0a1",
+            "0.11.0b1",
+            "0.11.0rc1.dev3",
+            "0.10.1.dev3",
+            "0.10.0.post1",
+            "0.10.0+g0123abc",
+            "v0.10.0",
+            "",
+        ],
     )
     def test_a_version_with_no_next_patch_is_refused(self, version: str) -> None:
-        """A release candidate has two next versions, and the others are nothing a commit of
-        master states; guessing would publish a build that sorts where nobody expects it."""
-        with pytest.raises(ValueError, match="only a version of numbers alone"):
+        """None of these is anything a commit of master states - an alpha or a beta, a
+        development, post or local release - and guessing would publish a build that sorts where
+        nobody expects it."""
+        with pytest.raises(ValueError, match=r"only a release, such as 0\.10\.0, or a candidate"):
             dev_version.next_development(version, 57)
+
+    @pytest.mark.parametrize(
+        ("candidate", "run", "development"),
+        [("0.12.0rc1", 57, "0.12.0rc2.dev57"), ("1.0rc9", 3, "1.0rc10.dev3")],
+    )
+    def test_a_candidate_is_followed_by_the_next_candidate_s_development_build(
+        self, candidate: str, run: int, development: str
+    ) -> None:
+        """Ruling B8-13. A candidate was refused, and every wheel ci builds is stamped: while
+        master stated one, the gui leg of every run failed, a pull request's included."""
+        assert dev_version.next_development(candidate, run) == development
+
+    def test_it_sorts_after_the_candidate_and_before_whatever_follows_it(self) -> None:
+        """A candidate has two next versions, its next candidate and its release, and the next
+        candidate's development build sorts before both, and after the candidate itself - where
+        ``0.12.0.dev57`` would sort before the candidate."""
+        development = Version(dev_version.next_development("0.12.0rc1", 57))
+        assert Version("0.12.0rc1") < development < Version("0.12.0rc2") < Version("0.12.0")
+        assert Version("0.12.0.dev57") < Version("0.12.0rc1")
+
+    def test_a_candidate_s_tree_is_stamped_as_the_next_candidate_s_build(self, tree: Path) -> None:
+        """The three spellings and the commit, as for a release's tree."""
+        for name in STAMPED:
+            text = (
+                (tree / name).read_text(encoding="utf-8").replace(f'"{RELEASE}"', f'"{RELEASE}rc1"')
+            )
+            (tree / name).write_text(text, encoding="utf-8", newline="\n")
+        assert dev_version.stamp(tree, "57", COMMIT) == "1.2.3rc2.dev57"
+        project = tomllib.loads((tree / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+        assert (project["version"], project["urls"]["Commit"]) == ("1.2.3rc2.dev57", COMMIT_URL)
+        package = (tree / "src" / "ddd" / "__init__.py").read_text(encoding="utf-8")
+        assert '__version__ = "1.2.3rc2.dev57"' in package.splitlines()
+        module = (tree / "cmake" / "Ddd.cmake").read_text(encoding="utf-8")
+        assert 'set(DDD_MODULE_VERSION "1.2.3rc2.dev57")' in module.splitlines()
 
     def test_the_three_spellings_and_the_commit_are_all_that_changes(self, tree: Path) -> None:
         """``ddd --version`` prints ``__version__``, the module compares that with its own by
@@ -4265,12 +5995,212 @@ class TestTheDevelopmentBuild:
         assert run_step(guard, tmp_path, COMMIT=COMMIT).returncode == 0
         assert build.index("carries the stamping script") < build.index("dev_version.py stamp")
 
-    def test_the_upload_is_this_runs_two_files(self, tmp_path: Path) -> None:
+    def test_the_gui_job_stamps_the_wheel_it_uploads_as_dev_build_stamps_its_own(
+        self, tree: Path
+    ) -> None:
+        """20:M16. The gui job uploads a wheel of every commit ci runs on, and it said it was the
+        last release. Its step runs the script on its own checkout with the run's number and the
+        commit it built - for a pull request, the merge it tests - so the tree it builds from
+        states the version dev-build's would, and names that commit."""
+        (tree / "tools").mkdir()
+        shutil.copyfile(ROOT / "tools" / "dev_version.py", tree / "tools" / "dev_version.py")
+        stamps = [
+            found
+            for found in steps_of(job(CI_WORKFLOW, "gui"))
+            if "name: Stamp the development version\n" in found
+        ]
+        assert len(stamps) == 1, "the gui job does not stamp the wheel it uploads"
+        ran = run_step(stamps[0], tree, GITHUB_RUN_NUMBER="57", GITHUB_SHA=COMMIT)
+        assert ran.returncode == 0, ran.stdout + ran.stderr
+        assert ran.stdout == "1.2.4.dev57\n"
+        project = tomllib.loads((tree / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+        assert (project["version"], project["urls"]["Commit"]) == ("1.2.4.dev57", COMMIT_URL)
+        package = (tree / "src" / "ddd" / "__init__.py").read_text(encoding="utf-8")
+        assert '__version__ = "1.2.4.dev57"' in package.splitlines()
+        module = (tree / "cmake" / "Ddd.cmake").read_text(encoding="utf-8")
+        assert 'set(DDD_MODULE_VERSION "1.2.4.dev57")' in module.splitlines()
+
+    def test_every_wheel_ci_builds_is_stamped_before_it_is_built(self) -> None:
+        """20:M16. Between releases ``master`` states the last release's version, so a wheel ci
+        built of it said it was that release - to ``ddd --version``, to the banner of every file
+        it generated, to the module's handshake and to pip - while holding every commit since.
+        Every job of ``ci.yml`` that builds a wheel stamps its checkout first, in every run in
+        which it builds one; Publish, building the release, never does."""
+        contexts = [
+            ci_run("push", "refs/heads/master"),
+            ci_run("pull_request", "refs/pull/5/merge"),
+            ci_run("workflow_dispatch", "refs/heads/feature"),
+            ci_run("push", "refs/heads/master", os="Windows"),
+            publish_run("release", "refs/tags/v0.12.0", called=True),
+        ]
+        built = []
+        for name in job_names(CI_WORKFLOW):
+            steps = steps_of(job(CI_WORKFLOW, name))
+            conditions = [setting(found, "if", 0) or setting(found, "if", 8) for found in steps]
+            stamps = [at for at, found in enumerate(steps) if "tools/dev_version.py stamp" in found]
+            for at, found in enumerate(steps):
+                if not re.search(r"^ *python -m build\b", found, re.M):
+                    continue
+                built.append(name)
+                for context in contexts:
+                    if holds(conditions[at], context):
+                        assert any(
+                            holds(conditions[stamp], context) for stamp in stamps if stamp < at
+                        ), f"{name} builds a wheel it has not stamped, in {context['github']}"
+        assert sorted(built) == ["dev-build", "gui"]
+        assert "dev_version" not in uncommented(PUBLISH_WORKFLOW)
+
+    def test_the_page_says_every_wheel_ci_builds_is_stamped_and_what_another_carries(
+        self,
+    ) -> None:
+        """20:M16, where the maintainer reads it: which wheels ci stamps, what that refuses, and
+        what a wheel built anywhere else says it is."""
+        said = flattened(PAGES["docs/developer_documentation.rst"])
+        claims = {
+            "the gui leg stamps": "On the ubuntu leg of the workflow's own runs it then stamps a "
+            "development version into its checkout, as ``dev-build`` stamps its own",
+            "what its wheel says": "under a version that says it is a build of that commit and "
+            "not a release",
+            "a candidate's number": "After a release candidate it is the next candidate's: after "
+            "``0.11.0rc1``, run 57 publishes ``0.11.0rc2.dev57``",
+            "where it sorts": "which sorts after the candidate and before both of what can "
+            "follow it, ``0.11.0rc2`` and ``0.11.0``",
+            "what is refused": "The script refuses a version it cannot number after: an alpha "
+            "or a beta, and a development, post or local release",
+            "a candidate's stamp": "A release candidate it numbers, so its stamp fails no job on "
+            "one.",
+            "the extension's version": "The extension's manifest states the version too, held "
+            "equal to ``__version__`` by a test, and ``0.12.0rc1`` is no semver version, which "
+            "semver would spell ``0.12.0-rc.1``",
+            "what npm does": "npm installs a manifest of that version as it is",
+            "what may fail": "whether vsce packages one is untried, so a candidate stated on "
+            "``master`` may still fail the ``extension`` job, in ci's own runs and in Publish's, "
+            "before anything is uploaded",
+            "every wheel ci builds": "Every wheel ci builds is stamped so, and no other.",
+            "the gui's number": "with ``dev-build``'s run number, and naming the commit it was "
+            "built from - for a pull request, the merge ``gui`` tests, where ``dev-build`` builds "
+            "the head",
+            "when the two differ": "Each is numbered after the version its own commit states: "
+            "the two are one on a push, and on a pull request they part only where its head and "
+            "the merge it is tested as state two versions - a branch cut before a release's "
+            "commit, say - and not on the release's own pull request, whose head and merge both "
+            "state the release.",
+            "a local build": "A wheel built anywhere else, by ``python -m build`` in a checkout, "
+            "carries the version its ``pyproject.toml`` states",
+            "master's version": "``master`` states the last release's until the next release "
+            "commit",
+            "what it says it is": "holds every commit since that release and says it is that "
+            "release",
+            "no commit": "its metadata names no commit",
+            "only the release": "Only the release's own build, from its tag, is the release.",
+            "the pages' section": "uploads the wheel as ``ddd-tool-<commit>``, stamped as a "
+            "development build of that commit",
+        }
+        missing = [what for what, claim in claims.items() if claim not in said]
+        assert not missing, f"the developer page no longer says {missing}"
+        assert "so a candidate on ``master`` fails no job" not in said
+        assert "numbered as ``dev-build``'s of the same run" not in said
+
+    def test_the_page_s_candidate_is_one_the_stamp_numbers_and_semver_refuses(self) -> None:
+        """The two spellings the page gives for the extension's manifest under a candidate, read
+        out of its sentence: the first is a candidate as ``tools/dev_version.py`` numbers one,
+        and so a version master may state, which ``__version__`` and the manifest then state
+        alike (``test_the_editor_extension_carries_the_same_version``); semver 2.0.0's own
+        grammar refuses it, and takes the second, which is the same version. A page naming
+        another candidate, or a spelling that is not one, fails here."""
+        said = flattened(PAGES["docs/developer_documentation.rst"])
+        found = re.search(
+            r"``([^`]+)`` is no semver version, which semver would spell ``([^`]+)``", said
+        )
+        assert found is not None, "the page no longer spells a candidate both ways"
+        candidate, spelled = found.groups()
+        assert dev_version.CANDIDATE.fullmatch(candidate), f"{candidate} is no candidate"
+        assert dev_version.next_development(candidate, 57).endswith(".dev57")
+        identifier = r"(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)"
+        semver = re.compile(
+            rf"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-{identifier}(?:\.{identifier})*)?"
+            r"(?:\+[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*)?"
+        )
+        assert semver.fullmatch(candidate) is None, f"semver takes {candidate}"
+        assert semver.fullmatch(spelled) is not None, f"semver refuses {spelled}"
+        assert Version(spelled) == Version(candidate), f"{spelled} is another version"
+
+    def test_the_two_builds_of_a_run_read_one_commit_on_a_push_alone(self) -> None:
+        """What the page says of the two wheels' numbers: ``dev-build`` stamps the commit it
+        names, a pull request's own head, and ``gui`` the commit the run checked out, the merge
+        it tests. On a push the two are one commit; on a pull request, two."""
+        named = re.search(r"^      COMMIT: (.+)$", job(CI_WORKFLOW, "dev-build"), re.M)
+        assert named is not None, "dev-build no longer names the commit it builds"
+        assert 'stamp "$GITHUB_RUN_NUMBER" "$COMMIT"' in job(CI_WORKFLOW, "dev-build")
+        stamping = [
+            found
+            for found in steps_of(job(CI_WORKFLOW, "gui"))
+            if "name: Stamp the development version\n" in found
+        ]
+        assert len(stamping) == 1, "the gui job does not stamp the wheel it uploads"
+        assert 'stamp "$GITHUB_RUN_NUMBER" "$GITHUB_SHA"' in stamping[0]
+        push = ci_run("push", "refs/heads/master")
+        assert text_of(evaluated(named.group(1), push)) == push["github"]["sha"]
+        request = ci_run("pull_request", "refs/pull/5/merge")
+        request["github"]["event"]["pull_request"]["head"]["sha"] = COMMIT
+        assert text_of(evaluated(named.group(1), request)) == COMMIT
+        assert request["github"]["sha"] != COMMIT
+
+    @pytest.mark.parametrize(
+        ("head", "merge", "one"),
+        [("0.12.0", "0.12.0", True), ("0.11.0", "0.12.0", False)],
+        ids=["the release's own pull request", "a branch cut before the release's commit"],
+    )
+    def test_a_pull_request_s_two_wheels_share_a_number_where_its_head_and_merge_agree(
+        self, tmp_path: Path, head: str, merge: str, one: bool
+    ) -> None:
+        """Each job's own stamp step, run on a tree of the commit it stamps: ``dev-build`` on the
+        head it checks out, ``gui`` on the merge it tests. Each numbers its wheel after the
+        version its tree states, so the two share a number where the head and the merge state
+        one version, as on the release's own pull request, and not where they state two, as on
+        a branch cut before the release's commit."""
+        builds = [
+            found
+            for found in steps_of(job(CI_WORKFLOW, "gui"))
+            if "name: Stamp the development version\n" in found
+        ]
+        assert len(builds) == 1, "the gui job does not stamp the wheel it uploads"
+        stamped = {}
+        for name, version, stamping, commit in (
+            (
+                "dev-build",
+                head,
+                step(job(CI_WORKFLOW, "dev-build"), "Stamp the development version"),
+                "COMMIT",
+            ),
+            ("gui", merge, builds[0], "GITHUB_SHA"),
+        ):
+            where = self.stating(tmp_path / name, version)
+            (where / "tools").mkdir()
+            shutil.copyfile(ROOT / "tools" / "dev_version.py", where / "tools" / "dev_version.py")
+            variables = {"GITHUB_RUN_NUMBER": "57", commit: COMMIT, "GITHUB_OUTPUT": "output"}
+            ran = run_step(stamping, where, **variables)
+            assert ran.returncode == 0, ran.stdout + ran.stderr
+            stamped[name] = tomllib.loads((where / "pyproject.toml").read_text(encoding="utf-8"))[
+                "project"
+            ]["version"]
+        assert stamped == {
+            "dev-build": dev_version.next_development(head, 57),
+            "gui": dev_version.next_development(merge, 57),
+        }
+        assert (stamped["dev-build"] == stamped["gui"]) is one
+
+    @pytest.mark.parametrize(
+        "version", ["0.10.1.dev57", "0.12.0rc2.dev57"], ids=["after a release", "after a candidate"]
+    )
+    def test_the_upload_is_this_runs_two_files(self, tmp_path: Path, version: str) -> None:
         check = step(job(CI_WORKFLOW, "dev-publish"), "Check what is about to be published")
         passed = run_step(
             check,
-            self.dist(tmp_path, WHEEL, SDIST),
-            VERSION="0.10.1.dev57",
+            self.dist(
+                tmp_path, f"ddd_tool-{version}-py3-none-any.whl", f"ddd_tool-{version}.tar.gz"
+            ),
+            VERSION=version,
             GITHUB_RUN_NUMBER="57",
         )
         assert passed.returncode == 0, passed.stdout + passed.stderr
@@ -4287,6 +6217,10 @@ class TestTheDevelopmentBuild:
             ("0.10.1.dev57", [WHEEL, SDIST, ".pypirc"]),
             ("0.10.1.dev57", [f"{WHEEL}/", SDIST]),
             ("0.10.1.dev57\n::add-mask::0.10.1.dev57", [WHEEL, SDIST]),
+            (
+                "0.12.0a2.dev57",
+                ["ddd_tool-0.12.0a2.dev57-py3-none-any.whl", "ddd_tool-0.12.0a2.dev57.tar.gz"],
+            ),
         ],
         ids=[
             "a wheel for a later run",
@@ -4295,6 +6229,7 @@ class TestTheDevelopmentBuild:
             "a hidden file",
             "a directory for a wheel",
             "a version spanning lines",
+            "an alpha's build, which the stamp never numbers",
         ],
     )
     def test_anything_else_is_refused_before_the_upload(
@@ -4470,6 +6405,17 @@ class TestTheCiRun:
         ]
         assert unskipped == [], f"these jobs would run during a hunt: {unskipped}"
 
+    @pytest.mark.parametrize("repeat", [1, 5], ids=["an ordinary dispatch", "a hunt"])
+    def test_a_dispatch_s_repeat_decides_what_runs(self, repeat: int) -> None:
+        """Read over a dispatch as the runner reads it: a repeat of 1, the default, is an ordinary
+        run, every job but the development builds, which publish nothing on a dispatch; above
+        1 it is a hunt, and only the gui legs run."""
+        context = ci_run("workflow_dispatch", "refs/heads/feature", repeat=repeat)
+        names = job_names(CI_WORKFLOW)
+        ran = [name for name in names if job_runs(CI_WORKFLOW, name, context)]
+        ordinary = [name for name in names if name not in ("dev-build", "dev-publish")]
+        assert ran == (["gui"] if repeat > 1 else ordinary)
+
     def test_the_job_s_name_carries_its_browser(self) -> None:
         """Two of the three legs share windows-latest, chromium and msedge: without the
         browser in its name, a run's job list would show two legs both called
@@ -4514,6 +6460,1104 @@ class TestTheCiRun:
         )
         config = (ROOT / "gui" / "playwright.config.ts").read_text(encoding="utf-8")
         assert 'testIgnore: process.env.DDD_MAPPED_DRIVE ? [] : ["**/mapped.spec.ts"]' in config
+
+
+def publish_run(
+    event_name: str, ref: str, target: str = "", run_id: str = "43", *, called: bool = False
+) -> dict[str, Any]:
+    """The context a run of Publish gives its jobs, on the ubuntu runner they all run on - or,
+    ``called``, the context it gives ``ci.yml``, which it calls. GitHub documents a called
+    workflow as given its caller's ``github`` context, with the caller's name in
+    ``github.workflow``, and as ``inputs`` only those the call passes, which Publish passes none
+    of. A dispatch of Publish has its ``target``; a release, no input at all."""
+    return {
+        "github": {
+            "event_name": event_name,
+            "ref": ref,
+            "ref_name": ref.split("/", 2)[2],
+            "sha": TAGGED,
+            "run_id": run_id,
+            "workflow": "Publish",
+            "repository": "Sauci/ddd",
+            "event": {},
+        },
+        "runner": {"os": "Linux"},
+        "inputs": {"target": target} if event_name == "workflow_dispatch" and not called else {},
+    }
+
+
+def ci_run(
+    event_name: str, ref: str, run_id: str = "44", os: str = "Linux", repeat: int = 1
+) -> dict[str, Any]:
+    """The context a run of ``ci.yml`` started by an event of its own gives a job on one runner:
+    its own name in ``github.workflow``, as its ``name:`` gives it, a dispatch's ``repeat``, by
+    default its default, and a pull request from a branch of this repository. The name is read,
+    not written here: ``ci.yml``'s expressions compare it with a literal to tell its own runs
+    from Publish's, so a rename the literals do not follow changes what its own runs do - the
+    ``gui`` job's wheel, the cancelling of a superseded run - and fails the tests of both."""
+    named = re.search(r"^name: (.+)$", CI_WORKFLOW, re.M)
+    assert named is not None, "ci.yml gives itself no name"
+    context: dict[str, Any] = {
+        "github": {
+            "event_name": event_name,
+            "ref": ref,
+            "ref_name": ref.split("/", 2)[2],
+            "sha": MASTER_HEAD,
+            "run_id": run_id,
+            "workflow": named.group(1),
+            "repository": "Sauci/ddd",
+            "event": {},
+        },
+        "runner": {"os": os},
+        "inputs": {"repeat": repeat} if event_name == "workflow_dispatch" else {},
+    }
+    if event_name == "pull_request":
+        head = {"repo": {"full_name": "Sauci/ddd"}}
+        context["github"]["event"] = {"pull_request": {"head": head}}
+    return context
+
+
+PUBLISH_RUNS = {
+    "a release": ("release", "refs/tags/v0.12.0", ""),
+    "a dry run": ("workflow_dispatch", "refs/heads/master", "testpypi"),
+    "a dispatch from a release's tag": ("workflow_dispatch", "refs/tags/v0.12.0", "pypi"),
+}
+"""The runs Publish makes, each by its event, its ref and the target a dispatch is given."""
+
+
+class TestWhatPublishRunsBeforeItUploads:
+    """20:M4. Publish ran the python suite again before it built a release, on one of ci's six
+    cells, and none of the page's own gates. It now calls ``ci.yml`` whole, on the release's
+    commit, and builds once every job of it has passed; then it installs what it built, and
+    checks the installation before anything is handed on. The conditions are read over the
+    context GitHub documents a called workflow as given (``publish_run(..., called=True)``), as
+    the runner evaluates them."""
+
+    @staticmethod
+    def concurrency(context: dict[str, Any]) -> tuple[Any, Any]:
+        """``ci.yml``'s concurrency group, and whether it cancels the run in progress: an
+        expression evaluated, or a literal ``true`` or ``false`` read as YAML reads it."""
+        top = CI_WORKFLOW.split("\nconcurrency:\n", 1)[1].split("\n\n", 1)[0] + "\n"
+        group, cancels = setting(top, "group", 2), setting(top, "cancel-in-progress", 2)
+        assert group is not None and cancels is not None, "ci.yml has no concurrency group"
+        literal = {"true": True, "false": False}.get(cancels)
+        cancelling = evaluated(cancels, context) if literal is None else literal
+        return evaluated(group, context), cancelling
+
+    def test_a_release_calls_ci_whole_before_its_build(self) -> None:
+        """Called rather than copied, so that the two cannot drift; with no inputs, so that no
+        run of Publish is a hunt; and waited for by the build."""
+        call = job(PUBLISH_WORKFLOW, "ci")
+        assert setting(call, "uses", 4) == "./.github/workflows/ci.yml"
+        assert "\n    with:" not in call, "Publish passes ci.yml inputs, which make a hunt"
+        assert "workflow_call" in events(CI_WORKFLOW), "ci.yml cannot be called"
+        assert setting(job(PUBLISH_WORKFLOW, "build"), "needs", 4) == "ci"
+
+    @pytest.mark.parametrize(
+        ("event_name", "ref", "target"), PUBLISH_RUNS.values(), ids=list(PUBLISH_RUNS)
+    )
+    def test_every_job_of_ci_runs_for_publish_but_the_development_builds(
+        self, event_name: str, ref: str, target: str
+    ) -> None:
+        """Each gate is a job of Publish's run, and its build waits on all of them: a job a
+        release skips counts as passed, so none of them may be skipped. The development builds
+        are no gates, and none may run for a release: dev-build runs on a push or a pull
+        request alone, and dev-publish only after it."""
+        called = publish_run(event_name, ref, target, called=True)
+        ran = {name: job_runs(CI_WORKFLOW, name, called) for name in job_names(CI_WORKFLOW)}
+        assert ran == {name: name not in ("dev-build", "dev-publish") for name in ran}
+        assert job_runs(PUBLISH_WORKFLOW, "build", publish_run(event_name, ref, target))
+
+    def test_a_release_s_gates_are_alone_in_a_group_of_their_own(self) -> None:
+        """Publish's run has the release's tag for its ref, as a dispatch of Publish or of
+        ``ci.yml`` from that tag has: in one group that cancels the run in progress, the later
+        would cancel the release's gates halfway, or the release the later's. Named after
+        Publish's run, the group is shared with no other run, and cancels nothing."""
+        release = publish_run("release", "refs/tags/v0.12.0", run_id="43", called=True)
+        others = [
+            publish_run("release", "refs/tags/v0.12.0", run_id="47", called=True),
+            publish_run("workflow_dispatch", "refs/tags/v0.12.0", "pypi", "45", called=True),
+            publish_run("workflow_dispatch", "refs/heads/master", "testpypi", "46", called=True),
+            ci_run("workflow_dispatch", "refs/tags/v0.12.0"),
+            ci_run("push", "refs/heads/master"),
+        ]
+        group, cancels = self.concurrency(release)
+        assert cancels is False
+        assert group not in {self.concurrency(other)[0] for other in others}
+
+    @pytest.mark.parametrize(
+        ("context", "group"),
+        [
+            (ci_run("push", "refs/heads/master"), "ci-refs/heads/master"),
+            (ci_run("pull_request", "refs/pull/5/merge"), "ci-refs/pull/5/merge"),
+            (ci_run("workflow_dispatch", "refs/heads/feature"), "ci-refs/heads/feature"),
+        ],
+        ids=["a push to master", "a pull request", "a dispatch"],
+    )
+    def test_ci_s_own_runs_keep_their_group(self, context: dict[str, Any], group: str) -> None:
+        """A newer run of a ref cancels the one in progress, as it always has."""
+        assert self.concurrency(context) == (group, True)
+
+    def test_the_call_allows_what_ci_s_jobs_ask_for_and_nothing_more(self) -> None:
+        """GitHub documents a called workflow as able to lower the permissions it is given, and
+        never to raise them, and ``dev-publish`` asks for ``id-token: write``: the call allows
+        what the jobs of ``ci.yml`` ask for, and nothing they do not, while ``ci.yml``'s own
+        ``permissions`` hold every job that asks for nothing to reading."""
+        asked: set[str] = set()
+        for block in re.finditer(r"^( *)permissions:\n((?:\1  \S.*\n)+)", CI_WORKFLOW, re.M):
+            asked |= {line.split("#")[0].strip() for line in block.group(2).splitlines()}
+        call = job(PUBLISH_WORKFLOW, "ci") + "\n"
+        allowed = re.search(r"^    permissions:\n((?:      \S.*\n)+)", call, re.M)
+        assert allowed is not None, "the call allows ci.yml only what Publish allows itself"
+        assert {line.split("#")[0].strip() for line in allowed.group(1).splitlines()} == asked
+        assert asked == {"contents: read", "id-token: write"}
+
+    def test_the_gui_job_builds_its_wheel_in_ci_s_own_runs_alone(self) -> None:
+        """In Publish's run the build job builds the wheel it ships, then installs and checks
+        it: a wheel of the gui job there would be a second one of the release's commit."""
+        wheel = [
+            step
+            for step in steps_of(job(CI_WORKFLOW, "gui"))
+            if re.search(r"dev_version\.py stamp|-m build|static/index\.html|name: ddd-tool-", step)
+        ]
+        assert len(wheel) == 4, "the gui job's wheel is no longer stamped, built, checked, uploaded"
+        for context, built in [
+            (ci_run("push", "refs/heads/master"), True),
+            (ci_run("pull_request", "refs/pull/5/merge"), True),
+            (ci_run("push", "refs/heads/master", os="Windows"), False),
+            (publish_run("release", "refs/tags/v0.12.0", called=True), False),
+        ]:
+            assert [holds(setting(step, "if", 0), context) for step in wheel] == [built] * 4
+
+    def test_the_wheel_is_installed_and_checked_before_it_is_handed_on(self) -> None:
+        """Into a fresh environment, from the file the upload jobs are handed, its dependencies
+        from the index; then held to the wheel by ``tools/installed_wheel.py``, through the
+        ``ddd`` that installation put on its path, before the artifact is uploaded."""
+        build = job(PUBLISH_WORKFLOW, "build")
+        install = step(build, "Install the wheel into a fresh environment")
+        assert 'python -m venv "$RUNNER_TEMP/installed"' in install
+        assert '"$RUNNER_TEMP/installed/bin/python" -m pip install dist/*.whl' in install
+        check = step(build, "Check the installed wheel answers as the release")
+        assert (
+            'python -I tools/installed_wheel.py dist/*.whl "$version" '
+            '"$RUNNER_TEMP/installed/bin/ddd"'
+        ) in check
+        order = [
+            build.index("run: python -m build"),
+            build.index("- name: Check tag matches package version"),
+            build.index("- name: Install the wheel into a fresh environment"),
+            build.index("- name: Check the installed wheel answers as the release"),
+            build.index("uses: actions/upload-artifact"),
+        ]
+        assert order == sorted(order), "the wheel is handed on before it is installed and checked"
+
+    @pytest.mark.parametrize(
+        ("event_name", "ref", "checked"),
+        [
+            ("release", "refs/tags/v0.12.0", "0.12.0"),
+            ("workflow_dispatch", "refs/tags/v0.12.0", "0.12.0"),
+            ("workflow_dispatch", "refs/heads/master", "0.0.1"),
+        ],
+        ids=["a release", "a dispatch from a release's tag", "a dry run from a branch"],
+    )
+    def test_the_installation_is_held_to_the_tag_s_version(
+        self, tmp_path: Path, event_name: str, ref: str, checked: str
+    ) -> None:
+        """On a release, or a dispatch from a ``v`` tag, ``ddd --version`` has to answer the tag's
+        version; a dry run from a branch has no tag, and is held to ``pyproject.toml``'s. Here
+        ``pyproject.toml`` states another version than the tag, to tell the two apart: in a run,
+        the tag check before this step refuses such a tag. The runner's directory is given as a
+        relative one: Git Bash, which runs the step on windows, rewrites an argument starting
+        with ``/`` into a windows path before python sees it."""
+        (tmp_path / "pyproject.toml").write_text('[project]\nversion = "0.0.1"\n', encoding="utf-8")
+        (tmp_path / "tools").mkdir()
+        (tmp_path / "tools" / "installed_wheel.py").write_text(
+            "import sys\nprint(sys.argv[1:])\n", encoding="utf-8"
+        )
+        (tmp_path / "dist").mkdir()
+        (tmp_path / "dist" / "ddd_tool-0.12.0-py3-none-any.whl").write_bytes(b"")
+        build = job(PUBLISH_WORKFLOW, "build")
+        ran = run_step(
+            step(build, "Check the installed wheel answers as the release"),
+            tmp_path,
+            GITHUB_EVENT_NAME=event_name,
+            GITHUB_REF=ref,
+            GITHUB_REF_NAME=ref.split("/", 2)[2],
+            RUNNER_TEMP="runner-temp",
+        )
+        assert ran.returncode == 0, ran.stdout + ran.stderr
+        wheel = "dist/ddd_tool-0.12.0-py3-none-any.whl"
+        assert ran.stdout == f"{[wheel, checked, 'runner-temp/installed/bin/ddd']}\n"
+
+    POINTING = "Point the description's links into the documentation at this release"
+    """The step of Publish's build that has the README, the release's page on the index, link
+    the documentation of the release rather than master's (20:M7)."""
+
+    def test_the_description_is_pointed_at_the_release_before_the_build_reads_it(self) -> None:
+        """20:M7. A release's page on the index is its README, whose links into the
+        documentation followed master: 0.11.0's page sent its reader to pages of what it had not
+        got. The build points them at the release before ``python -m build`` reads the README,
+        and the installed check, which holds the wheel's description to the release, runs after
+        it."""
+        build = job(PUBLISH_WORKFLOW, "build")
+        order = [
+            build.index(f"- name: {self.POINTING}"),
+            build.index("run: python -m build"),
+            build.index("- name: Check the installed wheel answers as the release"),
+        ]
+        assert order == sorted(order), "the README is pointed after the build has read it"
+
+    def test_the_step_points_every_link_into_the_documentation_at_the_release(
+        self, tmp_path: Path
+    ) -> None:
+        """Run on this checkout's own README, as the repository writes it, and its
+        ``pyproject.toml``: every link into the address ``pyproject.toml`` names as the
+        documentation - into ``latest/``, and to the root - names ``v<version>/`` instead, and
+        nothing else of the README changes; and ``pyproject.toml``'s ``Documentation`` url,
+        which the index shows beside the description, names it too, and nothing else of that
+        file changes."""
+        source = as_in_the_repository(README)
+        manifest = (ROOT / "pyproject.toml").read_bytes().decode("utf-8")
+        (tmp_path / "README.md").write_bytes(source.encode("utf-8"))
+        (tmp_path / "pyproject.toml").write_bytes(manifest.encode("utf-8"))
+        ran = run_step(step(job(PUBLISH_WORKFLOW, "build"), self.POINTING), tmp_path)
+        assert ran.returncode == 0, ran.stdout + ran.stderr
+        pointed = (tmp_path / "README.md").read_bytes().decode("utf-8")
+        release = f"{DOCS_URL}v{__version__}/"
+        links = re.findall(LINKED, pointed)
+        assert links, "the README links nothing of the documentation, so this weighs nothing"
+        assert [link for link in links if not link.startswith(release)] == []
+        assert len(links) == source.count(DOCS_URL)
+        assert pointed.replace(release, "<the site>") == source.replace(
+            f"{DOCS_URL}latest/", "<the site>"
+        ).replace(f"<{DOCS_URL}>", "<<the site>>")
+        named = (tmp_path / "pyproject.toml").read_bytes().decode("utf-8")
+        assert tomllib.loads(named)["project"]["urls"]["Documentation"] == release
+
+        def others(text: str) -> list[str]:
+            return [line for line in text.splitlines() if not line.startswith("Documentation = ")]
+
+        assert others(named) == others(manifest)
+        assert ran.stdout == (
+            f"README.md links {release} {len(links)} times, in place of latest/ and the root, and "
+            "pyproject.toml names it as its Documentation url\n"
+        )
+        # A tree the step pointed is what a release's sdist holds: run over it again, the step
+        # finds the site's root under the url it wrote, and leaves both files as they are.
+        again = run_step(step(job(PUBLISH_WORKFLOW, "build"), self.POINTING), tmp_path)
+        assert again.returncode == 0, again.stdout + again.stderr
+        assert (tmp_path / "README.md").read_bytes().decode("utf-8") == pointed
+        assert (tmp_path / "pyproject.toml").read_bytes().decode("utf-8") == named
+        assert again.stdout.startswith(f"README.md links {release} 0 times,"), again.stdout
+
+    def test_the_readme_and_the_page_say_which_version_the_links_follow(self) -> None:
+        """The README is read in two places, the repository and a release's page on the index,
+        and says what its links follow in each; the page says what the build does to them, what
+        the installed check refuses, and when the directory they lead to is written."""
+        readme = flattened(README)
+        page = flattened(PAGES["docs/developer_documentation.rst"])
+        claims = {
+            "README, its rule": "The links below point into the version this README describes",
+            "README, in its tree": "in the repository, `latest/`, so that they describe the tree "
+            "this README sits in",
+            "README, for a release": "in the description PyPI shows for a release, that release's "
+            "own directory, which its build points them at",
+            "the page, the heading": "A release's page on the index links its own documentation.",
+            "the page, why": "The README is the description PyPI shows for a release, and in the "
+            "tree its links into the documentation point into ``latest/``, which follows "
+            "``master``",
+            "the page, what the build does": "So the build points each of them at "
+            "``v<version>/``, of the version ``pyproject.toml`` states, the link to the root of "
+            "the site among them, and with them ``pyproject.toml``'s ``Documentation`` url, which "
+            "the index shows beside the description, in its checkout and before ``python -m "
+            "build`` reads the two; nothing of that is committed.",
+            "the page, what the check refuses": "The installed check then refuses a wheel whose "
+            "``Documentation`` url is not that directory, whose description links the "
+            "documentation anywhere else or nothing of it, or that names no ``Documentation`` url "
+            "at all.",
+            "the page, the gap": "the release's page links pages that are not served yet",
+        }
+        missing = [
+            what
+            for what, claim in claims.items()
+            if claim not in (readme if what.startswith("README") else page)
+        ]
+        assert not missing, f"no longer said: {missing}"
+        assert "which is what the links below point into" not in readme
+        said = comments_of(job(PUBLISH_WORKFLOW, "build"))
+        assert (
+            "every link into the documentation's address - its root included - and "
+            "pyproject.toml's Documentation url, which the index shows beside the description, are "
+            "pointed at v<version>/"
+        ) in said
+        assert "The site's root is the url's, less any version directory it already names." in said
+        assert (
+            "and where its Documentation url and its description send their reader into the "
+            "documentation"
+        ) in said
+
+    def test_publish_keeps_what_its_documentation_waits_on(self) -> None:
+        """A release's documentation waits on Publish's run (20:I3): on the workflow of that
+        name, on a run a published release started, and on its success. So Publish keeps its
+        name and its trigger; no job of it, nor of the ci.yml it runs, passes while failing; on
+        a release every job of it runs but the dry run's upload, since a job skipped counts as
+        passed; and each upload waits on the build, where the tag is checked before anything is
+        handed on."""
+        named = re.search(r"^name: (.+)$", PUBLISH_WORKFLOW, re.M)
+        assert named is not None and named.group(1) == "Publish"
+        assert "types: [published]" in events(PUBLISH_WORKFLOW)["release"]
+        for workflow in (PUBLISH_WORKFLOW, CI_WORKFLOW):
+            assert "continue-on-error" not in uncommented(workflow)
+        jobs = PUBLISH_WORKFLOW.split("\njobs:\n", 1)[1]
+        names = re.findall(r"^  ([a-z][\w-]*):\n", jobs, re.M)
+        release = publish_run("release", "refs/tags/v0.12.0")
+        ran = {name: job_runs(PUBLISH_WORKFLOW, name, release) for name in names}
+        assert ran == {name: name != "publish-testpypi" for name in names}
+        uploads = [
+            name
+            for name in names
+            if re.search(r"gh-action-pypi-publish|gh release upload", job(PUBLISH_WORKFLOW, name))
+        ]
+        assert uploads == ["extension", "publish-testpypi", "publish-pypi"]
+        for name in uploads:
+            assert setting(job(PUBLISH_WORKFLOW, name), "needs", 4) == "build", name
+
+    @pytest.mark.parametrize(
+        ("event_name", "ref", "target", "uploads"),
+        [
+            ("release", "refs/tags/v0.12.0", "", ["extension", "publish-pypi"]),
+            ("workflow_dispatch", "refs/heads/master", "testpypi", ["publish-testpypi"]),
+            ("workflow_dispatch", "refs/tags/v0.12.0", "pypi", ["publish-pypi"]),
+            ("workflow_dispatch", "refs/heads/master", "pypi", []),
+        ],
+        ids=[*PUBLISH_RUNS, "a dispatch to pypi from a branch"],
+    )
+    def test_each_run_of_publish_uploads_where_its_conditions_say(
+        self, event_name: str, ref: str, target: str, uploads: list[str]
+    ) -> None:
+        """Read over each run Publish makes as the runner reads them: a release attaches the
+        .vsix and uploads to pypi.org, the dry run uploads to TestPyPI, a dispatch from a
+        release's tag to pypi.org, and one to pypi.org from a branch nowhere."""
+        context = publish_run(event_name, ref, target)
+        names = ("extension", "publish-testpypi", "publish-pypi")
+        assert [name for name in names if job_runs(PUBLISH_WORKFLOW, name, context)] == uploads
+
+    def test_the_changelog_says_what_a_failed_gate_and_the_pinned_sphinx_cost(self) -> None:
+        """The entry on a release's gates and pins, and the opening's item naming it, each give a
+        failed gate both of its routes - a re-run, or the release made again where the fault is
+        in the tagged commit and nothing has reached pypi.org - and each says that the ``docs``
+        extra brings the pinned sphinx too, as it does: the metadata hook reads that extra from
+        ``requirements-docs.txt``."""
+        said = flattened(UNRELEASED)
+        routes = (
+            "a failing gate fails Publish's run, to be run again as *Re-run failed jobs*, or, "
+            "where the fault is in the tagged commit and nothing has reached pypi.org, its "
+            "release deleted and created again"
+        )
+        assert said.count(routes) == 2, "the entry or its item gives a failed gate one route"
+        claims = {
+            "the item": "an environment installing `requirements-docs.txt`, or the `docs` extra, "
+            "has its sphinx replaced by 9.1.1",
+            "the entry": "an environment that installs `requirements-docs.txt`, or the `docs` "
+            "extra, has its sphinx replaced by 9.1.1",
+        }
+        missing = [what for what, claim in claims.items() if claim not in said]
+        assert not missing, f"the changelog no longer names the docs extra in {missing}"
+        hooks = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["tool"]
+        extras = hooks["hatch"]["metadata"]["hooks"]["requirements_txt"]["optional-dependencies"]
+        assert extras["docs"] == ["requirements-docs.txt"]
+
+    def test_the_page_says_what_publish_runs_before_it_uploads(self) -> None:
+        """Where the maintainer reads it: what Publish runs and how, what the run it calls is
+        given and does otherwise, and how the wheel is installed and held to itself."""
+        said = flattened(PAGES["docs/developer_documentation.rst"])
+        claims = {
+            "what runs": "``publish.yml`` runs this whole workflow again before it builds a "
+            "release, on the release's own commit",
+            "how": "It calls ``ci.yml`` as a reusable workflow (``workflow_call``) rather than "
+            "keeping a copy of its jobs, so the two cannot drift",
+            "what the build waits for": "builds nothing for upload until every job of it has "
+            "passed",
+            "what it ran before": "It used to run the python suite again on one of the six "
+            "cells, and none of the page's own gates",
+            "what a called run is given": "A run called so is given Publish's ``github`` context",
+            "its inputs": "only the inputs Publish passes, which are none, so the journeys run "
+            "once each and nothing is skipped as in a hunt",
+            "its group": "the concurrency group is Publish's run's own",
+            "its wheel": "the ``gui`` job builds no wheel, Publish building, installing and "
+            "checking the one it ships",
+            "its development builds": "which run on a push or a pull request alone, never run "
+            "for a release",
+            "its permission": "The call allows ``id-token: write``, which ``dev-publish`` asks for",
+            "when GitHub checks it": "GitHub checks what each asks for as the run starts, "
+            "whatever its ``if:``. ``dev-publish`` cannot run in Publish's run",
+            "a release's wait": "A release waits on every job of ``ci.yml``, then, its windows "
+            "cells and its journeys included, and its documentation waits on the release.",
+            "a failed gate's re-run": "*Re-run failed jobs* on Publish's run runs that job again, "
+            "on the release's commit, and with it every job that depends on it",
+            "what keeps": "The jobs that passed keep their results.",
+            "the heading": "Nothing is uploaded until the wheel has been installed and run.",
+            "the gates first": "Every job of ``ci.yml`` has passed on the release's commit first",
+            "the installation": "The build then installs the wheel it built into a fresh "
+            "virtual environment, its dependencies from the index",
+            "what it is held to": "holding what it answers to the wheel itself",
+            "the version": "``ddd --version`` the version the run publishes - the tag's on a "
+            "release",
+            "the directories": "``ddd templates-dir`` a directory holding exactly the templates "
+            "the wheel carries; ``ddd cmake-dir`` one whose ``Ddd.cmake`` is the wheel's",
+            "the page": "``ddd gui``, started, the wheel's ``index.html`` at the address it prints",
+            "only then": "Only then is the wheel handed to the jobs that upload it.",
+            "what it was": "used to be a listing of the wheel for ``index.html``, and it was "
+            "never installed",
+        }
+        missing = [what for what, claim in claims.items() if claim not in said]
+        assert not missing, f"the developer page no longer says {missing}"
+
+
+class TestTheStepsOfARelease:
+    """20:M15. The developer page gave an account of the release machinery and no steps: no
+    order for merging, waiting, bumping, the notes, the tag and the checks after it, and no word
+    on meeting a failed job. An ordered list on the page gives them now, each held here to the
+    workflow, the walk or the script it names, and to what it says."""
+
+    LEADS: ClassVar[list[str]] = [
+        "Merge",
+        "Wait for ci",
+        "Bump the version",
+        "Write the notes",
+        "Rehearse the release",
+        "Create the release",
+        "Publish runs",
+        "Documentation publishes",
+        "Check",
+        "When a job fails",
+        "Leave master's version",
+    ]
+    """Each step's bold lead, in the order the steps are taken."""
+
+    @staticmethod
+    def steps() -> list[str]:
+        """The items of the page's ordered list of the steps of a release, each flattened."""
+        page = PAGES["docs/developer_documentation.rst"]
+        heading = "\nThe steps of a release\n~~~~~~~~~~~~~~~~~~~~~~\n"
+        assert heading in page, "the developer page lists no steps of a release"
+        section = page.split(heading, 1)[1].split("\nDelivering the editor extension\n", 1)[0]
+        return [flattened(item).strip() for item in re.split(r"^#\. ", section, flags=re.M)[1:]]
+
+    def taken(self, lead: str) -> str:
+        """The step whose bold lead is ``lead``."""
+        found = [step for step in self.steps() if step.startswith(f"**{lead}**")]
+        assert len(found) == 1, f"the page has {len(found)} steps led by {lead!r}"
+        return found[0]
+
+    def said(self, lead: str, claims: dict[str, str]) -> None:
+        """Each of ``claims`` is said by the step led by ``lead``."""
+        step = self.taken(lead)
+        missing = [what for what, claim in claims.items() if claim not in step]
+        assert not missing, f"the step {lead!r} no longer says {missing}"
+
+    def test_they_are_listed_in_the_order_they_are_taken(self) -> None:
+        leads = [re.match(r"\*\*(.+?)\*\*", step) for step in self.steps()]
+        assert [lead.group(1) if lead else None for lead in leads] == self.LEADS
+
+    def test_the_release_is_merged_and_waited_for_before_anything_is_bumped(self) -> None:
+        self.said(
+            "Merge",
+            {
+                "what": "**Merge** into ``master`` everything the release is to carry, each "
+                "change through its pull request.",
+            },
+        )
+        self.said(
+            "Wait for ci",
+            {
+                "what": "**Wait for ci** on ``master``'s newest commit, every job of ``ci.yml`` "
+                "passing.",
+                "why": "Publish runs all of them but the development builds again on the "
+                "release's commit and uploads nothing until they pass, so what would fail there "
+                "fails here first, where it costs a pull request rather than a release to delete "
+                "and create again.",
+            },
+        )
+
+    def test_the_version_is_bumped_in_the_files_the_walk_counts(self) -> None:
+        """The step names the walk above it by its number: a file added to the walk without the
+        step changing leaves the step counting the old number, and this fails."""
+        walk = re.search(
+            r"\*\*The version is spelled in (\w+) files",
+            flattened(PAGES["docs/developer_documentation.rst"]),
+        )
+        assert walk is not None, "the page no longer counts the files that spell the version"
+        self.said(
+            "Bump the version",
+            {
+                "where": f"in a commit of its own, on a branch, in the {walk.group(1)} files "
+                "listed above, and in no other commit",
+                "what it makes true": "``master`` states the release's version from the moment "
+                "that commit lands.",
+            },
+        )
+
+    def test_the_notes_are_the_unreleased_section_under_the_version(self) -> None:
+        """The topmost section of the changelog is what the tests hold to the tree, whatever its
+        name (``UNRELEASED``), so the rename the step asks for moves nothing else."""
+        self.said(
+            "Write the notes",
+            {
+                "the rename": "``## Unreleased`` in ``CHANGELOG.md`` becomes ``## <version>``, "
+                "and that section is the release's notes.",
+                "the merge": "Merge the commit through its pull request, and wait for ci on "
+                "``master`` once more: the commit it runs on is the one the tag names.",
+            },
+        )
+
+    def test_a_rehearsal_is_publish_s_dry_run_before_the_tag_exists(self) -> None:
+        """The one rehearsal of the release path before a tag exists, which a maintainer may
+        take or leave: Publish dispatched from master with ``target: testpypi``. What the step
+        says it runs, spends, shows and leaves unshown is held to the workflows: the gates
+        through the call, the development builds skipped there, the build without the tag
+        check, the upload to TestPyPI alone and with no ``skip-existing``, and no documentation
+        for a dry run's completion."""
+        self.said(
+            "Rehearse the release",
+            {
+                "what": "**Rehearse the release**, optionally, before it is created: dispatch "
+                "*Publish* from ``master`` with ``target: testpypi``, the dry run above.",
+                "why": "It is the one rehearsal of the release path before a tag exists.",
+                "what it runs": "it runs ``ci`` through the call, then ``build`` - the pages, the "
+                "description's links pointed at ``v<version>/``, the wheel and the sdist, ``twine "
+                "check`` and the installed check - and uploads to TestPyPI alone",
+                "what it spends": "which spends the version there and nowhere else: a second "
+                "rehearsal of that version is refused at its upload, and pypi.org is untouched.",
+                "what it shows": "It shows GitHub starting Publish with the call - the "
+                "permissions the call grants, checked as the run starts, and ``build`` waiting on "
+                "``ci`` with the development builds skipped - and the build's checks passing on a "
+                "runner.",
+                "what it does not": "It does not show the tag check, which a dispatch from a "
+                "branch skips, the ``.vsix``, which ``extension`` attaches to a release alone, the "
+                "upload to pypi.org and the ``pypi`` environment's protection, or "
+                "*Documentation*, which publishes nothing for a dry run.",
+            },
+        )
+        rehearsal = publish_run("workflow_dispatch", "refs/heads/master", "testpypi")
+        jobs = PUBLISH_WORKFLOW.split("\njobs:\n", 1)[1]
+        names = re.findall(r"^  ([a-z][\w-]*):\n", jobs, re.M)
+        running = [name for name in names if job_runs(PUBLISH_WORKFLOW, name, rehearsal)]
+        assert running == ["ci", "build", "publish-testpypi"]
+        checked = step(job(PUBLISH_WORKFLOW, "build"), "Check tag matches package version")
+        assert not holds(setting(checked, "if", 8), rehearsal), "a rehearsal checks a tag"
+        called = publish_run("workflow_dispatch", "refs/heads/master", "testpypi", called=True)
+        gates = job_names(CI_WORKFLOW)
+        skipped = [name for name in gates if not job_runs(CI_WORKFLOW, name, called)]
+        assert skipped == ["dev-build", "dev-publish"]
+        uploading = uncommented(job(PUBLISH_WORKFLOW, "publish-testpypi"))
+        assert "repository-url: https://test.pypi.org/legacy/" in uploading
+        assert "skip-existing" not in uploading, "a second rehearsal of a version would pass"
+        finished = completed(event="workflow_dispatch", head_branch="master")
+        assert not job_runs(DOCS_WORKFLOW, "build", finished)
+        assert not job_runs(DOCS_WORKFLOW, "deploy", finished)
+
+    def test_the_tag_is_the_one_publish_checks_for(self) -> None:
+        self.said(
+            "Create the release",
+            {
+                "where": "**Create the release** on GitHub, on that commit, with a new tag "
+                "``v<version>``",
+                "the tag": "``v`` and the version ``pyproject.toml`` states, exactly, or Publish "
+                "refuses it",
+                "the notes": "and the notes of ``## <version>``, and publish it.",
+            },
+        )
+        assert "types: [published]" in events(PUBLISH_WORKFLOW)["release"]
+
+    @pytest.mark.parametrize(
+        "tag", ["v0.12.0", "0.12.0", "v0.12.1"], ids=["v and the version", "no v", "another"]
+    )
+    def test_publish_takes_a_tag_that_is_v_and_the_version_alone(
+        self, tmp_path: Path, tag: str
+    ) -> None:
+        """Publish's own tag check, run under bash on a tree whose ``pyproject.toml`` states
+        0.12.0: ``v0.12.0`` passes, saying nothing; the bare version, and another version's tag,
+        are refused, with the three lines that say what to do."""
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nversion = "0.12.0"\n', encoding="utf-8"
+        )
+        checked = step(job(PUBLISH_WORKFLOW, "build"), "Check tag matches package version")
+        ran = run_step(checked, tmp_path, GITHUB_REF_NAME=tag)
+        if tag == "v0.12.0":
+            assert (ran.returncode, ran.stdout) == (0, ""), ran.stdout + ran.stderr
+            return
+        assert ran.returncode == 1, ran.stdout + ran.stderr
+        assert ran.stdout.splitlines() == [
+            f"::error::release tag {tag} is not v0.12.0, the version in",
+            "::error::pyproject.toml. Delete the release and its tag, then re-create it",
+            "::error::as v0.12.0; nothing has been uploaded yet.",
+        ]
+
+    def test_publish_s_jobs_are_named_in_the_order_a_release_runs_them(self) -> None:
+        """The step names the jobs a release runs, in the order their ``needs`` run them: the
+        gates, the build, then the two that wait for the build. A job renamed, added to a
+        release or moved in that order fails here until the step says so."""
+        jobs = PUBLISH_WORKFLOW.split("\njobs:\n", 1)[1]
+        names = re.findall(r"^  ([a-z][\w-]*):\n", jobs, re.M)
+        release = publish_run("release", "refs/tags/v0.12.0")
+
+        def depth(name: str) -> int:
+            needed = re.findall(r"[\w-]+", setting(job(PUBLISH_WORKFLOW, name), "needs", 4) or "")
+            return 1 + max((depth(other) for other in needed), default=0)
+
+        running = [name for name in names if job_runs(PUBLISH_WORKFLOW, name, release)]
+        order = sorted(running, key=lambda name: (depth(name), names.index(name)))
+        publishing = self.taken("Publish runs")
+        named = [found for found in re.findall(r"``([\w-]+)``", publishing) if found in names]
+        assert list(dict.fromkeys(named)) == order
+        self.said(
+            "Publish runs",
+            {
+                "the gates": "on the tag's commit, in this order: ``ci``, every job of ``ci.yml`` "
+                "but the development builds",
+                "the build": "then ``build``, which compiles the pages, points the description's "
+                "links into the documentation, and the ``Documentation`` url, at ``v<version>/``, "
+                "builds the wheel and the sdist, "
+                "checks that the wheel carries the pages and that the tag is the version, runs "
+                "``twine check``, and installs the wheel into a fresh environment and checks the "
+                "installation",
+                "the uploads": "each waiting for ``build``, ``extension``, which attaches "
+                "``ddd-<version>.vsix`` to the release, and ``publish-pypi``, which uploads the "
+                "wheel and the sdist to pypi.org.",
+                "a reviewer's approval": "Where the ``pypi`` environment has a required "
+                "reviewer, as the protection above describes, ``publish-pypi`` waits for that "
+                "reviewer's approval before it uploads, and Publish's run, and so the "
+                "documentation, waits with it.",
+            },
+        )
+        uploading = uncommented(job(PUBLISH_WORKFLOW, "publish-pypi"))
+        assert re.search(r"^    environment:\n      name: pypi$", uploading, re.M), uploading
+
+    def test_documentation_waits_for_the_whole_of_publish_as_the_step_says(self) -> None:
+        self.said(
+            "Documentation publishes",
+            {
+                "when": "once Publish's run has succeeded - every job of it, the ``.vsix``'s "
+                "included",
+                "what": "a run of ``docs.yml`` builds the commit the tag names, publishes it under "
+                "``v<version>``, lists it in the menu of every page, and reads it back from the "
+                "site.",
+                "the root": "The root of the site lands on it if it is the newest release, which a "
+                "release candidate never is.",
+            },
+        )
+        assert "Publish" in events(DOCS_WORKFLOW)["workflow_run"]
+        assert job_runs(DOCS_WORKFLOW, "deploy", completed())
+        assert not job_runs(DOCS_WORKFLOW, "deploy", completed(conclusion="failure"))
+
+    def test_what_is_checked_after_is_what_the_release_published(self) -> None:
+        self.said(
+            "Check",
+            {
+                "what": "**Check** what was published: the version on pypi.org, whose page links "
+                "``v<version>/`` of the documentation; ``ddd-<version>.vsix`` on the release; "
+                "``v<version>`` in the menu of the site; and, in a fresh environment, ``pip "
+                "install ddd-tool==<version>`` installing a ``ddd`` whose ``--version`` answers "
+                "``ddd <version>``.",
+            },
+        )
+
+    def test_a_failure_is_met_by_the_routes_the_workflows_offer(self) -> None:
+        """What the step has a maintainer do is what the workflows allow: a re-run of what
+        failed, a release made again while no index holds it, no upload passing twice, and a
+        release's documentation published by hand from a dispatch naming its tag, where pypi.org
+        holds it."""
+        self.said(
+            "When a job fails",
+            {
+                "what decides": "what to do depends on whether anything has reached pypi.org",
+                "before the upload": "Until ``publish-pypi`` has uploaded, nothing has - whether "
+                "a gate failed, the build, one of its checks, or the upload itself, refused before "
+                "it began, as for ``invalid-publisher`` until the registration is corrected",
+                "a failure that comes and goes": "*Re-run failed jobs* on Publish's run, for a "
+                "failure that comes and goes or one corrected outside the tree",
+                "one in the commit": "for one in the tagged commit, delete the release and its "
+                "tag, fix ``master``, and create the release again, its version unchanged, since "
+                "pypi.org does not hold it",
+                "a refused tag": "A tag Publish refused is remade so too.",
+                "after the upload": "Once a file is on pypi.org no run of the upload passes "
+                "again, an index taking a file name once",
+                "what a re-run of what failed serves": "*Re-run failed jobs* runs again only what "
+                "failed and what waits for it, so it serves a failed ``extension`` beside an "
+                "upload that passed",
+                "what a re-run of everything cannot": "and *Re-run all jobs* cannot pass.",
+                "by hand": "A release on pypi.org that no re-run can finish has its documentation "
+                "published by hand: *Documentation*, run from ``master`` with the release's tag "
+                "as ``tag``, which refuses a version pypi.org holds no file of.",
+                "documentation's own failure": "A run of *Documentation* that fails on its own "
+                "is re-run as it is.",
+                "a file no re-run uploads": "A file no re-run can upload - the wheel on pypi.org "
+                "and the sdist refused, say - waits for the next version: every route here uploads "
+                "the whole of ``dist``, and an index takes a file that landed once.",
+            },
+        )
+        uploading = uncommented(job(PUBLISH_WORKFLOW, "publish-pypi"))
+        assert "skip-existing" not in uploading
+        assert "name: dist\n          path: dist/\n" in uploading, (
+            "publish-pypi uploads another set"
+        )
+        assert "packages-dir" not in uploading, "publish-pypi uploads part of dist"
+        assert "tag:" in events(DOCS_WORKFLOW)["workflow_dispatch"]
+
+    def test_master_keeps_the_release_s_version_after_it(self) -> None:
+        self.said(
+            "Leave master's version",
+            {
+                "what": "**Leave master's version** as the release's: nothing is bumped after a "
+                "release.",
+                "until when": "``master`` states it until the next release commit",
+                "its builds": "its development builds number themselves after it: ``<next "
+                "patch>.dev<run>`` after a release, and after a release candidate the next "
+                "candidate's, ``0.12.0rc2.dev<run>`` after ``0.12.0rc1``.",
+            },
+        )
+        assert dev_version.next_development("0.12.0", 57) == "0.12.1.dev57"
+        assert dev_version.next_development("0.12.0rc1", 3) == "0.12.0rc2.dev3"
+
+
+LAUNCH = """\
+import sys
+from pathlib import Path
+
+sys.path.insert(0, sys.argv.pop(1))
+import ddd.gui.server
+
+pages = Path(sys.argv.pop(1))
+ddd.gui.server.static_directory = lambda: pages
+from ddd.cli import main
+
+raise SystemExit(main())
+"""
+"""This checkout's ``ddd``, run as a program the way an installation runs it, serving the pages of
+a directory the test names: the pages are compiled by npm, which no test here runs. It is
+imported from the sources the suite tests, named first, rather than from whatever ``ddd`` the
+interpreter has installed, which may be another tree's: an editable install of another
+checkout, or an older release."""
+
+INDEX = b'<!doctype html>\n<title>DDD</title>\n<div id="root"></div>\n'
+"""A page for ``ddd gui`` to serve, standing for the compiled one."""
+
+DESCRIPTION = (
+    f"The documentation of this release is at <{DOCS_URL}v{__version__}/>, and its plugins "
+    f"[there]({DOCS_URL}v{__version__}/plugins.html).\n"
+)
+"""A description as Publish's build leaves the README: each link into the documentation points
+at the directory of the release."""
+
+LINKED = re.escape(DOCS_URL) + r"[^\s)>\]\"'`]*"
+"""A link into the documentation, as markdown writes one: up to a space, or the bracket, quote or
+backtick that closes it."""
+
+
+def as_in_the_repository(readme: str) -> str:
+    """The README with its links into the documentation into ``latest/``, as the repository writes
+    them: this checkout's own text in a checkout. In a release's sdist, whose README Publish's
+    build pointed at the release's directory before it built the archive, each such link is put
+    into ``latest/`` again - the root's link too, which so comes back as a link into ``latest/``
+    and not as the root; nothing the tests assert depends on that difference. The suite runs from
+    either, so what a test feeds the pointing step is this."""
+    return readme.replace(f"{DOCS_URL}v{__version__}/", f"{DOCS_URL}latest/")
+
+
+BROKEN = [sys.executable, "-c", "raise SystemExit('no ddd here')"]
+"""An installation whose ``ddd`` runs nothing: it says so, and exits 1."""
+
+SIGNING_IN = """\
+import http.server
+import sys
+
+PAGE = open(sys.argv[1], "rb").read()
+
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path.startswith("/open"):
+            self.send_response(302)
+            self.send_header("Location", "/")
+            self.send_header("Set-Cookie", "signed=in; Path=/")
+            self.end_headers()
+        elif "signed=in" in self.headers.get("Cookie", ""):
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(PAGE)))
+            self.end_headers()
+            self.wfile.write(PAGE)
+        else:
+            self.send_error(401)
+
+    def log_message(self, *arguments):
+        pass
+
+
+server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+print(f"ddd gui (preview) serving http://127.0.0.1:{server.server_port}/open?token=t", flush=True)
+server.serve_forever()
+"""
+"""A ``ddd gui`` that signs a reader in the way it once did: the address it prints redirects to
+its page with a cookie, and the page answers only with that cookie."""
+
+
+class TestTheReleaseInstallsWhatItUploads:
+    """20:M4. Publish's one look at the wheel it uploads was a listing of its names for
+    ``index.html``: the wheel was never installed. ``tools/installed_wheel.py`` holds an
+    installation to the wheel it came from, and Publish's build runs it on the wheel it built,
+    installed into a fresh environment, before anything is uploaded.
+
+    The checks run here against this checkout's own ``ddd``, run as a program, and a wheel of
+    what this checkout would put in one: its version, the example templates, the cmake module,
+    and a page standing for the compiled ones, which only npm makes.
+    """
+
+    @staticmethod
+    def wheel(
+        tmp_path: Path,
+        *,
+        templates: dict[str, bytes] | None = None,
+        module: bytes | None = None,
+        page: bytes | None = INDEX,
+        description: str = DESCRIPTION,
+        documentation: str | None = f"{DOCS_URL}v{__version__}/",
+    ) -> Path:
+        """A wheel of what the checks read, where hatchling puts it: its metadata - its version,
+        its ``Documentation`` url unless ``documentation`` is None, and its description - the
+        example templates under ``ddd/templates/``, ``ddd/cmake/Ddd.cmake`` and the page; by
+        default this checkout's. An empty ``templates`` or ``module`` is left out, as
+        ``page=None`` is."""
+        if templates is None:
+            source = ROOT / "examples" / "templates"
+            templates = {path.name: path.read_bytes() for path in source.iterdir()}
+        if module is None:
+            module = (ROOT / "cmake" / "Ddd.cmake").read_bytes()
+        urls = "" if documentation is None else f"Project-URL: Documentation, {documentation}\n"
+        wheel = tmp_path / f"ddd_tool-{__version__}-py3-none-any.whl"
+        with zipfile.ZipFile(wheel, "w") as archive:
+            archive.writestr(
+                f"ddd_tool-{__version__}.dist-info/METADATA",
+                f"Metadata-Version: 2.4\nName: ddd-tool\nVersion: {__version__}\n{urls}"
+                f"Description-Content-Type: text/markdown\n\n{description}",
+            )
+            for name, data in templates.items():
+                archive.writestr(f"ddd/templates/{name}", data)
+            if module:
+                archive.writestr("ddd/cmake/Ddd.cmake", module)
+            if page is not None:
+                archive.writestr("ddd/gui/static/index.html", page)
+        return wheel
+
+    @staticmethod
+    def installed(tmp_path: Path, page: bytes | None = INDEX) -> list[str]:
+        """This checkout's ``ddd``, serving ``page`` as its compiled pages, or nothing at all."""
+        pages = tmp_path / "pages"
+        pages.mkdir()
+        if page is not None:
+            (pages / "index.html").write_bytes(page)
+        return [sys.executable, "-c", LAUNCH, str(ROOT / "src"), str(pages)]
+
+    def test_an_installation_answering_as_the_release_passes(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Its version, its templates, its module and its page, all as the wheel has them."""
+        wheel = self.wheel(tmp_path)
+        assert installed_wheel.main([str(wheel), __version__, *self.installed(tmp_path)]) == 0
+        assert capsys.readouterr().out == f"{wheel.name}, installed, answers as ddd {__version__}\n"
+
+    def test_a_release_the_installation_does_not_name_is_refused(self, tmp_path: Path) -> None:
+        """The version a run publishes is stated three times over in what it installs: in the
+        wheel's metadata, which pip installs by; in what ``ddd --version`` prints, which the
+        banner of every generated file carries; and as the module's ``DDD_MODULE_VERSION``,
+        which the module compares with that, refusing a ``ddd`` of any other. The description
+        the index shows names it a fourth time, in its links into the documentation (20:M7)."""
+        found = installed_wheel.problems(self.wheel(tmp_path), "9.9.9", self.installed(tmp_path))
+        assert found == [
+            f"the wheel states version {__version__}, and the release is 9.9.9",
+            "the wheel's ddd/cmake/Ddd.cmake does not state DDD_MODULE_VERSION 9.9.9, so the "
+            "module refuses the ddd it is installed with",
+            "the wheel's Documentation url, which the index shows beside the description, is "
+            f"{DOCS_URL}v{__version__}/, and not the documentation of v9.9.9",
+            "the wheel's description, the release's page on the index, links the documentation "
+            f"outside v9.9.9/ 2 times, the first at {DOCS_URL}v{__version__}/",
+            f"ddd --version answers 'ddd {__version__}', and the release is 9.9.9",
+        ]
+
+    def test_an_installation_that_is_not_the_wheel_is_refused(self, tmp_path: Path) -> None:
+        """What the installation answers is held to what the wheel carries, file for file: the
+        templates its directory holds, the module, and the page ``ddd gui`` serves."""
+        source = ROOT / "examples" / "templates"
+        templates = {path.name: path.read_bytes() for path in source.iterdir()}
+        templates["extra.c.jinja2"] = b"/* the wheel carries what the installation lacks */\n"
+        module = (ROOT / "cmake" / "Ddd.cmake").read_bytes() + b"# another module\n"
+        wheel = self.wheel(tmp_path, templates=templates, module=module, page=b"<p>another\n")
+        directory, cmake = example_template_directory(), cmake_module_directory()
+        assert directory is not None and cmake is not None
+        assert installed_wheel.problems(wheel, __version__, self.installed(tmp_path)) == [
+            f"ddd templates-dir answers {directory.as_posix()!r}, which does not hold exactly "
+            f"the {len(templates)} templates the wheel carries",
+            f"ddd cmake-dir answers {cmake.as_posix()!r}, whose Ddd.cmake is not the wheel's",
+            "the page ddd gui serves is not the ddd/gui/static/index.html the wheel carries",
+        ]
+
+    def test_a_gui_with_no_page_to_serve_is_refused_saying_why(self, tmp_path: Path) -> None:
+        """``ddd gui`` refuses to start without its pages, as an installation of a wheel built
+        before they were compiled would: the step says what it said."""
+        found = installed_wheel.problems(
+            self.wheel(tmp_path), __version__, self.installed(tmp_path, page=None)
+        )
+        assert len(found) == 1, found
+        assert found[0].startswith(f"ddd gui exits {EXIT_USAGE} without printing its address,")
+        assert "has no compiled pages for ddd gui" in found[0]
+
+    def test_a_gui_printing_no_address_is_waited_for_no_longer_than_the_limit(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A server that hangs before it listens holds the step for the limit, and not for the
+        six hours a job may run."""
+        monkeypatch.setattr(installed_wheel, "TIMEOUT", 2.0)
+        silent = [sys.executable, "-c", "import sys, time\nif 'gui' in sys.argv: time.sleep(60)"]
+        found = installed_wheel.problems(self.wheel(tmp_path), __version__, silent)
+        assert found[-1] == "ddd gui printed no address within 2 seconds, saying ''"
+
+    def test_the_page_is_asked_for_as_a_browser_asks_for_it(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A browser opening the printed address follows a redirect with the cookie it was
+        given, and reaches the loopback directly whatever proxy the environment names: a
+        server signing a reader in that way serves the page all the same."""
+        monkeypatch.setenv("http_proxy", "http://127.0.0.1:9")
+        monkeypatch.delenv("no_proxy", raising=False)
+        monkeypatch.delenv("NO_PROXY", raising=False)
+        page = tmp_path / "index.html"
+        page.write_bytes(INDEX)
+        signing_in = [sys.executable, "-c", SIGNING_IN, str(page)]
+        assert installed_wheel.served(signing_in, tmp_path, INDEX) == []
+
+    def test_an_installation_that_does_not_run_is_refused_saying_why(self, tmp_path: Path) -> None:
+        assert installed_wheel.problems(self.wheel(tmp_path), __version__, BROKEN) == [
+            "ddd --version exits 1, saying 'no ddd here'",
+            "ddd templates-dir exits 1, saying 'no ddd here'",
+            "ddd cmake-dir exits 1, saying 'no ddd here'",
+            "ddd gui exits 1 without printing its address, saying 'no ddd here'",
+        ]
+
+    def test_a_wheel_missing_what_is_checked_is_refused(self, tmp_path: Path) -> None:
+        """An empty set of templates, held to an empty directory, would pass unseen."""
+        wheel = self.wheel(tmp_path, templates={}, module=b"", page=None)
+        assert installed_wheel.problems(wheel, __version__, BROKEN) == [
+            "ddd --version exits 1, saying 'no ddd here'",
+            "the wheel carries no templates under ddd/templates/",
+            "the wheel carries no ddd/cmake/Ddd.cmake",
+            "the wheel carries no ddd/gui/static/index.html, so ddd gui has nothing to serve",
+        ]
+
+    def test_each_problem_is_an_error_of_the_step_on_a_line_of_its_own(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The runner reads ``::error::`` at the start of a line as an annotation of the step,
+        so a problem spanning lines would start one of its own with whatever it was given."""
+        found = ["ddd --version answers 'x'", "it said\n::error::something else"]
+        monkeypatch.setattr(installed_wheel, "problems", lambda *_: found)
+        assert installed_wheel.main(["a.whl", "0.12.0", "ddd"]) == 1
+        assert capsys.readouterr().out.splitlines() == [
+            "::error::ddd --version answers 'x'",
+            "::error::it said ::error::something else",
+        ]
+
+    def test_a_file_that_is_no_wheel_is_refused(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        wheel = tmp_path / "ddd_tool-0.12.0-py3-none-any.whl"
+        wheel.write_bytes(b"not a zip")
+        assert installed_wheel.main([str(wheel), "0.12.0", "ddd"]) == 1
+        assert capsys.readouterr().out.startswith(f"::error::{wheel} cannot be read as a wheel: ")
+
+    @pytest.mark.parametrize("arguments", [[], ["a.whl"], ["a.whl", "0.12.0"]])
+    def test_anything_else_is_a_usage_error(
+        self, arguments: list[str], capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert installed_wheel.main(arguments) == 2
+        assert "usage:" in capsys.readouterr().err
+
+    def test_the_release_s_own_description_passes(self, tmp_path: Path) -> None:
+        """20:M7, end to end: this checkout's README and ``pyproject.toml`` as Publish's build
+        leaves them, the step that points them run on them, make a description and a
+        ``Documentation`` url the check passes."""
+        tree = tmp_path / "tree"
+        tree.mkdir()
+        (tree / "README.md").write_bytes(as_in_the_repository(README).encode("utf-8"))
+        (tree / "pyproject.toml").write_bytes((ROOT / "pyproject.toml").read_bytes())
+        pointing = TestWhatPublishRunsBeforeItUploads.POINTING
+        ran = run_step(step(job(PUBLISH_WORKFLOW, "build"), pointing), tree)
+        assert ran.returncode == 0, ran.stdout + ran.stderr
+        pointed = (tree / "README.md").read_bytes().decode("utf-8")
+        urls = tomllib.loads((tree / "pyproject.toml").read_text(encoding="utf-8"))["project"][
+            "urls"
+        ]
+        wheel = self.wheel(tmp_path, description=pointed, documentation=urls["Documentation"])
+        assert installed_wheel.misdirected(installed_wheel.carried(wheel), __version__) == []
+
+    def test_a_wheel_naming_the_documentation_s_root_is_refused(self, tmp_path: Path) -> None:
+        """20:M7. The index shows the ``Documentation`` url beside the description, and the
+        site's root lands on whichever release is newest: a release's page that names it sends
+        a reader of an older release to a newer one's documentation."""
+        wheel = installed_wheel.carried(self.wheel(tmp_path, documentation=DOCS_URL))
+        assert installed_wheel.misdirected(wheel, __version__) == [
+            "the wheel's Documentation url, which the index shows beside the description, is "
+            f"{DOCS_URL}, and not the documentation of v{__version__}"
+        ]
+
+    def test_a_description_linking_another_version_s_documentation_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        """20:M7. The description is the page the index shows for the release, and its links into
+        the documentation of another version - ``latest/``, which follows master, or the root,
+        which lands on whichever release is newest - send that page's reader to pages of another
+        release. The README as the repository writes it links no release at all."""
+        source = as_in_the_repository(README)
+        wheel = installed_wheel.carried(self.wheel(tmp_path, description=source))
+        links = re.findall(LINKED, source)
+        assert links, "the README links nothing of the documentation, so this weighs nothing"
+        assert installed_wheel.misdirected(wheel, __version__) == [
+            "the wheel's description, the release's page on the index, links the documentation "
+            f"outside v{__version__}/ {len(links)} times, the first at {links[0]}"
+        ]
+
+    def test_one_link_astray_is_named_alone(self, tmp_path: Path) -> None:
+        description = f"Its plugins are [there]({DOCS_URL}latest/plugins.html).\n"
+        wheel = installed_wheel.carried(self.wheel(tmp_path, description=description))
+        assert installed_wheel.misdirected(wheel, __version__) == [
+            "the wheel's description, the release's page on the index, links the documentation "
+            f"outside v{__version__}/ once, at {DOCS_URL}latest/plugins.html"
+        ]
+
+    def test_a_description_linking_nothing_of_the_documentation_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        """A check that found no link would pass whatever the links were, a description that
+        moved them into a header of its own among them."""
+        wheel = installed_wheel.carried(self.wheel(tmp_path, description="No link at all.\n"))
+        assert installed_wheel.misdirected(wheel, __version__) == [
+            f"the wheel's description links nothing of the documentation at {DOCS_URL}"
+        ]
+
+    def test_a_wheel_naming_no_documentation_is_refused(self, tmp_path: Path) -> None:
+        wheel = installed_wheel.carried(self.wheel(tmp_path, documentation=None))
+        assert installed_wheel.misdirected(wheel, __version__) == [
+            "the wheel's metadata names no Documentation url, which the links of its "
+            "description are held to"
+        ]
+
+    def test_the_checker_says_what_it_holds_the_description_to(self) -> None:
+        said = flattened(installed_wheel.__doc__ or "")
+        assert (
+            "the wheel's ``Documentation`` url, which the index shows beside the description, is "
+            "the documentation of ``v<version>/``, and the description, which the index shows as "
+            "the release's page, links the documentation under it alone, as Publish's build points "
+            "them both"
+        ) in said
 
 
 class TestPreCommitHook:
@@ -5754,6 +8798,131 @@ class TestWhatThePagesSayOfFormat10:
             "reads back unchanged, and 0.11.0, which reads up to format 9, refuses a format 10 one "
             "as the dictionary of a newer DDD"
         ) in text
+
+
+def format_statements_of(text: str) -> tuple[list[tuple[int, str]], list[int]]:
+    """Every number the text states as a document's format, and which of them no rule places.
+
+    A statement is found by what surrounds a number - ``format 3``, ``format `1``` in either
+    spelling, ``` `format` is `10` ```, ``stamped `2``` and the numbers of the build record's
+    ``format`` row - and not by the sentences the specification uses today, so a statement in
+    other words is found too. Each is then placed by a rule naming what it states: a pair of
+    the rule's name and the number. What no rule places is returned by the offset of its number,
+    for the guard to fail on.
+    """
+    found: dict[int, int] = {}
+    for finder in (
+        r"[Ff]ormat `?(\d+)`?\b",
+        r"`format`[^.|`]{0,20}`(\d+)`",
+        r"\bstamped `?(\d+)`?",
+    ):
+        for match in re.finditer(finder, text):
+            found[match.start(1)] = int(match.group(1))
+    for row in re.finditer(r"\| `format` \|([^|]*)\|", text):
+        for number in re.finditer(r"`(\d+)`", row.group(1)):
+            found[row.start(1) + number.start(1)] = int(number.group(1))
+    rules = (
+        ("dictionary now", r"Its `format` is `(\d+)`"),
+        ("dictionary now", r"\(`format`, today `(\d+)`\)"),
+        ("dictionary older", r"(?:of|at) format (\d+) or older"),
+        (
+            "record collected, then given",
+            r"\| `format` \| version of this document format, raised only when its shape changes; "
+            r"`(\d+)`, or `(\d+)` for a record with an `origin`, which is the highest this "
+            r"version understands",
+        ),
+        ("record collected", r"as no record of format `(\d+)` has"),
+        ("record given", r"given description alone, and that record is stamped `(\d+)`"),
+        (
+            "record collected",
+            r"shape of format `(\d+)` and is stamped `(\d+)`",
+        ),
+        ("record read", r"reads a record of format `(\d+)` and of format `(\d+)` alike"),
+    )
+    placed: list[tuple[int, str]] = []
+    covered: set[int] = set()
+    for name, pattern in rules:
+        for match in re.finditer(pattern, text):
+            for group in range(1, (match.lastindex or 0) + 1):
+                covered.add(match.start(group))
+                label = name.split(", then ")[group - 1] if ", then " in name else name
+                placed.append((int(match.group(group)), label))
+    return placed, sorted(found[offset] for offset in found.keys() - covered)
+
+
+class TestEveryFormatNumberTheSpecStatesIsTheTools:
+    """The specification names the version of each document the tool writes, and a raise of a
+    constant that leaves one number behind has a reader written from the specification refuse
+    every file the tool writes. Every statement is found in the specification, placed by what
+    it states and held to the constant in the code, which no test types a number for; one the
+    guard cannot place fails, so whoever writes a new statement places it here."""
+
+    TEXT = flattened(SPEC)
+
+    @staticmethod
+    def _tools_formats() -> dict[str, int]:
+
+        from ddd.build_info import BUILD_INFO_FORMAT, BuildInfo, build_info_text
+        from ddd.ir import DICTIONARY_FORMAT
+
+        def written(origin: Literal["collected", "given"]) -> int:
+            record = build_info_text(BuildInfo(project="/p/project.ddd.json", origin=origin))
+            return int(json.loads(record)["format"])
+
+        assert written("given") == BUILD_INFO_FORMAT
+        return {
+            "dictionary now": DICTIONARY_FORMAT,
+            "record given": written("given"),
+            "record collected": written("collected"),
+        }
+
+    def test_every_statement_of_a_format_is_one_a_rule_places(self) -> None:
+        placed, unplaced = format_statements_of(self.TEXT)
+        assert not unplaced, (
+            f"the specification states the format numbers {unplaced} in words no rule of "
+            f"format_statements_of places: say which document each is the format of"
+        )
+        # Positive control: a scan that finds nothing places nothing and fails nothing.
+        assert {label for _, label in placed} >= {
+            "dictionary now",
+            "dictionary older",
+            "record collected",
+            "record given",
+            "record read",
+        }
+
+    def test_the_formats_it_says_the_tool_writes_are_the_formats_it_writes(self) -> None:
+        tools = self._tools_formats()
+        placed, _ = format_statements_of(self.TEXT)
+        for number, label in placed:
+            if label in tools:
+                assert number == tools[label], (
+                    f"the specification states {label} format {number}, and the tool writes "
+                    f"{tools[label]}"
+                )
+
+    def test_the_formats_it_says_are_older_were_older(self) -> None:
+        tools = self._tools_formats()
+        placed, _ = format_statements_of(self.TEXT)
+        older = [number for number, label in placed if label == "dictionary older"]
+        assert older
+        assert all(1 <= number < tools["dictionary now"] for number in older)
+
+    def test_the_record_formats_it_says_are_read_are_the_ones_the_tool_reads(self) -> None:
+        tools = self._tools_formats()
+        placed, _ = format_statements_of(self.TEXT)
+        read = sorted(number for number, label in placed if label == "record read")
+        assert read == list(range(tools["record collected"], tools["record given"] + 1))
+
+    def test_a_statement_in_other_words_is_found_and_not_placed(self) -> None:
+        for sentence in (
+            "The dictionary is at format 11 today.",
+            "A record is stamped `3` now.",
+            "A reader refuses format `9`.",
+        ):
+            _, unplaced = format_statements_of(self.TEXT + " " + sentence)
+            assert unplaced == [int(re.search(r"\d+", sentence).group())], sentence  # type: ignore[union-attr]
+        assert format_statements_of(self.TEXT)[1] == []
 
 
 class TestWhatARenameOfAnInstanceReportsOfItsDisplayIdentifiers:

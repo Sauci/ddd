@@ -32,10 +32,12 @@ Everything they share is the [DataDictionary](https://github.com/Sauci/ddd/blob/
 
 The **full documentation is at <https://sauci.github.io/ddd/>** - a guided introduction, the
 reference for every command, every check and every json field, and the reasoning behind the
-design. It is generated from these sources: the root of the site lands on the newest release,
-and <https://sauci.github.io/ddd/latest/> follows `master`, which is what the links below
-point into, so that they describe the tree this README sits in rather than whatever was true
-when somebody last wrote it down. This README is the short version.
+design. It is generated from these sources, a directory of the site for each version: the root
+lands on the newest release, and `latest/` follows `master`. The links below point into the
+version this README describes - in the repository, `latest/`, so that they describe the tree
+this README sits in rather than whatever was true when somebody last wrote it down, and in the
+description PyPI shows for a release, that release's own directory, which its build points them
+at. This README is the short version.
 
 `ddd --version` prints the release, and [CHANGELOG.md](https://github.com/Sauci/ddd/blob/master/CHANGELOG.md) says what changed in
 it - including what a migration costs, since a minor release may still change the file format
@@ -71,12 +73,14 @@ hand-written project description is passed with `PROJECT`, and CMake 3.30 when t
 collected from the link graph.
 
 The examples used below are part of the source distribution rather than the wheel. To follow
-along, clone the repository or unpack the sdist, and from there the tool also runs without
-being installed at all:
+along, clone the repository or unpack the sdist: from there the tool also runs without being
+installed, once its runtime dependencies are. Without them, `--version` and `--help` still
+answer, and `check` fails, naming the `pydantic` it cannot import.
 
 ```bash
 git clone https://github.com/Sauci/ddd && cd ddd
-PYTHONPATH=src python -m ddd --help
+pip install -r requirements.txt      # pydantic, jinja2 and pyelftools, and nothing of ddd
+PYTHONPATH=src python -m ddd check examples/demo/demo.ddd.json
 ```
 
 ## Quick start

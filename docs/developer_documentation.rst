@@ -416,9 +416,9 @@ Running the checks
 
 ``mypy`` runs in strict mode over ``src/ddd`` and ``tools/`` with the pydantic plugin;
 ``ruff`` lints the sources, the tests, the release machinery and the documentation
-configuration with a line length of 100. The whole suite takes a couple of minutes in a warm
-checkout - longer in a fresh environment, where ``tests/test_cmake.py`` configures and builds
-the module - so ``--no-cov`` and a ``-k`` are what a single test is worth running under, and
+configuration with a line length of 100. The whole suite takes minutes rather than seconds, how
+many varying with the machine - about seven, in a fresh checkout, on the Linux machine it was
+last timed on - so ``--no-cov`` and a ``-k`` are what a single test is worth running under, and
 the whole of it is what a commit is worth running under. Not ``-q``: the ``addopts`` in
 ``pyproject.toml`` carry one already, pytest counts them, and a second drops the summary - the
 "N passed" line and the coverage total both - leaving the exit code as the only statement of
@@ -495,31 +495,41 @@ sketch: the set a project starts from is the set a compiler has accepted. ``TEMP
 the service at any other directory, so a project can put its own templates through the same
 treatment.
 
+.. _continuous-integration:
+
 Continuous integration
 ----------------------
 
 ``.github/workflows/ci.yml`` runs the commands above - the suite with its coverage gate,
 ``ruff`` twice and ``mypy`` - on every push to ``master`` and every pull request, in two jobs,
-and five more the commands above do not cover. ``extension`` installs node and the package,
-runs ``npm ci``, ``npm test`` and ``npm run package`` in ``editors/vscode``, and uploads the
-``.vsix`` it produced. Its tests start a real language server, which is why it installs the
-python package as well as compiling typescript, and packaging the extension there proves that
-the artefact a customer is handed can be produced at all.
+``test`` and ``lint``, and six more the commands above do not cover. ``extension`` installs node
+and the package, runs ``npm ci``, ``npm test`` and ``npm run package`` in ``editors/vscode``, and
+uploads the ``.vsix`` it produced. Its tests start a real language server, which is why it
+installs the python package as well as compiling typescript, and packaging the extension there
+proves that the artefact a customer is handed can be produced at all.
 
 ``gui`` builds and tests the browser interface, on three legs: ubuntu with Playwright's own
 Chromium, windows with the same Chromium, and windows with the windows runner's own Edge, driven
 through ``PLAYWRIGHT_CHANNEL=msedge``, which needs no download. Each leg installs the package and
 node, generates the TypeScript types from ``ddd schema``, runs Biome, the type check and Vitest
 with its coverage gate, compiles the pages, and drives them against a real ``ddd gui`` with
-Playwright. On the ubuntu leg it then builds the wheel and the sdist with the pages it compiled,
-checks that the wheel carries them the way the release build checks its own, and uploads both as
-``ddd-tool-<commit>``: what installs a branch without node. The release build still compiles the
-pages again, into the wheel it publishes - an artifact expires, and needs a GitHub account to
-reach.
+Playwright. On the ubuntu leg of the workflow's own runs it then stamps a development version
+into its checkout, as ``dev-build`` stamps its own, builds the wheel and the sdist with the pages
+it compiled, checks that the wheel carries them the way the release build checks its own, and
+uploads both as ``ddd-tool-<commit>``: what installs a branch without node, under a version that
+says it is a build of that commit and not a release. The release build still compiles the pages
+again, into the wheel it publishes - an artifact expires, and needs a GitHub account to reach.
 
 A manual run of the workflow (``workflow_dispatch``) takes a ``repeat`` input, one by default;
 above that it is a hunt, and only these three legs run, each journey repeated that many times
 (``--repeat-each``) while every other job is skipped.
+
+``gui-screenshots`` photographs every story of ``gui/`` and compares each with its reference
+image, committed in ``gui/screenshots/references`` beside the spec that photographs them, in
+Playwright's own Linux image, of the version ``gui/package.json`` pins, which is the one place
+those images are made: a look that changes by accident fails here, and one changed on purpose
+arrives with its new references in the same pull request. A run of it that fails uploads the
+differences as ``screenshots-diff``.
 
 ``container`` builds the image behind ``docker compose``, checks that the package installed in
 it carries the pages of ``ddd gui`` and that neither node nor npm reached it, and runs the
@@ -539,11 +549,12 @@ without it the check would read the checkout rather than the image.
 :ref:`development-builds` below describes.
 
 The suite runs across a matrix of ubuntu and windows on python 3.12, 3.13 and 3.14, which is
-the six combinations the classifiers in ``pyproject.toml`` advertise. That is not thoroughness
-for its own sake: a path handling defect that only appeared on linux has already reached a
-user of this project, having passed the whole suite on windows first. A test in
-``tests/test_documentation.py`` keeps the matrix and those classifiers in agreement, so
-advertising a new interpreter without testing it fails.
+the six combinations the classifiers in ``pyproject.toml`` advertise: Windows and Linux, and not
+macOS, which no cell runs. That is not thoroughness for its own sake: a path handling defect
+that only appeared on linux has already reached a user of this project, having passed the whole
+suite on windows first. A test in ``tests/test_documentation.py`` keeps the matrix and those
+classifiers in agreement, so advertising a new interpreter or a new system without testing it
+fails.
 
 The two python jobs install the project with ``pip install -e ".[dev]"`` rather than running
 it out of ``src`` - the extension job installs ``pip install -e .``, since what it needs is a
@@ -553,20 +564,52 @@ dependency list that no longer builds fails here rather than for whoever install
 distribution.
 
 Style and types are checked once rather than per platform, since neither varies by platform.
-``publish.yml`` runs the suite again before it builds a release, which is not redundant: a
-release can be cut from a commit this workflow never saw, and an upload to an index is
-permanent.
+
+``publish.yml`` runs this whole workflow again before it builds a release, on the release's own
+commit, which is not redundant: a release can be cut from a commit this workflow never saw, and
+an upload to an index is permanent. It calls ``ci.yml`` as a reusable workflow
+(``workflow_call``) rather than keeping a copy of its jobs, so the two cannot drift, and builds
+nothing for upload until every job of it has passed - the six cells of the suite, the lint, the
+image, the extension, the three legs of the browser interface and its screenshots. It used to
+run the python suite again on one of the six cells, and none of the page's own gates. A run
+called so is given Publish's ``github`` context - its event, its tag and its commit, and its
+name and run id, which is how the workflow tells Publish's run from one of its own - and only
+the inputs Publish passes, which are none, so the journeys run once each and nothing is skipped
+as in a hunt. Three things differ there: the concurrency group is Publish's run's own, so that
+no push or dispatch cancels a release's gates, nor has its own cancelled by them; the ``gui``
+job builds no wheel, Publish building, installing and checking the one it ships; and
+``dev-build`` and ``dev-publish``, which run on a push or a pull request alone, never run for a
+release. The call allows ``id-token: write``, which ``dev-publish`` asks for: a called
+workflow's jobs can only lower the permissions they are given, and GitHub checks what each asks
+for as the run starts, whatever its ``if:``. ``dev-publish`` cannot run in Publish's run, and
+every other job of it is held to reading by the workflow's own ``permissions``.
+
+A release waits on every job of ``ci.yml``, then, its windows cells and its journeys included,
+and its documentation waits on the release. When one of them fails - a journey that fails only
+now and then, say - *Re-run failed jobs* on Publish's run runs that job again, on the release's
+commit, and with it every job that depends on it: the build, its checks and the uploads, none
+of which had run. The jobs that passed keep their results.
 
 Nothing in the toolchain moves on its own. Every ``uses:`` is pinned by a major tag, the
 extension's and the browser interface's lock files pin their dependencies exactly, and
 ``ruff`` and ``mypy`` are capped to a minor in ``requirements-dev.txt`` - those two are gates
 rather than libraries, so a release of either fails the lint job on the day it is published
-rather than on the day somebody upgrades it. What proposes the moves instead is
-``.github/dependabot.yml``, weekly, for the actions, the requirements files, the extension and
-the browser interface: a bump then arrives as a pull request that ci has already run, which is
-the difference between upgrading a tool and discovering on a release day that one has moved on
-without you. A test holds every action to one version across the three workflows, and both
-caps to being caps.
+rather than on the day somebody upgrades it. ``sphinx`` is pinned to one release in
+``requirements-docs.txt`` for the same reason: the documentation is built with ``-W``, so a
+sphinx that warns about anything new fails the documentation's build, and on the wrong day
+that build is a release's. So is every tool a release is built and checked with: ``build`` and
+``twine`` in ``requirements-release.txt``, which ``publish.yml`` installs them from,
+``hatchling`` and ``hatch-requirements-txt`` in the ``[build-system]`` table of
+``pyproject.toml``, and ``@vscode/vsce`` in the scripts of ``editors/vscode/package.json``.
+What proposes the moves instead is ``.github/dependabot.yml``, weekly, for the actions, the
+requirements files, the extension and the browser interface: a bump then arrives as a pull
+request that ci has already run, which is the difference between upgrading a tool and
+discovering on a release day that one has moved on without you. Dependabot may not reach the
+backend, since its documentation says nothing of ``[build-system]`` - its first weekly run shows
+whether it does - and cannot reach vsce, since a version written into an ``npx`` command is no
+dependency it reads: vsce is moved by hand, and the backend may have to be. A test holds every
+action to one version across the three workflows, both caps to being caps, and sphinx and the
+release's tools each to one version.
 
 .. _development-builds:
 
@@ -584,25 +627,28 @@ upload has begun; a ``dev-publish`` that fails once its upload has begun leaves 
 whatever it had uploaded.
 
 ``dev-build`` waits for every other job of the run - ``test``, ``lint``, ``container``,
-``extension`` and ``gui`` - so that a commit any of them fails is never a build anybody is
-pointed at; a test holds a job added to ``ci.yml`` to joining the list. It checks the commit
-out - a pull request's own head, not the merge ``gui`` tests it as - and fails at once, with an
-error saying to merge ``master`` into the branch, when that head has no
-``tools/dev_version.py``: a pull request whose branch was cut before development builds
-existed. It then stamps the development version into the checkout, compiles the pages and
-builds the wheel and the sdist as the release build does, type check included, and checks that
-the wheel carries the pages. ``dev-publish`` uploads what it built, and writes the run's
-summary. They are two jobs for the reason ``publish.yml`` builds a release in one job and
-uploads it in another: ``npm ci`` runs the install scripts of every package the pages depend on,
-and a build runs whatever its backend is, so none of that runs in the job that can ask for a
-token to publish with. That job checks nothing out, and takes nothing it is handed on trust:
-the version has to be this run's; ``dist/`` has to hold that version's wheel and sdist and
-nothing else - a file left there for a later run's version would otherwise be uploaded under it,
-and that run's own upload refused; and the wheel has to name this run's commit and declare
+``extension``, ``gui`` and ``gui-screenshots`` - so that a commit any of them fails is never a
+build anybody is pointed at; a test holds a job added to ``ci.yml`` to joining the list, and
+another holds this one to it. It checks the commit out - a pull request's own head, not the
+merge ``gui`` tests it as - and fails at once, with an error saying to merge ``master`` into the
+branch, when that head has no ``tools/dev_version.py``: a pull request whose branch was cut
+before development builds existed. It then stamps the development version into the checkout,
+compiles the pages and builds the wheel and the sdist as the release build does, type check
+included, and checks that the wheel carries the pages. ``dev-publish`` uploads what it built,
+and writes the run's summary. They are two jobs for the reason ``publish.yml`` builds a release
+in one job and uploads it in another: ``npm ci`` runs the install scripts of every package the
+pages depend on, and a build runs whatever its backend is, so none of that runs in the job that
+can ask for a token to publish with. That job checks nothing out, and takes nothing it is handed
+on trust: the version has to be this run's; ``dist/`` has to hold that version's wheel and sdist
+and nothing else - a file left there for a later run's version would otherwise be uploaded under
+it, and that run's own upload refused; and the wheel has to name this run's commit and declare
 requirements an install line can print as they are. All of it is checked before the upload.
 
 **The version is the next patch, as a development release numbered by the run.** After 0.10.0,
-run 57 publishes ``0.10.1.dev57``. The commit cannot be part of the version: PEP 440 refuses
+run 57 publishes ``0.10.1.dev57``. After a release candidate it is the next candidate's: after
+``0.11.0rc1``, run 57 publishes ``0.11.0rc2.dev57``, which sorts after the candidate and before
+both of what can follow it, ``0.11.0rc2`` and ``0.11.0``. The commit cannot be part of the
+version: PEP 440 refuses
 ``0.10.0-<sha>``, and PyPI and TestPyPI both refuse a local label such as ``0.10.0+g<sha>``. The
 build's metadata carries it instead, as the ``Commit`` link of the project, and the run's
 summary maps the version to it. The base is the next patch because ``0.10.0.dev57`` would sort
@@ -623,19 +669,38 @@ Renaming ``ci.yml`` is one way: it restarts the run numbers - and its registrati
 the file - so its uploads are refused until the numbers, or the next release, move past the
 versions already published.
 
-``tools/dev_version.py`` writes that version into the job's own checkout, and nothing it
-rewrites is committed. It writes it into the three places the installed package compares at
-run time: ``pyproject.toml``; ``src/ddd/__init__.py``, so that ``ddd --version`` prints ``ddd
-0.10.1.dev57``, in the format it always has; and ``cmake/Ddd.cmake``, whose
+``tools/dev_version.py`` writes that version into the checkout of the job running it, and
+nothing it rewrites is committed. It writes it into the three places the installed package
+compares at run time: ``pyproject.toml``; ``src/ddd/__init__.py``, so that ``ddd --version``
+prints ``ddd 0.10.1.dev57``, in the format it always has; and ``cmake/Ddd.cmake``, whose
 ``DDD_MODULE_VERSION`` the module compares with that output by exact string, refusing a tool of
 any other release. Nothing compares the other spellings, listed under
 :ref:`publishing-a-release`, at run time: the extension's manifest and lock file reach no
 installed package, and the rest is prose - the README's included, which the wheel carries as
-its description. The script refuses a version with no next patch, and a release candidate is
-one: a run whose commit states a candidate in ``__version__`` fails ``dev-build`` - every run of
-``master`` for as long as the candidate stands there - while a pull request branched before it
-still builds. ``tests/test_documentation.py`` holds the script to all of this, and runs the
-checks ``dev-publish`` makes.
+its description. The script refuses a version it cannot number after: an alpha or a beta, and a
+development, post or local release, none of which a commit of ``master`` states. A run whose
+commit states one fails ``dev-build``, and the ubuntu leg of ``gui``, which stamps the wheel it
+uploads the same way. A release candidate it numbers, so its stamp fails no job on one. The
+extension's manifest states the version too, held equal to ``__version__`` by a test, and
+``0.12.0rc1`` is no semver version, which semver would spell ``0.12.0-rc.1``: npm installs a
+manifest of that version as it is, but whether vsce packages one is untried, so a candidate
+stated on ``master`` may still fail the ``extension`` job, in ci's own runs and in Publish's,
+before anything is uploaded. ``tests/test_documentation.py`` holds the script to all of this,
+and runs the checks ``dev-publish`` makes.
+
+**Every wheel ci builds is stamped so, and no other.** ``dev-build``'s is, and so is the one the
+``gui`` job uploads as ``ddd-tool-<commit>``, with ``dev-build``'s run number, and naming the
+commit it was built from - for a pull request, the merge ``gui`` tests, where ``dev-build``
+builds the head. Each is numbered after the version its own commit states: the two are one on a
+push, and on a pull request they part only where its head and the merge it is tested as state two
+versions - a branch cut before a release's commit, say - and not on the release's own pull
+request, whose head and merge both state the release. A wheel built anywhere else, by
+``python -m build`` in a checkout, carries the version its ``pyproject.toml`` states, and
+``master`` states the last release's until the next release commit: built between releases, such
+a wheel holds every commit since that release and says it is that release - to
+``ddd --version``, to the banner of every file it generates, to the module's handshake and to
+pip - and its metadata names no commit. Only the release's own build, from its tag, is the
+release.
 
 The run's summary gives the two commands that install the build, for instance:
 
@@ -698,9 +763,49 @@ Publishing this documentation
 
 ``.github/workflows/docs.yml`` builds the html and publishes it to
 `GitHub Pages <https://sauci.github.io/ddd/>`_. It runs on every pull request, and deploys on
-two events: a push to ``master``, and a published release. The deployment is a push to the
-``gh-pages`` branch with the workflow's own token, and Pages serves that branch directly;
-nothing else authenticates, and no deployment environment is involved.
+a push to ``master`` and for a release - the release once ``publish.yml`` has published it.
+The deployment is a push to the ``gh-pages`` branch with the workflow's own token, and Pages
+serves that branch directly; nothing else authenticates, and no deployment environment is
+involved.
+
+A release's documentation waits for Publish, because a release can be one Publish refuses -
+its tag names a version ``pyproject.toml`` does not - or one whose tests or build fail. While
+both workflows started on the release itself, neither waiting for the other, such a release
+was published on the site all the same, and became the version its root redirects to, though
+PyPI never received it. So the release starts no documentation run. Publish's run completing
+starts one, which builds and deploys only if Publish's run was a release's and succeeded -
+from the commit the release's tag names, and under the tag. A release tagged on a commit older
+than this arrangement - a fix on a line branched before it - is the exception: GitHub runs a
+release's workflows from its tag, so that commit's own ``docs.yml`` still publishes it on the
+release event, whatever Publish then does, and once Publish succeeds this one publishes it
+again.
+
+A release Publish failed is published when a re-run of that Publish run passes, with *Re-run
+failed jobs*, which runs again only the jobs that failed. *Re-run all jobs* cannot pass once the
+release is on PyPI: it runs the upload again, an index accepts a file name once and for ever,
+and ``publish.yml`` asks for no ``skip-existing``, so every such attempt fails the same way. A
+release pypi.org holds whose Publish no re-run can finish - what failed is in the tagged commit,
+which every re-run builds again, or every attempt left would repeat the upload - is published
+by hand: run *Documentation* from ``master`` with the release's tag as ``tag``. That run builds
+the commit the tag names, refuses a tag that is not ``v`` followed by the version
+``pyproject.toml`` states at that commit, as Publish does, and refuses, before anything is
+built, a version pypi.org holds no file of, read off the index's json. What it cannot check is
+what a release's run reads besides, Publish's success, every job of it: there is no such run to
+read, so a release whose ``.vsix`` was never attached is published all the same. A release that
+never reached pypi.org is not published by hand, which would put the documentation of a version
+pip cannot install on the site, crowned stable were it the newest: it is deleted with its tag
+and created again, as :ref:`the steps of a release <the-steps-of-a-release>` say.
+
+A release's run is alone in a concurrency group of its own, so a push to ``master`` cannot
+cancel it. GitHub keeps one run going and one waiting in a group, and cancels the waiting one
+when another arrives: ``master``'s runs share a group, where that costs nothing, since the
+newer push builds everything the older one would have, but a release's run waiting there was
+cancelled by the next merge, with nothing red and no directory for the release. A dispatch on
+another branch naming no tag waits in ``master``'s group as well, and deploys nothing, so when
+it replaces ``master``'s waiting run, ``latest`` stays a push behind until the next push. A
+release's deploy and ``master``'s can therefore run at once, and neither takes the branch to be
+where it found it: a push refused because ``gh-pages`` moved takes the branch as it now stands,
+puts its own directory back on it, rewrites the index from that, and pushes again.
 
 The site keeps one directory per version, and a menu in the bottom left corner of every page
 switches between them:
@@ -715,12 +820,15 @@ switches between them:
      - a push to ``master``
      - every push
    * - ``v0.5.0``, ``v0.6.0``, ...
-     - publishing that release
-     - never
+     - that release, once Publish has published it
+     - only by a re-run of that release's run, or by a dispatch naming its tag
 
-Old documentation describes old code, so nothing rebuilds a released version. That is not
-only a saving: a tag from two years ago would have to keep building under the sphinx of the
-day, and the run that failed would be the one publishing the *current* release.
+Old documentation describes old code, so nothing rebuilds a released version but a re-run of
+that release's run, or a dispatch naming its tag, which builds the tag's commit with what its
+requirements allow that day and replaces the directory whole, so that a dispatch naming the
+wrong tag rewrites that release's documentation. That is not only a saving: a tag from two
+years ago would have to keep building under the sphinx of the day, and the run that failed
+would be the one publishing the *current* release.
 
 A build produces one version and the site is all of them, so the versions that are not being
 built have to come from somewhere: the ``gh-pages`` branch holds them. The branch is the site
@@ -766,10 +874,12 @@ the branch whether or not anything serves it, so with the setting missing the pu
 and the *Read back what was published* step fails five minutes later, naming that setting.
 There is nothing to change in the repository to fix it: correct the setting and re-run.
 
-**A pull request builds but never deploys.** The deploy job names the branch and the release
-event it publishes, rather than resting on the event alone, because a pull request from a
-fork proposes arbitrary content: without that condition, opening one would be enough to
-publish somebody else's revision as the product's documentation.
+**A pull request builds but never deploys.** The deploy job names the branch it publishes and
+the Publish run it waits for, rather than resting on the event alone, because a pull request
+from a fork proposes arbitrary content: without that condition, opening one would be enough to
+publish somebody else's revision as the product's documentation. The Publish run has to have
+been a release's, too, since a workflow called Publish in a pull request from a fork completes
+as well.
 
 .. _publishing-a-release:
 
@@ -837,6 +947,32 @@ same run started on a branch would have built whatever that branch's ``pyproject
 and uploaded it under no tag, with no ``.vsix`` and no documentation directory - and an index
 accepts a file name once and for ever, so the only way back is the next version number.
 
+**Nothing is uploaded until the wheel has been installed and run.** Every job of ``ci.yml`` has
+passed on the release's commit first, as :ref:`continuous integration <continuous-integration>`
+says. The build then installs the wheel it built into a fresh virtual environment, its
+dependencies from the index, and ``tools/installed_wheel.py`` runs the installed ``ddd`` in an
+empty directory, holding what it answers to the wheel itself: ``ddd --version`` the version the
+run publishes - the tag's on a release, ``pyproject.toml``'s on a dry run from a branch - which
+the wheel's metadata and the module's ``DDD_MODULE_VERSION`` have to state as well; ``ddd
+templates-dir`` a directory holding exactly the templates the wheel carries; ``ddd cmake-dir``
+one whose ``Ddd.cmake`` is the wheel's; and ``ddd gui``, started, the wheel's ``index.html`` at
+the address it prints. Only then is the wheel handed to the jobs that upload it. The one look
+the release took at its artefact used to be a listing of the wheel for ``index.html``, and it
+was never installed.
+
+**A release's page on the index links its own documentation.** The README is the description
+PyPI shows for a release, and in the tree its links into the documentation point into
+``latest/``, which follows ``master``: the right pages for the tree, and for a reader of the
+release, pages of what it may not have. So the build points each of them at ``v<version>/``, of
+the version ``pyproject.toml`` states, the link to the root of the site among them, and with them
+``pyproject.toml``'s ``Documentation`` url, which the index shows beside the description, in its
+checkout and before ``python -m build`` reads the two; nothing of that is committed. The
+installed check then refuses a wheel whose ``Documentation`` url is not that directory, whose
+description links the documentation anywhere else or nothing of it, or that names no
+``Documentation`` url at all. That directory is written once Publish has succeeded, so for as
+long as Documentation takes after it - longer, for a release waiting on a re-run - the
+release's page links pages that are not served yet.
+
 **The version is spelled in ten files, and a test holds five of them together.**
 ``src/ddd/__init__.py`` is where it lives: ``docs/conf.py`` imports ``__version__`` rather than
 restating it, and the banner of every generated file carries it from there. ``pyproject.toml``,
@@ -879,6 +1015,80 @@ reviewer stops both. An environment restricted to the default branch instead is 
 what a release is not - a release runs from its tag - and rejects the release after a green
 build, with *not allowed to deploy ... due to environment protection rules*.
 
+.. _the-steps-of-a-release:
+
+The steps of a release
+~~~~~~~~~~~~~~~~~~~~~~
+
+In order, each step waiting for the one before it:
+
+#. **Merge** into ``master`` everything the release is to carry, each change through its pull
+   request.
+#. **Wait for ci** on ``master``'s newest commit, every job of ``ci.yml`` passing. Publish runs
+   all of them but the development builds again on the release's commit and uploads nothing
+   until they pass, so what would fail there fails here first, where it costs a pull request
+   rather than a release to delete and create again.
+#. **Bump the version** in a commit of its own, on a branch, in the ten files listed above, and
+   in no other commit: ``master`` states the release's version from the moment that commit
+   lands.
+#. **Write the notes** in that commit: ``## Unreleased`` in ``CHANGELOG.md`` becomes
+   ``## <version>``, and that section is the release's notes. Merge the commit through its pull
+   request, and wait for ci on ``master`` once more: the commit it runs on is the one the tag
+   names.
+#. **Rehearse the release**, optionally, before it is created: dispatch *Publish* from
+   ``master`` with ``target: testpypi``, the dry run above. It is the one rehearsal of the
+   release path before a tag exists. On the commit the tag will name, it runs ``ci`` through the
+   call, then ``build`` - the pages, the description's links pointed at ``v<version>/``, the
+   wheel and the sdist, ``twine check`` and the installed check - and uploads to TestPyPI alone,
+   which spends the version there and nowhere else: a second rehearsal of that version is refused
+   at its upload, and pypi.org is untouched. It shows GitHub starting Publish with the call - the
+   permissions the call grants, checked as the run starts, and ``build`` waiting on ``ci`` with
+   the development builds skipped - and the build's checks passing on a runner. It does not show
+   the tag check, which a dispatch from a branch skips, the ``.vsix``, which ``extension``
+   attaches to a release alone, the upload to pypi.org and the ``pypi`` environment's
+   protection, or *Documentation*, which publishes nothing for a dry run.
+#. **Create the release** on GitHub, on that commit, with a new tag ``v<version>`` - ``v`` and
+   the version ``pyproject.toml`` states, exactly, or Publish refuses it - and the notes of
+   ``## <version>``, and publish it.
+#. **Publish runs**, on the tag's commit, in this order: ``ci``, every job of ``ci.yml`` but the
+   development builds; then ``build``, which compiles the pages, points the description's links
+   into the documentation, and the ``Documentation`` url, at ``v<version>/``, builds the wheel
+   and the sdist, checks that the wheel carries the pages and that the tag is the version, runs
+   ``twine check``, and installs the wheel into a fresh environment and checks the
+   installation; then, each waiting for ``build``, ``extension``, which attaches
+   ``ddd-<version>.vsix`` to the release, and ``publish-pypi``, which uploads the wheel and the
+   sdist to pypi.org. Where the ``pypi`` environment has a required reviewer, as the protection
+   above describes, ``publish-pypi`` waits for that reviewer's approval before it uploads, and
+   Publish's run, and so the documentation, waits with it.
+#. **Documentation publishes** once Publish's run has succeeded - every job of it, the
+   ``.vsix``'s included: a run of ``docs.yml`` builds the commit the tag names, publishes it
+   under ``v<version>``, lists it in the menu of every page, and reads it back from the site.
+   The root of the site lands on it if it is the newest release, which a release candidate
+   never is.
+#. **Check** what was published: the version on pypi.org, whose page links ``v<version>/`` of
+   the documentation; ``ddd-<version>.vsix`` on the release; ``v<version>`` in the menu of the
+   site; and, in a fresh environment, ``pip install ddd-tool==<version>`` installing a ``ddd``
+   whose ``--version`` answers ``ddd <version>``.
+#. **When a job fails**, what to do depends on whether anything has reached pypi.org. Until
+   ``publish-pypi`` has uploaded, nothing has - whether a gate failed, the build, one of its
+   checks, or the upload itself, refused before it began, as for ``invalid-publisher`` until the
+   registration is corrected: *Re-run failed jobs* on Publish's run, for a failure that comes and
+   goes or one corrected outside the tree; for one in the tagged commit, delete the release and
+   its tag, fix ``master``, and create the release again, its version unchanged, since pypi.org
+   does not hold it. A tag Publish refused is remade so too. Once a file is on pypi.org no run of
+   the upload passes again, an index taking a file name once: *Re-run failed jobs* runs again
+   only what failed and what waits for it, so it serves a failed ``extension`` beside an upload
+   that passed, and *Re-run all jobs* cannot pass. A release on pypi.org that no re-run can
+   finish has its documentation published by hand: *Documentation*, run from ``master`` with
+   the release's tag as ``tag``, which refuses a version pypi.org holds no file of. A run of
+   *Documentation* that fails on its own is re-run as it is. A file no re-run can upload - the
+   wheel on pypi.org and the sdist refused, say - waits for the next version: every route here
+   uploads the whole of ``dist``, and an index takes a file that landed once.
+#. **Leave master's version** as the release's: nothing is bumped after a release. ``master``
+   states it until the next release commit, and its development builds number themselves after
+   it: ``<next patch>.dev<run>`` after a release, and after a release candidate the next
+   candidate's, ``0.12.0rc2.dev<run>`` after ``0.12.0rc1``.
+
 Delivering the editor extension
 -------------------------------
 
@@ -916,7 +1126,8 @@ The browser interface
 ``src/ddd/gui/static/``. git ignores the compiled pages, and Node.js is needed where they are
 compiled, never where ddd is installed. The release build compiles them before it builds the
 wheel, which then carries them. The ``gui`` job of ci does the same and uploads the wheel as
-``ddd-tool-<commit>``, so every branch ci runs on installs without Node.js as well, and
+``ddd-tool-<commit>``, stamped as a development build of that commit, so every branch ci runs on
+installs without Node.js as well, and
 ``dev-build`` does it again for the :ref:`development build <development-builds>` of the last
 commit of a push to ``master`` or to a pull request, which TestPyPI serves to anybody. The image
 behind ``docker compose`` compiles them in a build stage of its own, thrown away with its
@@ -1044,9 +1255,15 @@ overflows that worker's stack on a chain so deep, so the canvas is laid out in r
 state no example and no other generated project reaches. In Chrome on Linux the shortest chain
 laid out in ranks only is 908 components long, and the fixture's is more than twice that.
 
-The build refuses a bundled package whose licence is not MIT, ISC, Apache-2.0, BSD-2-Clause,
-BSD-3-Clause or 0BSD. The project screen's canvas is drawn with ``@xyflow/react`` and laid out
-with ``@dagrejs/dagre``, both MIT like every other bundled package.
+The build writes the licence of every package the pages bundle into
+``third-party-licenses.txt``, beside them, and refuses a bundled package whose licence is not
+MIT, ISC, Apache-2.0, BSD-2-Clause, BSD-3-Clause or 0BSD. It lists every production package of
+``gui/package-lock.json`` that is installed: it walks npm's own tree of them, reads each one's
+directory off the lock file rather than off a path npm prints, and refuses, naming each, a
+production package of the lock file the walk did not list - which would ship without its notice,
+and past the licence check - and a package it listed that the lock file does not hold. The
+project screen's canvas is drawn with ``@xyflow/react`` and laid out with ``@dagrejs/dagre``, both
+MIT.
 
 ``.venv/bin/python tools/generate_project.py DIRECTORY --declarations N`` writes a project of
 ``N`` declarations, rounded down to even components and refused under 120, to measure ``ddd

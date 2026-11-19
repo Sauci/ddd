@@ -16,6 +16,347 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
 
 ## Unreleased
 
+What the entries below ask of a user, grouped by who meets it: each item names the entry that asks
+it and says what that entry says, and the entry has the rest.  An entry that says there is nothing
+to migrate asks nothing and is not named.
+
+A project built with CMake:
+
+  - "Under Ninja, a build after a description change compiles the components whose header it
+    changed": a component the image reaches only through a link made, or a library defined, after
+    the directory calling `ddd_generate()` is done, or registered after it, now fails the configure,
+    naming it: link it, define it or register it before the end of that directory; in the collected
+    mode a renamed component needs a reconfigure, until then every build runs the generation and a
+    change of that component's header reaches the components reading it a build late; and nothing in
+    the calling directory can `APPEND` to the generation's command earlier, it being added at the
+    end of that directory.
+  - "With `ADDRESS_MAP`, the a2l carries the addresses of the image just linked": a project
+    following the build page's recipe, whose extractor is a `POST_BUILD` command of the image,
+    migrates nothing; a map written by any other step is written before `<stem>_ddd_a2l` runs; a
+    build naming its targets builds `<stem>_ddd_a2l` too, and a target that depended on the
+    generation for the a2l depends on `<stem>_ddd_a2l`; a project that defined a target of that name
+    renames it; a `POST_BUILD` command of the image reading `DDD_A2L` reads the a2l of the build
+    before; an a2l written with no address source says so in a comment under `ASAP2_VERSION`, so a
+    step comparing a2l files byte for byte sees that line where it applies; under `STRICT` a map
+    that leaves out a member of a structure now stops the first build, where it stopped the second;
+    and a file named by `DEPENDS` still reruns the generation before the link, and no longer the a2l
+    written after it.
+  - "A call the module cannot honour fails the configure, naming why": a project file is given to
+    `ddd_generate(... PROJECT <file>)` and not to `ddd_add_component()`; a value keyword is given a
+    value, or the keyword and its value wrapped in `if()`; the `PROJECT` file is written before
+    configuring; and C is enabled where `ddd_generate()` is called, by `project(<name> LANGUAGES C
+    CXX)` or `enable_language(C)`.
+  - "The configure follows the tool and the templates it renders with": a step that recovered a
+    deleted output directory by hand can go, the configure reconfiguring by itself where a Ninja
+    build stopped on the missing description; and `DDD_VERSION_HANDSHAKE` is no longer cached, the
+    module asking `ddd --version` at every configure.
+  - "Makefile generators leave a build that changed nothing with nothing to do": a step in another
+    directory, or one reading a `{component}` header, depends on `<stem>_ddd_generation`, or on
+    `<stem>_ddd_a2l` for the linked a2l, and not on a generated file's path; a file of the step
+    deleted by hand is not written again until the step's stamp is deleted or the tree cleaned.
+
+A description, a template and what the tool writes from them:
+
+  - "`ddd id --assign` writes a description the way `ddd gui` does": a description that spells a key
+    twice has to be corrected first, as `ddd check` has always asked; a read-only file is reported
+    as one that cannot be written and left as it was, a link is written through to the file it names
+    and stays a link, and a file `ddd check` would refuse to read is reported as not readable as
+    json and left alone, each reported while the other files are stamped, and the run exits 1.
+  - "A name that is a keyword of ASAP2 is an error, and a string or a name past the format's limits
+    is named": the error costs a rename, and `-W a2l-keyword=ignore` relaxes it for a name the
+    target's tool accepts; the warning stops a `--strict` or `STRICT` build, and `-W
+    a2l-unrepresentable=ignore` lets it through.
+  - "A size past 65,535 is named, once, where it is declared": a `--strict` or `STRICT` build with
+    such a size stops; the cost is a smaller object, or `-W a2l-unrepresentable=ignore`.
+  - "`--const-inputs` and `CONST_INPUTS` are gone, and a header that adds `const` is named": the
+    option or the keyword, and any template line using `.const` on a header entry or
+    `declaration(const=...)`, are deleted, and nothing replaces them; a `STRICT` build whose
+    hand-written header adds `const` stops, until the header is fixed or `-W elf-mismatch=ignore`
+    lets it through.
+  - "`ddd generate a2l --image` warns where the image holds a variable otherwise than its
+    description says": a `STRICT` build whose image disagrees with its description stops and writes
+    no a2l, until it is fixed, or `-W elf-mismatch=ignore`, or `SEVERITY` in cmake, lets it through.
+  - "An address the linker left meaningless is not placed": a variable with such an address has its
+    a2l record at address 0 with a warning, where it had a wrong address, and a `--strict` or
+    `STRICT` build now stops at it.
+  - "An object the build compiled out is left out of the a2l, and a reference across conditions is
+    checked": an `address-missing=info` lowering kept for this is dropped; a tool that expected the
+    record, or its comment, finds none; a curve or a map over an axis so left out goes too, as the
+    new warning `reference-left-out`, which stops a `--strict` build; and a project with a reference
+    across conditions meets `condition-mismatch`, an error under `--strict`.
+  - "A member's `SYMBOL_LINK` is where a linker map can find it": a script that matched a record by
+    the spelling of its path in `SYMBOL_LINK` reads the variable and the offset instead.
+  - "A structure member's `export: false`, `format` and `display_identifier` reach the records below
+    it": a project that relied on the ignored block sees fewer records in the a2l, and a display
+    identifier that was ignored now renames the records it stands for.
+  - "The a2l's records, groups and methods are named and ordered the same way on every run": a
+    project with two conversions in one unit, whose first holder changed, sees the two names swap
+    between the records, which a tool that addresses a method by its name sees, and a `GROUP` lists
+    the elements of an array of structures in the dictionary's order, `SA[1].v` before `SA[10].v`.
+  - "Every component has an include guard of its own": a hand written reference to a guard that
+    moved, such as an `#ifdef` on it, is changed; a template that builds a component's guard with
+    `model.guard()` keeps the old collision.
+  - "The example `ddd_globals.c` template keeps a definition through `--gc-sections`": a project
+    that links with `--gc-sections` on ELF defines `DDD_RETAIN`, with `-D` or in a header the build
+    includes first, and one that copied the example templates before copies the template to gain the
+    macro.
+  - "A reader of a variable's scale can follow its rescale": a project that copied the example
+    templates earlier copies the `scale` macro of `_macros.jinja2` and its call to gain it.
+  - "The a2l's addresses out of the linked image: `ddd generate a2l --image`": the a2l takes the
+    byte order the image states, and a `--byte-order` that contradicts it is refused; `ADDRESS_MAP`
+    and `--address-map` stay as they were, for an image without debug information.
+
+A delivery comparison:
+
+  - "A delivery that moves what a precompiled reader was built against is `changed-interface`": a
+    released structure that has to grow grows at the end of a single variable's structure, or the
+    finding is accepted for that delivery by relaxing `changed-interface`; a nested array whose size
+    a constant names where a number did, or the other way, is accepted the same way, or keeps the
+    spelling of the baseline; a `-W changed-storage=...` kept to let `volatile` turned on pass no
+    longer reaches it; and a script that matched the old reorder message, said once at the
+    structure, follows the new one, said at each variable.
+  - "A constant that is gone stops a comparison, one that is new does not": a project that changes a
+    constant between two deliveries relaxes `changed-interface` or `removed-constant`, or takes a
+    new baseline; and a raster whose event or cycle changed is `changed-storage`, a warning and so
+    an error under `--strict`, where it was no finding.
+  - "A rename, or a narrowing by condition, of an object a component reads is an error": a project
+    that relaxed `-W renamed-object=ignore` or `-W changed-condition=ignore` to accept such a
+    delivery names `-W renamed-read-object=...` or `-W narrowed-condition=...` for that delivery.
+  - "The limits of a measurement a component reads are graded by what its readers meet": a project
+    that relaxed `-W narrowed-limits=ignore` for a measurement a component reads no longer has it
+    reach it, and a `--strict` run now stops on a widened measurement; a delivery that moved a
+    member's limits and changed its variable's kind, locality, type, shape or where its members lie
+    meets the `changed-interface` alone, the limits told again once it is resolved.
+  - "An output a component drops or changes is graded as one somebody reads": a project that relaxed
+    `-W removed-object=...` to let an input go can drop it; one that relied on
+    `removed-unused-object` for a dropped output names `removed-object` now; and a supplier whose
+    gate passed the rename, the condition, the `volatile` or the wider range of an output relaxes
+    the new id for that delivery; and `ddd compare`, `ddd check --baseline` without `--standalone`
+    and the Compare tab read a component file given as the candidate as a project's file, so a
+    supplier comparing two versions of a component with inputs uses `ddd check --baseline
+    --standalone`, the command that takes the option.
+  - "A broken baseline withholds nothing, a description baseline takes the project's relaxations": a
+    baseline error a project relaxes no longer appears in its comparisons, and a script that matched
+    the lone refusal of a broken baseline now finds the rest of the report after it; and a json that
+    states no `format`, no `project` and no `component`, such as one holding only a `name`, is
+    refused as `schema` wherever it is given as a delivery to compare, where it was compared as the
+    removal of everything.
+  - "A producer lost is `missing-producer`, said once, where the baseline had one": a project's own
+    `-W missing-producer=ignore` silences it on every path, and a relaxation of `changed-owner` no
+    longer reaches this pair; a component that turns an output into an input exits 1 under `ddd
+    check --baseline --standalone` with or without `--strict`, as it exited 0 with a `changed-owner`
+    warning.
+  - "An initial value is compared as the bytes it stores, and one no double holds is refused": a
+    `1e-400` written to mean zero is written `0`, and a comparison that was clean over a changed
+    table, a square map and its transpose, or over `-0.0` against `0.0`, reports it.
+  - "A structured variable's changes are told once, in order, and a variable with no leaf is
+    compared": the new errors are relaxed by the ids they carry; and a structure variable with no
+    leaf, one holding only members of external types, that is removed, renamed or reused is now
+    `removed-object`, `removed-unused-object`, `renamed-read-object`, `renamed-object` or
+    `reused-name`, where no finding was made.
+  - "A structure member's `export: false`, `format` and `display_identifier` reach the records below
+    it": `ddd compare` against a baseline 0.11.0 archived reports `changed-a2l` for every such leaf,
+    and `ddd check --baseline --strict` of a project unchanged since exits 1 after the upgrade,
+    until the baseline is dumped again with this version; the dumped dictionary is format 10, which
+    0.11.0 refuses as the dictionary of a newer DDD, and a format 9 dictionary reads back unchanged.
+
+A script or a client reading what the tool prints:
+
+  - "`ddd check`'s count line agrees in number": a script matching the old line changes; and
+    `--dictionary` naming `.ddd-manifest.json`, the file the run keeps its manifest under, is
+    refused.
+  - "`ddd sources` lists every file a build depends on, and a plugin's defect no longer hides them":
+    the listing grows, and a script that took its length for something else changes; a plugin whose
+    model raised, which ended the command with exit 2 and no listing, is the finding
+    `plugin-invalid` beside the listing, exit 0.
+  - "The a2l's `MOD_COMMON` states the image's alignments, and a run that defaults the byte order
+    says so": a script that read the count of diagnostics from `--format json`, expecting none, now
+    finds `byte-order-defaulted`, which `-W byte-order-defaulted=ignore` silences, as does stating
+    the byte order.
+  - "A position independent image, an unreadable map and two debug options say what they are": a
+    build that counts its findings sees `image-load-relative`, which `-W image-load-relative=ignore`
+    silences; and a map that is not UTF-8, one nested deeper than the interpreter reads and one
+    holding an address of more digits than it converts are a usage error naming the file, exit 2,
+    where they were Python's own words or a traceback with exit 1.
+  - "A size past 65,535 is named, once, where it is declared": a script that read the text of such a
+    warning, and its location, reads the new.
+  - "A derived limit no longer stops short of the largest raw value": a script comparing the limits
+    of an archived a2l or dictionary as text, or without a tolerance, sees the difference in the
+    digits after the twelfth.
+  - "A reader of a variable's scale can follow its rescale": a script that matched the title of the
+    fix a `ddd gui` finding offers for a `definition-mismatch` matches the new one, which `GET
+    /api/fix` returns.
+  - "The Compare tab's verdict counts the project's own errors, and `GET /api/compare` says how
+    many": the reply gains `own_errors`, an integer that is required, so that a client typed from
+    the contract adds it, and one that reads the json ignores it.
+  - "`ddd gui` says what to do when a launch code is presented again": a tool that matched the
+    earlier text of the line `ddd gui` prints on stderr matches the new.
+  - "An edit through `ddd gui` is held to what the reader could do by hand": a client that scripted
+    `POST /api/edit` to change which plugins the project's descriptions name, or to create a file
+    that is not a description, now gets the `409`; the page's own flows need nothing changed.
+  - "`ddd gui --host` takes the two addresses `ddd gui` listens on": a `--host` naming any address
+    but `127.0.0.1`, `0.0.0.0` or a name resolving to either is refused, exit 2, and a build script
+    or a CI job that passed one gives `--host 0.0.0.0` instead.
+  - "A types, units, constants, sections or rasters file may declare nothing, and `empty-vocabulary`
+    says so": a tool that validates against the schemas of an earlier version refuses an empty list
+    as the loader did, and a build that counts the findings it prints sees one info per such file,
+    which `-W empty-vocabulary=ignore` silences.
+  - "An include through a loop of links is a finding on python 3.12 too": `ddd check` reports the
+    file it cannot read, at the entry naming it, where it ended in a traceback, and `ddd gui`
+    answers a request naming a path through such a loop as one naming no file it can read, where it
+    answered `500`.
+  - "Every route of `ddd gui` reads its query through one typed model": a hostile or malformed value
+    in a query, a body or a page's path is refused with a plain `400`, `404` or `409` and never a
+    `500`, and an answer carrying json nested more than 99 levels deep is refused `409` rather than
+    sent.
+  - "`ddd gui` answers at most sixty-four connections at once": the sixty-fifth is refused
+    immediately, `503`.
+  - "`ddd gui`'s token is no longer a cookie": the page keeps the token in the browser's storage for
+    its own address and sends it as a header, a cookie being no credential any more; a browser too
+    old to send `Sec-Fetch-Site` lets any site open the page itself at an address it chooses, and
+    the security page says what that allows.
+  - "`ddd gui` refuses a request that says it came from somewhere else": in a browser that sends
+    `Sec-Fetch-Site`, a page served from another port of `127.0.0.1` is refused rather than
+    answered.
+  - "`ddd gui` edits the value of a scalar and the description of a variable": `GET
+    /api/description-plan` and `GET /api/value-plan`, like the rest of the api, are a preview's and
+    change with the package.
+  - "Six small edges of the edit engine are settled": a pointer's element is spelled with its
+    brackets: `at` without them is refused, where `1` planned a key of its own.
+
+A user of `ddd tool from-elf`:
+
+  - "`ddd tool from-elf` reads a positive enumerator of a signed enum as positive": a component file
+    or an interface written from an image with such an enumerator holds the wrong values, and is
+    written again by `ddd tool from-elf` and the project generated again.
+  - "`ddd tool from-elf` warns where a structure is laid out otherwise than the generated C would
+    lay it out": a script that counts the findings, or a project that turns warnings into errors on
+    its output, meets the new ones, and the only way to silence one is to change the source; two
+    structures of one name that differ in a member's offset or in size are an `elf-type-conflict`
+    error, where they were one entry.
+  - "`ddd tool from-elf` refuses a debug-only file": a script that ran it over a companion file
+    passes the linked image.
+  - "`ddd tool from-elf` says where an image answers twice": a variable that was described silently
+    from the first unit's answer is now an error naming both answers, and the units have to agree;
+    one name at one address that two units give two sizes is `elf-type-conflict` and the variable is
+    left out; two sections a linker script overlays that hold an address, with a symbol naming
+    neither, are the error `elf-section-ambiguous`; a script that matched `duplicate-declaration`
+    for a name asked for twice matches `elf-symbol-ambiguous` instead.
+  - "`ddd tool from-elf` refuses the C++ it does not read": a project that relied on the wrong
+    description describes those by hand.
+  - "A name no unit gave storage is `elf-no-storage`, once": a script that matches the old
+    identifier for such a name matches the new one.
+  - "`ddd tool from-elf` writes no conversion it cannot know": the output pasted into a component is
+    a `schema` error until its author states what raw is to physical, or runs with
+    `--identity-conversions`.
+
+`ddd gui`, and what its page takes:
+
+  - "An edit of `ddd gui` is written whole, or refused, however many people write at once": a reader
+    may meet a `stale` where the edit used to be written, and reads the project again and asks once
+    more.
+  - "`ddd gui` edits a hand-written project whose build record sits beside it": a record of a
+    `PROJECT` build is stamped `format` 2, which a DDD from 0.11.0 on declines as written by a newer
+    DDD and an older one skips in silence, so a team on mixed versions upgrades its editors with the
+    module; a `PROJECT` with an older module's record beside it stays refused until the build is
+    configured again.
+  - "A float's values are written as floats, and a boolean's as booleans": a table pasted over a
+    float array whose file spells whole numbers, or a cell typed or a table pasted over a boolean
+    the file spells `1` or `0`, rewrites that spelling, and the diff shows it.
+  - "A whole number a double cannot hold is never shown, or written, as another": a value or a limit
+    at or past 2^53 is set in the file, in the editor.
+  - "Every number the page takes is read in decimal notation, and in no other": a person who typed
+    `0x1F` types 31.
+  - "A unit with spaces around it is refused on a variable's panel and a type's": a unit typed that
+    way is typed without them, and the route that settles a key and the type route answer 409 for
+    one.
+  - "A plan made over a file saved during the analysis is refused as `stale`": a plan whose file
+    reads differently, or whose recorded place no longer names what was asked about, is refused as
+    `stale`, and a settled value is refused as `unreadable` when its declaration moved.
+  - "`ddd gui` writes nothing under the build tree of a generated project": a change of any file
+    under the build tree that holds the record naming the description is refused as `generated`, and
+    a new file is offered instead beside the first description outside the build tree that has a
+    `CMakeLists.txt` beside it, with the `ddd_add_component()` line to add to it.
+  - "A build record's `project` is read under the rule a request's path meets": a project whose
+    record names a `project` that is not a path a request may name, or is not named `*.ddd.json`, is
+    read as no record: it is not offered on the start page and its builds do not feed it when it is
+    open; it is opened by its path on the command line, its records' severities still not applying
+    to it.
+  - "`localhost` is `ddd gui` itself, whichever of its two addresses a browser tries": a page opened
+    at `localhost` is signed out until the address `ddd gui` printed is opened there; a fixed
+    `--port` on which another program already listens at `[::1]` is refused before `ddd gui` starts,
+    naming the port, and `--port 0` tries another.
+  - "A file that cannot be written is refused before anything is, on every system, and what is
+    written is synced": a file that is read-only, another user's, on a read-only mount, or to be
+    written by root over a file nobody can write is refused as `unwritable`, naming it, with nothing
+    written, where on Linux a read-only file was written through, silently.
+  - "A rename, a removal or a declaration that produces a name is refused while a file of the
+    project does not load": each is refused as `unreadable`, naming every file that did not load,
+    until the file is repaired.
+  - "A fix or a value that would leave a file unable to load is withheld, or said so": a fix is
+    offered in the editor only for the declarations it leaves loadable, and on the page only where
+    it leaves every one of them loadable; a value the variable's panel would write that leaves one
+    unable to load is planned with a sentence naming the declaration and the file that would not
+    load, drawn above Apply.
+  - "A name another component keeps local is no longer offered to read": a name any component
+    declares local is left out of what a component may read, and reading it is refused, saying whose
+    it is.
+  - "The Files tab's Remove panel waits when a row arrives from elsewhere": a row the page was
+    loaded with - from a link, a bookmark, a typed address, a reload or a new tab - says that its
+    removal is planned once asked, behind a button.
+  - "A sign-in that gets no answer at all is retried once": a launch code whose first answer was
+    lost is already spent, so that one case still ends signed out, with the terminal's reused-code
+    line printed as a false alarm.
+  - "The browser `ddd gui` opens for the reader is no longer launched on the long-lived token": it
+    is launched on a one-time code, good for sixty seconds or one use.
+
+An install and the tool's python:
+
+  - "A toolbox, and its first tool: `ddd tool from-elf`": `pyelftools` 0.32 or newer is a new
+    runtime dependency, which an air-gapped install brings with the wheel.
+  - "`--const-inputs` and `CONST_INPUTS` are gone, and a header that adds `const` is named": code
+    that builds `DeclarationView` or `COptions` by position or by the keyword breaks, they having
+    lost `const` and `const_inputs`, and the `compile-const` service of `docker-compose.yml` is
+    gone.
+  - "`ddd generate a2l --a2l-module-fragment FILE` puts a project's own text at the head of the
+    `MODULE`": code that builds `A2lOptions` by position meets its new fields: `alignment_cap`
+    stands second, after `byte_order`, and `links`, `has_address_source`, `left_out` and
+    `module_fragment` after `addresses`.
+  - "The a2l's addresses out of the linked image: `ddd generate a2l --image`": a caller of
+    `load_address_map` or `ADDRESS_PATTERN` takes them from `ddd.addresses` and not `ddd.backends`,
+    `load_address_map` takes no `carried` any more, and a caller reading a map checks the 32-bit
+    range of the addresses with `ddd.backends.weigh_addresses`.
+  - "Every wheel ci builds and uploads says it is a development build": a job or a script that
+    installed the artifact of a run and expected the last release's version, a requirement pinned to
+    it, or a comparison of what `ddd --version` prints with it, meets the development version,
+    `<next patch>.dev<run number>`, or after a release candidate the next candidate's; a wheel built
+    from master's source with `python -m build` still carries the last release's.
+  - "A release's page on PyPI links that release's own documentation": a tool that selects packages
+    by the classifier `Operating System :: OS Independent` finds `Operating System :: Microsoft ::
+    Windows` and `Operating System :: POSIX :: Linux` instead; and the links of a release's page
+    into `v<version>/` do not resolve until Publish's run for it has succeeded and its documentation
+    is published.
+
+A build of DDD from its sources, and a release of it:
+
+  - "The licences the wheel ships list every package its pages bundle": a build of the pages in a
+    tree whose `node_modules` was not installed from the lock file, and holds a package or a version
+    it does not, exits 1 naming each, and `npm ci` makes the two agree.
+  - "A release is built only once every job of ci has passed on its commit, and its wheel is
+    installed and run before anything is uploaded": a release waits for the whole of ci, and a
+    failing gate fails Publish's run, to be run again as *Re-run failed jobs*, or, where the fault
+    is in the tagged commit and nothing has reached pypi.org, its release deleted and created
+    again; a build of the project from its sources by any frontend that isolates its build takes
+    `hatchling` 1.33.0 and `hatch-requirements-txt` 0.4.1, so one with no index to reach has those
+    two versions in what it reaches; and an environment installing `requirements-docs.txt`, or the
+    `docs` extra, has its sphinx replaced by 9.1.1.
+  - "A release's documentation is published once Publish's run for it has succeeded, and a push to
+    master no longer cancels it": a release's documentation appears once Publish's run for it has
+    succeeded; a release whose Publish reached PyPI and then failed is published by *Re-run failed
+    jobs* of that run, and one no re-run can finish by a dispatch of Documentation from master
+    naming the release's tag as `tag`, which refuses a version pypi.org holds no file of; a release
+    that never reached pypi.org is deleted with its tag and created again.
+
 * **`ddd id --assign` writes a description the way `ddd gui` does.**  It staged its text beside
   the file and renamed it into place by a writer of its own, which lacked what the page's has.  On
   Linux a file kept `0600` came out with the mode a new file gets, a file kept read-only was
@@ -899,10 +1240,9 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
 * **`ddd gui` says what to do when a launch code is presented again.**  A launch code signs one
   browser in, once; when it is presented a second time, `ddd gui` prints on stderr `ddd gui: a
   launch code that already signed a browser in was presented again. If the browser ddd gui opened
-  landed on the project, nothing more is needed. If it says it is signed out, stop ddd gui
-  (Ctrl+C), start it again and open the address it prints then: another program on this computer
-  may hold this run's token, which this run's address, opened since, does not take back`.  A tool
-  that matched the line's earlier text must match this one.
+  is signed in, nothing more is needed; if it says it is signed out, stop ddd gui (Ctrl+C), start
+  it again and open the address it prints then: this run's address, opened since, does not take
+  the token back`.  A tool that matched the line's earlier text must match this one.
 
 * **The Compare tab refuses a baseline that cannot be opened as unreadable, on every system.**  `GET
   /api/compare` answers `400` for a baseline whose path cannot be opened, on Windows as on every
@@ -931,6 +1271,125 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   every refusal is `no-store`.**  The standard library's own refusals of a request `ddd gui` cannot
   read - `400`, `414`, `431`, `501` and `505` - carry them too, each with a status line.  Nothing to
   migrate.
+
+* **The licences the wheel ships list every package its pages bundle.**  The build of the pages
+  wrote `third-party-licenses.txt` from the walk of `npm ls`, which prints a package's dependencies
+  once, below the first entry it meets for that package, and shows the later entries for it bare.  A
+  package first met below another was so neither listed nor held to the licences the project
+  accepts: `scheduler` and `csstype` were left out.  The walk now visits every entry, and the build
+  checks itself against `package-lock.json` before it writes the licences: it compares its list with
+  every installed production package of the lock file, and exits 1 naming each one it did not list,
+  and each installed package the lock file does not hold.  The directory of each package came from
+  the paths `npm ls` prints, which npm stars out where one looks like a token, so a build under a
+  path holding a uuid failed reading the first manifest, once Vite had built the pages; the
+  directories now come from the lock file's own keys, and such a build works.  Migrating costs a
+  clean install: a build of the pages in a tree whose `node_modules` was not installed from the lock
+  file, and holds a package or a version it does not, stops, and `npm ci` makes the two agree.  No
+  file format changes.
+
+* **The source archive carries `SECURITY.md`, `.dockerignore` and `.gitattributes`.**  The archive
+  is what an evaluator is sent, and it carries `docker/`, the compose file and the pages compiled
+  into the package, but its list named none of the three files at its root that say how that tree is
+  built and reported on.  Without `.dockerignore`, an image built from the unpacked archive copied
+  the archive's pages in beside the ones its own stage compiles; without `.gitattributes`, the
+  archive put under git on Windows checked the image's scripts out with CRLF line endings; and
+  without `SECURITY.md` its reader had no private way to report a vulnerability.  It carries
+  `requirements-release.txt` too, the file the release's tools are installed from.  Nothing to
+  migrate: an image built from the unpacked archive is now the one a checkout builds.
+
+* **A release is built only once every job of ci has passed on its commit, and its wheel is
+  installed and run before anything is uploaded.**  Publish ran the python suite on one of ci's
+  cells before it built a release, and took one look at the wheel it uploads, a listing of its names
+  for `index.html`: no browser test, no Windows cell, and a wheel never installed.  It now calls
+  `ci.yml` whole, on the release's commit, and builds only once every job of it has passed, the
+  development builds apart, which a release never runs.  After the build, a fresh environment
+  installs the wheel the upload jobs are handed, and `tools/installed_wheel.py` runs the installed
+  `ddd` in an empty directory: `ddd --version` has to answer the tag's version, `ddd templates-dir`
+  and `ddd cmake-dir` directories holding what the wheel carries, and `ddd gui` the wheel's
+  `index.html` at the address it prints.  The tools that build and check a release are each at one
+  version: `build` and `twine` in `requirements-release.txt`, which Publish installs them from,
+  without upgrading pip first; `hatchling` and `hatch-requirements-txt` in the `[build-system]`
+  table of `pyproject.toml`; `@vscode/vsce` where the extension is packaged; and `sphinx`, exactly,
+  in `requirements-docs.txt`.  Migrating costs three things.  A release waits for the whole of ci,
+  its Windows cells and journeys included, and a failing gate fails Publish's run, to be run again
+  as *Re-run failed jobs*, or, where the fault is in the tagged commit and nothing has reached
+  pypi.org, its release deleted and created again; the developer page lists the steps of a release
+  in order.  A build of the project from its sources, a source archive among them, by any frontend
+  that isolates its build, takes `hatchling` 1.33.0 and `hatch-requirements-txt` 0.4.1, so a build
+  that has no index to reach needs those two versions in what it reaches.  And an environment that
+  installs `requirements-docs.txt`, or the `docs` extra, has its sphinx replaced by 9.1.1, the
+  release the documentation is built with.
+
+* **Every wheel ci builds and uploads says it is a development build.**  The `gui` job of ci uploads
+  the wheel of every run as `ddd-tool-<commit>`, and between releases master states the last
+  release's version, so that wheel, though it held every commit since, said it was that release: to
+  `ddd --version`, to the banner of every file it generated, to the module's handshake and to pip.
+  Only the wheel `dev-build` puts on TestPyPI was numbered as a development build.  The `gui` job's
+  wheel is now numbered as it is, `<next patch>.dev<run number>`: after 0.11.0, run 57 builds
+  `0.11.1.dev57`; and after a release candidate the next candidate's development build,
+  `0.12.0rc2.dev57` after `0.12.0rc1`, which sorts after the candidate and before both of what can
+  follow it, the next candidate and the release.  The commit the wheel was built from is named in
+  its metadata, and for a pull request it is the merge ci tests.  Master's source keeps the last
+  release's version, so a wheel built from it locally, with `python -m build`, carries that version;
+  and a release's own build is never stamped, so a release says it is itself.  Migrating costs a
+  version: a job or a script that installed the artifact of a run and expected the last release's
+  version, a requirement pinned to it, or a comparison of what `ddd --version` prints with it, now
+  meets the development version, which pip counts a pre-release.
+
+* **A release's page on PyPI links that release's own documentation.**  The README is the
+  description PyPI shows for a release, and its links into the documentation point into `latest/`,
+  which follows master: the right pages for the tree, and for the reader of a release, pages of what
+  it may not have, beside a `Documentation` url naming the site's root, which lands on whichever
+  release is newest.  0.11.0's page links `latest/` and never `v0.11.0/`.  Publish's build now
+  points every one of them, the link to the root of the site among them, and the `Documentation`
+  url, at `v<version>/`, in its own checkout, before it builds and with nothing committed, so the
+  README and `pyproject.toml` the source archive carries are pointed too; the check of the installed
+  wheel refuses one whose description links the documentation anywhere else, or nothing of it, or
+  whose url is not that directory.  The classifiers name the systems the tests run on, Windows and
+  Linux, in place of `Operating System :: OS Independent`; macOS is not claimed.  Migrating costs a
+  wait and a filter.  The directory of a release is written only once Publish's run has succeeded,
+  so a release's links do not resolve until its documentation is published, longer where a run waits
+  on a reviewer or a re-run; and a tool that selects packages by the classifier `OS Independent`
+  finds Windows and Linux instead, the wheel being pure python and installing on macOS all the same.
+
+* **A release's documentation is published once Publish's run for it has succeeded, and a push to
+  master no longer cancels it.**  The release event started Documentation beside Publish, and
+  neither waited for the other: a release that Publish then refused or failed was published all the
+  same, and the root of the site, which lands on the newest release, followed it to a version PyPI
+  never received.  The release event now starts nothing there.  Publish's run completing does, and
+  the run goes on only if it was a release's and succeeded, every job of it, the extension's `.vsix`
+  included; it builds the commit the release's tag names and publishes it under that tag.  Each such
+  run is alone in a concurrency group of its own, where a release's run waiting behind master's was
+  cancelled by the next merge, with nothing red and no directory published.  A release's deploy and
+  master's may now run at once, so a push that `gh-pages` refuses takes the branch as it stands,
+  puts the build's directory back on it, rewrites the index and pushes again, and fails after five
+  refusals.  A release tagged on a commit from before this still has that commit's own `docs.yml`
+  publish it on the release event, GitHub running a release's workflows from its tag, and master's
+  publishes it again once Publish succeeds.  Migrating costs one habit.  A release whose Publish
+  reached PyPI and then failed has its documentation published by *Re-run failed jobs* of that run,
+  *Re-run all jobs* not passing once the index holds the version; and one no re-run can finish,
+  where what failed is in the tagged commit, by a dispatch of Documentation from master naming the
+  release's tag as `tag`, which builds the commit the tag names, refuses a tag that is not `v` and
+  the version `pyproject.toml` states there, as Publish does, and refuses, before anything is
+  built, a version pypi.org holds no file of.  A release that never reached pypi.org is not
+  published so: it is deleted with its tag and created again, as the developer page's steps of a
+  release say.  A dispatch naming no tag is what it was.
+
+* **`SECURITY.md` says where an advisory appears, and which versions it names.**  The policy said
+  which release is supported and how to report a vulnerability privately, and nothing of an
+  advisory.  It now says that an advisory names the versions it covers, supported or not, and that
+  advisories appear on this repository's Security tab, as GitHub security advisories, and, for a
+  release that fixes one, in that release's entries in the changelog.  Nothing to migrate.
+
+* **The README and getting started say what runs from the sources before the dependencies are
+  installed.**  Both had the reader run the tool out of a checkout with nothing installed, and the
+  getting started page said that every command it shows works so.  Without `pydantic`, `jinja2` and
+  `pyelftools`, `--version` and `--help` answer, and `check` fails at its first import, naming
+  `pydantic`.  Both pages now have the reader install `requirements.txt` first, which installs
+  nothing of ddd itself, and say what answers without it.  The getting started page also named
+  `pydantic` and `jinja2` as the only runtime dependencies, and so as the only two an offline
+  install has to reach; `pyelftools` has been a third since the toolbox, and the page now says so.
+  Nothing to migrate.
 
 * **A file that cannot be written is refused before anything is, on every system, and what is
   written is synced.**  On Windows a read-only file was staged, refused at the rename after
@@ -1015,8 +1474,8 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   NAME`, a component file holding the types its structures need.  DDD itself checks every
   entry before it is printed, as `ddd check --standalone` checks a component; what an image
   does not state, a unit or a scaling, is left out and said once.  It reads images with
-  pyelftools 0.32 or newer, which joins pydantic and jinja2 as a runtime dependency; every other
-  command runs without importing it.  No file format changes.
+  pyelftools 0.32 or newer, which joins pydantic and jinja2 as a runtime dependency; every command
+  but it and `ddd generate` given `--image` runs without importing it.  No file format changes.
 
 * **`ddd gui` stays responsive on large projects.**  An edit shows at once and its findings
   follow once the project has been analysed again; a change replacing many plain values in one
@@ -1216,6 +1675,131 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   trusts instead, and what it leaves open - including when run in a container - with a table
   of every route.
 
+* **A Files tab: the project's own includes, and the three things that change them.**  `ddd gui`
+  lists the root project's `includes` one row per entry, in the description's own order, a
+  pattern's row followed by every file it matched, with each file's kind, the findings filed on it
+  and its state: blank for a file that loaded, `did not load`, `names no file` for an entry that
+  names nothing, and `not read by the last analysis` for a file the page has not yet had an
+  analysis of.  A finding of a whole file leads there.  New file creates a component, types, units,
+  constants, sections or rasters file beside the project description, in its newline and
+  indentation, and adds it to the includes in the same edit; a first units file lists every unit
+  the project states, so that one click cannot fail a passing project with `unknown-unit`, and is
+  created empty where a file of the tree has opted the project in already.  Add a file appends a
+  path, written from the description's directory, to the includes, and previews the errors it
+  brings rather than refusing for them; it refuses, in the server's own words, a path outside what
+  `ddd gui` serves, one naming no file, the project's own description, a python file, a file the
+  project has already, and on Windows a file on another drive.  Remove takes every entry of the
+  selected row's key out of the includes, the files staying on disk, and is refused where the
+  analysis counts an error more at some place than the project has there now.  Each is previewed,
+  written to every file or none, and undone like every other change.  The tab is not part of the
+  public interface, and the includes it writes are the ones a person would write by hand.  No file
+  format changes; nothing to migrate.
+
+* **A types, units, constants, sections or rasters file may declare nothing, and `empty-vocabulary`
+  says so.**  The list of each of the five files had to hold an entry, so a file emptied of its last
+  constant, section, raster, unit or type stopped loading and was refused as `schema`, and `ddd
+  gui`, which cannot delete a file, could never take a project from one entry to none.  An empty
+  list now loads, and the new check `empty-vocabulary`, an info, is filed once for it, at the list,
+  naming the file and its kind; it can be graded as any check can.  A structure's members, an
+  enumeration's enumerators, a shape's dimensions and a component's own inline types and constants
+  still need an entry, the spelling of none being to leave the key out.  The five published schemas
+  no longer require an item.  An empty units file still opts the project into its vocabulary, which
+  the file decides rather than what it lists: every unit a declaration, member or scalar type then
+  states is `unknown-unit`, where a project with no units file keeps its units free.  Migrating
+  costs nothing: a file that loaded before loads as it did.  A tool that validates against the
+  schemas of an earlier version refuses an empty list as the loader did, and a build that counts the
+  findings it prints sees one info per such file, which `-W empty-vocabulary=ignore` silences.
+
+* **A Shared files tab: the constants, the sections and the rasters a project declares.**  `ddd
+  gui` lists every constant, from a constants file or a component's own list, every memory section
+  and every measurement raster, a row saying which vocabulary an entry belongs to, what it
+  states - a constant its value, a section its access and alignment, a raster its event and
+  cycle - and what names it.  What an entry states is changed there, and renaming one rewrites
+  every place that names it in one edit: for a constant every shape spelling it; for a section
+  every definition placing data in it; for a raster every definition measured in it and a
+  component's own default naming it.  A section's name is judged as the linker string it is and a
+  raster's as the short name of an XCP event, so a leading dot is an ordinary spelling for the
+  first and eight printable characters the most the second holds; a name the project already
+  declares as a section or a raster is refused, since merging two would move data into memory with
+  other properties or sample one signal on another's channel, and so is an event another raster
+  claims.  A new constant, section or raster is declared there too, writing `constants.ddd.json`,
+  `sections.ddd.json` or `rasters.ddd.json` beside the project description and adding it to
+  `includes` where the project has no file of its kind, and a removal is refused while anything
+  still names the entry, counting what does.  The last entry of a file removed leaves a file that
+  declares nothing, which is `empty-vocabulary` above.  A finding naming a constant, a section or
+  a raster leads to the tab.  Every change is previewed, written to every file or none, and undone
+  like every other.  The tab is not part of the public interface, and what it writes is what a
+  person would write by hand.  No file format changes; nothing to migrate.
+
+* **A table copied from a spreadsheet is pasted into the values grid.**  Anywhere in the grid, a
+  table copied from a spreadsheet replaces every value of the object in one change, previewed and
+  undone the same way as every other change.  The pasted block must be the object's own shape - a
+  one-dimensional object is one row, as the grid already draws it - or exactly one row and one
+  column larger, with the header a reader selects along with the grid's own cells; a comma is read
+  as the decimal separator where the block states no point, and one that mixes `.` and `,` is
+  refused rather than guessed at - as is a comma that could be a thousands separator, `1,200` being
+  twelve hundred to one spreadsheet and one and a fifth to another, which names the cell and says
+  so.  The header itself is discarded without being read, so a block whose header names a different
+  axis is not caught here; the preview, which shows the lines each file will change, is what catches
+  it before anything is written.  Nothing to migrate.
+
+* **The values grid is drawn as a picture under it.**  Under the grid, the object's values are drawn
+  as a picture: a marker at each point and a line joining them where a row holds more than one, laid
+  against an axis's own breakpoints - unevenly spaced, exactly as those breakpoints are - or over
+  plain indices where there is none, with the declared limits ruled across it wherever they fall
+  inside the range it draws and left off it where they do not, the one place a value stored outside
+  them can be seen.  It follows the same toggle between physical values and raw counts, offers no
+  control of its own, changes nothing, and is drawn under a read-only grid exactly as under a
+  writable one, left undrawn only where there is no grid to begin with.  The toggle always rescales
+  to its own range: for a positive conversion the same numbers in a different unit draw the very
+  same picture, only the readings along its edges changing; a negative one - legal here - mirrors
+  the curve instead of leaving it alone.  Nothing to migrate.
+
+* **A Compare tab says whether the open project can stand in for a delivery.**  It answers the
+  question `ddd check` was never asked: can the open project stand in for a delivery the reader
+  names.  The baseline is a dumped dictionary, or a project or component description, at a path
+  under the directory `ddd gui` was started in - refused, and told why, when it is outside that
+  directory, unreadable, not valid json, a description or a dictionary this DDD could not read, or
+  json that is neither.  Its verdict counts only the comparison and the baseline's own errors, never
+  the open project's own consistency errors - the Findings tab's own question - so a project the
+  Findings tab still shows full of errors can be told here that it can replace its baseline.  A
+  finding that names a place in this project leads there, as on the Findings tab: a plugin's
+  comparison rule files at the declaration it is about.  The comparison's own findings name the
+  whole delivery rather than a place in one file, and the baseline's own errors marked `in the
+  baseline:` name a place in the baseline's files rather than in this project's; for those the panel
+  says so rather than offering to go anywhere.  The renames the comparison finds - objects the two
+  sides agree are one and the same, called differently now - are drawn here as a table, exactly what
+  `ddd compare --renames` would write to a file, and the tab does not write it.  Nothing to migrate:
+  it reads the files it is given and writes none.
+
+* **A `definition-mismatch` finding now carries a button for each key its declarations
+  disagree about.**  Opened from a consumer, it takes the producing component's value;
+  opened from the producer's own row - the same disagreement, filed there too - it sends
+  that value outward, and the reader never chooses a direction.  Either way the value may
+  be silence: a producer stating no `unit` where its readers state one is settled by taking
+  it out of all of them, from either row.  Previewed first, it
+  settles every declaration of the variable at once, not only the one the finding names;
+  the apply button reads "Apply to 2 files" where two have to move.  Nothing is offered
+  where the variable has no single producer - several components writing it, or none,
+  leaves no owner to take a direction from; the variable's own panel, one click from the
+  finding, still settles any value the reader chooses, unless it would leave the file
+  unable to load.  A key is offered only where one change settles it for every
+  declaration: never `kind`, the one key no edit may carry between declarations, and not a
+  key some declaration could neither take nor drop - one its named type fixes, one its
+  kind does not allow, or the `datatype`, `conversion` or `typename` its own storage is
+  made of.  Nothing to migrate.
+
+* **The editor no longer offers to unname a declaration's storage, or to name it twice.**  A
+  definition states either a `datatype` with the `conversion` that goes with it or the `typename` of
+  a type fixing both, and the loader refuses a file that states neither or both.  "Remove the
+  datatype from N other declarations", the same for a `conversion`, and "Apply this typename" into a
+  declaration already stating a `datatype` each wrote one of those files; none of them is offered
+  any more, and an action reaching several declarations leaves out whichever of them could not take
+  it.  The same holds for a `datatype`: a declaration naming a type takes it from the type as it
+  takes its `unit`, `conversion` and `limits`, so the fix that offered the producer's `datatype` to
+  it, and "Apply this datatype" from another declaration, are not offered either, and the action
+  leaves it out of the declarations it counts and changes.  Nothing to migrate.
+
 ## 0.11.0
 
 * **A browser interface, as a preview.**  `ddd gui` serves a browser interface over one
@@ -1326,66 +1910,8 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   number, and nothing is written.  An
   object initialised with text shows a sentence saying so rather than a grid; one stated
   once draws that value in every cell with a note, and one stating nothing draws greyed
-  zeros with a note.  A table copied from a spreadsheet is pasted anywhere in the grid
-  to replace every value of the object in one change, previewed and undone the same way
-  as every other change.  The pasted block must be the object's own shape - a
-  one-dimensional object is one row, as the grid already draws it - or exactly one row
-  and one column larger, with the header a reader selects along with the grid's own
-  cells; a comma is read as the decimal separator where the block states no point, and
-  one that mixes `.` and `,` is refused rather than guessed at - as is a comma that
-  could be a thousands separator, `1,200` being twelve hundred to one spreadsheet and
-  one and a fifth to another, which names the cell and says so.  The header itself is
-  discarded without being read, so a block whose header names a different axis is not
-  caught here; the preview, which shows the lines each file will change, is what catches
-  it before anything is written.  Under the grid, the object's values are drawn as a
-  picture too: a marker at each point and a line joining them where a row holds more
-  than one, laid against an axis's own breakpoints - unevenly spaced, exactly as those
-  breakpoints are - or over plain indices where there is none, with the declared limits
-  ruled across it wherever they fall inside the range it draws and left off it where
-  they do not, the one place a value stored outside them can be seen.  It follows the
-  same toggle between physical values and raw counts, offers no control of its own,
-  changes nothing, and is drawn under a read-only grid exactly as under a writable one,
-  left undrawn only where there is no grid to begin with.  The toggle always rescales
-  to its own range: for a positive conversion the same numbers in a different unit
-  draw the very same picture, only the readings along its edges changing; a negative
-  one - legal here - mirrors the curve instead of leaving it alone.  A finding filed
-  on an object's `init` now leads to this grid, the way every other finding already
-  leads to what it names.
-
-  A sixth tab, Compare, answers the question `ddd check` was never asked: can the open
-  project stand in for a delivery the reader names.  The baseline is a dumped dictionary,
-  or a project or component description, at a path under the directory `ddd gui` was
-  started in - refused, and told why, when it is outside that directory, unreadable, not
-  valid json, a description or a dictionary this DDD could not read, or json that is
-  neither.  Its verdict counts only the comparison and the baseline's own errors,
-  never the open project's own consistency errors - the Findings tab's own question - so a
-  project the Findings tab still shows full of errors can be told here that it can replace
-  its baseline.  A finding that names a place in this project leads there, as on the
-  Findings tab: a plugin's comparison rule files at the declaration it is about.  The
-  comparison's own findings name the whole delivery rather than a place in one file, and
-  the baseline's own errors marked `in the baseline:` name a place in the baseline's files
-  rather than in this project's; for those the panel says so rather than offering to go
-  anywhere.  The renames the
-  comparison finds - objects the two sides agree are one and the same, called differently
-  now - are drawn here as a table, exactly what `ddd compare --renames` would write to a
-  file, and the tab does not write it.
-
-* **A `definition-mismatch` finding now carries a button for each key its declarations
-  disagree about.**  Opened from a consumer, it takes the producing component's value;
-  opened from the producer's own row - the same disagreement, filed there too - it sends
-  that value outward, and the reader never chooses a direction.  Either way the value may
-  be silence: a producer stating no `unit` where its readers state one is settled by taking
-  it out of all of them, from either row.  Previewed first, it
-  settles every declaration of the variable at once, not only the one the finding names;
-  the apply button reads "Apply to 2 files" where two have to move.  Nothing is offered
-  where the variable has no single producer - several components writing it, or none,
-  leaves no owner to take a direction from; the variable's own panel, one click from the
-  finding, still settles any value the reader chooses, unless it would leave the file
-  unable to load.  A key is offered only where one change settles it for every
-  declaration: never `kind`, the one key no edit may carry between declarations, and not a
-  key some declaration could neither take nor drop - one its named type fixes, one its
-  kind does not allow, or the `datatype`, `conversion` or `typename` its own storage is
-  made of.
+  zeros with a note.  A finding filed on an object's `init` now leads to this grid, the
+  way every other finding already leads to what it names.
 
 * **The editor's reconcile quick fix is no longer offered for a value that already means what
   it would be set to.**  Taking the producing component's value, or spreading one declaration's
@@ -1394,22 +1920,14 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   one are one value, as the checks have always counted them.
 
 * **The editor offers no unit to a declaration whose type fixes it.**  A declaration naming a
-  declared type takes its `datatype`, `unit`, `conversion` and `limits` from the type, and the
-  loader refuses one of them stated beside the `typename`.  A `definition-mismatch` on such a
+  declared type takes its `unit`, `conversion` and `limits` from the type, and the loader
+  refuses one of them stated beside the `typename`.  A `definition-mismatch` on such a
   declaration was offered the producer's `unit` or `conversion` all the same, or the one
   every other declaration states, and "Apply this unit to N other declarations" from another
   declaration wrote into it too: each fix left a file that no longer loaded.  None of the
-  four is offered to a declaration naming a type any longer, and "Apply this unit", or the
-  same action for a `datatype`, a `conversion` or `limits`, leaves it out of the declarations
-  it counts and changes.
-
-* **The editor no longer offers to unname a declaration's storage, or to name it twice.**  A
-  definition states either a `datatype` with the `conversion` that goes with it or the
-  `typename` of a type fixing both, and the loader refuses a file that states neither or
-  both.  "Remove the datatype from N other declarations", the same for a `conversion`, and
-  "Apply this typename" into a declaration already stating a `datatype` each wrote one of
-  those files; none of them is offered any more, and an action reaching several declarations
-  leaves out whichever of them could not take it.
+  three is offered to a declaration naming a type any longer, and "Apply this unit", or the
+  same action for a `conversion` or `limits`, leaves it out of the declarations it counts and
+  changes.
 
 * **Renaming a unit from the editor, and quick fixes for an unknown one.**  `F2` on a unit -
   from any place it is stated, or from its entry in a units file - renames it everywhere at

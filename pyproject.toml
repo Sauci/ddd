@@ -1,7 +1,12 @@
 [build-system]
 # hatch-requirements-txt keeps the dependency lists in requirements files, which is where a
 # container build, a pip-tools run and a vulnerability scanner all expect to find them.
-requires = ["hatchling", "hatch-requirements-txt"]
+#
+# Both at one version: the backend writes every wheel and sdist of the project, the release's
+# among them, so a release of it changed what was shipped on the day it came out. These are
+# the versions ci's last wheel was built with. Dependabot's documentation says nothing of this
+# table, so a move here may have to be made by hand.
+requires = ["hatchling==1.33.0", "hatch-requirements-txt==0.4.1"]
 build-backend = "hatchling.build"
 
 [project]
@@ -19,7 +24,8 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
@@ -73,6 +79,14 @@ artifacts = ["/src/ddd/gui/static"]
 # definition; the docs build takes its logo and its favicon from assets/logo/. Anything left
 # out here is not a smaller archive, it is a suite that stops at collection and a build that
 # fails on a missing image.
+#
+# Two files at the root are read by nothing in the suite, and travel all the same. The
+# archive carries docker/, the compose file and the compiled pages, so .dockerignore is what
+# keeps an image built from it as one built from a checkout: without it the pages in
+# src/ddd/gui/static are copied in beside the ones the image compiles. .gitattributes keeps
+# the lf endings the image's scripts need, once the unpacked archive is put under git on
+# windows. SECURITY.md, whose sentences the suite holds, is how the reader of the archive
+# reports a vulnerability privately.
 include = [
     "/src/ddd",
     "/assets",
@@ -87,15 +101,19 @@ include = [
     "/tools",
     "/.github/workflows",
     "/.github/dependabot.yml",
+    "/.dockerignore",
+    "/.gitattributes",
     "/.pre-commit-hooks.yaml",
     "/CHANGELOG.md",
     "/docker-compose.yml",
     "/LICENSE",
     "/README.md",
+    "/SECURITY.md",
     "/SPEC.md",
     "/requirements.txt",
     "/requirements-dev.txt",
     "/requirements-docs.txt",
+    "/requirements-release.txt",
 ]
 # docs/superpowers/ holds the design and planning records of each feature: read by nobody the
 # sdist is sent to, skipped by the documentation tests and outside the Sphinx build, and at

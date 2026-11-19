@@ -4,9 +4,16 @@ name: CI
 # is deliberately not built twice: the pull request build is the one that matters, and
 # workflow_dispatch covers running any other branch on demand.
 #
-# The release pipeline in publish.yml runs the suite again before it builds. That is not
+# The release pipeline in publish.yml runs this whole file again before it builds. That is not
 # redundant - a release can be cut from a commit, or with a version bump, that this workflow
-# never saw, and an upload to an index cannot be taken back.
+# never saw, and an upload to an index cannot be taken back. Publish calls it (workflow_call),
+# so it runs as part of Publish's run, on the release's commit, and GitHub documents what it is
+# then given: Publish's github context - its event, its ref and commit, its run's id, and its
+# name, Publish, in github.workflow - and as inputs only those the call passes, which are none.
+# inputs.repeat is then empty, which every job reads as an ordinary run's 1. Three things
+# differ, each where it is done: the concurrency group below is that run's own, the gui job
+# builds no wheel there, and dev-build, which runs on a push or a pull request alone, never
+# runs for a release.
 #
 # One pair of jobs here publishes, all the same: dev-build and dev-publish put a development
 # build of the last commit of every push to master, and of every push to this repository's own
@@ -23,13 +30,21 @@ on:
         description: "How many times each journey runs; above 1, only the journeys run"
         type: number
         default: 1
+  # Publish's run of this whole file, before it builds a release (above).
+  workflow_call:
 
 permissions:
   contents: read
 
+# A newer run of a ref cancels the older one, which a push to a pull request has made useless.
+# A run Publish calls is alone in a group named after Publish's run instead, cancelling nothing
+# and cancelled by nothing: its ref is the release's tag, which a dispatch of Publish or of
+# this file from that tag would share, and either would have cancelled the release's gates
+# halfway, or had its own cancelled by them. github.workflow is what tells the two apart, a
+# called workflow being given its caller's name there.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.workflow == 'CI' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.workflow == 'CI' }}
 
 jobs:
   test:
@@ -40,9 +55,10 @@ jobs:
     # mingw32-make as well. The limit is there to stop a hang, not to time the suite, so it
     # leaves a slow runner room.
     timeout-minutes: 40
-    # The package claims python 3.12, 3.13 and 3.14, and claims to be os independent. This is
-    # what turns both into tested claims: a path handling bug that appeared only on linux has
-    # already reached a user of this project once, having passed everything on windows.
+    # The package claims python 3.12, 3.13 and 3.14, on Windows and Linux, which its classifiers
+    # list. This is what turns both into tested claims: a path handling bug that appeared only on
+    # linux has already reached a user of this project once, having passed everything on
+    # windows. No cell runs macOS, and the package does not claim it.
     strategy:
       fail-fast: false # one cell failing must not hide whether the others do
       matrix:
@@ -166,11 +182,12 @@ jobs:
     # extension job has it; the python package is installed because the types and the server
     # both come from it.
     #
-    # On ubuntu the pages it compiled then go into a wheel and an sdist, uploaded as
-    # ddd-tool-<commit>: a branch installed from them needs no node, as a release needs none -
-    # on a machine or in a container that only runs ddd, where node has no business. A release
-    # is still what anyone outside this repository installs, or the development build below for
-    # a commit not released yet: an artifact expires, and needs a GitHub account to reach.
+    # On ubuntu, in this file's own runs, the pages it compiled then go into a wheel and an
+    # sdist, stamped as a development build of the commit and uploaded as ddd-tool-<commit>: a
+    # branch installed from them needs no node, as a release needs none - on a machine or in a
+    # container that only runs ddd, where node has no business. A release is still what anyone
+    # outside this repository installs, or the development build below for a commit not
+    # released yet: an artifact expires, and needs a GitHub account to reach.
     #
     # Three legs: Playwright's own Chromium on both systems, and the windows runner's own Edge,
     # which a reader on windows most likely has (part 19a).
@@ -237,13 +254,27 @@ jobs:
           PLAYWRIGHT_CHANNEL: ${{ matrix.browser == 'msedge' && 'msedge' || '' }}
       # Built at the root, where pyproject.toml is, once the pages have passed in the browser,
       # and checked the way the release checks its own. One system is enough: the wheel is pure
-      # python, the same wherever it is built.
-      - if: runner.os == 'Linux'
+      # python, the same wherever it is built. In this file's own runs alone: in Publish's run,
+      # its build job builds the wheel it ships, and installs and checks it, so a release's run
+      # carries no second wheel of its commit.
+      #
+      # Stamped first, as dev-build stamps its own: <next patch>.dev<run number>, or after a
+      # release candidate the next candidate's, with the commit it is built from named in its
+      # metadata - for a pull request, the merge this job tests.
+      # Unstamped, it was a wheel of the last release's version holding every commit since, and
+      # said it was that release to ddd --version, to the banner of every file it generated, to
+      # the module's handshake and to pip. Into this job's checkout once the journeys have run
+      # on it as it is, and never committed.
+      - if: runner.os == 'Linux' && github.workflow == 'CI'
+        name: Stamp the development version
+        working-directory: .
+        run: python tools/dev_version.py stamp "$GITHUB_RUN_NUMBER" "$GITHUB_SHA"
+      - if: runner.os == 'Linux' && github.workflow == 'CI'
         working-directory: .
         run: |
           python -m pip install build
           python -m build --outdir dist
-      - if: runner.os == 'Linux'
+      - if: runner.os == 'Linux' && github.workflow == 'CI'
         name: Check the wheel carries the compiled pages
         working-directory: .
         run: |
@@ -253,7 +284,7 @@ jobs:
           if "ddd/gui/static/index.html" not in names:
               sys.exit("the wheel has no ddd/gui/static/index.html: ddd gui would have nothing to serve")
           EOF
-      - if: runner.os == 'Linux'
+      - if: runner.os == 'Linux' && github.workflow == 'CI'
         uses: actions/upload-artifact@v7
         with:
           name: ddd-tool-${{ github.sha }}
@@ -270,11 +301,12 @@ jobs:
     # Skipped by a hunt, which is the journeys' alone.
     if: ${{ !(inputs.repeat > 1) }}
     timeout-minutes: 20
-    # Every story of gui/ photographed and compared with the reference image committed beside
-    # the stories, in the Linux image of the very Playwright version the page pins: the one place
-    # those images are made (docker compose run --rm gui-screenshots makes them locally), so a
-    # look that changes without meaning to fails here, and one that changes on purpose arrives
-    # with its new references in the same pull request.
+    # Every story of gui/ photographed and compared with its reference image, committed in
+    # gui/screenshots/references beside the spec that photographs them, in the Linux image of the
+    # very Playwright version the page pins: the one place those images are made (docker compose
+    # run --rm gui-screenshots makes them locally), so a look that changes without meaning to
+    # fails here, and one that changes on purpose arrives with its new references in the same
+    # pull request.
     runs-on: ubuntu-latest
     container: mcr.microsoft.com/playwright:v1.63.0-noble
     defaults:
@@ -298,8 +330,9 @@ jobs:
   # and after one has expired. A run in which any other job fails publishes nothing, and neither
   # does one that a newer push cancels before its upload has begun; a dev-publish that fails
   # once its upload has begun leaves on TestPyPI whatever it had uploaded. tools/dev_version.py
-  # numbers the build, <next patch>.dev<run number>, and says why the commit cannot be part of
-  # the number; the build's metadata and the run's summary carry it.
+  # numbers the build, <next patch>.dev<run number> - after a release candidate, the next
+  # candidate's - and says why the commit cannot be part of the number; the build's metadata
+  # and the run's summary carry it.
   #
   # Two jobs, the way publish.yml builds a release and then uploads it. `npm ci` runs the install
   # scripts of every package the pages depend on, and a build runs whatever its backend is, so
@@ -397,7 +430,8 @@ jobs:
           name: ddd-tool-${{ needs.dev-build.outputs.version }}
           path: dist/
       # Everything dev-build hands over was made where the pages' packages ran their install
-      # scripts, so nothing of it is taken on trust here. The version has to be this run's, and
+      # scripts, so nothing of it is taken on trust here. The version has to be this run's - a
+      # release's next patch, or a candidate's next candidate, as a development release - and
       # dist/ has to hold its wheel and its sdist and nothing else: a file left there for a later
       # run's version would be uploaded under it, and that run's own upload refused. What is
       # printed of either is stripped to characters that cannot start a line of their own.
@@ -406,9 +440,9 @@ jobs:
           VERSION: ${{ needs.dev-build.outputs.version }}
         run: |
           shopt -s nullglob dotglob
-          pattern="^[0-9]+(\.[0-9]+)*\.dev${GITHUB_RUN_NUMBER}\$"
+          pattern="^[0-9]+(\.[0-9]+)*(rc[0-9]+)?\.dev${GITHUB_RUN_NUMBER}\$"
           if [[ ! $VERSION =~ $pattern ]]; then
-            echo "::error::run $GITHUB_RUN_NUMBER publishes <next patch>.dev$GITHUB_RUN_NUMBER, and dev-build handed over ${VERSION//[^0-9A-Za-z.+-]/?}"
+            echo "::error::run $GITHUB_RUN_NUMBER publishes <next patch or candidate>.dev$GITHUB_RUN_NUMBER, and dev-build handed over ${VERSION//[^0-9A-Za-z.+-]/?}"
             exit 1
           fi
           wheel="ddd_tool-$VERSION-py3-none-any.whl"

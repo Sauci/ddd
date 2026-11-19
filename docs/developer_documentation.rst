@@ -692,11 +692,12 @@ and runs the checks ``dev-publish`` makes.
 ``gui`` job uploads as ``ddd-tool-<commit>``, with ``dev-build``'s run number, and naming the
 commit it was built from - for a pull request, the merge ``gui`` tests, where ``dev-build``
 builds the head. Each is numbered after the version its own commit states: the two are one on a
-push, and differ on a pull request whose branch states another version than ``master``, as one
-cut before a release's commit does. A wheel built anywhere else, by ``python -m build`` in a
-checkout, carries the version its ``pyproject.toml`` states, and ``master`` states the last
-release's until the next release commit: built between
-releases, such a wheel holds every commit since that release and says it is that release - to
+push, and on a pull request they part only where its head and the merge it is tested as state two
+versions - a branch cut before a release's commit, say - and not on the release's own pull
+request, whose head and merge both state the release. A wheel built anywhere else, by
+``python -m build`` in a checkout, carries the version its ``pyproject.toml`` states, and
+``master`` states the last release's until the next release commit: built between releases, such
+a wheel holds every commit since that release and says it is that release - to
 ``ddd --version``, to the banner of every file it generates, to the module's handshake and to
 pip - and its metadata names no commit. Only the release's own build, from its tag, is the
 release.

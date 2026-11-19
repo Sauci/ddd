@@ -5384,15 +5384,16 @@ class TestTheDevelopmentBuild:
     more files, or with more code around the token, than it should.
     """
 
-    @pytest.fixture
-    def tree(self, tmp_path: Path) -> Path:
-        """A copy of the three files the stamp rewrites, stating ``RELEASE`` and no commit."""
+    @staticmethod
+    def stating(where: Path, version: str) -> Path:
+        """A copy of the three files the stamp rewrites in ``where``, stating ``version`` and no
+        commit."""
         spellings = {
-            "pyproject.toml": (r'^version = "[^"]*"$', f'version = "{RELEASE}"'),
-            "src/ddd/__init__.py": (r'^__version__ = "[^"]*"$', f'__version__ = "{RELEASE}"'),
+            "pyproject.toml": (r'^version = "[^"]*"$', f'version = "{version}"'),
+            "src/ddd/__init__.py": (r'^__version__ = "[^"]*"$', f'__version__ = "{version}"'),
             "cmake/Ddd.cmake": (
                 r'^set\(DDD_MODULE_VERSION "[^"]*"\)$',
-                f'set(DDD_MODULE_VERSION "{RELEASE}")',
+                f'set(DDD_MODULE_VERSION "{version}")',
             ),
         }
         for name, (pattern, spelled) in spellings.items():
@@ -5401,10 +5402,15 @@ class TestTheDevelopmentBuild:
             assert count == 1, f"{name} no longer states its version on a line of its own"
             # What a stamped tree's project table carries besides its version.
             text = re.sub(r'^Commit = "[^"]*"\n', "", text, flags=re.MULTILINE)
-            target = tmp_path / name
+            target = where / name
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(text, encoding="utf-8", newline="\n")
-        return tmp_path
+        return where
+
+    @pytest.fixture
+    def tree(self, tmp_path: Path) -> Path:
+        """A copy of the three files the stamp rewrites, stating ``RELEASE`` and no commit."""
+        return self.stating(tmp_path, RELEASE)
 
     @staticmethod
     def contents(tree: Path) -> dict[str, bytes]:
@@ -5805,8 +5811,10 @@ class TestTheDevelopmentBuild:
             "built from - for a pull request, the merge ``gui`` tests, where ``dev-build`` builds "
             "the head",
             "when the two differ": "Each is numbered after the version its own commit states: "
-            "the two are one on a push, and differ on a pull request whose branch states another "
-            "version than ``master``, as one cut before a release's commit does.",
+            "the two are one on a push, and on a pull request they part only where its head and "
+            "the merge it is tested as state two versions - a branch cut before a release's "
+            "commit, say - and not on the release's own pull request, whose head and merge both "
+            "state the release.",
             "a local build": "A wheel built anywhere else, by ``python -m build`` in a checkout, "
             "carries the version its ``pyproject.toml`` states",
             "master's version": "``master`` states the last release's until the next release "
@@ -5856,6 +5864,50 @@ class TestTheDevelopmentBuild:
         request["github"]["event"]["pull_request"]["head"]["sha"] = COMMIT
         assert text_of(evaluated(named.group(1), request)) == COMMIT
         assert request["github"]["sha"] != COMMIT
+
+    @pytest.mark.parametrize(
+        ("head", "merge", "one"),
+        [("0.12.0", "0.12.0", True), ("0.11.0", "0.12.0", False)],
+        ids=["the release's own pull request", "a branch cut before the release's commit"],
+    )
+    def test_a_pull_request_s_two_wheels_share_a_number_where_its_head_and_merge_agree(
+        self, tmp_path: Path, head: str, merge: str, one: bool
+    ) -> None:
+        """Each job's own stamp step, run on a tree of the commit it stamps: ``dev-build`` on the
+        head it checks out, ``gui`` on the merge it tests. Each numbers its wheel after the
+        version its tree states, so the two share a number where the head and the merge state
+        one version, as on the release's own pull request, and not where they state two, as on
+        a branch cut before the release's commit."""
+        builds = [
+            found
+            for found in steps_of(job(CI_WORKFLOW, "gui"))
+            if "name: Stamp the development version\n" in found
+        ]
+        assert len(builds) == 1, "the gui job does not stamp the wheel it uploads"
+        stamped = {}
+        for name, version, stamping, commit in (
+            (
+                "dev-build",
+                head,
+                step(job(CI_WORKFLOW, "dev-build"), "Stamp the development version"),
+                "COMMIT",
+            ),
+            ("gui", merge, builds[0], "GITHUB_SHA"),
+        ):
+            where = self.stating(tmp_path / name, version)
+            (where / "tools").mkdir()
+            shutil.copyfile(ROOT / "tools" / "dev_version.py", where / "tools" / "dev_version.py")
+            variables = {"GITHUB_RUN_NUMBER": "57", commit: COMMIT, "GITHUB_OUTPUT": "output"}
+            ran = run_step(stamping, where, **variables)
+            assert ran.returncode == 0, ran.stdout + ran.stderr
+            stamped[name] = tomllib.loads((where / "pyproject.toml").read_text(encoding="utf-8"))[
+                "project"
+            ]["version"]
+        assert stamped == {
+            "dev-build": dev_version.next_development(head, 57),
+            "gui": dev_version.next_development(merge, 57),
+        }
+        assert (stamped["dev-build"] == stamped["gui"]) is one
 
     @pytest.mark.parametrize(
         "version", ["0.10.1.dev57", "0.12.0rc2.dev57"], ids=["after a release", "after a candidate"]

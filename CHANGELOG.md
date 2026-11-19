@@ -326,6 +326,33 @@ An install and the tool's python:
     `load_address_map` or `ADDRESS_PATTERN` takes them from `ddd.addresses` and not `ddd.backends`,
     `load_address_map` takes no `carried` any more, and a caller reading a map checks the 32-bit
     range of the addresses with `ddd.backends.weigh_addresses`.
+  - "Every wheel ci builds and uploads says it is a development build": a job or a script that
+    installed the artifact of a run and expected the last release's version, a requirement pinned to
+    it, or a comparison of what `ddd --version` prints with it, meets the development version,
+    `<next patch>.dev<run number>`, or after a release candidate the next candidate's; a wheel built
+    from master's source with `python -m build` still carries the last release's.
+  - "A release's page on PyPI links that release's own documentation": a tool that selects packages
+    by the classifier `Operating System :: OS Independent` finds `Operating System :: Microsoft ::
+    Windows` and `Operating System :: POSIX :: Linux` instead; and the links of a release's page
+    into `v<version>/` do not resolve until Publish's run for it has succeeded and its documentation
+    is published.
+
+A build of DDD from its sources, and a release of it:
+
+  - "The licences the wheel ships list every package its pages bundle": a build of the pages in a
+    tree whose `node_modules` was not installed from the lock file, and holds a package or a version
+    it does not, exits 1 naming each, and `npm ci` makes the two agree.
+  - "A release is built only once every job of ci has passed on its commit, and its wheel is
+    installed and run before anything is uploaded": a release waits for the whole of ci, and a
+    failing gate fails Publish's run, which *Re-run failed jobs* runs again; a build of the project
+    from its sources by any frontend that isolates its build takes `hatchling` 1.33.0 and
+    `hatch-requirements-txt` 0.4.1, so one with no index to reach has those two versions in what it
+    reaches; and an environment installing `requirements-docs.txt` has its sphinx replaced by 9.1.1.
+  - "A release's documentation is published once Publish's run for it has succeeded, and a push to
+    master no longer cancels it": a release's documentation appears once Publish's run for it has
+    succeeded; a release whose Publish reached PyPI and then failed is published by *Re-run failed
+    jobs* of that run, and one no re-run can finish by a dispatch of Documentation from master
+    naming the release's tag as `tag`.
 
 * **`ddd id --assign` writes a description the way `ddd gui` does.**  It staged its text beside
   the file and renamed it into place by a writer of its own, which lacked what the page's has.  On
@@ -1241,6 +1268,123 @@ An install and the tool's python:
   every refusal is `no-store`.**  The standard library's own refusals of a request `ddd gui` cannot
   read - `400`, `414`, `431`, `501` and `505` - carry them too, each with a status line.  Nothing to
   migrate.
+
+* **The licences the wheel ships list every package its pages bundle.**  The build of the pages
+  wrote `third-party-licenses.txt` from the walk of `npm ls`, which prints a package's dependencies
+  once, below the first entry it meets for that package, and shows the later entries for it bare.  A
+  package first met below another was so neither listed nor held to the licences the project
+  accepts: `scheduler` and `csstype` were left out.  The walk now visits every entry, and the build
+  checks itself against `package-lock.json` before it writes the licences: it compares its list with
+  every installed production package of the lock file, and exits 1 naming each one it did not list,
+  and each installed package the lock file does not hold.  The directory of each package came from
+  the paths `npm ls` prints, which npm stars out where one looks like a token, so a build under a
+  path holding a uuid failed reading the first manifest, once Vite had built the pages; the
+  directories now come from the lock file's own keys, and such a build works.  Migrating costs a
+  clean install: a build of the pages in a tree whose `node_modules` was not installed from the lock
+  file, and holds a package or a version it does not, stops, and `npm ci` makes the two agree.  No
+  file format changes.
+
+* **The source archive carries `SECURITY.md`, `.dockerignore` and `.gitattributes`.**  The archive
+  is what an evaluator is sent, and it carries `docker/`, the compose file and the pages compiled
+  into the package, but its list named none of the three files at its root that say how that tree is
+  built and reported on.  Without `.dockerignore`, an image built from the unpacked archive copied
+  the archive's pages in beside the ones its own stage compiles; without `.gitattributes`, the
+  archive put under git on Windows checked the image's scripts out with CRLF line endings; and
+  without `SECURITY.md` its reader had no private way to report a vulnerability.  It carries
+  `requirements-release.txt` too, the file the release's tools are installed from.  Nothing to
+  migrate: an image built from the unpacked archive is now the one a checkout builds.
+
+* **A release is built only once every job of ci has passed on its commit, and its wheel is
+  installed and run before anything is uploaded.**  Publish ran the python suite on one of ci's
+  cells before it built a release, and took one look at the wheel it uploads, a listing of its names
+  for `index.html`: no browser test, no Windows cell, and a wheel never installed.  It now calls
+  `ci.yml` whole, on the release's commit, and builds only once every job of it has passed, the
+  development builds apart, which a release never runs.  After the build, a fresh environment
+  installs the wheel the upload jobs are handed, and `tools/installed_wheel.py` runs the installed
+  `ddd` in an empty directory: `ddd --version` has to answer the tag's version, `ddd templates-dir`
+  and `ddd cmake-dir` directories holding what the wheel carries, and `ddd gui` the wheel's
+  `index.html` at the address it prints.  The tools that build and check a release are each at one
+  version: `build` and `twine` in `requirements-release.txt`, which Publish installs them from,
+  without upgrading pip first; `hatchling` and `hatch-requirements-txt` in the `[build-system]`
+  table of `pyproject.toml`; `@vscode/vsce` where the extension is packaged; and `sphinx`, exactly,
+  in `requirements-docs.txt`.  Migrating costs three things.  A release waits for the whole of ci,
+  its Windows cells and journeys included, and a failing gate fails Publish's run, to be run again
+  as *Re-run failed jobs*, or, where the fault is in the tagged commit and nothing has reached
+  pypi.org, its release deleted and created again; the developer page lists the steps of a release
+  in order.  A build of the project from its sources, a source archive among them, by any frontend
+  that isolates its build, takes `hatchling` 1.33.0 and `hatch-requirements-txt` 0.4.1, so a build
+  that has no index to reach needs those two versions in what it reaches.  And an environment that
+  installs `requirements-docs.txt` has its sphinx replaced by 9.1.1, the release the documentation
+  is built with.
+
+* **Every wheel ci builds and uploads says it is a development build.**  The `gui` job of ci uploads
+  the wheel of every run as `ddd-tool-<commit>`, and between releases master states the last
+  release's version, so that wheel, though it held every commit since, said it was that release: to
+  `ddd --version`, to the banner of every file it generated, to the module's handshake and to pip.
+  Only the wheel `dev-build` puts on TestPyPI was numbered as a development build.  The `gui` job's
+  wheel is now numbered as it is, `<next patch>.dev<run number>`: after 0.11.0, run 57 builds
+  `0.11.1.dev57`; and after a release candidate the next candidate's development build,
+  `0.12.0rc2.dev57` after `0.12.0rc1`, which sorts after the candidate and before both of what can
+  follow it, the next candidate and the release.  The commit the wheel was built from is named in
+  its metadata, and for a pull request it is the merge ci tests.  Master's source keeps the last
+  release's version, so a wheel built from it locally, with `python -m build`, carries that version;
+  and a release's own build is never stamped, so a release says it is itself.  Migrating costs a
+  version: a job or a script that installed the artifact of a run and expected the last release's
+  version, a requirement pinned to it, or a comparison of what `ddd --version` prints with it, now
+  meets the development version, which pip counts a pre-release.
+
+* **A release's page on PyPI links that release's own documentation.**  The README is the
+  description PyPI shows for a release, and its links into the documentation point into `latest/`,
+  which follows master: the right pages for the tree, and for the reader of a release, pages of what
+  it may not have, beside a `Documentation` url naming the site's root, which lands on whichever
+  release is newest.  0.11.0's page links `latest/` and never `v0.11.0/`.  Publish's build now
+  points every one of them, the link to the root of the site among them, and the `Documentation`
+  url, at `v<version>/`, in its own checkout, before it builds and with nothing committed, so the
+  README and `pyproject.toml` the source archive carries are pointed too; the check of the installed
+  wheel refuses one whose description links the documentation anywhere else, or nothing of it, or
+  whose url is not that directory.  The classifiers name the systems the tests run on, Windows and
+  Linux, in place of `Operating System :: OS Independent`; macOS is not claimed.  Migrating costs a
+  wait and a filter.  The directory of a release is written only once Publish's run has succeeded,
+  so a release's links do not resolve until its documentation is published, longer where a run waits
+  on a reviewer or a re-run; and a tool that selects packages by the classifier `OS Independent`
+  finds Windows and Linux instead, the wheel being pure python and installing on macOS all the same.
+
+* **A release's documentation is published once Publish's run for it has succeeded, and a push to
+  master no longer cancels it.**  The release event started Documentation beside Publish, and
+  neither waited for the other: a release that Publish then refused or failed was published all the
+  same, and the root of the site, which lands on the newest release, followed it to a version PyPI
+  never received.  The release event now starts nothing there.  Publish's run completing does, and
+  the run goes on only if it was a release's and succeeded, every job of it, the extension's `.vsix`
+  included; it builds the commit the release's tag names and publishes it under that tag.  Each such
+  run is alone in a concurrency group of its own, where a release's run waiting behind master's was
+  cancelled by the next merge, with nothing red and no directory published.  A release's deploy and
+  master's may now run at once, so a push that `gh-pages` refuses takes the branch as it stands,
+  puts the build's directory back on it, rewrites the index and pushes again, and fails after five
+  refusals.  A release tagged on a commit from before this still has that commit's own `docs.yml`
+  publish it on the release event, GitHub running a release's workflows from its tag, and master's
+  publishes it again once Publish succeeds.  Migrating costs one habit.  A release whose Publish
+  reached PyPI and then failed has its documentation published by *Re-run failed jobs* of that run,
+  *Re-run all jobs* not passing once the index holds the version; and one no re-run can finish,
+  where what failed is in the tagged commit, by a dispatch of Documentation from master naming the
+  release's tag as `tag`, which builds the commit the tag names, refuses a tag that is not `v` and
+  the version `pyproject.toml` states there, as Publish does, and publishes it through the checks a
+  release's run makes.  A dispatch naming no tag is what it was.
+
+* **`SECURITY.md` says where an advisory appears, and which versions it names.**  The policy said
+  which release is supported and how to report a vulnerability privately, and nothing of an
+  advisory.  It now says that an advisory names the versions it covers, supported or not, and that
+  advisories appear on this repository's Security tab, as GitHub security advisories, and, for a
+  release that fixes one, in that release's entries in the changelog.  Nothing to migrate.
+
+* **The README and getting started say what runs from the sources before the dependencies are
+  installed.**  Both had the reader run the tool out of a checkout with nothing installed, and the
+  getting started page said that every command it shows works so.  Without `pydantic`, `jinja2` and
+  `pyelftools`, `--version` and `--help` answer, and `check` fails at its first import, naming
+  `pydantic`.  Both pages now have the reader install `requirements.txt` first, which installs
+  nothing of ddd itself, and say what answers without it.  The getting started page also named
+  `pydantic` and `jinja2` as the only runtime dependencies, and so as the only two an offline
+  install has to reach; `pyelftools` has been a third since the toolbox, and the page now says so.
+  Nothing to migrate.
 
 * **A file that cannot be written is refused before anything is, on every system, and what is
   written is synced.**  On Windows a read-only file was staged, refused at the rename after

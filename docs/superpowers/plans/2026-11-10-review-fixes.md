@@ -1742,10 +1742,11 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   `gui/screenshots/references/`, or the pull request says so in a sentence.
 - **The directories a record is read under** (task 2, `12:I4`; R114): the builds that feed an open
   project read a record under the start directory alone, and the record of how it is generated
-  under the project's own directory too, so a project whose records name it by a network path is
-  fed by their builds only where that path lies under the start directory, though a request may
-  name a path in its own directory; `_readable_project`'s docstring says so. Passing the project's
-  own directory to the feed too is branch 10's, which lists `gui/*.py`.
+  under the project's own directory too, so a project whose build records name it by a network
+  path is fed by the builds those records describe only where that path lies under the start
+  directory, though a request may name a path in the open project's own directory;
+  `_readable_project`'s docstring says so. Passing the project's own directory to the feed too is
+  branch 10's, which lists `gui/*.py`.
 - **A description's suffix and its case** (task 2): the record filter and the walk for
   descriptions compare `.ddd.json` case-sensitively, where the create rule and the loader's
   extension check do not, and `DESCRIPTION_SUFFIX` repeats `loading.DDD_SUFFIX`. Branch 14's

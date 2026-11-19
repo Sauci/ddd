@@ -4797,6 +4797,8 @@ class TestPublishedDocumentation:
             "the dispatch": "for a release pypi.org holds whose Publish no re-run can finish",
             "why the build asks": "a dispatch naming a tag has no run of Publish to read, so it "
             "asks pypi.org's json for the version the tag names",
+            "what would crown it": "which the site's version index would crown stable were it the "
+            "newest",
             "what the tag check refuses": "this is what refuses one naming a version its commit "
             "does not state, whose documentation would be published under another version's name",
         }

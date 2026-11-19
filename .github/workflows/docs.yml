@@ -166,8 +166,8 @@ jobs:
       # has succeeded, which says the version reached pypi.org; a dispatch naming a tag has no
       # run of Publish to read, so it asks pypi.org's json for the version the tag names, and
       # refuses one pypi.org holds no file of: the documentation of a version pip cannot
-      # install, which the index would crown stable were it the newest. Where pypi.org gives no
-      # answer to read, nothing is known, and it refuses as well.
+      # install, which the site's version index would crown stable were it the newest. Where
+      # pypi.org gives no answer to read, nothing is known, and it refuses as well.
       - name: Check pypi.org holds the version the tag names
         if: github.event_name == 'workflow_dispatch' && inputs.tag != ''
         env:

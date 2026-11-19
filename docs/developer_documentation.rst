@@ -1037,7 +1037,9 @@ In order, each step waiting for the one before it:
    ``twine check``, and installs the wheel into a fresh environment and checks the
    installation; then, each waiting for ``build``, ``extension``, which attaches
    ``ddd-<version>.vsix`` to the release, and ``publish-pypi``, which uploads the wheel and the
-   sdist to pypi.org.
+   sdist to pypi.org. Where the ``pypi`` environment has a required reviewer, as the protection
+   above describes, ``publish-pypi`` waits for that reviewer's approval before it uploads, and
+   Publish's run, and so the documentation, waits with it.
 #. **Documentation publishes** once Publish's run has succeeded - every job of it, the
    ``.vsix``'s included: a run of ``docs.yml`` builds the commit the tag names, publishes it
    under ``v<version>``, lists it in the menu of every page, and reads it back from the site.
@@ -1058,7 +1060,9 @@ In order, each step waiting for the one before it:
    what failed and what waits for it, so it serves a failed ``extension`` beside an upload that
    passed, and *Re-run all jobs* cannot pass. A release no re-run can finish has its
    documentation published by hand: *Documentation*, run from ``master`` with the release's tag
-   as ``tag``. A run of *Documentation* that fails on its own is re-run as it is.
+   as ``tag``. A run of *Documentation* that fails on its own is re-run as it is. A file no re-run
+   can upload - the wheel on pypi.org and the sdist refused, say - waits for the next version:
+   every route here uploads the whole of ``dist``, and an index takes a file that landed once.
 #. **Leave master's version** as the release's: nothing is bumped after a release. ``master``
    states it until the next release commit, and its development builds number themselves after
    it: ``<next patch>.dev<run>`` after a release, and after a release candidate the next

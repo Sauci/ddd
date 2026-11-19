@@ -6741,8 +6741,14 @@ class TestTheStepsOfARelease:
                 "the uploads": "each waiting for ``build``, ``extension``, which attaches "
                 "``ddd-<version>.vsix`` to the release, and ``publish-pypi``, which uploads the "
                 "wheel and the sdist to pypi.org.",
+                "a reviewer's approval": "Where the ``pypi`` environment has a required "
+                "reviewer, as the protection above describes, ``publish-pypi`` waits for that "
+                "reviewer's approval before it uploads, and Publish's run, and so the "
+                "documentation, waits with it.",
             },
         )
+        uploading = uncommented(job(PUBLISH_WORKFLOW, "publish-pypi"))
+        assert re.search(r"^    environment:\n      name: pypi$", uploading, re.M), uploading
 
     def test_documentation_waits_for_the_whole_of_publish_as_the_step_says(self) -> None:
         self.said(
@@ -6800,9 +6806,17 @@ class TestTheStepsOfARelease:
                 "hand: *Documentation*, run from ``master`` with the release's tag as ``tag``.",
                 "documentation's own failure": "A run of *Documentation* that fails on its own "
                 "is re-run as it is.",
+                "a file no re-run uploads": "A file no re-run can upload - the wheel on pypi.org "
+                "and the sdist refused, say - waits for the next version: every route here uploads "
+                "the whole of ``dist``, and an index takes a file that landed once.",
             },
         )
-        assert "skip-existing" not in uncommented(job(PUBLISH_WORKFLOW, "publish-pypi"))
+        uploading = uncommented(job(PUBLISH_WORKFLOW, "publish-pypi"))
+        assert "skip-existing" not in uploading
+        assert "name: dist\n          path: dist/\n" in uploading, (
+            "publish-pypi uploads another set"
+        )
+        assert "packages-dir" not in uploading, "publish-pypi uploads part of dist"
         assert "tag:" in events(DOCS_WORKFLOW)["workflow_dispatch"]
 
     def test_master_keeps_the_release_s_version_after_it(self) -> None:

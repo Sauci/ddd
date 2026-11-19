@@ -1674,9 +1674,10 @@ class TestPackaging:
 class TestRunningFromTheSources:
     """20:M2. The README and the getting started page let a reader run the tool out of a checkout
     without installing it, and the page said that every command it shows works so. Without the
-    runtime dependencies only the version and the help answer: ``check`` ended in a traceback,
-    ``No module named 'pydantic'``. Both pages now say what is installed first, and these tests
-    hold what they say of the tool without it to the tool."""
+    runtime dependencies the version and the help still answer, and so does ``cmake-dir``, while
+    ``check`` ended in a traceback, ``No module named 'pydantic'``, as ``list``, ``checks``,
+    ``templates-dir`` and ``schema`` do. Both pages now say what is installed first, and these
+    tests hold what they say of the tool without it to the tool."""
 
     @staticmethod
     def from_the_sources(*arguments: str) -> subprocess.CompletedProcess[str]:
@@ -5834,18 +5835,29 @@ class TestTheDevelopmentBuild:
         assert "so a candidate on ``master`` fails no job" not in said
         assert "numbered as ``dev-build``'s of the same run" not in said
 
-    def test_a_candidate_s_spelling_is_no_semver_version(self) -> None:
-        """What the page says of the extension's manifest under a candidate, held to semver
-        2.0.0's own grammar: PEP 440's ``0.12.0rc1`` is no version there, ``0.12.0-rc.1`` is one,
-        and the manifest is held equal to ``__version__`` by
-        ``test_the_editor_extension_carries_the_same_version``."""
+    def test_the_page_s_candidate_is_one_the_stamp_numbers_and_semver_refuses(self) -> None:
+        """The two spellings the page gives for the extension's manifest under a candidate, read
+        out of its sentence: the first is a candidate as ``tools/dev_version.py`` numbers one,
+        and so a version master may state, which ``__version__`` and the manifest then state
+        alike (``test_the_editor_extension_carries_the_same_version``); semver 2.0.0's own
+        grammar refuses it, and takes the second, which is the same version. A page naming
+        another candidate, or a spelling that is not one, fails here."""
+        said = flattened(PAGES["docs/developer_documentation.rst"])
+        found = re.search(
+            r"``([^`]+)`` is no semver version, which semver would spell ``([^`]+)``", said
+        )
+        assert found is not None, "the page no longer spells a candidate both ways"
+        candidate, spelled = found.groups()
+        assert dev_version.CANDIDATE.fullmatch(candidate), f"{candidate} is no candidate"
+        assert dev_version.next_development(candidate, 57).endswith(".dev57")
         identifier = r"(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)"
         semver = re.compile(
             rf"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-{identifier}(?:\.{identifier})*)?"
             r"(?:\+[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*)?"
         )
-        assert semver.fullmatch("0.12.0rc1") is None
-        assert semver.fullmatch("0.12.0-rc.1") is not None
+        assert semver.fullmatch(candidate) is None, f"semver takes {candidate}"
+        assert semver.fullmatch(spelled) is not None, f"semver refuses {spelled}"
+        assert Version(spelled) == Version(candidate), f"{spelled} is another version"
 
     def test_the_two_builds_of_a_run_read_one_commit_on_a_push_alone(self) -> None:
         """What the page says of the two wheels' numbers: ``dev-build`` stamps the commit it
@@ -6706,9 +6718,31 @@ class TestTheStepsOfARelease:
                 "the notes": "and the notes of ``## <version>``, and publish it.",
             },
         )
-        checked = step(job(PUBLISH_WORKFLOW, "build"), "Check tag matches package version")
-        assert '"$GITHUB_REF_NAME" != "v$version"' in checked
         assert "types: [published]" in events(PUBLISH_WORKFLOW)["release"]
+
+    @pytest.mark.parametrize(
+        "tag", ["v0.12.0", "0.12.0", "v0.12.1"], ids=["v and the version", "no v", "another"]
+    )
+    def test_publish_takes_a_tag_that_is_v_and_the_version_alone(
+        self, tmp_path: Path, tag: str
+    ) -> None:
+        """Publish's own tag check, run under bash on a tree whose ``pyproject.toml`` states
+        0.12.0: ``v0.12.0`` passes, saying nothing; the bare version, and another version's tag,
+        are refused, with the three lines that say what to do."""
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nversion = "0.12.0"\n', encoding="utf-8"
+        )
+        checked = step(job(PUBLISH_WORKFLOW, "build"), "Check tag matches package version")
+        ran = run_step(checked, tmp_path, GITHUB_REF_NAME=tag)
+        if tag == "v0.12.0":
+            assert (ran.returncode, ran.stdout) == (0, ""), ran.stdout + ran.stderr
+            return
+        assert ran.returncode == 1, ran.stdout + ran.stderr
+        assert ran.stdout.splitlines() == [
+            f"::error::release tag {tag} is not v0.12.0, the version in",
+            "::error::pyproject.toml. Delete the release and its tag, then re-create it",
+            "::error::as v0.12.0; nothing has been uploaded yet.",
+        ]
 
     def test_publish_s_jobs_are_named_in_the_order_a_release_runs_them(self) -> None:
         """The step names the jobs a release runs, in the order their ``needs`` run them: the
@@ -6870,10 +6904,12 @@ backtick that closes it."""
 
 
 def as_in_the_repository(readme: str) -> str:
-    """The README with its links into the documentation as the repository writes them, into
-    ``latest/``: this checkout's own text in a checkout, and in a release's sdist the README
-    Publish's build pointed at the release's directory before it built the archive, taken back.
-    The suite runs from either, so what a test feeds the pointing step is this."""
+    """The README with its links into the documentation into ``latest/``, as the repository writes
+    them: this checkout's own text in a checkout. In a release's sdist, whose README Publish's
+    build pointed at the release's directory before it built the archive, each such link is put
+    into ``latest/`` again - the root's link too, which so comes back as a link into ``latest/``
+    and not as the root; nothing the tests assert depends on that difference. The suite runs from
+    either, so what a test feeds the pointing step is this."""
     return readme.replace(f"{DOCS_URL}v{__version__}/", f"{DOCS_URL}latest/")
 
 

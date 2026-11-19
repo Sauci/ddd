@@ -524,11 +524,12 @@ A manual run of the workflow (``workflow_dispatch``) takes a ``repeat`` input, o
 above that it is a hunt, and only these three legs run, each journey repeated that many times
 (``--repeat-each``) while every other job is skipped.
 
-``gui-screenshots`` photographs every story of ``gui/`` and compares each with the reference
-image committed beside the stories, in Playwright's own Linux image, of the version
-``gui/package.json`` pins, which is the one place those images are made: a look that changes by
-accident fails here, and one changed on purpose arrives with its new references in the same pull
-request. A run of it that fails uploads the differences as ``screenshots-diff``.
+``gui-screenshots`` photographs every story of ``gui/`` and compares each with its reference
+image, committed in ``gui/screenshots/references`` beside the spec that photographs them, in
+Playwright's own Linux image, of the version ``gui/package.json`` pins, which is the one place
+those images are made: a look that changes by accident fails here, and one changed on purpose
+arrives with its new references in the same pull request. A run of it that fails uploads the
+differences as ``screenshots-diff``.
 
 ``container`` builds the image behind ``docker compose``, checks that the package installed in
 it carries the pages of ``ddd gui`` and that neither node nor npm reached it, and runs the
@@ -629,19 +630,18 @@ whatever it had uploaded.
 ``extension``, ``gui`` and ``gui-screenshots`` - so that a commit any of them fails is never a
 build anybody is pointed at; a test holds a job added to ``ci.yml`` to joining the list, and
 another holds this one to it. It checks the commit out - a pull request's own head, not the
-merge ``gui`` tests it as - and fails at once, with an
-error saying to merge ``master`` into the branch, when that head has no
-``tools/dev_version.py``: a pull request whose branch was cut before development builds
-existed. It then stamps the development version into the checkout, compiles the pages and
-builds the wheel and the sdist as the release build does, type check included, and checks that
-the wheel carries the pages. ``dev-publish`` uploads what it built, and writes the run's
-summary. They are two jobs for the reason ``publish.yml`` builds a release in one job and
-uploads it in another: ``npm ci`` runs the install scripts of every package the pages depend on,
-and a build runs whatever its backend is, so none of that runs in the job that can ask for a
-token to publish with. That job checks nothing out, and takes nothing it is handed on trust:
-the version has to be this run's; ``dist/`` has to hold that version's wheel and sdist and
-nothing else - a file left there for a later run's version would otherwise be uploaded under it,
-and that run's own upload refused; and the wheel has to name this run's commit and declare
+merge ``gui`` tests it as - and fails at once, with an error saying to merge ``master`` into the
+branch, when that head has no ``tools/dev_version.py``: a pull request whose branch was cut
+before development builds existed. It then stamps the development version into the checkout,
+compiles the pages and builds the wheel and the sdist as the release build does, type check
+included, and checks that the wheel carries the pages. ``dev-publish`` uploads what it built,
+and writes the run's summary. They are two jobs for the reason ``publish.yml`` builds a release
+in one job and uploads it in another: ``npm ci`` runs the install scripts of every package the
+pages depend on, and a build runs whatever its backend is, so none of that runs in the job that
+can ask for a token to publish with. That job checks nothing out, and takes nothing it is handed
+on trust: the version has to be this run's; ``dist/`` has to hold that version's wheel and sdist
+and nothing else - a file left there for a later run's version would otherwise be uploaded under
+it, and that run's own upload refused; and the wheel has to name this run's commit and declare
 requirements an install line can print as they are. All of it is checked before the upload.
 
 **The version is the next patch, as a development release numbered by the run.** After 0.10.0,

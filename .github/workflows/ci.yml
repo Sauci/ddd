@@ -301,11 +301,12 @@ jobs:
     # Skipped by a hunt, which is the journeys' alone.
     if: ${{ !(inputs.repeat > 1) }}
     timeout-minutes: 20
-    # Every story of gui/ photographed and compared with the reference image committed beside
-    # the stories, in the Linux image of the very Playwright version the page pins: the one place
-    # those images are made (docker compose run --rm gui-screenshots makes them locally), so a
-    # look that changes without meaning to fails here, and one that changes on purpose arrives
-    # with its new references in the same pull request.
+    # Every story of gui/ photographed and compared with its reference image, committed in
+    # gui/screenshots/references beside the spec that photographs them, in the Linux image of the
+    # very Playwright version the page pins: the one place those images are made (docker compose
+    # run --rm gui-screenshots makes them locally), so a look that changes without meaning to
+    # fails here, and one that changes on purpose arrives with its new references in the same
+    # pull request.
     runs-on: ubuntu-latest
     container: mcr.microsoft.com/playwright:v1.63.0-noble
     defaults:

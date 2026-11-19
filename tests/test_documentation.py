@@ -3888,7 +3888,8 @@ class TestWhatThePageSaysOfCi:
         said = self.section()
         claims = {
             "what it does": "``gui-screenshots`` photographs every story of ``gui/`` and "
-            "compares each with the reference image committed beside the stories",
+            "compares each with its reference image, committed in ``gui/screenshots/references`` "
+            "beside the spec that photographs them",
             "where": "in Playwright's own Linux image, of the version ``gui/package.json`` pins, "
             "which is the one place those images are made",
             "what it catches": "a look that changes by accident fails here, and one changed on "
@@ -3899,6 +3900,19 @@ class TestWhatThePageSaysOfCi:
         missing = [what for what, claim in claims.items() if claim not in said]
         assert not missing, f"the developer page no longer says {missing}"
         assert "name: screenshots-diff" in job(CI_WORKFLOW, "gui-screenshots")
+        # Where the references are: the screenshot run's own directory, the spec's, as its
+        # configuration places them, and not beside the stories in src/.
+        config = (ROOT / "gui" / "playwright.screenshots.config.ts").read_text(encoding="utf-8")
+        assert 'testDir: "screenshots"' in config
+        assert 'snapshotPathTemplate: "{testDir}/references/{arg}{ext}"' in config
+        assert (ROOT / "gui" / "screenshots" / "stories.spec.ts").is_file()
+        assert sorted((ROOT / "gui" / "screenshots" / "references").glob("*.png"))
+        commented = comments_of(job(CI_WORKFLOW, "gui-screenshots"))
+        assert (
+            "compared with its reference image, committed in gui/screenshots/references beside "
+            "the spec that photographs them"
+        ) in commented
+        assert "beside the stories" not in commented + said
 
     def test_it_lists_every_job_dev_build_waits_for(self) -> None:
         """The development builds' section names what ``dev-build`` waits for, which its

@@ -15,9 +15,11 @@ empty directory, and holds what it answers to the wheel itself:
   states the version as ``DDD_MODULE_VERSION``, which it compares with what ``ddd --version``
   prints, refusing a ``ddd`` of any other;
 * ``ddd gui`` starts, prints its address, and serves there the ``index.html`` the wheel carries;
-* the description the wheel carries, which the index shows as the release's page, links the
-  documentation under ``v<version>/`` alone, as Publish's build points it: in the tree, the
-  README's links follow master, which a reader of a release has not got.
+* the wheel's ``Documentation`` url, which the index shows beside the description, is the
+  documentation of ``v<version>/``, and the description, which the index shows as the release's
+  page, links the documentation under it alone, as Publish's build points them both: in the tree,
+  the url names the site's root and the README's links follow master, which lead a reader of a
+  release to another release's pages, or to pages of what it has not got.
 
 It lives here, and not in the workflow, for the reason ``site_versions.py`` does: a rule nothing
 can run is a rule nothing can check. ``tests/test_documentation.py`` runs it against the tool
@@ -66,6 +68,10 @@ LINK = r"[^\s)>\]\"'`]*"
 """What a link runs on to past the address it starts with: up to a space, or the bracket, quote
 or backtick markdown closes it with."""
 
+VERSIONED = re.compile(r"(?<=/)(?:latest|v[0-9][^/]*)/$")
+"""The directory of one version at the end of an address into the documentation: ``latest/``, or
+a ``v`` tag's. What is left once it is taken off is the site's root."""
+
 
 class Carried(NamedTuple):
     """What the checks read of a wheel: the version its metadata states, the project urls it
@@ -102,30 +108,39 @@ def carried(wheel: Path) -> Carried:
 
 
 def misdirected(wheel: Carried, version: str) -> list[str]:
-    """What is wrong with where the wheel's description sends its reader into the documentation:
-    nothing, when each of its links into the address the ``Documentation`` url names leads under
-    ``v<version>/``. The description is the page the index shows for the release, and the site
-    serves each version under a directory of its own: ``latest/`` follows master, and the root
-    lands on whichever release is newest. A description linking nothing of the documentation is
-    refused too, since a check that found no link would pass whatever the links were."""
-    site = wheel.urls.get(DOCUMENTATION)
-    if not site:
+    """What is wrong with where the wheel sends its reader into the documentation: nothing, when
+    its ``Documentation`` url, which the index shows beside the description, is ``v<version>/``
+    under the site's root, and each link of its description into that root leads there too. The
+    description is the page the index shows for the release, and the site serves each version
+    under a directory of its own: ``latest/`` follows master, and the root lands on whichever
+    release is newest. A description linking nothing of the documentation is refused too, since
+    a check that found no link would pass whatever the links were."""
+    url = wheel.urls.get(DOCUMENTATION)
+    if not url:
         return [
             f"the wheel's metadata names no {DOCUMENTATION} url, which the links of its "
             f"description are held to"
         ]
-    site = site.rstrip("/") + "/"
+    url = url.rstrip("/") + "/"
+    site = VERSIONED.sub("", url)
+    release = f"{site}v{version}/"
+    found = []
+    if url != release:
+        found.append(
+            f"the wheel's {DOCUMENTATION} url, which the index shows beside the description, is "
+            f"{url}, and not the documentation of v{version}"
+        )
     links = re.findall(re.escape(site) + LINK, wheel.description)
     if not links:
-        return [f"the wheel's description links nothing of the documentation at {site}"]
-    astray = [link for link in links if not link.startswith(f"{site}v{version}/")]
-    if not astray:
-        return []
-    times = "once, at" if len(astray) == 1 else f"{len(astray)} times, the first at"
-    return [
-        f"the wheel's description, the release's page on the index, links the documentation "
-        f"outside v{version}/ {times} {astray[0]}"
-    ]
+        return [*found, f"the wheel's description links nothing of the documentation at {site}"]
+    astray = [link for link in links if not link.startswith(release)]
+    if astray:
+        times = "once, at" if len(astray) == 1 else f"{len(astray)} times, the first at"
+        found.append(
+            f"the wheel's description, the release's page on the index, links the documentation "
+            f"outside v{version}/ {times} {astray[0]}"
+        )
+    return found
 
 
 def answer(ddd: Sequence[str], where: Path, *arguments: str) -> tuple[str | None, str]:

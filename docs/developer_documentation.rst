@@ -956,12 +956,14 @@ was never installed.
 PyPI shows for a release, and in the tree its links into the documentation point into
 ``latest/``, which follows ``master``: the right pages for the tree, and for a reader of the
 release, pages of what it may not have. So the build points each of them at ``v<version>/``, of
-the version ``pyproject.toml`` states, the link to the root of the site among them, in its
-checkout and before ``python -m build`` reads the README; nothing of that is committed. The
-installed check then refuses a wheel whose description links the documentation anywhere else,
-links nothing of it, or names no ``Documentation`` url to hold its links to. That directory is
-written once Publish has succeeded, so for as long as Documentation takes after it - longer, for
-a release waiting on a re-run - the release's page links pages that are not served yet.
+the version ``pyproject.toml`` states, the link to the root of the site among them, and with them
+``pyproject.toml``'s ``Documentation`` url, which the index shows beside the description, in its
+checkout and before ``python -m build`` reads the two; nothing of that is committed. The
+installed check then refuses a wheel whose ``Documentation`` url is not that directory, whose
+description links the documentation anywhere else or nothing of it, or that names no
+``Documentation`` url at all. That directory is written once Publish has succeeded, so for as
+long as Documentation takes after it - longer, for a release waiting on a re-run - the
+release's page links pages that are not served yet.
 
 **The version is spelled in ten files, and a test holds five of them together.**
 ``src/ddd/__init__.py`` is where it lives: ``docs/conf.py`` imports ``__version__`` rather than
@@ -1029,9 +1031,9 @@ In order, each step waiting for the one before it:
    the version ``pyproject.toml`` states, exactly, or Publish refuses it - and the notes of
    ``## <version>``, and publish it.
 #. **Publish runs**, on the tag's commit, in this order: ``ci``, every job of ``ci.yml`` but the
-   development builds; then ``build``, which compiles the pages, points the
-   description's links into the documentation at ``v<version>/``, builds the wheel and the
-   sdist, checks that the wheel carries the pages and that the tag is the version, runs
+   development builds; then ``build``, which compiles the pages, points the description's links
+   into the documentation, and the ``Documentation`` url, at ``v<version>/``, builds the wheel
+   and the sdist, checks that the wheel carries the pages and that the tag is the version, runs
    ``twine check``, and installs the wheel into a fresh environment and checks the
    installation; then, each waiting for ``build``, ``extension``, which attaches
    ``ddd-<version>.vsix`` to the release, and ``publish-pypi``, which uploads the wheel and the

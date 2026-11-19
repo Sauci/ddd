@@ -4142,13 +4142,16 @@ class TestPublishedDocumentation:
         """A customer reaches the documentation through the package metadata on the index.
 
         Nothing resolves that url at build time, so a wrong one is a 404 with the product's
-        name on it, found by whoever was trying to read the manual.
+        name on it, found by whoever was trying to read the manual. The repository names the
+        site's root; a release's sdist carries the ``pyproject.toml`` Publish's build pointed at
+        the release's own directory (20:M7), which the suite runs from as well.
         """
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         developer_documentation = (ROOT / "docs" / "developer_documentation.rst").read_text(
             encoding="utf-8"
         )
-        assert metadata["project"]["urls"]["Documentation"] == DOCS_URL
+        stated = metadata["project"]["urls"]["Documentation"]
+        assert stated in (DOCS_URL, f"{DOCS_URL}v{__version__}/"), stated
         assert DOCS_URL in README
         assert DOCS_URL in developer_documentation
 
@@ -6427,10 +6430,13 @@ class TestWhatPublishRunsBeforeItUploads:
         """Run on this checkout's own README, as the repository writes it, and its
         ``pyproject.toml``: every link into the address ``pyproject.toml`` names as the
         documentation - into ``latest/``, and to the root - names ``v<version>/`` instead, and
-        nothing else of the README changes."""
+        nothing else of the README changes; and ``pyproject.toml``'s ``Documentation`` url,
+        which the index shows beside the description, names it too, and nothing else of that
+        file changes."""
         source = as_in_the_repository(README)
+        manifest = (ROOT / "pyproject.toml").read_bytes().decode("utf-8")
         (tmp_path / "README.md").write_bytes(source.encode("utf-8"))
-        (tmp_path / "pyproject.toml").write_bytes((ROOT / "pyproject.toml").read_bytes())
+        (tmp_path / "pyproject.toml").write_bytes(manifest.encode("utf-8"))
         ran = run_step(step(job(PUBLISH_WORKFLOW, "build"), self.POINTING), tmp_path)
         assert ran.returncode == 0, ran.stdout + ran.stderr
         pointed = (tmp_path / "README.md").read_bytes().decode("utf-8")
@@ -6442,8 +6448,16 @@ class TestWhatPublishRunsBeforeItUploads:
         assert pointed.replace(release, "<the site>") == source.replace(
             f"{DOCS_URL}latest/", "<the site>"
         ).replace(f"<{DOCS_URL}>", "<<the site>>")
+        named = (tmp_path / "pyproject.toml").read_bytes().decode("utf-8")
+        assert tomllib.loads(named)["project"]["urls"]["Documentation"] == release
+
+        def others(text: str) -> list[str]:
+            return [line for line in text.splitlines() if not line.startswith("Documentation = ")]
+
+        assert others(named) == others(manifest)
         assert ran.stdout == (
-            f"README.md links {release} {len(links)} times, in place of latest/ and the root\n"
+            f"README.md links {release} {len(links)} times, in place of latest/ and the root, and "
+            "pyproject.toml names it as its Documentation url\n"
         )
 
     def test_the_readme_and_the_page_say_which_version_the_links_follow(self) -> None:
@@ -6464,11 +6478,13 @@ class TestWhatPublishRunsBeforeItUploads:
             "``master``",
             "the page, what the build does": "So the build points each of them at "
             "``v<version>/``, of the version ``pyproject.toml`` states, the link to the root of "
-            "the site among them, in its checkout and before ``python -m build`` reads the "
-            "README; nothing of that is committed.",
+            "the site among them, and with them ``pyproject.toml``'s ``Documentation`` url, which "
+            "the index shows beside the description, in its checkout and before ``python -m "
+            "build`` reads the two; nothing of that is committed.",
             "the page, what the check refuses": "The installed check then refuses a wheel whose "
-            "description links the documentation anywhere else, links nothing of it, or names no "
-            "``Documentation`` url to hold its links to.",
+            "``Documentation`` url is not that directory, whose description links the "
+            "documentation anywhere else or nothing of it, or that names no ``Documentation`` url "
+            "at all.",
             "the page, the gap": "the release's page links pages that are not served yet",
         }
         missing = [
@@ -6480,10 +6496,15 @@ class TestWhatPublishRunsBeforeItUploads:
         assert "which is what the links below point into" not in readme
         said = comments_of(job(PUBLISH_WORKFLOW, "build"))
         assert (
-            "every link into the documentation's address - pyproject.toml's Documentation url, its "
-            "root included - is pointed at v<version>/"
+            "every link into the documentation's address - its root included - and "
+            "pyproject.toml's Documentation url, which the index shows beside the description, are "
+            "pointed at v<version>/"
         ) in said
-        assert "and where its description links the documentation" in said
+        assert "The site's root is the url's, less any version directory it already names." in said
+        assert (
+            "and where its Documentation url and its description send their reader into the "
+            "documentation"
+        ) in said
 
     def test_publish_keeps_what_its_documentation_waits_on(self) -> None:
         """A release's documentation waits on Publish's run (20:I3): on the workflow of that
@@ -6712,7 +6733,8 @@ class TestTheStepsOfARelease:
                 "the gates": "on the tag's commit, in this order: ``ci``, every job of ``ci.yml`` "
                 "but the development builds",
                 "the build": "then ``build``, which compiles the pages, points the description's "
-                "links into the documentation at ``v<version>/``, builds the wheel and the sdist, "
+                "links into the documentation, and the ``Documentation`` url, at ``v<version>/``, "
+                "builds the wheel and the sdist, "
                 "checks that the wheel carries the pages and that the tag is the version, runs "
                 "``twine check``, and installs the wheel into a fresh environment and checks the "
                 "installation",
@@ -6897,7 +6919,7 @@ class TestTheReleaseInstallsWhatItUploads:
         module: bytes | None = None,
         page: bytes | None = INDEX,
         description: str = DESCRIPTION,
-        documentation: str | None = DOCS_URL,
+        documentation: str | None = f"{DOCS_URL}v{__version__}/",
     ) -> Path:
         """A wheel of what the checks read, where hatchling puts it: its metadata - its version,
         its ``Documentation`` url unless ``documentation`` is None, and its description - the
@@ -6953,6 +6975,8 @@ class TestTheReleaseInstallsWhatItUploads:
             f"the wheel states version {__version__}, and the release is 9.9.9",
             "the wheel's ddd/cmake/Ddd.cmake does not state DDD_MODULE_VERSION 9.9.9, so the "
             "module refuses the ddd it is installed with",
+            "the wheel's Documentation url, which the index shows beside the description, is "
+            f"{DOCS_URL}v{__version__}/, and not the documentation of v9.9.9",
             "the wheel's description, the release's page on the index, links the documentation "
             f"outside v9.9.9/ 2 times, the first at {DOCS_URL}v{__version__}/",
             f"ddd --version answers 'ddd {__version__}', and the release is 9.9.9",
@@ -7056,8 +7080,9 @@ class TestTheReleaseInstallsWhatItUploads:
         assert "usage:" in capsys.readouterr().err
 
     def test_the_release_s_own_description_passes(self, tmp_path: Path) -> None:
-        """20:M7, end to end: this checkout's README as Publish's build leaves it, the step that
-        points its links run on it, is a description the check passes."""
+        """20:M7, end to end: this checkout's README and ``pyproject.toml`` as Publish's build
+        leaves them, the step that points them run on them, make a description and a
+        ``Documentation`` url the check passes."""
         tree = tmp_path / "tree"
         tree.mkdir()
         (tree / "README.md").write_bytes(as_in_the_repository(README).encode("utf-8"))
@@ -7066,8 +7091,21 @@ class TestTheReleaseInstallsWhatItUploads:
         ran = run_step(step(job(PUBLISH_WORKFLOW, "build"), pointing), tree)
         assert ran.returncode == 0, ran.stdout + ran.stderr
         pointed = (tree / "README.md").read_bytes().decode("utf-8")
-        wheel = self.wheel(tmp_path, description=pointed)
+        urls = tomllib.loads((tree / "pyproject.toml").read_text(encoding="utf-8"))["project"][
+            "urls"
+        ]
+        wheel = self.wheel(tmp_path, description=pointed, documentation=urls["Documentation"])
         assert installed_wheel.misdirected(installed_wheel.carried(wheel), __version__) == []
+
+    def test_a_wheel_naming_the_documentation_s_root_is_refused(self, tmp_path: Path) -> None:
+        """20:M7. The index shows the ``Documentation`` url beside the description, and the
+        site's root lands on whichever release is newest: a release's page that names it sends
+        a reader of an older release to a newer one's documentation."""
+        wheel = installed_wheel.carried(self.wheel(tmp_path, documentation=DOCS_URL))
+        assert installed_wheel.misdirected(wheel, __version__) == [
+            "the wheel's Documentation url, which the index shows beside the description, is "
+            f"{DOCS_URL}, and not the documentation of v{__version__}"
+        ]
 
     def test_a_description_linking_another_version_s_documentation_is_refused(
         self, tmp_path: Path
@@ -7113,8 +7151,10 @@ class TestTheReleaseInstallsWhatItUploads:
     def test_the_checker_says_what_it_holds_the_description_to(self) -> None:
         said = flattened(installed_wheel.__doc__ or "")
         assert (
-            "the description the wheel carries, which the index shows as the release's page, "
-            "links the documentation under ``v<version>/`` alone, as Publish's build points it"
+            "the wheel's ``Documentation`` url, which the index shows beside the description, is "
+            "the documentation of ``v<version>/``, and the description, which the index shows as "
+            "the release's page, links the documentation under it alone, as Publish's build points "
+            "them both"
         ) in said
 
 

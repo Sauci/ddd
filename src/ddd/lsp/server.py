@@ -562,11 +562,18 @@ class Server:
     def _withdraw_deleted(self) -> None:
         """Empty the list of a file that is no longer there, once.
 
+        A document the client has open is not gone, whatever the disk holds: a new file is
+        checked from its buffer before it is ever saved.
+
         No run reports on a deleted file again, so without this its findings would stay on
         screen for good. Nothing is checked from its path: a run started there is what
         published a finding about a file that does not exist.
         """
-        for path in sorted(path for path in self._published if not path.exists()):
+        for path in sorted(
+            path
+            for path in self._published
+            if not path.exists() and path.resolve() not in self._open
+        ):
             self._publish(path, [])
             self._published.discard(path)
 

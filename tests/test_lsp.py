@@ -4465,6 +4465,36 @@ class TestServer:
             }
         )
         assert published(writer) == {b.as_uri(): []}
+        # Once: a later refresh does not empty it again.
+        server._handle(self.opened(a))
+        withdrawals = [
+            m
+            for m in sent(writer)
+            if m.get("method") == "textDocument/publishDiagnostics"
+            and m["params"]["uri"] == b.as_uri()
+        ]
+        assert [m["params"]["diagnostics"] for m in withdrawals] == [[]]
+
+    def test_an_open_document_not_on_disk_keeps_its_findings(self, tmp_path: Path) -> None:
+        """A new file, not yet saved, is checked from its buffer and is not a deleted one."""
+        draft = tmp_path / "new.ddd.json"
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(self.handshake(tmp_path))
+        message = self.opened(draft)
+        message["params"]["textDocument"]["text"] = json.dumps(
+            component("N", declare("input", "X"))
+        )
+        assert server._handle(message)
+        assert not draft.exists()
+        kept = [
+            m["params"]["diagnostics"]
+            for m in sent(writer)
+            if m.get("method") == "textDocument/publishDiagnostics"
+            and m["params"]["uri"] == draft.as_uri()
+        ]
+        assert kept
+        assert kept[-1], "findings of an open, unsaved document were emptied"
 
     def test_opening_the_project_file_does_not_withdraw_the_project_wide_findings(
         self, tmp_path: Path

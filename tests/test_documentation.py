@@ -4614,10 +4614,10 @@ class TestPublishedDocumentation:
     ) -> None:
         """Publish refuses a release whose tag is not ``v`` and the version ``pyproject.toml``
         states, before it uploads anything - the whole tag, its ``v`` included, as
-        ``test_a_release_tag_has_to_carry_its_prefix`` pins there. A release named by hand has
-        been through no Publish, so the build makes the same check of the tree it checked out,
-        and refuses to publish documentation under a version that commit does not state; a
-        release Publish published passes it again."""
+        ``test_a_release_tag_has_to_carry_its_prefix`` pins there. A tag named by hand has no
+        run of Publish to read, so the build makes the same check of the tree it checked out,
+        and refuses to publish documentation under a version that commit does not state, a tag
+        typed wrong; a release Publish published passes it again."""
         context = (
             completed(head_branch=tag)
             if route == "a release Publish published"
@@ -4801,11 +4801,14 @@ class TestPublishedDocumentation:
             "newest",
             "what the tag check refuses": "this is what refuses one naming a version its commit "
             "does not state, whose documentation would be published under another version's name",
+            "why it still matters": "a tag named on a dispatch is for a release pypi.org holds, "
+            "which passed it in Publish before its upload",
         }
         missing = [what for what, claim in claims.items() if claim not in said]
         assert not missing, f"docs.yml no longer says {missing}"
         assert "every check a release's run makes" not in said
         assert "does not state - documentation of a version PyPI never received" not in said
+        assert "has been through no Publish" not in said
 
     def test_the_changelog_says_which_release_is_published_by_hand(self) -> None:
         """20:I3 in the entry, and in the opening's item naming it: what the route by hand

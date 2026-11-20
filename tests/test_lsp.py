@@ -10919,6 +10919,46 @@ class TestAHoverResolvesOncePerCheck:
         assert answers[0] == answers[1] == answers[2]
         assert "Written by **A**, read by **B**." in answers[0]["contents"]["value"]
 
+    def test_each_project_a_hover_answers_from_keeps_a_dictionary_of_its_own(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Two projects, a workspace folder each, whose writers of ``Speed`` are named apart:
+        hovered in one, in the other and in the first again, with no check between, each answer
+        names its own project's writer, and each project is resolved once. Kept under one key,
+        the second answer was the first project's, and stayed so until the next check."""
+        from ddd.lsp import hover
+
+        tree: dict[str, Any] = {}
+        for folder in ("one", "two"):
+            name = folder.title()
+            tree[f"{folder}/p.ddd.json"] = project(name, "sub/w.ddd.json", "sub/r.ddd.json")
+            tree[f"{folder}/sub/w.ddd.json"] = component(
+                f"Writer{name}", declare("output", "Speed")
+            )
+            tree[f"{folder}/sub/r.ddd.json"] = component(f"Reader{name}", declare("input", "Speed"))
+        write_tree(tmp_path, tree)
+        resolved: list[str] = []
+        original = hover.analyze
+
+        def counted(workspace: Any, bag: DiagnosticBag) -> Any:
+            resolved.append(workspace.root.parent.name)
+            return original(workspace, bag)
+
+        monkeypatch.setattr(hover, "analyze", counted)
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        folders = [{"uri": (tmp_path / folder).as_uri()} for folder in ("one", "two")]
+        hello = {"workspaceFolders": folders}
+        assert server._handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": hello})
+        hovered = ["one", "two", "one"]
+        for folder in hovered:
+            assert server._handle(self.hover(tmp_path / folder / "sub" / "r.ddd.json"))
+        answers = [message["result"] for message in sent(writer) if message.get("id") == 7]
+        for answer, folder in zip(answers, hovered, strict=True):
+            said, name = answer["contents"]["value"], folder.title()
+            assert f"Written by **Writer{name}**, read by **Reader{name}**." in said, folder
+        assert resolved == ["one", "two"]
+
     def test_a_hover_in_a_project_whose_read_reported_an_error_answers_all_the_same(
         self, tmp_path: Path
     ) -> None:

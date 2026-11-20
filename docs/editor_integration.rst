@@ -48,7 +48,12 @@ What the server offers
 on open, on save, and when the editor reports that a description file it watches changed on
 disk - a build writes them and a branch switch rewrites them all, and neither is something
 a document event would report. Each is drawn over the key it is about rather than over the
-whole file. Opens, saves and watched changes that arrive together are checked together, each
+whole file. The findings are the disk's, and an open document's are drawn in its text as the
+editor holds it: over the key a finding is about where the unsaved buffer holds it, over the
+nearest key around it that the buffer holds where it does not, and at the top of a buffer that
+is not json. A finding names its key by its place in the file, so a declaration typed above the
+one it is about, in the same list, takes the finding's place until the file is saved. Opens,
+saves and watched changes that arrive together are checked together, each
 project once for all of them: the server checks the documents they name once it has handled
 every message already waiting behind the first of them, and before it answers a request that
 came after them, never waiting for a message not yet sent. A save and the change the editor's

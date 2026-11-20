@@ -10733,3 +10733,36 @@ class TestWhichSpellingAFilesFindingsGoOutUnder:
     def test_the_page_says_a_file_s_findings_go_out_under_one_spelling(self, page: str) -> None:
         text, phrase = self.SAID[page]
         assert phrase in flattened(text), f"{page} no longer says: {phrase!r}"
+
+
+class TestWhereAnOpenDocumentsFindingsAreDrawn:
+    """10:M6. The findings are the disk's, and an open document's are drawn in its text as the
+    client holds it, around the key where that text no longer holds it, and over the item a list
+    holds at the key's place in it."""
+
+    SAID: ClassVar[dict[str, tuple[str, str]]] = {
+        "SPEC.md": (
+            SPEC,
+            "An open document's findings are drawn in that text as well: over the key a finding "
+            "is about where the text holds it, over the nearest key around it that the text holds "
+            "where it does not, and at the top of a text that is not json, never at the place its "
+            "file on disk gives the key. A finding names its key by its place in the file, so "
+            "where unsaved changes put another item at that place of a list - a declaration typed "
+            "above the one it is about - the finding is drawn over that item until the file is "
+            "saved.",
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            "The findings are the disk's, and an open document's are drawn in its text as the "
+            "editor holds it: over the key a finding is about where the unsaved buffer holds it, "
+            "over the nearest key around it that the buffer holds where it does not, and at the "
+            "top of a buffer that is not json. A finding names its key by its place in the file, "
+            "so a declaration typed above the one it is about, in the same list, takes the "
+            "finding's place until the file is saved.",
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(SAID))
+    def test_the_page_says_where_an_open_document_s_findings_are_drawn(self, page: str) -> None:
+        text, phrase = self.SAID[page]
+        assert phrase in flattened(text), f"{page} no longer says: {phrase!r}"

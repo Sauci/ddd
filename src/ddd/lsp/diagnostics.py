@@ -234,6 +234,7 @@ def collect(
     builds: Sequence[BuildInfo],
     documents: Iterable[Path] = (),
     root: Path | Callable[[Path], Path] | None = None,
+    buffers: Mapping[Path, Document] | None = None,
 ) -> dict[Path, list[dict[str, Any]]]:
     """Findings for every file the given builds cover, plus any document they do not.
 
@@ -266,8 +267,19 @@ def collect(
     loader hands back and two spellings of one file would be published as two files. Which
     words each one goes out in is the server's to decide, one layer up, where what the client
     called each document is known.
+
+    The findings are the disk's, and so is what a file declares itself to be
+    (:func:`_declares_a_project`), which decides how it is checked. Where each is drawn is the
+    client's text, though: ``buffers`` holds the text of every document the client has open, by
+    its resolved path, and a finding about one is drawn where that text holds its key - over the
+    nearest key around it that the text holds where it does not, and at the top of a text that is
+    not json (:meth:`~ddd.lsp.ranges.Document.range_of`). Drawn at the disk's place, a squiggle
+    landed on whatever the text held there once lines were typed above it, unsaved.
     """
     cache: dict[Path, Document] = {}
+    """The files as the disk holds them, for what each declares itself."""
+    drawn: dict[Path, Document] = dict(buffers or {})
+    """The text each finding is drawn in: an open document's buffer, and any other file's disk."""
     grouped: dict[Path, list[Diagnostic]] = {}
     covered: set[Path] = set()
     for info in builds:
@@ -307,7 +319,7 @@ def collect(
             covered |= sources | group_findings(bag, resolved, grouped)
 
     return {
-        path: [_as_lsp(finding, cache, path) for finding in grouped.get(path, ())]
+        path: [_as_lsp(finding, drawn, path) for finding in grouped.get(path, ())]
         for path in sorted(covered | set(grouped))
     }
 

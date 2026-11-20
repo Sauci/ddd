@@ -12547,3 +12547,176 @@ class TestOneSpellingPerFile:
         )
         assert [touched(action) for action in offered] == [{"r.ddd.json"}, {"w.ddd.json"}]
         assert list(offered[1]["edit"]["changes"]) == [(link / "w.ddd.json").as_uri()]
+
+
+class TestAFindingIsDrawnInTheBuffer:
+    """10:M6. The findings are the disk's, and an open document's are drawn in the text the client
+    holds for it. Drawn at the disk's places in a buffer with lines typed above them, unsaved, the
+    squiggles landed on other keys - after a save of another file, and at the open of a buffer the
+    client restored unsaved. A key the buffer no longer holds is drawn over the nearest key around
+    it that the buffer holds, and at the top of a buffer that is not json."""
+
+    FILES: ClassVar[dict[str, Any]] = {
+        "p.ddd.json": project("P", "w.ddd.json", "r.ddd.json"),
+        "w.ddd.json": component("W", declare("output", "V", unit="rpm", id="k7m2q9xr4t8w")),
+        "r.ddd.json": component("R", declare("input", "V", unit="krpm"), declare("input", "Y")),
+    }
+    """``r`` disagrees with ``w`` about the unit of ``V``, a ``definition-mismatch`` over its first
+    definition, and reads ``Y``, which nothing writes, a ``missing-producer`` over its second
+    declaration."""
+
+    def typed_above(self, text: str) -> str:
+        """``r``'s text with five lines typed above its interface: a description, and four blank
+        lines."""
+        return text.replace(
+            '"name": "R",\n', '"name": "R",\n    "description": "reads V",\n\n\n\n\n', 1
+        )
+
+    def drawn(self, writer: io.BytesIO, path: Path) -> dict[str, Any]:
+        """Where each finding last published for ``path`` is drawn, by its check."""
+        return {entry["code"]: entry["range"] for entry in published(writer)[path.as_uri()]}
+
+    def where(self, text: str) -> dict[str, Any]:
+        """Where ``r``'s two findings lie in ``text``."""
+        document = Document(text)
+        return {
+            "definition-mismatch": document.range_of("component.interface[0].definition"),
+            "missing-producer": document.range_of("component.interface[1]"),
+        }
+
+    def started(self, tmp_path: Path) -> tuple[Server, io.BytesIO]:
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+        return server, writer
+
+    def test_a_finding_is_drawn_where_the_unsaved_buffer_holds_its_key(
+        self, tmp_path: Path
+    ) -> None:
+        """Five lines typed above the interface of ``r``, unsaved, and then ``w`` saved: the
+        findings of ``r`` went out at the disk's lines, five above their keys on screen."""
+        write_tree(tmp_path, self.FILES)
+        w, r = tmp_path / "w.ddd.json", tmp_path / "r.ddd.json"
+        disk = r.read_text(encoding="utf-8")
+        typed = self.typed_above(disk)
+        server, _ = self.started(tmp_path)
+        assert server._handle(holding(w, w.read_text(encoding="utf-8")))
+        assert server._handle(holding(r, disk))
+        changed = {
+            "textDocument": {"uri": r.as_uri(), "version": 2},
+            "contentChanges": [{"text": typed}],
+        }
+        assert server._handle(
+            {"jsonrpc": "2.0", "method": "textDocument/didChange", "params": changed}
+        )
+        writer = server.writer = io.BytesIO()
+        saved = {"textDocument": {"uri": w.as_uri()}}
+        assert server._handle({"jsonrpc": "2.0", "method": "textDocument/didSave", "params": saved})
+        assert [range["start"]["line"] - 5 for range in self.where(typed).values()] == [
+            range["start"]["line"] for range in self.where(disk).values()
+        ]
+        assert self.drawn(writer, r) == self.where(typed)
+
+    def test_a_buffer_restored_unsaved_is_drawn_in_from_its_open(self, tmp_path: Path) -> None:
+        write_tree(tmp_path, self.FILES)
+        r = tmp_path / "r.ddd.json"
+        typed = self.typed_above(r.read_text(encoding="utf-8"))
+        server, writer = self.started(tmp_path)
+        assert server._handle(holding(r, typed))
+        assert self.drawn(writer, r) == self.where(typed)
+
+    def test_a_note_is_drawn_where_the_buffer_it_points_into_holds_its_key(
+        self, tmp_path: Path
+    ) -> None:
+        """The disagreement of ``r`` points at ``w``'s declaration, its other side, which the reader
+        clicks to: in ``w``'s buffer, with lines typed above it unsaved, as ``w``'s findings are."""
+        write_tree(tmp_path, self.FILES)
+        w, r = tmp_path / "w.ddd.json", tmp_path / "r.ddd.json"
+        typed = w.read_text(encoding="utf-8").replace(
+            '"name": "W",\n', '"name": "W",\n    "description": "writes V",\n\n\n\n\n', 1
+        )
+        server, writer = self.started(tmp_path)
+        assert server._handle(holding(w, typed))
+        (finding,) = [
+            entry
+            for entry in published(writer)[r.as_uri()]
+            if entry["code"] == "definition-mismatch"
+        ]
+        assert [note["location"] for note in finding["relatedInformation"]] == [
+            {"uri": w.as_uri(), "range": Document(typed).range_of(AT_A_DECLARATION)}
+        ]
+
+    def test_a_declaration_typed_above_another_takes_the_place_its_finding_names(
+        self, tmp_path: Path
+    ) -> None:
+        """A finding names its key by its place in the file: with a declaration typed in front of
+        the two of ``r``, unsaved, each finding is drawn over the declaration the buffer holds at
+        its place, the one in front of its own, until the file is saved and checked again."""
+        write_tree(tmp_path, self.FILES)
+        r = tmp_path / "r.ddd.json"
+        text = json.dumps(
+            component(
+                "R",
+                declare("local", "Typed"),
+                declare("input", "V", unit="krpm"),
+                declare("input", "Y"),
+            ),
+            indent=2,
+        )
+        server, writer = self.started(tmp_path)
+        assert server._handle(holding(r, text))
+        assert self.drawn(writer, r) == self.where(text)
+
+    @pytest.mark.parametrize("unsaved", ["its-declaration-taken-out", "not-json"])
+    def test_a_key_the_buffer_no_longer_holds_is_drawn_around_it(
+        self, tmp_path: Path, unsaved: str
+    ) -> None:
+        """The buffer took out the declaration ``missing-producer`` is about, or is caught mid edit:
+        the finding is drawn over the interface holding what is left, or at the top."""
+        write_tree(tmp_path, self.FILES)
+        r = tmp_path / "r.ddd.json"
+        if unsaved == "not-json":
+            text = r.read_text(encoding="utf-8")[:-12]
+            top = {"line": 0, "character": 0}
+            expected = {"start": top, "end": top}
+        else:
+            text = json.dumps(component("R", declare("input", "V", unit="krpm")), indent=2)
+            expected = Document(text).range_of("component.interface")
+        server, writer = self.started(tmp_path)
+        assert server._handle(holding(r, text))
+        assert self.drawn(writer, r)["missing-producer"] == expected
+
+    def test_a_fix_is_found_at_the_finding_drawn_in_the_buffer(self, tmp_path: Path) -> None:
+        """A client asks for the quick fixes where it drew a finding, sending the finding back:
+        asked at the disk's place in the buffer, the caret was on no declaration, and nothing was
+        offered."""
+        write_tree(tmp_path, self.FILES)
+        w, r = tmp_path / "w.ddd.json", tmp_path / "r.ddd.json"
+        server, writer = self.started(tmp_path)
+        assert server._handle(holding(w, w.read_text(encoding="utf-8")))
+        assert server._handle(holding(r, self.typed_above(r.read_text(encoding="utf-8"))))
+        (finding,) = [
+            entry
+            for entry in published(writer)[r.as_uri()]
+            if entry["code"] == "definition-mismatch"
+        ]
+        asked = {
+            "textDocument": {"uri": r.as_uri()},
+            "range": finding["range"],
+            "context": {"diagnostics": [finding]},
+        }
+        assert server._handle(
+            {"jsonrpc": "2.0", "id": 13, "method": "textDocument/codeAction", "params": asked}
+        )
+        offered = next(message for message in sent(writer) if message.get("id") == 13)["result"]
+        assert preferred(offered) == ["Use the unit declared in w"]
+        assert offered[0]["diagnostics"] == [finding]
+
+    def test_what_a_document_declares_itself_is_read_from_the_disk(self, tmp_path: Path) -> None:
+        """A component no project holds, read on its own, whose buffer is a project description: it
+        is checked as the component the disk holds, under the checks one file can settle, whatever
+        its buffer says it is."""
+        write_tree(tmp_path, {"a.ddd.json": component("A", declare("input", "X"))})
+        a = (tmp_path / "a.ddd.json").resolve()
+        buffered = {a: Document(json.dumps(project("P", "a.ddd.json"), indent=2))}
+        assert service.collect([], [a], tmp_path, buffered) == {a: []}

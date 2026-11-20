@@ -3056,7 +3056,13 @@ finished making. The findings are therefore the disk's. The text of every open d
 nonetheless kept current as it is typed, and every position the client sends and every edit
 the server answers - a rename, a quick fix - is read from and written for that text, so that
 an edit lands where the editor shows it; a client that takes versioned edits is told which
-version of each document an edit was computed for. Opens, saves and watched changes that arrive
+version of each document an edit was computed for. An open document's findings are drawn in that
+text as well: over the key a finding is about where the text holds it, over the nearest key
+around it that the text holds where it does not, and at the top of a text that is not json, never
+at the place its file on disk gives the key. A finding names its key by its place in the file, so
+where unsaved changes put another item at that place of a list - a declaration typed above the
+one it is about - the finding is drawn over that item until the file is saved. Opens, saves and
+watched changes that arrive
 together are checked together, each project once for all of them: the server checks the
 documents they name once it has handled every message already waiting behind the first of them,
 and before it answers a request that came after them, never waiting for a message not yet sent.

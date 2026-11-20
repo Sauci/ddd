@@ -25,9 +25,10 @@ that has not arrived (:meth:`Server._serve`). Nothing is analysed per keystroke:
 analysis reads the files from disk, so the editor and the server agree exactly at the moment
 of a save, and a half-typed document never produces a screenful of findings about a mistake
 nobody has finished making yet. The *text* of every open document is nonetheless kept, and
-kept current through ``didChange``: a position the client sends, and an edit the client
-will apply, are about what is on screen, and an edit computed from a stale file and applied
-to a buffer with one extra line rewrote an unrelated line.
+kept current through ``didChange``: a position the client sends, an edit the client will
+apply and the place a finding is drawn are about what is on screen. An edit computed from a
+stale file and applied to a buffer with one extra line rewrote an unrelated line, and a
+finding drawn at the file's line in such a buffer underlined another key.
 """
 
 from __future__ import annotations
@@ -942,7 +943,8 @@ class Server:
 
         The documents are checked together, each project once however many of them it holds or
         answers for (:func:`~ddd.lsp.diagnostics.collect`), each searched for above within the
-        workspace folder holding it.
+        workspace folder holding it. What is found is the disk's, and an open document's
+        findings are drawn in its buffer, as it stands on screen.
         """
         self._forget()
         builds = self._builds_now()
@@ -954,6 +956,7 @@ class Server:
             [info for info in builds if Path(info.project).is_file()],
             documents,
             self._root_for,
+            self._cache(),
         )
         # Only files with something to say, plus the ones this run reported on that had
         # something to say last time and no longer do - those need an empty list to withdraw

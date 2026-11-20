@@ -7420,6 +7420,59 @@ class TestServer:
         )
         assert self.REASON in message
 
+    def shared_units(self, tmp_path: Path, *, stopped: bool) -> Path:
+        """Image one, in ``one/``, and a units file in ``shared/`` that a second description
+        holds too, which a plugin stops where ``stopped``. Returns image one's reader."""
+        write_tree(
+            tmp_path,
+            {
+                "tools/exiting_plugin.py": EXITING_MODEL_PLUGIN,
+                "one/one.ddd.json": project("One", "../shared/units.ddd.json", "reader.ddd.json"),
+                "one/reader.ddd.json": component("R", declare("input", "Speed", unit="rpm")),
+                "shared/units.ddd.json": {"units": ["rpm"]},
+                "shared/two.ddd.json": project(
+                    "Two",
+                    "units.ddd.json",
+                    *(["other.ddd.json"] if stopped else []),
+                    plugins=["../tools/exiting_plugin.py"],
+                ),
+                **(
+                    {
+                        "shared/other.ddd.json": component(
+                            "O", declare("local", "X", extensions={"exiting": {"tag": "t"}})
+                        )
+                    }
+                    if stopped
+                    else {}
+                ),
+            },
+        )
+        return tmp_path / "one/reader.ddd.json"
+
+    def test_a_unit_rename_meets_a_description_the_closure_could_not_read(
+        self, tmp_path: Path
+    ) -> None:
+        """The units file the rename rewrites is one a second description holds, and a plugin
+        stops that description: refused naming it, as a variable's rename is."""
+        reader = self.shared_units(tmp_path, stopped=True)
+        request = self.rename_request(reader, "component.interface[0].definition.unit", "1/min")
+        message = self.answer_to(tmp_path, request)["error"]["message"]
+        assert message.startswith(
+            "shared/two.ddd.json could not be read, so this rename cannot tell what it reaches: "
+        )
+        assert self.REASON in message
+
+    def test_a_unit_rename_goes_through_once_the_description_is_mended(
+        self, tmp_path: Path
+    ) -> None:
+        """The control of the test above."""
+        reader = self.shared_units(tmp_path, stopped=False)
+        request = self.rename_request(reader, "component.interface[0].definition.unit", "1/min")
+        answer = self.answer_to(tmp_path, request)
+        assert set(answer["result"]["changes"]) == {
+            (tmp_path / name).as_uri() for name in ("one/reader.ddd.json", "shared/units.ddd.json")
+        }
+
     def test_the_closure_reads_on_once_the_description_it_could_not_read_is_mended(
         self, tmp_path: Path
     ) -> None:

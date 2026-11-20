@@ -8496,6 +8496,17 @@ def offered_at(
     return actions(built, path, read(path, cache), AT_A_DECLARATION, cache, reported)
 
 
+def mismatches(root: Path) -> list[str]:
+    """What the project written under ``root`` files as ``definition-mismatch``, in its words."""
+    from ddd.analysis import analyze
+
+    bag = DiagnosticBag()
+    workspace = load_workspace(root / "p.ddd.json", bag)
+    assert workspace is not None, [entry.render() for entry in bag]
+    analyze(workspace, bag)
+    return [entry.message for entry in bag if entry.check == "definition-mismatch"]
+
+
 def preferred(offered: list[dict[str, Any]]) -> list[str]:
     """What the preferred fixes among the reconcile fixes offered change, by :func:`reconciled`."""
     return [
@@ -8817,21 +8828,17 @@ class TestAKeyATypeStates:
     def test_taking_the_unit_the_type_states_settles_the_mismatch(self, tmp_path: Path) -> None:
         """Applied, and the project analysed again: the reader states what the writer means, and
         nothing differs. The removal it replaces left the reader stating no unit against rpm."""
-        from ddd.analysis import analyze
-
         (fix,) = offered_at(tmp_path, "r.ddd.json", WRITER_NAMES_A_TYPE, MISMATCH_REPORTED)
         for name, text in rewritten_by(fix["edit"]["changes"]).items():
             (tmp_path / name).write_text(text, encoding="utf-8", newline="")
-        bag = DiagnosticBag()
-        workspace = load_workspace(tmp_path / "p.ddd.json", bag)
-        assert workspace is not None
-        analyze(workspace, bag)
-        assert "definition-mismatch" not in checks(bag), [entry.render() for entry in bag]
+        assert mismatches(tmp_path) == []
 
     def test_the_writer_is_offered_no_removal_its_type_would_undo(self, tmp_path: Path) -> None:
         """From the writer, the reader was offered to lose its unit, 'Remove the unit from 1 other
         declaration': the writer's type goes on stating rpm, and the two went on disagreeing."""
         assert offered_at(tmp_path, "w.ddd.json", WRITER_NAMES_A_TYPE, MISMATCH_REPORTED) == []
+        # And not because nothing differs: the checker files the unit between the two.
+        assert [s for s in mismatches(tmp_path) if "(unit: 'krpm' != 'rpm')" in s] != []
 
     def test_a_reader_agreeing_with_its_writer_s_type_keeps_its_unit(self, tmp_path: Path) -> None:
         """The reader means rpm, as the writer's type does, and disagrees about its volatility:
@@ -8853,6 +8860,8 @@ class TestAKeyATypeStates:
         nobody else states, and that fix was preferred, while the reader's type goes on stating
         krpm."""
         assert offered_at(tmp_path, "w.ddd.json", READER_NAMES_A_TYPE, MISMATCH_REPORTED) == []
+        # And not because nothing differs: the checker files the unit between the two.
+        assert [s for s in mismatches(tmp_path) if "(unit: 'krpm' != 'rpm')" in s] != []
 
     def test_a_reader_naming_a_type_is_offered_no_removal_from_its_writer(
         self, tmp_path: Path
@@ -8861,6 +8870,25 @@ class TestAKeyATypeStates:
         unit from 1 other declaration', the one declaration it could not reach being the reader's
         own, whose type states krpm."""
         assert offered_at(tmp_path, "r.ddd.json", READER_NAMES_A_TYPE, MISMATCH_REPORTED) == []
+        # And not because nothing differs: the checker files the unit between the two.
+        assert [s for s in mismatches(tmp_path) if "(unit: 'krpm' != 'rpm')" in s] != []
+
+    def test_a_writer_keeps_its_unit_while_another_reader_s_type_states_one(
+        self, tmp_path: Path
+    ) -> None:
+        """The reader asked at states no unit and names no type, the writer states rpm, and a
+        second reader means krpm through its type. Taking the writer's unit out to match this
+        reader's silence leaves the second stating krpm against none: the type that keeps the key
+        is another declaration's, and no removal is offered beside it. Taking the writer's unit
+        still is."""
+        files = {
+            "t.ddd.json": types(scalar_type("Krpm_t", "uint8", unit="krpm")),
+            "w.ddd.json": component("W", declare("output", "V", "uint8", unit="rpm")),
+            "r.ddd.json": component("R", declare("input", "V", "uint8")),
+            "q.ddd.json": component("Q", declare("input", "V", typename="Krpm_t")),
+        }
+        offered = offered_at(tmp_path, "r.ddd.json", files, MISMATCH_REPORTED)
+        assert reconciled(offered) == ["Use the unit declared in w"]
 
     @pytest.mark.parametrize(
         ("files", "source"),

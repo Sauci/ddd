@@ -2941,6 +2941,10 @@ performed in part. A project is indexed from what loaded, so a file a `schema` e
 mid edit declares nothing as far as the index knows: the rename would rewrite every other
 file and leave that one holding the old name, and a fix would offer to remove a key "no
 other declaration has" while the unloaded producer states exactly that key.
+A rename is refused as well, naming the document, while an open document of a project it
+reaches holds what its file on disk does not, since the rename is planned from
+the files and a mention typed and not saved is one it cannot see; and it is refused when it
+would rewrite nothing, which an editor applies without a word.
 
 A rename reaches every project that holds a file it rewrites: the projects the file it starts
 from belongs to, then every project holding a file their edits rewrite, until none is new. A

@@ -73,7 +73,7 @@ from ddd.lsp.protocol import (
     read_message,
     response,
 )
-from ddd.lsp.ranges import Document, read
+from ddd.lsp.ranges import Document, differs_from_disk, read
 from ddd.lsp.server import Server, uri_to_path
 from ddd.lsp.units import (
     PlannedEdit,
@@ -114,6 +114,14 @@ END: Final = (
     {"jsonrpc": "2.0", "method": "exit"},
 )
 """How a client ends a session it means to end, which ``run`` answers with 0."""
+
+UNSEEN_RENAME: Final = (
+    "reader_two.ddd.json has unsaved changes this rename would not see; save it and rename again"
+)
+"""What a rename is refused with while one document of the reach differs from its file."""
+
+EMPTY_RENAME: Final = "nothing on disk spells that name, so this rename would change nothing"
+"""What a rename that rewrites nothing is refused with."""
 
 
 class TestFraming:
@@ -178,6 +186,67 @@ class TestFraming:
             "error": {"code": METHOD_NOT_FOUND, "message": "no"},
         }
         assert notification("m", {"a": 1}) == {"jsonrpc": "2.0", "method": "m", "params": {"a": 1}}
+
+
+class TestADocumentThatDiffersFromItsFile:
+    """What a buffer parses to against what its file parses to, never the text of either."""
+
+    @staticmethod
+    def on_disk(tmp_path: Path, content: bytes) -> Path:
+        path = tmp_path / "a.ddd.json"
+        path.write_bytes(content)
+        return path
+
+    @pytest.mark.parametrize(
+        ("disk", "buffer"),
+        [
+            (b'{"a": [1, 2]}', '{"a": [1, 2]}'),
+            (b'{\r\n  "a": [1, 2]\r\n}', '{\n  "a": [1, 2]\n}'),
+            (b'{"a": [1, 2]}', '{\n    "a": [ 1,\n 2 ]\n}'),
+            (b'\xef\xbb\xbf{"a": 1}', '{"a": 1}'),
+        ],
+        ids=["same", "crlf-against-lf", "reformatted", "byte-order-mark"],
+    )
+    def test_the_same_document_does_not_differ(
+        self, tmp_path: Path, disk: bytes, buffer: str
+    ) -> None:
+        assert not differs_from_disk(self.on_disk(tmp_path, disk), buffer)
+
+    @pytest.mark.parametrize(
+        ("disk", "buffer"),
+        [
+            (b'{"a": 1}', '{"a": 2}'),
+            (b'{"a": 1}', '{"a": 1, "b": 1}'),
+            (b'{"a": 1, "b": 2}', '{"b": 2, "a": 1}'),
+            (b'{"a": 1}', '{"a": true}'),
+            (b'{"a": 1}', '{"a": 1.0}'),
+            (b'{"a": 1}', '{"a": 1'),
+            (b'{"a": 1', '{"a": 1'),
+            (b'{"a": 1}', ""),
+        ],
+        ids=[
+            "value",
+            "member",
+            "order",
+            "true-for-one",
+            "float-for-int",
+            "buffer-unparsed",
+            "both-unparsed",
+            "empty-buffer",
+        ],
+    )
+    def test_a_document_that_says_something_else_differs(
+        self, tmp_path: Path, disk: bytes, buffer: str
+    ) -> None:
+        assert differs_from_disk(self.on_disk(tmp_path, disk), buffer)
+
+    def test_a_buffer_nested_too_deeply_to_parse_differs(self, tmp_path: Path) -> None:
+        path = self.on_disk(tmp_path, b"[]")
+        assert differs_from_disk(path, "[" * 100_000 + "]" * 100_000)
+
+    def test_a_file_that_is_not_there_or_not_text_differs(self, tmp_path: Path) -> None:
+        assert differs_from_disk(tmp_path / "gone.ddd.json", "{}")
+        assert differs_from_disk(self.on_disk(tmp_path, b"\xff\xfe{}"), "{}")
 
 
 class TestRanges:
@@ -5924,7 +5993,8 @@ class TestServer:
     ) -> None:
         """At a position naming nothing renameable a rename computes no edit, so it touches no
         file and reaches no other project. With the document's projects kept from a jump, it has
-        nothing left to read - where it read image two, to ask it which of no files it held."""
+        nothing left to read - where it read image two, to ask it which of no files it held. It is
+        refused rather than answered with an empty edit, which a client applies without a word."""
         self.two_images(tmp_path)
         reader_one = tmp_path / "reader_one.ddd.json"
         position = Document(reader_one.read_text(encoding="utf-8")).range_of(
@@ -5939,7 +6009,7 @@ class TestServer:
         seen = self.descriptions_read(monkeypatch)
         assert server._handle(self.rename_request(reader_one, "component.name", "Other"))
         (answer,) = (message for message in sent(writer) if message.get("id") == 11)
-        assert answer["result"] == {"changes": {}}
+        assert answer["error"] == {"code": REQUEST_FAILED, "message": EMPTY_RENAME}
         assert seen == []
 
     def test_a_code_action_on_an_unknown_unit_offers_the_vocabulary_fixes(
@@ -6434,8 +6504,235 @@ class TestServer:
         assert Server(stream, writer, root=tmp_path).run() == 0
         answer = next(m for m in sent(writer) if m.get("id") == 2)
         assert answer["error"]["code"] == REQUEST_FAILED
-        assert "b.ddd.json" in answer["error"]["message"]
+        assert answer["error"]["message"] == (
+            "b.ddd.json has unsaved changes this rename would not see; save it and rename again"
+        )
         assert "result" not in answer
+
+    def test_a_rename_with_an_unsaved_mention_open_is_refused_naming_the_document(
+        self, tmp_path: Path
+    ) -> None:
+        """C's buffer says 'Speed', typed and not saved: the index is the disk's, so a rename of
+        the disk's 'Speed' would leave that mention behind, and the save would then be an
+        unknown reference. It is refused, naming the buffer's file, whatever the rename's
+        subject: the rename is asked from B, which holds nothing the buffer changed."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json", "c.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed")),
+                "b.ddd.json": component("B", declare("input", "Speed")),
+                "c.ddd.json": component("C", declare("input", "Other")),
+            },
+        )
+        c = tmp_path / "c.ddd.json"
+        unsaved = c.read_text(encoding="utf-8").replace('"Other"', '"Speed"')
+        request = self.rename_request(
+            tmp_path / "b.ddd.json", "component.interface[0].definition.name", "Velocity"
+        )
+        answer = self.answer_to(tmp_path, request, self.opened_holding(c, unsaved))
+        assert answer["error"] == {
+            "code": REQUEST_FAILED,
+            "message": "c.ddd.json has unsaved changes this rename would not see; save it and "
+            "rename again",
+        }
+
+    @pytest.mark.parametrize(
+        ("pointer", "name"), [RENAMES[0], RENAMES[-1]], ids=["variable", "unit"]
+    )
+    def test_a_buffer_of_another_image_that_differs_refuses_the_rename_naming_it(
+        self, tmp_path: Path, pointer: str, name: str
+    ) -> None:
+        """Image two's reader has a mention typed and not saved, which the rename started from
+        image one's reader does not see: the refusal is about the buffer, so it is not worded
+        as a refusal from image two."""
+        self.two_images(tmp_path)
+        reader_two = tmp_path / "reader_two.ddd.json"
+        unsaved = reader_two.read_text(encoding="utf-8").replace('"R_two"', '"R_two_renamed"')
+        refused = self.answer_to(
+            tmp_path,
+            self.rename_request(tmp_path / "reader_one.ddd.json", pointer, name),
+            self.opened_holding(reader_two, unsaved),
+        )
+        assert refused["error"] == {"code": REQUEST_FAILED, "message": UNSEEN_RENAME}
+
+    @pytest.mark.parametrize(
+        ("pointer", "name"), [RENAMES[0], RENAMES[-1]], ids=["variable", "unit"]
+    )
+    def test_a_buffer_of_a_project_reached_late_refuses_the_rename(
+        self, tmp_path: Path, pointer: str, name: str
+    ) -> None:
+        """Image three's reader is in no project the rename starts from: it is reached through
+        the bridge, once image two's edits are known, and its buffer refuses the rename all the
+        same."""
+        self.three_images(tmp_path)
+        reader_three = tmp_path / "reader_three.ddd.json"
+        unsaved = reader_three.read_text(encoding="utf-8").replace('"R_three"', '"R_3"')
+        refused = self.answer_to(
+            tmp_path,
+            self.rename_request(tmp_path / "reader_one.ddd.json", pointer, name),
+            self.opened_holding(reader_three, unsaved),
+        )
+        assert refused["error"]["message"].startswith("reader_three.ddd.json has unsaved changes")
+
+    def test_a_buffer_of_a_file_no_reached_project_holds_does_not_refuse_the_rename(
+        self, tmp_path: Path
+    ) -> None:
+        """Notes the workspace keeps beside the project, open and unsaved, are no part of what
+        the rename reads or writes."""
+        self.two_images(tmp_path)
+        write_tree(tmp_path, {"elsewhere.ddd.json": component("E", declare("input", "Other"))})
+        elsewhere = tmp_path / "elsewhere.ddd.json"
+        unsaved = elsewhere.read_text(encoding="utf-8").replace('"Other"', '"Another"')
+        answer = self.answer_to(
+            tmp_path,
+            self.rename_request(
+                tmp_path / "reader_one.ddd.json",
+                "component.interface[0].definition.name",
+                "Velocity",
+            ),
+            self.opened_holding(elsewhere, unsaved),
+        )
+        assert "error" not in answer
+
+    @pytest.mark.parametrize("newline", ["\r\n", "\n"], ids=["crlf", "lf"])
+    def test_a_buffer_that_is_its_file_does_not_refuse_the_rename(
+        self, tmp_path: Path, newline: str
+    ) -> None:
+        """The file is written with CRLF line ends and the buffer is what the client sends for
+        it, with LF: they are the same document, and a refusal at every line end would refuse
+        every rename on Windows."""
+        consumer = self.shared_workspace(tmp_path)
+        on_disk = consumer.read_text(encoding="utf-8")
+        consumer.write_bytes(on_disk.replace("\n", newline).encode("utf-8"))
+        answer = self.answer_to(
+            tmp_path,
+            self.rename_request(consumer, "component.interface[0].definition.name", "Renamed"),
+            self.opened_holding(consumer, on_disk),
+        )
+        assert set(answer["result"]["changes"]) == {
+            (tmp_path / name).as_uri() for name in ("a.ddd.json", "b.ddd.json")
+        }
+
+    def test_a_buffer_that_declares_the_name_the_rename_is_onto_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        """A name only a buffer declares passes the project's own check, which reads the disk:
+        the rename then merges two objects as soon as the buffer is saved."""
+        self.shared_workspace(tmp_path)
+        a = tmp_path / "a.ddd.json"
+        b = tmp_path / "b.ddd.json"
+        unsaved = b.read_text(encoding="utf-8").replace('"Shared"', '"Velocity"')
+        answer = self.answer_to(
+            tmp_path,
+            self.rename_request(a, "component.interface[0].definition.name", "Velocity"),
+            self.opened_holding(b, unsaved),
+        )
+        assert answer["error"] == {
+            "code": REQUEST_FAILED,
+            "message": "b.ddd.json has unsaved changes this rename would not see; save it and "
+            "rename again",
+        }
+
+    def test_the_description_of_the_project_is_a_document_of_it_too(self, tmp_path: Path) -> None:
+        """An include typed into the project's own buffer and not saved is a file the rename
+        does not read."""
+        consumer = self.shared_workspace(tmp_path)
+        described = tmp_path / "p.ddd.json"
+        unsaved = described.read_text(encoding="utf-8").replace('"a.ddd.json"', '"c.ddd.json"')
+        answer = self.answer_to(
+            tmp_path,
+            self.rename_request(consumer, "component.interface[0].definition.name", "Renamed"),
+            self.opened_holding(described, unsaved),
+        )
+        assert answer["error"]["message"].startswith("p.ddd.json has unsaved changes")
+
+    def test_a_buffer_that_does_not_parse_refuses_the_rename(self, tmp_path: Path) -> None:
+        """Mid edit, a buffer is often no json at all: what it will say once it parses is
+        unknown, so it differs from the file."""
+        consumer = self.shared_workspace(tmp_path)
+        other = tmp_path / "a.ddd.json"
+        answer = self.answer_to(
+            tmp_path,
+            self.rename_request(consumer, "component.interface[0].definition.name", "Renamed"),
+            self.opened_holding(other, other.read_text(encoding="utf-8")[:-3]),
+        )
+        assert answer["error"]["message"].startswith("a.ddd.json has unsaved changes")
+
+    def test_every_document_that_differs_is_named_in_path_order(self, tmp_path: Path) -> None:
+        consumer = self.shared_workspace(tmp_path)
+        a = tmp_path / "a.ddd.json"
+        buffers = [
+            self.opened_holding(path, path.read_text(encoding="utf-8").replace("Shared", "X"))
+            for path in (consumer, a)
+        ]
+        answer = self.answer_to(
+            tmp_path,
+            self.rename_request(consumer, "component.interface[0].definition.name", "Renamed"),
+            *buffers,
+        )
+        assert answer["error"]["message"] == (
+            "a.ddd.json, b.ddd.json have unsaved changes this rename would not see; save them "
+            "and rename again"
+        )
+
+    @pytest.mark.parametrize(
+        ("pointer", "name"), [RENAMES[0], RENAMES[-1]], ids=["variable", "unit"]
+    )
+    def test_a_rename_in_a_file_no_project_reads_is_refused_not_answered_empty(
+        self, tmp_path: Path, pointer: str, name: str
+    ) -> None:
+        """A file that is on screen and not on disk is read by no project, so there is nothing
+        to plan: the rename used to be answered with no edit at all, which a client applies
+        without a word."""
+        write_tree(tmp_path, {"new.ddd.json": component("N", declare("input", "X", unit="rpm"))})
+        new = tmp_path / "new.ddd.json"
+        request = self.rename_request(new, pointer, name)
+        typed = new.read_text(encoding="utf-8")
+        new.unlink()
+        answer = self.answer_to(tmp_path, request, self.opened_holding(new, typed))
+        assert answer["error"] == {"code": REQUEST_FAILED, "message": EMPTY_RENAME}
+
+    @pytest.mark.parametrize(
+        ("pointer", "name", "changed"),
+        [
+            (RENAMES[0][0], "Velocity", "moved a declaration"),
+            (RENAMES[-1][0], "1/min", "moved or respelled a unit"),
+        ],
+        ids=["variable", "unit"],
+    )
+    def test_a_file_saved_since_it_was_read_still_refuses_the_rename_as_drifted(
+        self, tmp_path: Path, pointer: str, name: str, changed: str
+    ) -> None:
+        """No buffer differs here: the reader was saved after the server read the project, with
+        a declaration put in front of the one the index knows. It is the drift refusal that
+        answers, since no open document is there to name."""
+        self.two_images(tmp_path)
+        reader_one = tmp_path / "reader_one.ddd.json"
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(self.handshake(tmp_path))
+        request = self.rename_request(reader_one, pointer, name)
+        position = request["params"]["position"]
+        assert server._handle(
+            self.navigation_request("textDocument/definition", reader_one, position)
+        )
+        interface = json.loads(reader_one.read_text(encoding="utf-8"))["component"]["interface"]
+        write_tree(
+            tmp_path,
+            {
+                "reader_one.ddd.json": component(
+                    "R_one", declare("local", "Other", unit="Nm"), *interface
+                )
+            },
+        )
+        assert server._handle(self.rename_request(reader_one, pointer.replace("[0]", "[1]"), name))
+        (answer,) = (message for message in sent(writer) if message.get("id") == 11)
+        assert answer["error"] == {
+            "code": REQUEST_FAILED,
+            "message": f"reader_one.ddd.json has unsaved changes that {changed} this rename "
+            "would touch; save it and rename again",
+        }
 
     def test_a_rename_started_in_a_drifted_buffer_is_refused_rather_than_applied_elsewhere(
         self, tmp_path: Path

@@ -1860,6 +1860,48 @@ class TestWhatARenameReaches:
             assert stale not in said, f"{page} still says: {stale!r}"
 
 
+class TestWhatARenameIsRefusedFor:
+    """10:I4. A rename is planned from the disk, so it is refused, naming the document, while an
+    open document of a project it reaches holds what its file does not, and when it
+    would rewrite nothing. The three pages that list the refusals say so."""
+
+    OPEN: ClassVar[str] = (
+        "while an open document of a project it reaches holds what its file on disk does not"
+    )
+    EMPTY: ClassVar[str] = "when it would rewrite nothing"
+    PHRASES: ClassVar[dict[str, tuple[str, tuple[str, ...]]]] = {
+        "SPEC.md": (
+            SPEC,
+            (
+                f"A rename is refused as well, naming the document, {OPEN}, since the rename is "
+                "planned from the files and a mention typed and not saved is one it cannot see; "
+                "and it is refused when it would rewrite nothing, which an editor applies "
+                "without a word.",
+            ),
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            (
+                f"A rename is refused as well, naming the document, {OPEN}, since the rename is "
+                "planned from the files and a mention typed and not saved is one it cannot see; "
+                "and it is refused when it would rewrite nothing, which an editor applies "
+                "without a word. Fix or save the file and ask again.",
+            ),
+        ),
+        "README.md": (
+            README,
+            (f"A rename is refused too {OPEN}, naming it, and {EMPTY}.",),
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(PHRASES))
+    def test_the_page_says_when_a_rename_is_refused_for_what_it_cannot_see(self, page: str) -> None:
+        text, phrases = self.PHRASES[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"
+
+
 class TestWhatThePolicySaysOfAnAdvisory:
     """20:I4. ``SECURITY.md`` said which release is supported and how to report a vulnerability
     privately, and nothing of an advisory: which versions one names, or where one is published.

@@ -128,8 +128,12 @@ moved a declaration the edit would touch, and while a file of the project report
 that stopped it being read. A project is indexed from what loaded, so a file a ``schema``
 error dropped mid edit declares nothing as far as the index knows: the rename would rewrite
 every other file and leave that one holding the old name, and a fix would offer to remove a
-key "no other declaration has" while the unloaded producer states exactly that key. Fix the
-file and ask again.
+key "no other declaration has" while the unloaded producer states exactly that key.
+A rename is refused as well, naming the document, while an open document of a project it
+reaches holds what its file on disk does not, since the rename is planned from
+the files and a mention typed and not saved is one it cannot see; and it is refused when it
+would rewrite nothing, which an editor applies without a word.
+Fix or save the file and ask again.
 
 A rename reaches every project that holds a file it rewrites: the projects of the file it
 starts from, then every project holding a file their edits rewrite, until none is new. A

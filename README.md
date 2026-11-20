@@ -230,8 +230,9 @@ substring is how a rename tool starts corrupting files.  A rename and the quick 
 refused outright, naming the file, while a document has unsaved changes that moved a
 declaration they would touch or while a file of the project did not load: the project the
 edit would be computed from is not the project on disk, and rewriting the rest of it around
-the gap is exactly the half-done rename the refusal exists to prevent.  Where an image the
-file you started from is not in already declares the name, or holds a file that did not load,
+the gap is exactly the half-done rename the refusal exists to prevent.  A rename is refused
+too while an open document of a project it reaches holds what its file on disk does not,
+naming it, and when it would rewrite nothing.  Where an image the file you started from is not in already declares the name, or holds a file that did not load,
 the refusal names that image, or its project description where no build record names one.
 
 Which project a file belongs to is not something the file can say, so the server reads the

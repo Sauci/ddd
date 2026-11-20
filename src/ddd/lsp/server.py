@@ -68,7 +68,7 @@ from ddd.lsp.protocol import (
     response,
     write_message,
 )
-from ddd.lsp.ranges import Document, read
+from ddd.lsp.ranges import Document, differs_from_disk, read
 from ddd.lsp.units import UnitRefusalError, rename_unit, text_edits, unit_drift, unit_project
 
 _DID_OPEN: Final = "textDocument/didOpen"
@@ -799,9 +799,13 @@ class Server:
             drifted.update(edited.drifted)
             self._gather(changes, seen, edited.changes)
             reach.touch([*map(uri_to_path, edited.changes), *edited.drifted])
+        if self._refused_unseen(request_id, reach):
+            return
         if drifted:
             refusal = self._drifted(drifted, "moved a declaration")
             write_message(self.writer, error(request_id, REQUEST_FAILED, refusal))
+            return
+        if self._refused_empty(request_id, changes):
             return
         # The edits rewrite the very files every answer above was read out of, so anything
         # kept from before them now describes the past.
@@ -848,9 +852,13 @@ class Server:
             edits = text_edits(plan, cache)
             self._gather(changes, seen, edits)
             reach.touch(map(uri_to_path, edits))
+        if self._refused_unseen(request_id, reach):
+            return
         if drifted:
             refusal = self._drifted(drifted, "moved or respelled a unit")
             write_message(self.writer, error(request_id, REQUEST_FAILED, refusal))
+            return
+        if self._refused_empty(request_id, changes):
             return
         self._forget()
         write_message(self.writer, response(request_id, self._workspace_edit(changes)))
@@ -863,6 +871,48 @@ class Server:
         if image is not None:
             refusal = f"in {image}, which this rename reaches too: {refusal}"
         write_message(self.writer, error(request_id, REQUEST_FAILED, refusal))
+
+    def _refused_unseen(self, request_id: Any, reach: Reach) -> bool:
+        """Refuse a rename while an open document of a project it reaches holds
+        what its file on disk does not, and say whether it did.
+
+        A rename is planned from the disk, whatever the buffers hold: what a buffer added -
+        a mention typed and not saved - is invisible to it, so it is left naming what the rest
+        was renamed from, or it declares the name the rename is onto and the two merge. Asked
+        once the reach is complete, since a project reached late holds documents too, and
+        before the drift refusal, which a buffer that differs would otherwise reach first as
+        a moved site and name no more than the sites it moved.
+        """
+        sources: set[Path] = set()
+        for loaded in reach.projects:
+            sources.update(loaded.workspace.read_paths)
+        differing = {
+            path
+            for path, (text, _) in self._open.items()
+            if path in sources and differs_from_disk(path, text)
+        }
+        if not differing:
+            return False
+        names = ", ".join(sorted(path.name for path in differing))
+        verb, them = ("has", "it") if len(differing) == 1 else ("have", "them")
+        refusal = (
+            f"{names} {verb} unsaved changes this rename would not see; save {them} and rename "
+            "again"
+        )
+        write_message(self.writer, error(request_id, REQUEST_FAILED, refusal))
+        return True
+
+    def _refused_empty(self, request_id: Any, changes: dict[str, Any]) -> bool:
+        """Refuse a rename that rewrites nothing, and say whether it did.
+
+        An empty answer is applied by a client without a word, so the box closes on a rename
+        that did nothing: the reader is told instead that no saved file spells the name.
+        """
+        if changes:
+            return False
+        refusal = "nothing on disk spells that name, so this rename would change nothing"
+        write_message(self.writer, error(request_id, REQUEST_FAILED, refusal))
+        return True
 
     @staticmethod
     def _gather(

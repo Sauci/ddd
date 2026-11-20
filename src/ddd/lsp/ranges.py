@@ -281,6 +281,38 @@ def read(path: Path, cache: dict[Path, Document]) -> Document:
     return found
 
 
+def _parsed(text: str) -> str | None:
+    """What a json text says, as one canonical string, or nothing when it does not parse.
+
+    Dumped again rather than compared as loaded: python's ``True == 1`` and ``1 == 1.0``
+    would call a document that swapped them unchanged, and a dumped object keeps its members'
+    order, which is the order an index reads them in.
+    """
+    try:
+        return json.dumps(json.loads(text))
+    except (ValueError, RecursionError):
+        return None
+
+
+def differs_from_disk(path: Path, text: str) -> bool:
+    """Whether a buffer holds what the file it is open on does not.
+
+    The file is read from the disk apart from any buffer cache, and the two are compared by
+    what they parse to, never as text: a file with CRLF line ends reads back through universal
+    newlines as LF, and an editor that sent the buffer as the file holds it would differ from
+    its own file at every line. A buffer that does not parse differs, and so does a file that
+    is not there or cannot be read: what the buffer holds is then on no disk.
+    """
+    typed = _parsed(text)
+    if typed is None:
+        return True
+    try:
+        saved = _parsed(path.read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeDecodeError):
+        return True
+    return typed != saved
+
+
 def _decoded(key: str) -> str:
     """A member's key as json means it, from the source text that spells it.
 

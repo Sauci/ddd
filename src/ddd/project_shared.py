@@ -116,7 +116,10 @@ class Vocabulary:
     """Where this vocabulary's own entries are recorded in the index."""
 
     used: Callable[[Index], dict[str, list[Site]]]
-    """Where the places naming one are recorded."""
+    """Where the shapes naming one are recorded - and not the conditions spelling a constant, which
+    the index records apart (:attr:`~ddd.lsp.navigation.Index.condition_uses`): a finding filed at
+    a condition is not the entry's, and its row's count and a removal's refusal read the conditions
+    beside these (:func:`~ddd.lsp.navigation.conditions_spelling`)."""
 
     states: Callable[[Mapping[str, str]], str]
     """The row's ``States`` cell, from the display texts of its keys. A constant states its value; a
@@ -503,9 +506,10 @@ def string_of(
 def uses_of(
     vocabulary: Vocabulary, built: Index, name: str, cache: dict[Path, Document]
 ) -> tuple[Use, ...]:
-    """Every shape the index recorded naming ``name``, in the order it recorded them: whatever
-    :attr:`Vocabulary.uses` ``vocabulary`` binds - a constant's own shapes for :data:`CONSTANTS`,
-    a different reading entirely for a vocabulary shaped differently."""
+    """Every place the index recorded naming ``name``, in the order it recorded them: whatever
+    :attr:`Vocabulary.uses` ``vocabulary`` binds - a constant's own shapes, then the conditions
+    spelling it, for :data:`CONSTANTS`, a different reading entirely for a vocabulary shaped
+    differently."""
     return vocabulary.uses(built, name, cache)
 
 

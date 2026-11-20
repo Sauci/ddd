@@ -5259,49 +5259,95 @@ class TestServer:
         assert answer == response(13, [])
         assert said == notification("window/logMessage", {"type": 3, "message": WITHHELD})
 
+    def half_read_server(self, tmp_path: Path) -> Server:
+        """A server over :meth:`half_read_workspace`, driven message by message so that each
+        save is a refresh of its own, with ``c.ddd.json`` open."""
+        self.half_read_workspace(tmp_path)
+        server = Server(io.BytesIO(), io.BytesIO(), root=tmp_path)
+        assert server._handle(self.handshake(tmp_path))
+        assert server._handle(self.opened(tmp_path / "c.ddd.json"))
+        return server
+
+    def asked_for_fixes(self, server: Server, path: Path) -> tuple[list[str], list[str]]:
+        """What the log said for one quick-fix request at ``path``'s unit, and the titles of the
+        fixes it offered."""
+        writer = io.BytesIO()
+        server.writer = writer
+        assert server._handle(self.quick_fix_request(path))
+        messages = sent(writer)
+        (answer,) = [message for message in messages if message.get("id") == 13]
+        logged = [
+            message["params"]["message"]
+            for message in messages
+            if message.get("method") == "window/logMessage"
+        ]
+        return logged, [action["title"] for action in answer["result"]]
+
+    def saved(self, server: Server, path: Path) -> None:
+        """The client saving ``path``, which refreshes."""
+        saving = {"textDocument": {"uri": path.as_uri()}}
+        assert server._handle(
+            {"jsonrpc": "2.0", "method": "textDocument/didSave", "params": saving}
+        )
+
+    def producer_saved(self, server: Server, tmp_path: Path, datatype: str) -> None:
+        """``a.ddd.json`` written with ``datatype`` for its producer and saved: ``uint99`` breaks
+        it, ``uint16`` mends it."""
+        producer = component("A", declare("output", "Speed", datatype, unit="rpm"))
+        write_tree(tmp_path, {"a.ddd.json": producer})
+        self.saved(server, tmp_path / "a.ddd.json")
+
     def test_why_no_quick_fix_is_offered_is_said_once_while_it_stands(self, tmp_path: Path) -> None:
         """Said at the first request the unread file empties, and again only once the project
         has been found read whole and is then found broken anew: at every request it is the
-        flood the error answers were, and once a session would hide the second break. Driven
-        message by message, so that each save is a refresh of its own."""
-        self.half_read_workspace(tmp_path)
-        producer, elsewhere = tmp_path / "a.ddd.json", tmp_path / "c.ddd.json"
-        server = Server(io.BytesIO(), io.BytesIO(), root=tmp_path)
-        assert server._handle(self.handshake(tmp_path))
-        assert server._handle(self.opened(elsewhere))
+        flood the error answers were, and once a session would hide the second break."""
+        server = self.half_read_server(tmp_path)
+        elsewhere = tmp_path / "c.ddd.json"
+        assert self.asked_for_fixes(server, elsewhere) == ([WITHHELD], [])
+        assert self.asked_for_fixes(server, elsewhere) == ([], []), "said again while it stands"
+        self.saved(server, elsewhere)  # a refresh that finds the project broken still
+        assert self.asked_for_fixes(server, elsewhere) == ([], []), (
+            "said again after a refresh that found it broken"
+        )
+        self.producer_saved(server, tmp_path, "uint16")
+        assert self.asked_for_fixes(server, elsewhere) == (
+            [],
+            ["Apply this unit to 1 other declaration of 'Speed'"],
+        )
+        self.producer_saved(server, tmp_path, "uint99")
+        assert self.asked_for_fixes(server, elsewhere) == ([WITHHELD], []), (
+            "not said again once the project broke anew"
+        )
 
-        def asked() -> tuple[list[str], list[str]]:
-            """What the log said for one request at c's unit, and the titles of the fixes."""
-            writer = io.BytesIO()
-            server.writer = writer
-            assert server._handle(self.quick_fix_request(elsewhere))
-            messages = sent(writer)
-            (answer,) = [message for message in messages if message.get("id") == 13]
-            logged = [
-                message["params"]["message"]
-                for message in messages
-                if message.get("method") == "window/logMessage"
-            ]
-            return logged, [action["title"] for action in answer["result"]]
+    def test_a_second_break_is_said_though_no_request_came_between_it_and_the_mend(
+        self, tmp_path: Path
+    ) -> None:
+        """The mend and the second break are both saved, and no request for the quick fixes comes
+        between the two. The refresh that reads the mend is what lets the second break be said:
+        had only a request found the project whole, the first break's sentence would still stand,
+        and the second break would be the one hidden."""
+        server = self.half_read_server(tmp_path)
+        elsewhere = tmp_path / "c.ddd.json"
+        assert self.asked_for_fixes(server, elsewhere) == ([WITHHELD], [])
+        self.producer_saved(server, tmp_path, "uint16")
+        self.producer_saved(server, tmp_path, "uint99")
+        assert self.asked_for_fixes(server, elsewhere) == ([WITHHELD], [])
 
-        def saved(path: Path) -> None:
-            saving = {"textDocument": {"uri": path.as_uri()}}
-            assert server._handle(
-                {"jsonrpc": "2.0", "method": "textDocument/didSave", "params": saving}
-            )
-
-        assert asked() == ([WITHHELD], [])
-        assert asked() == ([], []), "said again while it stands"
-        saved(elsewhere)  # a refresh that finds the project broken still
-        assert asked() == ([], []), "said again after a refresh that found it broken"
-        mended = component("A", declare("output", "Speed", "uint16", unit="rpm"))
-        write_tree(tmp_path, {"a.ddd.json": mended})
-        saved(producer)
-        assert asked() == ([], ["Apply this unit to 1 other declaration of 'Speed'"])
-        broken = component("A", declare("output", "Speed", "uint99", unit="rpm"))
-        write_tree(tmp_path, {"a.ddd.json": broken})
-        saved(producer)
-        assert asked() == ([WITHHELD], []), "not said again once the project broke anew"
+    def test_a_project_that_cannot_be_read_at_all_is_not_found_read_whole(
+        self, tmp_path: Path
+    ) -> None:
+        """A refresh that cannot read the project description at all has not found the project
+        read whole. Once the description reads again with the same file still unread, the first
+        break is the one standing, and it is not said a second time."""
+        server = self.half_read_server(tmp_path)
+        elsewhere, described = tmp_path / "c.ddd.json", tmp_path / "p.ddd.json"
+        assert self.asked_for_fixes(server, elsewhere) == ([WITHHELD], [])
+        kept = described.read_text(encoding="utf-8")
+        described.write_text('{"project": ', encoding="utf-8")
+        self.saved(server, described)
+        described.write_text(kept, encoding="utf-8")
+        self.saved(server, described)
+        assert self.asked_for_fixes(server, elsewhere) == ([], [])
 
     def test_a_file_that_did_not_load_in_two_images_is_said_once(self, tmp_path: Path) -> None:
         """Both images hold the file, so both withhold the fixes for one reason, in the same

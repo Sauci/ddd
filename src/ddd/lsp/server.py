@@ -54,6 +54,7 @@ from ddd.lsp.navigation import (
     is_alone,
     is_local,
     locations,
+    read_project,
     references,
     rename_edits,
     rename_problem,
@@ -193,7 +194,7 @@ class Server:
 
         self._told: dict[Path, set[str]] = {}
         """Project description -> why the quick fixes are withheld from it, as the log has been
-        told, until the project is found read whole again (:meth:`_withheld`)."""
+        told (:meth:`_withheld`), until a refresh reads the project whole (:meth:`_mended`)."""
 
         self._builds: list[BuildInfo] | None = None
         """The build records, found once and kept until the next refresh.
@@ -650,6 +651,21 @@ class Server:
             self._publish(path, reports.get(path, []))
         self._published = (self._published - set(reports)) | current
         self._withdraw_deleted()
+        self._mended()
+
+    def _mended(self) -> None:
+        """Forget why the quick fixes were withheld from each project this refresh reads whole.
+
+        A reason stops standing when a refresh finds the project read whole, which is when its
+        files can have changed. A mend saved and then a second break saved, with no request for
+        the quick fixes between the two, is therefore said again at the next request, rather than
+        taken for the first break standing still. Only a project something was said of is read
+        again, so a refresh while nothing is withheld reads what it read before.
+        """
+        for path in sorted(self._told):
+            loaded = read_project(path)
+            if loaded is not None and not loaded.unreadable:
+                del self._told[path]
 
     def _withdraw_deleted(self) -> None:
         """Empty the list of a file that is no longer there, once.
@@ -1118,15 +1134,14 @@ class Server:
         Withheld rather than refused with an error: a client asks for them at every move of the
         caret, and shows an error answer as a failed request each time, naming no file, where the
         reason is the unread file's own finding. The log says it once for as long as it stands -
-        again only once every project it was said for has been found read whole, and one is then
-        found broken anew: said at every request it is the flood the error answers were, and
-        said once a session it would hide the second break.
+        again only once a refresh has read whole every project it was said for (:meth:`_mended`),
+        and one is then found broken anew: said at every request it is the flood the error
+        answers were, and said once a session it would hide the second break.
         """
         withheld = False
         for loaded in projects:
             reason = self._unreadable(loaded)
             if reason is None:
-                self._told.pop(loaded.path, None)
                 continue
             withheld = True
             if not any(reason in told for told in self._told.values()):

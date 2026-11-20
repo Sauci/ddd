@@ -497,6 +497,13 @@ def _read_once(path: Path, failed: dict[Path, str], descriptions: Descriptions) 
     return descriptions[key]
 
 
+def read_project(path: Path) -> Loaded | None:
+    """One project description read afresh, as the search reads each candidate, or nothing where
+    it cannot be read: for a caller that keeps what it learnt of a project between two questions,
+    and settles it again whenever the files may have changed."""
+    return _loaded(path, {})
+
+
 def _loaded(path: Path, failed: dict[Path, str]) -> Loaded | None:
     """One project read for a question about it, or nothing when it cannot be read.
 

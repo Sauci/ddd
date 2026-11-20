@@ -157,7 +157,9 @@ def uri_to_path(uri: str) -> Path:
 
     So is a path no file system can be asked about (:func:`_nameable`): a null character,
     escaped as ``%00`` or not, ended every request that read the document, with ``embedded
-    null character``.
+    null character``. Asked of the path as it is handed on, a network share's host in front of
+    it: asked before the host was put there, a host holding one reached the file system all the
+    same.
     """
     parsed = urlparse(uri)
     if parsed.scheme != "file":
@@ -170,16 +172,16 @@ def uri_to_path(uri: str) -> Path:
     if not parsed.netloc or parsed.netloc == "localhost":
         path = _ESCAPED_DRIVE.sub(r"/\1:", path)
     path = url2pathname(path)
+    if parsed.netloc and parsed.netloc != "localhost":
+        # file://server/share/...: a network share, whose host is the start of the path - its
+        # first segment is a share name, never a drive, however much it may look like one.
+        path = f"//{parsed.netloc}{path}"
     if not _nameable(path):
         msg = (
             f"'{uri}' cannot name a file: its path holds a null character or a lone surrogate, "
             "which no file name holds"
         )
         raise MessageError(INVALID_PARAMS, msg)
-    if parsed.netloc and parsed.netloc != "localhost":
-        # file://server/share/...: a network share, whose host is the start of the path - its
-        # first segment is a share name, never a drive, however much it may look like one.
-        path = f"//{parsed.netloc}{path}"
     return Path(path)
 
 

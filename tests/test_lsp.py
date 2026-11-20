@@ -9641,6 +9641,21 @@ class TestAFixInTwoImages:
         assert reconciled(writer_s_fixes) == ["Apply this unit to 1 other declaration of 'V'"]
         assert preferred(writer_s_fixes) == ["Apply this unit to 1 other declaration of 'V'"]
 
+    def test_the_identity_fix_is_offered_once(self, tmp_path: Path) -> None:
+        """A writer both images hold and states no id: the fix giving it one is the declaration's
+        own, and one edit of its one file, however many images hold it."""
+        imaged(
+            tmp_path,
+            {"one": ["w.ddd.json", "r.ddd.json"], "two": ["w.ddd.json", "r.ddd.json"]},
+            {
+                "w.ddd.json": component("W", declare("output", "V")),
+                "r.ddd.json": component("R", declare("input", "V")),
+            },
+        )
+        offered, _ = fixes_asked(tmp_path, tmp_path / "w.ddd.json", reported=UNSTAMPED)
+        assert [action["title"] for action in offered] == ["Give 'V' an id"]
+        assert touched(offered[0]) == {"w.ddd.json"}
+
     def test_a_withheld_first_fix_leaves_the_slot_to_the_next_that_leads(
         self, tmp_path: Path
     ) -> None:
@@ -10542,6 +10557,50 @@ class TestAMalformedFieldIsRefused:
         assert self.refused(tmp_path, capsys, request) == error(
             7, INVALID_PARAMS, NO_FILE.format(uri)
         )
+
+    @pytest.mark.parametrize(
+        "method",
+        [
+            "textDocument/hover",
+            "textDocument/definition",
+            "textDocument/references",
+            "textDocument/prepareRename",
+            "textDocument/rename",
+            "textDocument/codeAction",
+        ],
+    )
+    @pytest.mark.parametrize("held", ["\x00", "\ud800"], ids=["null", "lone"])
+    def test_a_uri_whose_host_no_file_system_takes(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], method: str, held: str
+    ) -> None:
+        """``file://`` then a host, a network share's: the host is the start of the path it names,
+        and one holding a null character or a lone surrogate was asked of the file system all the
+        same, the path being checked before the host was put in front of it."""
+        uri = f"file://ho{held}st/share/a.ddd.json"
+        request = (
+            self.code_action(tmp_path / "a.ddd.json")
+            if method == "textDocument/codeAction"
+            else self.positioned(method, tmp_path / "a.ddd.json", self.AT, newName="W")
+        )
+        request["params"]["textDocument"]["uri"] = uri
+        assert self.refused(tmp_path, capsys, request) == error(
+            7, INVALID_PARAMS, NO_FILE.format(uri)
+        )
+
+    @pytest.mark.parametrize("held", ["\x00", "\ud800"], ids=["null", "lone"])
+    def test_a_notification_whose_host_no_file_system_takes_is_answered_with_nothing(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], held: str
+    ) -> None:
+        document = {"uri": f"file://ho{held}st/share/a.ddd.json", "version": 1, "text": "{}"}
+        opened = {
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": {"textDocument": document},
+        }
+        writer = io.BytesIO()
+        assert Server(session(opened, *END), writer, root=tmp_path).run() == 0
+        assert answered(writer) == [response(99, None)]
+        assert capsys.readouterr().err == ""
 
     @pytest.mark.parametrize("method", ["didOpen", "didChange", "didSave", "didClose", "watched"])
     def test_a_notification_whose_uri_no_file_system_takes_is_answered_with_nothing(

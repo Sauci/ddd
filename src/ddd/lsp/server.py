@@ -191,6 +191,10 @@ class Server:
         self._refused: dict[Path, str] = {}
         """Record -> why this version cannot use it, found alongside the usable ones."""
 
+        self._told: dict[Path, set[str]] = {}
+        """Project description -> why the quick fixes are withheld from it, as the log has been
+        told, until the project is found read whole again (:meth:`_withheld`)."""
+
         self._builds: list[BuildInfo] | None = None
         """The build records, found once and kept until the next refresh.
 
@@ -597,7 +601,8 @@ class Server:
         declares nothing as far as the index knows: a rename then rewrites every other file
         and leaves that one holding the old name, and a quick fix offers to remove a key "no
         other declaration has" while the unloaded producer has exactly that key. Refused whole
-        rather than performed in part, which is the answer a drifted buffer already gets.
+        rather than performed in part, which is the answer a drifted buffer already gets: a
+        rename with this sentence, and the quick fixes by offering none (:meth:`_withheld`).
         """
         if not loaded.unreadable:
             return None
@@ -1079,6 +1084,8 @@ class Server:
 
         The range a client sends covers a selection rather than a point, so the start of it is
         what decides: an author asking for a fix has put the caret on the thing they mean.
+        Nothing is offered while a file of the document's projects did not load
+        (:meth:`_withheld`).
         """
         path = self._document(message)
         cache = self._cache(path)
@@ -1092,10 +1099,10 @@ class Server:
         # of the caret, so they are looked for only when it sent a finding about a unit.
         about_units = any(entry.get("code") in UNKNOWN_UNIT for entry in reported)
         offered: list[dict[str, Any]] = []
-        for loaded in self._projects_of(path):
-            unreadable = self._unreadable(loaded)
-            if unreadable is not None:
-                raise MessageError(REQUEST_FAILED, unreadable)
+        projects = self._projects_of(path)
+        if self._withheld(projects):
+            return offered
+        for loaded in projects:
             project = unit_project(loaded.path, loaded.unloaded, cache) if about_units else None
             offered.extend(
                 actions(index(loaded.workspace), path, document, pointer, cache, reported, project)
@@ -1103,6 +1110,29 @@ class Server:
         for action in offered:
             action["edit"] = self._workspace_edit(action["edit"]["changes"])
         return offered
+
+    def _withheld(self, projects: Sequence[Loaded]) -> bool:
+        """Whether the quick fixes are withheld because a file of one of these projects did not
+        load, saying why in the log where that has not been said.
+
+        Withheld rather than refused with an error: a client asks for them at every move of the
+        caret, and shows an error answer as a failed request each time, naming no file, where the
+        reason is the unread file's own finding. The log says it once for as long as it stands -
+        again only once every project it was said for has been found read whole, and one is then
+        found broken anew: said at every request it is the flood the error answers were, and
+        said once a session it would hide the second break.
+        """
+        withheld = False
+        for loaded in projects:
+            reason = self._unreadable(loaded)
+            if reason is None:
+                self._told.pop(loaded.path, None)
+                continue
+            withheld = True
+            if not any(reason in told for told in self._told.values()):
+                self._log(f"no quick fix is offered: {reason}")
+            self._told.setdefault(loaded.path, set()).add(reason)
+        return withheld
 
     def _initialise(self, params: dict[str, Any]) -> None:
         """Take the workspace folders from whichever of the two ways the client offers them."""

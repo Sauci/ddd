@@ -123,6 +123,12 @@ UNSEEN_RENAME: Final = (
 EMPTY_RENAME: Final = "nothing on disk spells that name, so this rename would change nothing"
 """What a rename that rewrites nothing is refused with."""
 
+WITHHELD: Final = (
+    "no quick fix is offered: a.ddd.json has an error that stopped the project reading it, so the "
+    "rest of the project cannot be edited around it; fix it and try again"
+)
+"""What the log says, once, while ``a.ddd.json`` did not load and the quick fixes are withheld."""
+
 
 class TestFraming:
     """Bytes on a pipe, which is the one place a mistake corrupts everything after it."""
@@ -5219,36 +5225,106 @@ class TestServer:
         assert answer["error"]["code"] == REQUEST_FAILED
         assert "a.ddd.json" in answer["error"]["message"]
 
-    def test_a_quick_fix_is_refused_while_a_file_of_the_project_did_not_load(
+    def quick_fix_request(self, path: Path) -> dict[str, Any]:
+        """The client asking for the quick fixes at the unit of ``path``'s first declaration,
+        sending no finding, as it asks at every move of the caret."""
+        span = Document(path.read_text(encoding="utf-8")).range_of(
+            "component.interface[0].definition.unit"
+        )
+        return {
+            "jsonrpc": "2.0",
+            "id": 13,
+            "method": "textDocument/codeAction",
+            "params": {
+                "textDocument": {"uri": path.as_uri()},
+                "range": span,
+                "context": {"diagnostics": []},
+            },
+        }
+
+    def test_no_quick_fix_is_offered_while_a_file_of_the_project_did_not_load(
         self, tmp_path: Path
     ) -> None:
         """The same hole seen through the lightbulb: it offered to remove the unit of 'Speed'
-        as one no other declaration has, while the unloaded producer declares exactly that."""
+        as one no other declaration has, while the unloaded producer declares exactly that.
+
+        Refused with an error, it was a failed request at every move of the caret, which is when
+        a client asks, naming no file. None is offered instead, and the log says why."""
         self.half_read_workspace(tmp_path)
-        elsewhere = tmp_path / "c.ddd.json"
-        span = Document(elsewhere.read_text(encoding="utf-8")).range_of(
-            "component.interface[0].definition.unit"
-        )
         writer = io.BytesIO()
         Server(
-            session(
-                {
-                    "jsonrpc": "2.0",
-                    "id": 13,
-                    "method": "textDocument/codeAction",
-                    "params": {
-                        "textDocument": {"uri": elsewhere.as_uri()},
-                        "range": span,
-                        "context": {"diagnostics": []},
-                    },
-                }
-            ),
-            writer,
-            root=tmp_path,
+            session(self.quick_fix_request(tmp_path / "c.ddd.json")), writer, root=tmp_path
         ).run()
-        (answer,) = answered(writer)
-        assert answer["error"]["code"] == REQUEST_FAILED
-        assert "a.ddd.json" in answer["error"]["message"]
+        said, answer = answered(writer)
+        assert answer == response(13, [])
+        assert said == notification("window/logMessage", {"type": 3, "message": WITHHELD})
+
+    def test_why_no_quick_fix_is_offered_is_said_once_while_it_stands(self, tmp_path: Path) -> None:
+        """Said at the first request the unread file empties, and again only once the project
+        has been found read whole and is then found broken anew: at every request it is the
+        flood the error answers were, and once a session would hide the second break. Driven
+        message by message, so that each save is a refresh of its own."""
+        self.half_read_workspace(tmp_path)
+        producer, elsewhere = tmp_path / "a.ddd.json", tmp_path / "c.ddd.json"
+        server = Server(io.BytesIO(), io.BytesIO(), root=tmp_path)
+        assert server._handle(self.handshake(tmp_path))
+        assert server._handle(self.opened(elsewhere))
+
+        def asked() -> tuple[list[str], list[str]]:
+            """What the log said for one request at c's unit, and the titles of the fixes."""
+            writer = io.BytesIO()
+            server.writer = writer
+            assert server._handle(self.quick_fix_request(elsewhere))
+            messages = sent(writer)
+            (answer,) = [message for message in messages if message.get("id") == 13]
+            logged = [
+                message["params"]["message"]
+                for message in messages
+                if message.get("method") == "window/logMessage"
+            ]
+            return logged, [action["title"] for action in answer["result"]]
+
+        def saved(path: Path) -> None:
+            saving = {"textDocument": {"uri": path.as_uri()}}
+            assert server._handle(
+                {"jsonrpc": "2.0", "method": "textDocument/didSave", "params": saving}
+            )
+
+        assert asked() == ([WITHHELD], [])
+        assert asked() == ([], []), "said again while it stands"
+        saved(elsewhere)  # a refresh that finds the project broken still
+        assert asked() == ([], []), "said again after a refresh that found it broken"
+        mended = component("A", declare("output", "Speed", "uint16", unit="rpm"))
+        write_tree(tmp_path, {"a.ddd.json": mended})
+        saved(producer)
+        assert asked() == ([], ["Apply this unit to 1 other declaration of 'Speed'"])
+        broken = component("A", declare("output", "Speed", "uint99", unit="rpm"))
+        write_tree(tmp_path, {"a.ddd.json": broken})
+        saved(producer)
+        assert asked() == ([WITHHELD], []), "not said again once the project broke anew"
+
+    def test_a_file_that_did_not_load_in_two_images_is_said_once(self, tmp_path: Path) -> None:
+        """Both images hold the file, so both withhold the fixes for one reason, in the same
+        words: one line, rather than one per image."""
+        listed = ["a.ddd.json", "b.ddd.json", "c.ddd.json"]
+        self.linked(
+            tmp_path,
+            {"one": listed, "two": listed},
+            {
+                "a.ddd.json": component("A", declare("output", "Speed", "uint99", unit="rpm")),
+                "b.ddd.json": component("B", declare("input", "Speed")),
+                "c.ddd.json": component("C", declare("input", "Speed", unit="rpm")),
+            },
+            records=True,
+        )
+        elsewhere = tmp_path / "c.ddd.json"
+        found = Server(io.BytesIO(), io.BytesIO(), root=tmp_path)._projects_of(elsewhere)
+        assert [loaded.path.name for loaded in found] == ["one.ddd.json", "two.ddd.json"]
+        writer = io.BytesIO()
+        Server(session(self.quick_fix_request(elsewhere)), writer, root=tmp_path).run()
+        said, answer = answered(writer)
+        assert answer == response(13, [])
+        assert said["params"]["message"] == WITHHELD
 
     def test_preparing_a_rename_says_where_the_box_goes(self, tmp_path: Path) -> None:
         consumer = self.shared_workspace(tmp_path)

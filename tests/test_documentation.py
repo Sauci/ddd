@@ -1971,6 +1971,61 @@ class TestWhatARenameIsRefusedForWithNoProject:
         )
 
 
+class TestWhatTheQuickFixesAnswerWhileAFileDidNotLoad:
+    """10:I6. While a file of the project did not load, a request for the quick fixes is answered
+    with none rather than with an error, which a client shows as a failed request at every move
+    of the caret; the reason is that file's own finding, and the log says it once. The three
+    pages that list the refusals say so, and SPEC and the editor page say where the reason is."""
+
+    PHRASES: ClassVar[dict[str, tuple[str, tuple[str, ...]]]] = {
+        "SPEC.md": (
+            SPEC,
+            (
+                "In the second state a request for the quick fixes, which a client makes at every "
+                "move of the caret, is answered with none rather than with an error: the reason "
+                "is in the unread file's own finding, and the server's log says it once, and "
+                "again only once the project has been read whole and is found broken anew.",
+            ),
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            (
+                "In the second state a request for the quick fixes, which the editor makes at "
+                "every move of the caret, is answered with none rather than with an error, which "
+                "it would show as a failed request each time: an empty lightbulb in such a "
+                "project has its reason in the unread file's own finding, and in the server's "
+                "log, which says it once for as long as it stands.",
+            ),
+        ),
+        "README.md": (
+            README,
+            (
+                "A rename and the quick fixes are refused outright, naming the file, while a "
+                "document has unsaved changes that moved a declaration they would touch, and "
+                "while a file of the project did not load a rename is refused the same way and "
+                "the quick fixes offer nothing, the server's log saying why once:",
+            ),
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(PHRASES))
+    def test_the_page_says_what_the_quick_fixes_answer_while_a_file_did_not_load(
+        self, page: str
+    ) -> None:
+        text, phrases = self.PHRASES[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"
+
+    def test_the_readme_no_longer_says_the_quick_fixes_are_refused_while_a_file_did_not_load(
+        self,
+    ) -> None:
+        assert (
+            "moved a declaration they would touch or while a file of the project did not load"
+            not in flattened(README)
+        )
+
+
 class TestWhatADefectOfTheServerCosts:
     """10:I13. A message the server fails on through a defect of its own costs that answer and
     not the session: a request is answered with the internal error and a notification with

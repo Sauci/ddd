@@ -2937,10 +2937,13 @@ A rename and the quick fixes are also refused, naming the file, in two states wh
 project the edit would be computed from is not the project on disk: while an open document
 has unsaved changes that moved a declaration the edit would touch, and while a file of the
 project reported an error that stopped it being read. Both are refused whole rather than
-performed in part. A project is indexed from what loaded, so a file a `schema` error dropped
-mid edit declares nothing as far as the index knows: the rename would rewrite every other
-file and leave that one holding the old name, and a fix would offer to remove a key "no
-other declaration has" while the unloaded producer states exactly that key.
+performed in part. In the second state a request for the quick fixes, which a client makes at
+every move of the caret, is answered with none rather than with an error: the reason is in the
+unread file's own finding, and the server's log says it once, and again only once the project
+has been read whole and is found broken anew. A project is indexed from what loaded, so a file
+a `schema` error dropped mid edit declares nothing as far as the index knows: the rename would
+rewrite every other file and leave that one holding the old name, and a fix would offer to
+remove a key "no other declaration has" while the unloaded producer states exactly that key.
 A rename is refused as well, naming the document, while an open document of a project it
 reaches holds what its file on disk does not, since the rename is planned from
 the files and a mention typed and not saved is one it cannot see; and it is refused when it

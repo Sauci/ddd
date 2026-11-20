@@ -136,6 +136,10 @@ that stopped it being read. A project is indexed from what loaded, so a file a `
 error dropped mid edit declares nothing as far as the index knows: the rename would rewrite
 every other file and leave that one holding the old name, and a fix would offer to remove a
 key "no other declaration has" while the unloaded producer states exactly that key.
+In the second state a request for the quick fixes, which the editor makes at every move of the
+caret, is answered with none rather than with an error, which it would show as a failed request
+each time: an empty lightbulb in such a project has its reason in the unread file's own
+finding, and in the server's log, which says it once for as long as it stands.
 A rename is refused as well, naming the document, while an open document of a project it
 reaches holds what its file on disk does not, since the rename is planned from the files and a
 mention typed and not saved is one it cannot see; and it is refused when it would rewrite

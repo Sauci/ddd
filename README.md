@@ -228,8 +228,9 @@ once, and an unusable name is otherwise noticed a build later.  Free text is lef
 `description` that mentions the old name still mentions it, because rewriting prose by
 substring is how a rename tool starts corrupting files.  A rename and the quick fixes are
 refused outright, naming the file, while a document has unsaved changes that moved a
-declaration they would touch or while a file of the project did not load: the project the
-edit would be computed from is not the project on disk, and rewriting the rest of it around
+declaration they would touch, and while a file of the project did not load a rename is refused
+the same way and the quick fixes offer nothing, the server's log saying why once: the project
+the edit would be computed from is not the project on disk, and rewriting the rest of it around
 the gap is exactly the half-done rename the refusal exists to prevent.  A rename is refused
 too while an open document of a project it reaches holds what its file on disk does not,
 naming it, and when it would rewrite nothing.  It is refused, saying that no project is known,

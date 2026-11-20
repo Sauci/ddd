@@ -60,6 +60,7 @@ from ddd.lsp.navigation import (
     rename_problem,
     renameable_at,
     subject_at,
+    told_apart,
     type_at,
     workspaces,
 )
@@ -604,14 +605,29 @@ class Server:
         other declaration has" while the unloaded producer has exactly that key. Refused whole
         rather than performed in part, which is the answer a drifted buffer already gets: a
         rename with this sentence, and the quick fixes by offering none (:meth:`_withheld`).
+
+        Each file is said to be what it is. One that did not load - a ``schema`` error dropped
+        it, it holds no text, or an include names it and it is not there - did not load; one
+        that loaded with an error, as the files holding a block for a plugin that does not
+        import do, has an error, which stops the project being analysed and did not stop it
+        reading the file. Two files of one name are told apart by their paths
+        (:func:`~ddd.lsp.navigation.told_apart`).
         """
         if not loaded.unreadable:
             return None
-        names = ", ".join(sorted(path.name for path in loaded.unreadable))
-        verb = "has" if len(loaded.unreadable) == 1 else "have"
+        named = dict(zip(loaded.unreadable, told_apart(loaded.unreadable), strict=True))
+        unloaded = sorted(named[path] for path in loaded.unloaded)
+        erring = sorted(named[path] for path in loaded.unreadable if path not in loaded.unloaded)
+        said = [f"{', '.join(unloaded)} did not load"] if unloaded else []
+        if erring:
+            verb = "has" if len(erring) == 1 else "have"
+            said.append(
+                f"{', '.join(erring)} {verb} an error that stops the project being analysed"
+            )
+        them = "it" if len(loaded.unreadable) == 1 else "them"
         return (
-            f"{names} {verb} an error that stopped the project reading it, so the rest of the "
-            "project cannot be edited around it; fix it and try again"
+            f"{' and '.join(said)}, so the rest of the project cannot be edited around {them}; "
+            f"fix {them} and try again"
         )
 
     def _forget(self) -> None:

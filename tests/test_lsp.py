@@ -124,10 +124,17 @@ EMPTY_RENAME: Final = "nothing on disk spells that name, so this rename would ch
 """What a rename that rewrites nothing is refused with."""
 
 WITHHELD: Final = (
-    "no quick fix is offered: a.ddd.json has an error that stopped the project reading it, so the "
-    "rest of the project cannot be edited around it; fix it and try again"
+    "no quick fix is offered: a.ddd.json did not load, so the rest of the project cannot be "
+    "edited around it; fix it and try again"
 )
 """What the log says, once, while ``a.ddd.json`` did not load and the quick fixes are withheld."""
+
+DROPPED: Final = component("D", declare("output", "Speed", "uint99"))
+"""A component a ``schema`` error drops as it is read: ``uint99`` is no datatype."""
+
+ERRING: Final = component("E", declare("local", "Kept", extensions={"layout": {"key": 1}}))
+"""A component that loads with an error, ``unknown-extension``: its block is for a plugin the
+project does not load, as a project's is while that plugin does not import."""
 
 
 class TestFraming:
@@ -1609,6 +1616,31 @@ class TestNavigation:
         ]
         (found,) = workspaces(builds, tmp_path / "a.ddd.json")
         assert found.workspace.name == "P"
+
+    def test_files_of_one_name_are_told_apart_by_as_much_of_their_paths_as_it_takes(
+        self,
+    ) -> None:
+        """A file is named by its name, as a refusal always named it, unless another of the list
+        shares that name: then by its path from the first directory up that the two do not share,
+        and in full where nothing short of that does, as for a file at the root."""
+        named = navigation.told_apart(
+            [
+                Path("/w/one/units.ddd.json"),
+                Path("/w/two/units.ddd.json"),
+                Path("/w/a.ddd.json"),
+                Path("/a/x/v.ddd.json"),
+                Path("/b/x/v.ddd.json"),
+                Path("/v.ddd.json"),
+            ]
+        )
+        assert named == [
+            "one/units.ddd.json",
+            "two/units.ddd.json",
+            "a.ddd.json",
+            "a/x/v.ddd.json",
+            "b/x/v.ddd.json",
+            "/v.ddd.json",
+        ]
 
 
 class TestHover:
@@ -5349,6 +5381,167 @@ class TestServer:
         self.saved(server, described)
         assert self.asked_for_fixes(server, elsewhere) == ([], [])
 
+    def unread_project(self, tmp_path: Path, files: dict[str, Any]) -> Path:
+        """A project of ``c.ddd.json`` and of ``files``, each included under its key and written
+        from its value - a description, bytes, or nothing at all, which leaves its include naming
+        no file - with a build record. Returns ``c.ddd.json``, which states ``rpm``."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "c.ddd.json", *files),
+                "c.ddd.json": component("C", declare("input", "Speed", unit="rpm")),
+                **{name: text for name, text in files.items() if isinstance(text, dict)},
+            },
+        )
+        for name, text in files.items():
+            if isinstance(text, bytes):
+                (tmp_path / name).write_bytes(text)
+        build_record(tmp_path, tmp_path / "p.ddd.json")
+        return tmp_path / "c.ddd.json"
+
+    @pytest.mark.parametrize(
+        ("files", "reason"),
+        [
+            (
+                {"a.ddd.json": DROPPED},
+                "a.ddd.json did not load, so the rest of the project cannot be edited around it; "
+                "fix it and try again",
+            ),
+            (
+                {"missing.ddd.json": None},
+                "missing.ddd.json did not load, so the rest of the project cannot be edited around "
+                "it; fix it and try again",
+            ),
+            (
+                {"bad.ddd.json": b'{"component": "\xff\xfe"}'},
+                "bad.ddd.json did not load, so the rest of the project cannot be edited around it; "
+                "fix it and try again",
+            ),
+            (
+                {"one/x.ddd.json": DROPPED, "two/x.ddd.json": DROPPED},
+                "one/x.ddd.json, two/x.ddd.json did not load, so the rest of the project cannot be "
+                "edited around them; fix them and try again",
+            ),
+            (
+                {"e.ddd.json": ERRING},
+                "e.ddd.json has an error that stops the project being analysed, so the rest of the "
+                "project cannot be edited around it; fix it and try again",
+            ),
+            (
+                {"a.ddd.json": DROPPED, "e.ddd.json": ERRING, "f.ddd.json": ERRING},
+                "a.ddd.json did not load and e.ddd.json, f.ddd.json have an error that stops the "
+                "project being analysed, so the rest of the project cannot be edited around them; "
+                "fix them and try again",
+            ),
+            (
+                {"one/x.ddd.json": DROPPED, "two/x.ddd.json": ERRING},
+                "one/x.ddd.json did not load and two/x.ddd.json has an error that stops the "
+                "project being analysed, so the rest of the project cannot be edited around them; "
+                "fix them and try again",
+            ),
+            (
+                {"bad.ddd.json": b'{"component": '},
+                "bad.ddd.json did not load, so the rest of the project cannot be edited around it; "
+                "fix it and try again",
+            ),
+            (
+                {"z/a.ddd.json": DROPPED, "b/z.ddd.json": DROPPED},
+                "a.ddd.json, z.ddd.json did not load, so the rest of the project cannot be edited "
+                "around them; fix them and try again",
+            ),
+        ],
+        ids=[
+            "did-not-load",
+            "an-include-naming-no-file",
+            "not-utf-8",
+            "two-of-one-name",
+            "loaded-with-an-error",
+            "both",
+            "one-name-both",
+            "not-json",
+            "listed-by-name",
+        ],
+    )
+    def test_the_reason_says_what_each_unread_file_is(
+        self, tmp_path: Path, files: dict[str, Any], reason: str
+    ) -> None:
+        """The reason the rename refusal and the quick fixes' log line both give. A file that did
+        not load is said not to have, and one that loaded with an error to have an error, which
+        stops the analysis but not the read: said of both, "stopped the project reading it" was
+        untrue of the second. A file an include names that cannot be read is that file, not the
+        project description the finding sits in, which read; and two files of one name are told
+        apart by their paths."""
+        elsewhere = self.unread_project(tmp_path, files)
+        writer = io.BytesIO()
+        Server(session(self.quick_fix_request(elsewhere)), writer, root=tmp_path).run()
+        said, answer = answered(writer)
+        assert answer == response(13, [])
+        assert said["params"]["message"] == f"no quick fix is offered: {reason}"
+
+    def test_what_the_read_only_informs_of_withholds_no_fix(self, tmp_path: Path) -> None:
+        """Only an error stops an edit. A units file listing no unit loads, and the read says so
+        as information, ``empty-vocabulary``: nothing is withheld and nothing is said."""
+        elsewhere = self.unread_project(tmp_path, {"units.ddd.json": {"units": []}})
+        writer = io.BytesIO()
+        Server(session(self.quick_fix_request(elsewhere)), writer, root=tmp_path).run()
+        assert answered(writer) == [response(13, [])]
+
+    def test_an_entry_naming_several_files_keeps_the_error_it_reports(self, tmp_path: Path) -> None:
+        """Which of a pattern's files could not be read, the read says in its message alone. The
+        error stays the description's, then, as one it has rather than one that stopped it
+        loading, which it did not."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "c.ddd.json", "parts/*.ddd.json"),
+                "c.ddd.json": component("C", declare("input", "Speed", unit="rpm")),
+                "parts/good.ddd.json": component("G", declare("local", "Fine")),
+            },
+        )
+        (tmp_path / "parts" / "bad.ddd.json").write_bytes(b'{"component": "\xff\xfe"}')
+        build_record(tmp_path, tmp_path / "p.ddd.json")
+        writer = io.BytesIO()
+        Server(
+            session(self.quick_fix_request(tmp_path / "c.ddd.json")), writer, root=tmp_path
+        ).run()
+        said, _ = answered(writer)
+        assert said["params"]["message"] == (
+            "no quick fix is offered: p.ddd.json has an error that stops the project being "
+            "analysed, so the rest of the project cannot be edited around it; fix it and try again"
+        )
+
+    @pytest.mark.parametrize(
+        ("files", "unread"),
+        [
+            (
+                {"one/x.ddd.json": DROPPED, "two/x.ddd.json": DROPPED},
+                "one/x.ddd.json, two/x.ddd.json",
+            ),
+            ({"missing.ddd.json": None}, "missing.ddd.json"),
+        ],
+        ids=["two-of-one-name", "an-include-naming-no-file"],
+    )
+    def test_a_unit_rename_names_each_file_that_did_not_load(
+        self, tmp_path: Path, files: dict[str, Any], unread: str
+    ) -> None:
+        """The unit plans name the files that did not load by the same rule, and are told of an
+        include naming no file by that file."""
+        elsewhere = self.unread_project(tmp_path, files)
+        writer = io.BytesIO()
+        Server(
+            session(
+                self.rename_request(elsewhere, "component.interface[0].definition.unit", "1/min")
+            ),
+            writer,
+            root=tmp_path,
+        ).run()
+        (answer,) = answered(writer)
+        assert answer["error"] == {
+            "code": REQUEST_FAILED,
+            "message": f"{unread} did not load, so renaming 'rpm' could not reach every place it "
+            "is stated",
+        }
+
     def test_a_file_that_did_not_load_in_two_images_is_said_once(self, tmp_path: Path) -> None:
         """Both images hold the file, so both withhold the fixes for one reason, in the same
         words: one line, rather than one per image."""
@@ -6017,7 +6210,7 @@ class TestServer:
             (
                 "component.interface[0].definition.name",
                 "Velocity",
-                "has an error that stopped the project reading it",
+                "did not load, so the rest of the project cannot be edited around it",
             ),
             (
                 "component.interface[0].definition.unit",
@@ -6090,7 +6283,7 @@ class TestServer:
             self.opened_holding(tmp_path / "writer.ddd.json", moved),
         )
         assert refused["error"]["message"].startswith(
-            "in two.elf, which this rename reaches too: reader_two.ddd.json has an error"
+            "in two.elf, which this rename reaches too: reader_two.ddd.json did not load"
         )
 
     def descriptions_read(self, monkeypatch: pytest.MonkeyPatch) -> list[Path]:

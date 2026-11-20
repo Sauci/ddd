@@ -38,7 +38,7 @@ from ddd.editing import (
     replacement,
 )
 from ddd.loading import included_files, resolve_path
-from ddd.lsp.navigation import Index, Site, changed_since, drift
+from ddd.lsp.navigation import Index, Site, changed_since, drift, told_apart
 from ddd.lsp.ranges import Document, read
 from ddd.pointers import parent_pointer
 
@@ -591,7 +591,9 @@ def _paths(entries: Iterable[Site]) -> list[Path]:
 
 
 def _names(files: Iterable[Path]) -> str:
-    return ", ".join(file.name for file in files)
+    """The files as a refusal lists them, two of one name told apart by their paths
+    (:func:`~ddd.lsp.navigation.told_apart`)."""
+    return ", ".join(told_apart(files))
 
 
 def text_edits(plan: UnitPlan, cache: dict[Path, Document]) -> dict[str, list[dict[str, Any]]]:

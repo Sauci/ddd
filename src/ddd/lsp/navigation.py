@@ -32,7 +32,7 @@ from typing import Any, Final, Literal
 
 from ddd.build_info import BuildInfo
 from ddd.diagnostics import DiagnosticBag, Location, Severity
-from ddd.loading import Workspace, load_workspace
+from ddd.loading import Workspace, included_files, load_workspace
 from ddd.lsp.ranges import Document, read
 from ddd.models import (
     C_IDENTIFIER_PATTERN,
@@ -116,6 +116,13 @@ LOAD_CHECKS: Final = frozenset({"file-not-found", "json-syntax", "file-kind", "s
 One notion for both clients: ``ddd gui`` shows such a file as not loaded, and a plan of
 :mod:`ddd.lsp.units` made in the language server refuses to reach round one.
 """
+
+_UNREAD_AT_THE_ENTRY: Final = frozenset({"file-not-found", "json-syntax"})
+"""The checks the loader reports at the include entry naming a file it could not read - one that
+is not there, or holds no text - rather than in the file, which has no place to point into."""
+
+_INCLUDE_ENTRY: Final = re.compile(r"project\.includes\[\d+\]")
+"""Where it reports them: one entry of a project description's ``includes``."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -390,7 +397,9 @@ class Loaded:
     """What the read reported, for a caller that publishes those findings as well."""
 
     unreadable: tuple[Path, ...]
-    """The files the read reported an error on, sorted; empty when it reported none.
+    """The files the read reported an error on, sorted; empty when it reported none. A file an
+    include names that could not be read is among them, rather than the description reporting it
+    (:func:`_unread`).
 
     Settled when the read finished rather than derived on demand: a caller that goes on to
     analyse this workspace reports into the same bag, and what an edit may not rewrite is a
@@ -525,20 +534,71 @@ def _loaded(path: Path, failed: dict[Path, str]) -> Loaded | None:
         return None
     if workspace is None:
         return None
-    return Loaded(path, workspace, bag, _unreadable(bag), _unreadable(bag, LOAD_CHECKS))
+    return Loaded(path, workspace, bag, *_unread(bag))
 
 
-def _unreadable(bag: DiagnosticBag, checks: frozenset[str] | None = None) -> tuple[Path, ...]:
-    """Every file the read reported an error on - an error of one of ``checks``, when they are
-    given - sorted and each named once."""
-    found = {
-        finding.location.path
-        for finding in bag.sorted
-        if finding.severity is Severity.ERROR
-        and finding.location is not None
-        and (checks is None or finding.check in checks)
-    }
-    return tuple(sorted(found))
+def _unread(bag: DiagnosticBag) -> tuple[tuple[Path, ...], tuple[Path, ...]]:
+    """What :class:`Loaded` holds of the read's errors: every file one is about, and of those the
+    files that did not load, an error of one of :data:`LOAD_CHECKS` - each sorted, each file once.
+
+    An error is about the file it sits in, but for one the loader reports at the include entry
+    naming a file it could not read, which is about that file: the description holding the entry
+    read, and naming it sent the reader to a file that loaded, while the one an include names
+    and is not there went unnamed. An entry naming several files does not say which of them could
+    not be read, and the error stays the description's, as one it has and not one that stopped it
+    loading.
+    """
+    about: set[Path] = set()
+    unloaded: set[Path] = set()
+    for finding in bag.sorted:
+        location = finding.location
+        if finding.severity is not Severity.ERROR or location is None:
+            continue
+        path, unread = location.path, finding.check in LOAD_CHECKS
+        named = _named_at(finding.check, location)
+        if named is not None and len(named) == 1:
+            path = named[0]
+        elif named is not None:
+            unread = False
+        about.add(path)
+        if unread:
+            unloaded.add(path)
+    return tuple(sorted(about)), tuple(sorted(unloaded))
+
+
+def _named_at(check: str, location: Location) -> list[Path] | None:
+    """The files the include entry at ``location`` names, by the loader's own reading of it,
+    where ``check`` is one it reports there for a file it could not read; ``None`` for any other
+    error, which is about the file it sits in."""
+    if check not in _UNREAD_AT_THE_ENTRY or not _INCLUDE_ENTRY.fullmatch(location.pointer):
+        return None
+    return included_files(location.path, read(location.path, {}).value_at(location.pointer))
+
+
+def told_apart(files: Iterable[Path]) -> list[str]:
+    """Each file as a sentence names it, in order: by its name alone, as a refusal always named a
+    file, unless another of ``files`` has that name too - then by its path from the first directory
+    up that the two do not share, and in full where nothing short of the root tells them apart.
+
+    Named by their names alone, a units file in each of two images' folders was
+    ``units.ddd.json`` twice, and a reader sent to fix it opened whichever one came first.
+
+    Walked over the segments of each path's posix spelling, so that its anchor - nothing before
+    the first slash for a root, a drive, a share's double slash - is one segment like any other,
+    and all of them together spell the path in full.
+    """
+    listed = [(file, file.as_posix().split("/")) for file in files]
+    named = []
+    for file, segments in listed:
+        # The last segment is the name, so a file of another name stops the walk at once.
+        others = [theirs for other, theirs in listed if other != file]
+        depth = 1
+        while depth < len(segments) and any(
+            theirs[-depth:] == segments[-depth:] for theirs in others
+        ):
+            depth += 1
+        named.append("/".join(segments[-depth:]))
+    return named
 
 
 def resolve_projects(

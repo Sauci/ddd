@@ -262,33 +262,40 @@ def _member_type(member: Member) -> str:
 def describe(dictionary: DataDictionary, name: str) -> str | None:
     """The markdown an editor shows for one data object, or nothing if it has none: as one
     project resolves it, which reaches no project beside it (:func:`describe_across`)."""
-    return describe_across((dictionary,), name)
+    return describe_across(dictionary, name)
 
 
 def describe_across(
-    dictionaries: Sequence[DataDictionary], name: str, unloaded: Sequence[Path] = ()
+    dictionary: DataDictionary,
+    name: str,
+    *,
+    others: Sequence[DataDictionary] = (),
+    unloaded: Sequence[Path] = (),
+    stopped: Sequence[str] = (),
 ) -> str | None:
-    """The markdown an editor shows for one data object, or nothing if the first of these
-    projects has none.
+    """The markdown an editor shows for one data object, or nothing if ``dictionary`` has none.
 
-    ``dictionaries`` are every project holding the document a hover is asked in, the first first,
-    and ``unloaded`` the files of any of them that did not load. The object is described as the
-    first resolves it; who writes it and who reads it is said for all of them
-    (:func:`_ownership`), since a component linked into two images is in two projects, and a
-    variable it writes is read by the readers of both. Said from the first alone, a writer in two
-    images was read by the first image's reader, while find references listed the second's too.
+    ``dictionary`` and ``others`` are every project holding the document a hover is asked in that
+    resolved, the first first; ``unloaded`` the files of any project holding it that did not load,
+    and ``stopped`` the names of the projects holding it whose analysis a plugin stopped, as a
+    sentence names a project. The object is described as ``dictionary`` resolves it; who writes it
+    and who reads it is said for all of them (:func:`_ownership`), since a component linked into
+    two images is in two projects, and a variable it writes is read by the readers of both. Said
+    from the first alone, a writer in two images was read by the first image's reader, while find
+    references listed the second's too.
     """
-    dictionary = dictionaries[0]
+    every = (dictionary, *others)
     instance = next((entry for entry in dictionary.instances if entry.name == name), None)
     if instance is not None:
-        return _describe_instance(dictionary, instance, _ownership(dictionaries, name, unloaded))
+        ownership = _ownership(every, name, unloaded, stopped)
+        return _describe_instance(dictionary, instance, ownership)
     entry = dictionary.by_name.get(name)
     if entry is None:
         return None
     lines = [f"**{entry.name}** — {entry.kind.value}, `{entry.datatype.value}`", ""]
     if entry.description:
         lines += [entry.description, ""]
-    lines += [*_ownership(dictionaries, name, unloaded), "", *_facts(entry, dictionary)]
+    lines += [*_ownership(every, name, unloaded, stopped), "", *_facts(entry, dictionary)]
     drawn = _drawing(entry)
     if drawn:
         lines += ["", *drawn]
@@ -347,7 +354,10 @@ def _member_storage(leaf: ResolvedLeaf) -> str:
 
 
 def _ownership(
-    dictionaries: Sequence[DataDictionary], name: str, unloaded: Sequence[Path]
+    dictionaries: Sequence[DataDictionary],
+    name: str,
+    unloaded: Sequence[Path],
+    stopped: Sequence[str],
 ) -> list[str]:
     """Who writes it and who reads it, which is the whole point of a data dictionary: in every
     project of ``dictionaries``, each component named once, however many of them hold it.
@@ -362,6 +372,11 @@ def _ownership(
     projects that did not load are named under it (:func:`_did_not_load`): what such a file
     declares is in no project's answer, and the sentence was untrue of a project whose writer, or
     whose reader, is there. Where it names both, an unread file takes nothing from what it says.
+
+    A project holding the document that a plugin stopped resolving - ``stopped`` names each - is
+    in no answer at all, so every name the sentence gives is partial, whatever it gives: the
+    projects are named under it, whichever it is (:func:`_unresolved`). Left out in silence, a
+    writer whose only reader is in such a project was read by nobody.
     """
     writers: set[str] = set()
     local: set[str] = set()
@@ -378,20 +393,43 @@ def _ownership(
                 if declared.scope is Scope.LOCAL:
                     local.add(component.name)
     if not writers:
-        return ["*No component produces this.*", *_did_not_load(unloaded, "writer")]
-    if len(writers) == 1 and writers == local:
-        return [f"Local to **{next(iter(writers))}**."]
-    said = f"Written by {_listed(writers)}, read by {_listed(readers) or '*nobody*'}."
-    return [said] if readers else [said, *_did_not_load(unloaded, "reader")]
+        said = ["*No component produces this.*", *_did_not_load(unloaded, "writer")]
+    elif len(writers) == 1 and writers == local:
+        said = [f"Local to **{next(iter(writers))}**."]
+    else:
+        sentence = f"Written by {_listed(writers)}, read by {_listed(readers) or '*nobody*'}."
+        said = [sentence] if readers else [sentence, *_did_not_load(unloaded, "reader")]
+    return [*said, *_unresolved(stopped)]
 
 
 def _listed(names: Iterable[str]) -> str:
     """Components named in a sentence, in order of their names: ``**A**``, ``**A** and **B**``,
     ``**A**, **B** and **C**``; nothing for none."""
-    bold = [f"**{name}**" for name in sorted(names)]
-    if len(bold) < 2:
-        return "".join(bold)
-    return f"{', '.join(bold[:-1])} and {bold[-1]}"
+    return _joined([f"**{name}**" for name in sorted(names)])
+
+
+def _joined(items: Sequence[str]) -> str:
+    """Items named in a sentence, in their order: ``A``, ``A and B``, ``A, B and C``; nothing for
+    none."""
+    if len(items) < 2:
+        return "".join(items)
+    return f"{', '.join(items[:-1])} and {items[-1]}"
+
+
+def _unresolved(stopped: Sequence[str]) -> list[str]:
+    """The line under who writes an object and who reads it, naming each project holding the
+    document whose analysis a plugin stopped as a rename's refusal names one - by its image, or by
+    its description where no build record names one (:meth:`~ddd.lsp.navigation.Reach.described`);
+    nothing where every project resolved."""
+    if not stopped:
+        return []
+    named = _joined([_span(project) for project in stopped])
+    holds = "holds" if len(stopped) == 1 else "hold"
+    return [
+        "",
+        f"*In {named}, which {holds} this file too, a plugin stopped the analysis: who writes "
+        "this there, and who reads it, is not named.*",
+    ]
 
 
 def _did_not_load(unloaded: Sequence[Path], role: str) -> list[str]:

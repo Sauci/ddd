@@ -69,9 +69,10 @@ Hovering anywhere in a declaration shows what the project made of that variable 
 on the datatype, on the scope, the same answer from all of them. That is the shape a curve took
 from its axis, limits derived from a datatype and a conversion, who writes it and who reads it
 in every image holding the file, what an enum's numbers mean, and the initial values as a
-sparkline. Those are the values
-compiled in at startup, not calibration data, which lives in the calibration tool rather than
-here.
+sparkline. Those are the values compiled in at startup, not calibration data, which lives in the
+calibration tool rather than here. Where a plugin stops the analysis of one of the images
+holding the file, the hover names that image, since who writes and reads the variable there is
+not counted.
 
 The `$schema` binding keeps documenting the keys themselves at the same time, from VS Code's
 own json support: an editor shows every hover it is offered, so the schema explains what

@@ -1097,16 +1097,15 @@ class Server:
         described = None
         if named_type is not None:
             described = describe_external(projects, named_type)
-        if described is None and (constant is not None or name is not None):
-            dictionaries = self._dictionaries_of(projects)
-            if dictionaries:
-                if constant is not None:
-                    described = describe_constant(dictionaries[0], constant)
-                if described is None and name is not None:
-                    # Who writes it and who reads it is every project's, as find references
-                    # lists them, and so are the files that did not load (:func:`describe_across`).
-                    unloaded = sorted({file for loaded in projects for file in loaded.unloaded})
-                    described = describe_across(dictionaries, name, unloaded)
+        if described is None and constant is not None:
+            # The first project's answer, as the summary of an object is: the others are resolved
+            # only to say who writes an object and who reads it (:meth:`_summary`).
+            dictionaries = map(self._dictionary_of, projects)
+            first = next((found for found in dictionaries if found is not None), None)
+            if first is not None:
+                described = describe_constant(first, constant)
+        if described is None and name is not None:
+            described = self._summary(path, projects, name)
         if described is None and named_type is not None:
             # Last, and after the object: from a component a ``typename`` is about the
             # variable that names it. Inside a types file there is no variable to describe,
@@ -1120,19 +1119,42 @@ class Server:
             "range": document.range_of(pointer),
         }
 
-    def _dictionaries_of(self, projects: Sequence[Loaded]) -> list[DataDictionary]:
-        """What a hover answers from: each of the projects holding the document, in their order,
-        resolved as :func:`~ddd.lsp.hover.resolve` resolves it, once per description until
-        :meth:`_forget`; a project a plugin stopped resolving is left out."""
-        found = []
-        for loaded in projects:
-            description = loaded.path.resolve()
-            if description not in self._dictionaries:
-                self._dictionaries[description] = resolve([loaded])
-            dictionary = self._dictionaries[description]
-            if dictionary is not None:
-                found.append(dictionary)
-        return found
+    def _dictionary_of(self, loaded: Loaded) -> DataDictionary | None:
+        """What a hover answers from in one project holding the document: the project resolved as
+        :func:`~ddd.lsp.hover.resolve` resolves it, once per description until :meth:`_forget`;
+        ``None`` where a plugin stopped resolving it."""
+        description = loaded.path.resolve()
+        if description not in self._dictionaries:
+            self._dictionaries[description] = resolve([loaded])
+        return self._dictionaries[description]
+
+    def _summary(self, path: Path, projects: Sequence[Loaded], name: str) -> str | None:
+        """What a hover says of the data object ``name``, for every project holding ``path``
+        (:func:`~ddd.lsp.hover.describe_across`), or nothing where none of them resolves.
+
+        Who writes it and who reads it is every project's, as find references lists them, and so
+        are the files that did not load. A project a plugin stopped resolving says nothing of
+        either, and is named under them by what a rename's refusal names a project by
+        (:meth:`~ddd.lsp.navigation.Reach.described`): left out in silence, a writer whose only
+        reader is in that project was read by nobody.
+        """
+        resolved = [(loaded, self._dictionary_of(loaded)) for loaded in projects]
+        dictionaries = [dictionary for _, dictionary in resolved if dictionary is not None]
+        if not dictionaries:
+            return None
+        stopped = [loaded for loaded, dictionary in resolved if dictionary is None]
+        named = []
+        if stopped:
+            reach = self._reach(path)
+            named = [reach.described(loaded) for loaded in stopped]
+        first, *others = dictionaries
+        return describe_across(
+            first,
+            name,
+            others=others,
+            unloaded=sorted({file for loaded in projects for file in loaded.unloaded}),
+            stopped=named,
+        )
 
     def _prepare_rename(self, message: dict[str, Any]) -> dict[str, Any] | None:
         """Whether a rename may start here, and over which characters.

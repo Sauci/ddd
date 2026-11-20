@@ -12193,6 +12193,42 @@ class TestAHoverResolvesOncePerCheck:
             assert f"Written by **Writer{name}**, read by **Reader{name}**." in said, folder
         assert resolved == ["one", "two"]
 
+    def test_a_constant_s_hover_resolves_the_first_project_alone(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A constant is the first project's answer, as the summary of an object is: the other
+        project holding the document is resolved to say who writes an object and who reads it, and
+        a constant's hover resolved it all the same."""
+        from ddd.lsp import hover
+
+        imaged(
+            tmp_path,
+            {"one": ["c.ddd.json", "a.ddd.json"], "two": ["c.ddd.json", "a.ddd.json"]},
+            {
+                "c.ddd.json": {"constants": [{"name": "CELLS", "value": 4}]},
+                "a.ddd.json": component("A", declare("output", "Buf", dimensions=["CELLS"])),
+            },
+        )
+        resolved: list[str] = []
+        original = hover.analyze
+
+        def counted(workspace: Any, bag: DiagnosticBag) -> Any:
+            resolved.append(workspace.root.name)
+            return original(workspace, bag)
+
+        monkeypatch.setattr(hover, "analyze", counted)
+        a = tmp_path / "a.ddd.json"
+        position = Document(a.read_text(encoding="utf-8")).range_of(
+            "component.interface[0].definition.dimensions[0]"
+        )["start"]
+        asked = {"textDocument": {"uri": a.as_uri()}, "position": position}
+        writer = io.BytesIO()
+        request = {"jsonrpc": "2.0", "id": 7, "method": "textDocument/hover", "params": asked}
+        assert Server(session(request, *END), writer, root=tmp_path).run() == 0
+        (answer,) = [message["result"] for message in answered(writer) if message.get("id") == 7]
+        assert answer["contents"]["value"].startswith("**CELLS** = 4")
+        assert resolved == ["one.ddd.json"]
+
     def test_a_hover_in_a_project_whose_read_reported_an_error_answers_all_the_same(
         self, tmp_path: Path
     ) -> None:
@@ -12417,29 +12453,109 @@ class TestAHoverSpeaksForEveryProjectHoldingTheDocument:
         assert "Written by **W**, read by **R**." in said
         assert "did not load" not in said
 
-    def test_a_project_a_plugin_stops_resolving_is_left_out(self, tmp_path: Path) -> None:
-        """Image one's plugin exits in its check hook, so that project resolves to nothing for a
-        hover: the hover answers from image two, where it answered nothing at all."""
+    STOPPED: ClassVar[str] = (
+        "*In `one.elf`, which holds this file too, a plugin stopped the analysis: who writes this "
+        "there, and who reads it, is not named.*"
+    )
+    """The line under who writes and who reads a variable while image one's plugin stops it."""
+
+    def stopped(self, tmp_path: Path, images: dict[str, Sequence[str]], *stopping: str) -> None:
+        """A writer of ``V``, a reader of it, and a component holding a local, in the images of
+        ``images``, each a description including the files it names and a build record naming it;
+        the descriptions of ``stopping`` name a plugin that exits in its check hook."""
+        plugin = {"plugins": ["../tools/exiting_plugin.py"]}
         write_tree(
             tmp_path,
             {
                 "tools/exiting_plugin.py": EXITING_CHECK_PLUGIN,
-                "images/one.ddd.json": project(
-                    "One",
-                    "../w.ddd.json",
-                    "../r1.ddd.json",
-                    plugins=["../tools/exiting_plugin.py"],
-                ),
-                "images/two.ddd.json": project("Two", "../w.ddd.json", "../r2.ddd.json"),
+                **{
+                    f"images/{image}.ddd.json": project(
+                        image.title(),
+                        *(f"../{name}" for name in included),
+                        **(plugin if image in stopping else {}),
+                    )
+                    for image, included in images.items()
+                },
                 "w.ddd.json": component("Writer", declare("output", "V")),
                 "r1.ddd.json": component("ReaderOne", declare("input", "V")),
                 "r2.ddd.json": component("ReaderTwo", declare("input", "V")),
+                "a.ddd.json": component("A", declare("local", "L")),
             },
         )
-        for image in ("one", "two"):
+        for image in images:
             build_record(tmp_path, tmp_path / "images" / f"{image}.ddd.json", image=f"{image}.elf")
-        said = self.hovered(tmp_path, tmp_path / "w.ddd.json")
-        assert "Written by **Writer**, read by **ReaderTwo**." in said
+
+    @pytest.mark.parametrize(
+        ("one", "two", "hovered", "said"),
+        [
+            (
+                ["w.ddd.json", "r1.ddd.json"],
+                ["w.ddd.json", "r2.ddd.json"],
+                "w.ddd.json",
+                "Written by **Writer**, read by **ReaderTwo**.",
+            ),
+            (
+                ["w.ddd.json", "r1.ddd.json"],
+                ["w.ddd.json"],
+                "w.ddd.json",
+                "Written by **Writer**, read by *nobody*.",
+            ),
+            (
+                ["w.ddd.json", "r1.ddd.json"],
+                ["r1.ddd.json"],
+                "r1.ddd.json",
+                "*No component produces this.*",
+            ),
+            (["a.ddd.json"], ["a.ddd.json"], "a.ddd.json", "Local to **A**."),
+        ],
+        ids=["a-reader-in-each-image", "its-only-reader-there", "its-writer-there", "a-local"],
+    )
+    def test_a_project_a_plugin_stops_is_named_under_who_writes_and_reads(
+        self, tmp_path: Path, one: list[str], two: list[str], hovered: str, said: str
+    ) -> None:
+        """Image one's plugin exits in its check hook, so that project resolves to nothing for a
+        hover, which answers from image two and names image one under whatever it says of who
+        writes the variable and who reads it, as a rename's refusal names an image: left out in
+        silence, a writer whose only reader is in image one was read by nobody."""
+        self.stopped(tmp_path, {"one": one, "two": two}, "one")
+        assert f"{said}\n\n{self.STOPPED}" in self.hovered(tmp_path, tmp_path / hovered)
+
+    def test_two_projects_a_plugin_stops_are_named_together(self, tmp_path: Path) -> None:
+        both = ["w.ddd.json", "r1.ddd.json"]
+        self.stopped(tmp_path, {"one": both, "two": both, "three": both}, "one", "three")
+        assert (
+            "Written by **Writer**, read by **ReaderOne**.\n\n*In `one.elf` and `three.elf`, which "
+            "hold this file too, a plugin stopped the analysis: who writes this there, and who "
+            "reads it, is not named.*"
+        ) in self.hovered(tmp_path, tmp_path / "w.ddd.json")
+
+    def test_a_description_a_plugin_stops_is_named_by_its_path_in_the_folder(
+        self, tmp_path: Path
+    ) -> None:
+        """No build record names the two descriptions holding the file, which the search above it
+        finds: the one a plugin stops is named by its path in the workspace folder, as a rename's
+        refusal names one."""
+        write_tree(
+            tmp_path,
+            {
+                "tools/exiting_plugin.py": EXITING_CHECK_PLUGIN,
+                "proj/one.ddd.json": project(
+                    "One",
+                    "sub/w.ddd.json",
+                    "sub/r1.ddd.json",
+                    plugins=["../tools/exiting_plugin.py"],
+                ),
+                "proj/two.ddd.json": project("Two", "sub/w.ddd.json", "sub/r2.ddd.json"),
+                "proj/sub/w.ddd.json": component("Writer", declare("output", "V")),
+                "proj/sub/r1.ddd.json": component("ReaderOne", declare("input", "V")),
+                "proj/sub/r2.ddd.json": component("ReaderTwo", declare("input", "V")),
+            },
+        )
+        assert (
+            "Written by **Writer**, read by **ReaderTwo**.\n\n*In `proj/one.ddd.json`, which holds "
+            "this file too, a plugin stopped the analysis: who writes this there, and who reads "
+            "it, is not named.*"
+        ) in self.hovered(tmp_path, tmp_path / "proj" / "sub" / "w.ddd.json")
 
 
 class TestOneSpellingPerFile:

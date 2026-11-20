@@ -174,6 +174,8 @@ Hovering anywhere in a declaration shows what the **project** made of that varia
 the file under the cursor does not say: the shape a curve got from its axis, limits derived
 from a datatype and a conversion nobody wrote down, who writes it and who reads it in every
 image holding the file, what an enum's numbers mean, and the initial values as a sparkline.
+Where a plugin stops the analysis of one of those images, the hover names the image, since who
+writes and reads the variable there is not counted.
 
 ```text
 CurveA — curve, uint16          |  unit        ms

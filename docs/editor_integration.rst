@@ -48,12 +48,12 @@ What the server offers
 on open, on save, and when the editor reports that a description file it watches changed on
 disk - a build writes them and a branch switch rewrites them all, and neither is something
 a document event would report. Each is drawn over the key it is about rather than over the
-whole file. The findings are the disk's, and an open document's are drawn in its text as the
-editor holds it: over the key a finding is about where the unsaved buffer holds it, over the
-nearest key around it that the buffer holds where it does not, and at the top of a buffer that
-is not json. A finding names its key by its place in the file, so a declaration typed above the
-one it is about, in the same list, takes the finding's place until the file is saved. Opens,
-saves and watched changes that arrive together are checked together, each
+whole file. The findings are the disk's, and an open document's are drawn in its text as
+the editor holds it: over the key a finding is about where the unsaved buffer holds it,
+over the nearest key around it that the buffer holds where it does not, and at the top of a
+buffer that is not json. A finding names its key by its place in the file, so a declaration
+typed above the one it is about, in the same list, takes the finding's place until the file
+is saved. Opens, saves and watched changes that arrive together are checked together, each
 project once for all of them: the server checks the documents they name once it has handled
 every message already waiting behind the first of them, and before it answers a request that
 came after them, never waiting for a message not yet sent. A save and the change the editor's
@@ -85,8 +85,10 @@ lives in the calibration tool. A component linked into two images is in two proj
 variable it writes is read by the readers of both: the hover names each component once, and
 both components where two write one variable. Where it says that no component produces the
 variable, or that none reads it, it names under that line every file of those projects that
-did not load, since what such a file declares is in no project's answer. A dimension spelled
-as the name of a
+did not load, since what such a file declares is in no project's answer. Where a plugin stops
+the analysis of a project holding the file, the hover names that project under the line -
+by its image, or by its description where no build record names one - since who writes the
+variable there, and who reads it, is in no answer. A dimension spelled as the name of a
 :doc:`declared constant <file_formats/constants>` hovers as the constant itself - its value
 and its description - because the number is declared somewhere else, next to the one
 statement of what is being counted. A name that names a declared type and no data object -

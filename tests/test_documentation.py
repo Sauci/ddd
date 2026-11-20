@@ -10654,8 +10654,12 @@ class TestWhatAHoverSaysOfWhoWritesAndReadsIt:
                 "is written by both. Where it says that no component produces the object, or that "
                 "none reads it, it names under that sentence every file of those projects that did "
                 "not load, since what such a file declares is in no project's answer.",
+                "Where a plugin stops the analysis of a project holding the file, the hover names "
+                "that project under who writes the object and who reads it - by the image its "
+                "build record names, or by its description in the workspace folder where none "
+                "does - since what that project says of either is in no answer.",
             ),
-            ("an object two components write names both",),
+            (),
         ),
         "docs/editor_integration.rst": (
             EDITOR_INTEGRATION,
@@ -10669,6 +10673,10 @@ class TestWhatAHoverSaysOfWhoWritesAndReadsIt:
                 "produces the variable, or that none reads it, it names under that line every "
                 "file of those projects that did not load, since what such a file declares is in "
                 "no project's answer.",
+                "Where a plugin stops the analysis of a project holding the file, the hover names "
+                "that project under the line - by its image, or by its description where no build "
+                "record names one - since who writes the variable there, and who reads it, is in "
+                "no answer.",
             ),
             ("its producer and its consumers",),
         ),
@@ -10677,6 +10685,8 @@ class TestWhatAHoverSaysOfWhoWritesAndReadsIt:
             (
                 "limits derived from a datatype and a conversion nobody wrote down, who writes it "
                 "and who reads it in every image holding the file, what an enum's numbers mean,",
+                "Where a plugin stops the analysis of one of those images, the hover names the "
+                "image, since who writes and reads the variable there is not counted.",
             ),
             ("who writes it and who reads it, what an enum's numbers mean",),
         ),
@@ -10685,6 +10695,9 @@ class TestWhatAHoverSaysOfWhoWritesAndReadsIt:
             (
                 "limits derived from a datatype and a conversion, who writes it and who reads it "
                 "in every image holding the file, what an enum's numbers mean,",
+                "Where a plugin stops the analysis of one of the images holding the file, the "
+                "hover names that image, since who writes and reads the variable there is not "
+                "counted.",
             ),
             ("who writes it and who reads it, what an enum's numbers mean",),
         ),

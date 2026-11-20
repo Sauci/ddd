@@ -2935,11 +2935,13 @@ where writing it would leave a file the loader refuses; and, on a `missing-id`, 
 gives the declaration an identity, writing what `ddd id --assign` would write and offered
 only where that finding is reported.
 
-A rename and the quick fixes are also refused, naming the file, in two states where the
-project the edit would be computed from is not the project on disk: while an open document
+A rename is also refused, naming the file, and a quick fix is not offered, in two states where
+the project the edit would be computed from is not the project on disk: while an open document
 has unsaved changes that moved a declaration the edit would touch, and while a file of the
-project reported an error that stopped it being read. Both are refused whole rather than
-performed in part. In the second state a request for the quick fixes, which a client makes at
+project reported an error that stopped it being read. Neither is performed in part. In the
+first state a quick fix is not offered rather than offered for the declarations the buffer left
+in place, and nothing is said: the buffer is the reader's own, and saving it brings the fix
+back. In the second state a request for the quick fixes, which a client makes at
 every move of the caret, is answered with none rather than with an error: the reason is in the
 unread file's own finding, and the server's log says it once, and again only once the project
 has been read whole and is found broken anew. A project is indexed from what loaded, so a file
@@ -2968,7 +2970,18 @@ a name nothing declares. Every project the rename reaches is asked each refusal 
 anything is written. Where a project the file it starts from does not belong to already uses
 the name, or holds a file that did not load, the refusal names that project's image, or its
 description where no build record names it; unsaved changes are refused naming the file that
-holds them, wherever it is.
+holds them, wherever it is. A unit's rename is refused as well, naming both, where two projects
+it reaches would rewrite a units file they share two ways: the one listing the unit renamed onto
+merges the old spelling into it, and the other respells it.
+
+A quick fix is offered once however many projects holding the document offer it, and a fix
+sending the declaration's own answer out - its value applied to the other declarations of the
+object, or a key taken out of them - reaches the declarations of each of those projects, and of
+every project holding a file it writes, until none is new, as a rename does. Where two of them
+offer one fix under one title with different edits, it is not offered; and every fix is withheld
+where one reaches a project holding a file that did not load, or a description, beyond the
+document's own projects, that cannot be read. A fix renaming a unit is the rename of that unit
+(`F2`), over every project it reaches, and is not offered where that rename is refused.
 
 An edit reaching two files or more, a rename's or a quick fix's, is sent marked `needsConfirmation`
 to a client that announced both `documentChanges` and `changeAnnotationSupport`, so that the client

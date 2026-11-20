@@ -544,9 +544,10 @@ class TestAMismatch:
         # a `typename` beside a `datatype`, either storage key taken away, the conversion a
         # datatype comes with taken away - or took `b`'s unit out and left the mismatch standing,
         # and `settled_at`, reading both rules, withheld them all. Read through the type, the
-        # producer's unit is there to take: `b` takes rpm and the two agree. `a`'s own row still
-        # offers nothing: its file states no unit to send out, and taking `b`'s out would leave
-        # `a`'s type stating rpm against none.
+        # producer's unit is there to take: `b` takes rpm and the two agree. `a`'s own row sends
+        # its type's rpm out, the same edit from the producer's side, where it offered nothing
+        # while its file was read alone; taking `b`'s out would leave `a`'s type stating rpm
+        # against none, and is offered to nobody.
         built, root = built_of(
             tmp_path,
             **{
@@ -557,9 +558,11 @@ class TestAMismatch:
                 "t.ddd.json": types(scalar_type("Speed_t", datatype="uint16", unit="rpm")),
             },
         )
-        assert fixes_for("definition-mismatch", root / "a.ddd.json", DEFINITION, {}, built) == ()
+        sent_out = fixes_for("definition-mismatch", root / "a.ddd.json", DEFINITION, {}, built)
+        assert titles(sent_out) == ["Apply this unit to 1 other declaration of 'Speed'"]
         offered = fixes_for("definition-mismatch", root / "b.ddd.json", DEFINITION, {}, built)
         assert titles(offered) == ["Use the unit declared in a"]
+        assert offered[0].changes == sent_out[0].changes
         (edit,) = offered[0].changes
         assert [(o.op, o.pointer, o.raw) for o in edit.operations] == [
             ("set", f"{DEFINITION}.unit", '"rpm"')

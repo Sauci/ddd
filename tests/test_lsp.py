@@ -32,6 +32,7 @@ from conftest import (
     STRING_TYPE_BESIDE_GRID,
     STRING_TYPE_BESIDE_SCALAR,
     TEXT,
+    TEXT_TYPE,
     UNIT_BESIDE_TEXT,
     answered,
     build_record,
@@ -6654,7 +6655,9 @@ class TestServer:
     ) -> None:
         """A jump before the rename read the projects of the document, which are kept until the
         next refresh; the rename starts from those rather than reading them again. Image two was
-        read by that search too and dropped, not holding the document, so the rename reads it."""
+        read by that search too, not holding the document, and is not read again either: every
+        description read is kept until the next refresh, which a quick fix asked at every move of
+        the caret reaches the same way."""
         images = self.two_images(tmp_path)
         reader_one = tmp_path / "reader_one.ddd.json"
         position = Document(reader_one.read_text(encoding="utf-8")).range_of(
@@ -6670,7 +6673,8 @@ class TestServer:
         assert server._handle(self.rename_request(reader_one, *self.RENAMES[0]))
         (answer,) = (message for message in sent(writer) if message.get("id") == 11)
         assert (tmp_path / "reader_two.ddd.json").as_uri() in answer["result"]["changes"]
-        assert seen == [(images / "two.ddd.json").resolve()]
+        assert (images / "two.ddd.json").exists()
+        assert seen == []
 
     def test_a_rename_that_touches_no_file_reads_no_description(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -9237,10 +9241,17 @@ class TestAKeyATypeStates:
 
     def test_the_writer_is_offered_no_removal_its_type_would_undo(self, tmp_path: Path) -> None:
         """From the writer, the reader was offered to lose its unit, 'Remove the unit from 1 other
-        declaration': the writer's type goes on stating rpm, and the two went on disagreeing."""
-        assert offered_at(tmp_path, "w.ddd.json", WRITER_NAMES_A_TYPE, MISMATCH_REPORTED) == []
-        # And not because nothing differs: the checker files the unit between the two.
+        declaration': the writer's type goes on stating rpm, and the two went on disagreeing. The
+        writer sends its type's unit out instead, which it was offered nothing to send while its
+        file was read alone, and that settles the two."""
+        offered = offered_at(tmp_path, "w.ddd.json", WRITER_NAMES_A_TYPE, MISMATCH_REPORTED)
+        # Not because nothing differs: the checker files the unit between the two.
         assert [s for s in mismatches(tmp_path) if "(unit: 'krpm' != 'rpm')" in s] != []
+        assert reconciled(offered) == ["Apply this unit to 1 other declaration of 'V'"]
+        assert preferred(offered) == ["Apply this unit to 1 other declaration of 'V'"]
+        for name, text in rewritten_by(offered[0]["edit"]["changes"]).items():
+            (tmp_path / name).write_text(text, encoding="utf-8", newline="")
+        assert mismatches(tmp_path) == []
 
     def test_a_reader_agreeing_with_its_writer_s_type_keeps_its_unit(self, tmp_path: Path) -> None:
         """The reader means rpm, as the writer's type does, and disagrees about its volatility:
@@ -9270,10 +9281,15 @@ class TestAKeyATypeStates:
     ) -> None:
         """The second shape, from the reader: the writer was offered to lose its unit, 'Remove the
         unit from 1 other declaration', the one declaration it could not reach being the reader's
-        own, whose type states krpm."""
-        assert offered_at(tmp_path, "r.ddd.json", READER_NAMES_A_TYPE, MISMATCH_REPORTED) == []
-        # And not because nothing differs: the checker files the unit between the two.
+        own, whose type states krpm. What the reader sends out is its type's krpm instead, as a
+        reader stating krpm would, the producer's way being withheld: so nothing is preferred."""
+        offered = offered_at(tmp_path, "r.ddd.json", READER_NAMES_A_TYPE, MISMATCH_REPORTED)
+        # Not because nothing differs: the checker files the unit between the two.
         assert [s for s in mismatches(tmp_path) if "(unit: 'krpm' != 'rpm')" in s] != []
+        assert reconciled(offered) == ["Apply this unit to 1 other declaration of 'V'"]
+        assert preferred(offered) == []
+        (change,) = offered[0]["edit"]["changes"]
+        assert change == (tmp_path / "w.ddd.json").as_uri()
 
     def test_a_writer_keeps_its_unit_while_another_reader_s_type_states_one(
         self, tmp_path: Path
@@ -9404,6 +9420,763 @@ class TestWhichFixIsPreferred:
                 "Apply this unit to 1 other declaration of 'Speed'",
             ],
             [],
+        )
+
+
+def imaged(tmp_path: Path, images: dict[str, list[str]], files: dict[str, Any]) -> Path:
+    """``files``, and for each image of ``images`` a description in ``images/`` including the
+    files it names, and a build record naming that description, which only the record finds.
+    Returns the directory holding the descriptions."""
+    described = {
+        f"images/{image}.ddd.json": project(image.title(), *(f"../{name}" for name in included))
+        for image, included in images.items()
+    }
+    write_tree(tmp_path, {**described, **files})
+    for image in images:
+        build_record(tmp_path, tmp_path / "images" / f"{image}.ddd.json", image=f"{image}.elf")
+    return tmp_path / "images"
+
+
+def fixes_request(
+    path: Path,
+    reported: Sequence[dict[str, Any]] = MISMATCH_REPORTED,
+    pointer: str = AT_A_DECLARATION,
+    request_id: int = 12,
+) -> dict[str, Any]:
+    """The client asking for the quick fixes at ``pointer`` of ``path`` as the disk holds it,
+    sending ``reported``."""
+    return {
+        "jsonrpc": "2.0",
+        "id": request_id,
+        "method": "textDocument/codeAction",
+        "params": {
+            "textDocument": {"uri": path.as_uri()},
+            "range": Document(path.read_text(encoding="utf-8")).range_of(pointer),
+            "context": {"diagnostics": list(reported)},
+        },
+    }
+
+
+def fixes_asked(
+    tmp_path: Path,
+    path: Path,
+    *before: dict[str, Any],
+    reported: Sequence[dict[str, Any]] = MISMATCH_REPORTED,
+    pointer: str = AT_A_DECLARATION,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """The quick fixes a session offers at ``pointer`` of ``path``, the client having sent
+    ``before`` and then ``reported`` with its request, and what the log said meanwhile."""
+    request = fixes_request(path, reported, pointer, request_id=13)
+    writer = io.BytesIO()
+    assert Server(session(*before, request, *END), writer, root=tmp_path).run() == 0
+    said = sent(writer)
+    logged = [m["params"]["message"] for m in said if m.get("method") == "window/logMessage"]
+    return next(m for m in said if m.get("id") == 13)["result"], logged
+
+
+def touched(action: dict[str, Any]) -> set[str]:
+    """The names of the files a fix's edit writes."""
+    return {uri_to_path(uri).name for uri in action["edit"]["changes"]}
+
+
+def holding(path: Path, text: str) -> dict[str, Any]:
+    """The client opening ``path`` with ``text`` in its buffer, unsaved."""
+    return {
+        "jsonrpc": "2.0",
+        "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": {"uri": path.as_uri(), "languageId": "json", "version": 1, "text": text}
+        },
+    }
+
+
+def applied(tmp_path: Path, action: dict[str, Any]) -> None:
+    """Write what ``action``'s edit makes of each file it changes, as a client saves it."""
+    for uri in action["edit"]["changes"]:
+        path = uri_to_path(uri)
+        path.write_text(
+            apply_edits(path, action["edit"]["changes"][uri]), encoding="utf-8", newline=""
+        )
+
+
+def findings_of(description: Path) -> list[str]:
+    """What ``ddd check`` of ``description`` files, check and message: the errors and warnings."""
+    from ddd.analysis import analyze
+
+    bag = DiagnosticBag()
+    workspace = load_workspace(description, bag)
+    assert workspace is not None, [entry.render() for entry in bag]
+    analyze(workspace, bag)
+    return [
+        f"{entry.check}: {entry.message}" for entry in bag if entry.severity is not Severity.INFO
+    ]
+
+
+WRITER_AND_TWO_READERS: Final = {
+    "w.ddd.json": component("W", declare("output", "V", unit="rpm")),
+    "r1.ddd.json": component("R1", declare("input", "V", unit="krpm")),
+    "r2.ddd.json": component("R2", declare("input", "V", unit="krpm")),
+}
+"""A writer stating rpm and two readers stating krpm: from the writer, its unit sent out reaches
+both readers."""
+
+R2_MOVED: Final = json.dumps(
+    component("R2", declare("local", "Other"), declare("input", "V", unit="krpm")), indent=2
+)
+"""The second reader's buffer, a declaration put in front of the one the index found: the pointer
+of ``V`` names ``Other`` there now."""
+
+
+class TestAFixUnderAMovedBuffer:
+    """10:M2. A quick fix whose edit would leave out a declaration a buffer has moved - the
+    pointer the index found naming another object there now - is not offered, rather than
+    performed in part: the fixes taking another declaration's answer withhold so already, and a
+    rename beside it is refused. Asked at every move of the caret, the fix is not refused with an
+    error either, which a client shows as a failed request each time, and no sentence is logged:
+    the buffer is the reader's own, and saving it brings the fix back."""
+
+    def test_a_value_sent_out_is_not_offered_past_a_moved_declaration(self, tmp_path: Path) -> None:
+        """From the writer, 'Apply this unit to 1 other declaration' edited the first reader alone,
+        the second's buffer having moved ``V``."""
+        control = offered_at(tmp_path, "w.ddd.json", WRITER_AND_TWO_READERS, MISMATCH_REPORTED)
+        assert reconciled(control) == ["Apply this unit to 2 other declarations of 'V'"]
+        moved = {"r2.ddd.json": json.loads(R2_MOVED)}
+        assert offered_at(tmp_path, "w.ddd.json", WRITER_AND_TWO_READERS, (), moved) == []
+
+    def test_a_key_taken_out_is_not_offered_past_a_moved_declaration(self, tmp_path: Path) -> None:
+        """The other way of sending this declaration's answer out: a silent writer taking the unit
+        out of both readers took it out of the first alone."""
+        files = {
+            **WRITER_AND_TWO_READERS,
+            "w.ddd.json": component("W", declare("output", "V")),
+        }
+        control = offered_at(tmp_path, "w.ddd.json", files, MISMATCH_REPORTED)
+        assert "Remove the unit from 2 other declarations of 'V'" in reconciled(control)
+        moved = {"r2.ddd.json": json.loads(R2_MOVED)}
+        assert offered_at(tmp_path, "w.ddd.json", files, (), moved) == []
+
+    def test_the_fix_is_withheld_where_the_rename_beside_it_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        """The finding's own trigger, through a session: the buffer of the second reader moved
+        ``V``, and at the writer the rename is refused while the fix is not offered, with nothing
+        said in the log for it."""
+        write_tree(
+            tmp_path,
+            {"p.ddd.json": project("P", *WRITER_AND_TWO_READERS), **WRITER_AND_TWO_READERS},
+        )
+        w = tmp_path / "w.ddd.json"
+        opened = holding(tmp_path / "r2.ddd.json", R2_MOVED)
+        offered, logged = fixes_asked(tmp_path, w, opened)
+        assert offered == []
+        assert [line for line in logged if "quick fix" in line] == []
+        at = Document(w.read_text(encoding="utf-8")).text_range_of(f"{AT_A_DECLARATION}.name")
+        assert at is not None
+        rename = {
+            "jsonrpc": "2.0",
+            "id": 14,
+            "method": "textDocument/rename",
+            "params": {
+                "textDocument": {"uri": w.as_uri()},
+                "position": at["start"],
+                "newName": "Velocity",
+            },
+        }
+        writer = io.BytesIO()
+        assert Server(session(opened, rename, *END), writer, root=tmp_path).run() == 0
+        refused = next(m for m in sent(writer) if m.get("id") == 14)
+        assert refused["error"]["code"] == REQUEST_FAILED
+        assert refused["error"]["message"].startswith("r2.ddd.json has unsaved changes")
+
+    def test_a_moved_declaration_in_another_image_withholds_the_fix_too(
+        self, tmp_path: Path
+    ) -> None:
+        """The second reader is in image two alone, which holds the writer as well: the fix sent
+        from the writer reaches it through that image, and is withheld for its buffer as for one in
+        the writer's own."""
+        imaged(
+            tmp_path,
+            {"one": ["w.ddd.json", "r1.ddd.json"], "two": ["w.ddd.json", "r2.ddd.json"]},
+            WRITER_AND_TWO_READERS,
+        )
+        w = tmp_path / "w.ddd.json"
+        control, _ = fixes_asked(tmp_path, w)
+        assert reconciled(control) == ["Apply this unit to 2 other declarations of 'V'"]
+        offered, logged = fixes_asked(tmp_path, w, holding(tmp_path / "r2.ddd.json", R2_MOVED))
+        assert offered == []
+        assert [line for line in logged if "quick fix" in line] == []
+
+
+TYPED_PER_IMAGE: Final = {
+    "t1.ddd.json": types(scalar_type("Speed_t", "uint8", unit="rpm")),
+    "t2.ddd.json": types(scalar_type("Speed_t", "uint8", unit="krpm")),
+}
+"""One type name, two types files: ``Speed_t`` states rpm in the first, krpm in the second."""
+
+
+class TestAFixInTwoImages:
+    """10:M3. A component linked into two images is in two projects, each of which offered its
+    fixes: every fix offered twice, both copies preferred, where the two images offer it alike, and
+    a fix sending a writer's answer out offered once per image under one title, each reaching
+    that image's reader and none reaching both. A fix is offered once now, a value sent out reaching
+    every declaration of the variable in every image holding the document, and in every image
+    holding a file it writes, until none is new, the closure a rename reaches by."""
+
+    def test_a_fix_both_images_offer_alike_is_offered_once(self, tmp_path: Path) -> None:
+        imaged(
+            tmp_path,
+            {"one": ["w.ddd.json", "r.ddd.json"], "two": ["w.ddd.json", "r.ddd.json"]},
+            {
+                "w.ddd.json": component("W", declare("output", "V", unit="rpm")),
+                "r.ddd.json": component("R", declare("input", "V", unit="krpm")),
+            },
+        )
+        reader_s_fixes, _ = fixes_asked(tmp_path, tmp_path / "r.ddd.json")
+        assert reconciled(reader_s_fixes) == [
+            "Use the unit declared in w",
+            "Apply this unit to 1 other declaration of 'V'",
+        ]
+        assert preferred(reader_s_fixes) == ["Use the unit declared in w"]
+        writer_s_fixes, _ = fixes_asked(tmp_path, tmp_path / "w.ddd.json")
+        assert reconciled(writer_s_fixes) == ["Apply this unit to 1 other declaration of 'V'"]
+        assert preferred(writer_s_fixes) == ["Apply this unit to 1 other declaration of 'V'"]
+
+    def test_a_value_sent_out_reaches_the_reader_of_each_image(self, tmp_path: Path) -> None:
+        """From a writer two images share, each with a reader of its own: one fix reaching both
+        readers, where each image offered one reaching its own under the same title."""
+        images = imaged(
+            tmp_path,
+            {"one": ["w.ddd.json", "r1.ddd.json"], "two": ["w.ddd.json", "r2.ddd.json"]},
+            WRITER_AND_TWO_READERS,
+        )
+        offered, _ = fixes_asked(tmp_path, tmp_path / "w.ddd.json")
+        assert reconciled(offered) == ["Apply this unit to 2 other declarations of 'V'"]
+        assert preferred(offered) == ["Apply this unit to 2 other declarations of 'V'"]
+        assert touched(offered[0]) == {"r1.ddd.json", "r2.ddd.json"}
+        applied(tmp_path, offered[0])
+        assert [findings_of(images / f"{image}.ddd.json") for image in ("one", "two")] == [[], []]
+
+    def test_a_value_sent_out_from_one_image_reaches_the_other_through_the_writer(
+        self, tmp_path: Path
+    ) -> None:
+        """The first reader's unit sent into the writer is the writer's in image two as well, whose
+        reader agreed with the writer: it reached the writer alone, and moved the disagreement into
+        image two. It reaches the second reader too, through the writer's file."""
+        images = imaged(
+            tmp_path,
+            {"one": ["w.ddd.json", "r1.ddd.json"], "two": ["w.ddd.json", "r2.ddd.json"]},
+            {
+                **WRITER_AND_TWO_READERS,
+                "r2.ddd.json": component("R2", declare("input", "V", unit="rpm")),
+            },
+        )
+        assert findings_of(images / "two.ddd.json") == []
+        offered, _ = fixes_asked(tmp_path, tmp_path / "r1.ddd.json")
+        sent_out = offered[
+            reconciled(offered).index("Apply this unit to 2 other declarations of 'V'")
+        ]
+        assert touched(sent_out) == {"w.ddd.json", "r2.ddd.json"}
+        applied(tmp_path, sent_out)
+        assert [findings_of(images / f"{image}.ddd.json") for image in ("one", "two")] == [[], []]
+
+    def test_it_goes_on_until_no_image_is_new(self, tmp_path: Path) -> None:
+        """Image three shares no file with image one: the value reaches it through the bridge
+        image two holds, which its edits rewrite and image one's do not."""
+        rpm = declare("input", "V", unit="rpm")
+        images = imaged(
+            tmp_path,
+            {
+                "one": ["w.ddd.json", "r1.ddd.json"],
+                "two": ["w.ddd.json", "bridge.ddd.json"],
+                "three": ["bridge.ddd.json", "w3.ddd.json", "r3.ddd.json"],
+            },
+            {
+                "w.ddd.json": component("W", declare("output", "V", unit="rpm")),
+                "r1.ddd.json": component("R1", declare("input", "V", unit="krpm")),
+                "bridge.ddd.json": component("Bridge", rpm),
+                "w3.ddd.json": component("W3", declare("output", "V", unit="rpm")),
+                "r3.ddd.json": component("R3", rpm),
+            },
+        )
+        offered, _ = fixes_asked(tmp_path, tmp_path / "r1.ddd.json")
+        title = "Apply this unit to 4 other declarations of 'V'"
+        sent_out = offered[reconciled(offered).index(title)]
+        assert touched(sent_out) == {"w.ddd.json", "bridge.ddd.json", "w3.ddd.json", "r3.ddd.json"}
+        applied(tmp_path, sent_out)
+        assert [findings_of(images / f"{n}.ddd.json") for n in ("one", "two", "three")] == [[]] * 3
+
+    @pytest.mark.parametrize("typed", ["the-writer", "the-reader"])
+    def test_two_images_offering_one_title_with_different_edits_offer_neither(
+        self, tmp_path: Path, typed: str
+    ) -> None:
+        """``Speed_t`` is rpm in image one and krpm in image two. Named by the writer, the reader is
+        offered the writer's unit under one title and two edits, one per image; named by the
+        reader, it sends two values out for one key. No single press is both: neither is offered.
+        Each image alone offers its own."""
+        other = declare("output" if typed == "the-reader" else "input", "V", "uint8", unit="Hz")
+        named = declare("input" if typed == "the-reader" else "output", "V", typename="Speed_t")
+        r_is_typed = typed == "the-reader"
+        files = {
+            **TYPED_PER_IMAGE,
+            "w.ddd.json": component("W", other if r_is_typed else named),
+            "r.ddd.json": component("R", named if r_is_typed else other),
+        }
+        both = ["w.ddd.json", "r.ddd.json"]
+        imaged(tmp_path, {"one": ["t1.ddd.json", *both], "two": ["t2.ddd.json", *both]}, files)
+        assert fixes_asked(tmp_path, tmp_path / "r.ddd.json")[0] == []
+        imaged(tmp_path, {"one": ["t1.ddd.json", *both], "two": ["t1.ddd.json", *both]}, files)
+        alike, _ = fixes_asked(tmp_path, tmp_path / "r.ddd.json")
+        assert reconciled(alike) == [
+            "Apply this unit to 1 other declaration of 'V'"
+            if r_is_typed
+            else "Use the unit declared in w"
+        ]
+
+    def test_a_declaration_one_image_cannot_change_is_changed_in_none(self, tmp_path: Path) -> None:
+        """The writer names ``Text_t``, a string type in image one, which takes one dimension, and
+        a byte in image two, which takes any. The reader's two dimensions sent out are the writer's
+        in both images, and would leave it a file image one refuses: left out of the fix, which
+        then changes nothing and is not offered. Image two alone offered it."""
+        both = ["w.ddd.json", "r.ddd.json"]
+        files = {
+            "t1.ddd.json": types(TEXT_TYPE),
+            "t2.ddd.json": types(scalar_type("Text_t", "uint8")),
+            "w.ddd.json": component("W", declare("output", "V", typename="Text_t", dimensions=[8])),
+            "r.ddd.json": component("R", declare("input", "V", "uint8", dimensions=[4, 2])),
+        }
+        imaged(tmp_path, {"one": ["t1.ddd.json", *both], "two": ["t2.ddd.json", *both]}, files)
+        offered, _ = fixes_asked(tmp_path, tmp_path / "r.ddd.json")
+        assert reconciled(offered) == ["Use the dimensions declared in w"]
+        imaged(tmp_path, {"one": ["t2.ddd.json", *both], "two": ["t2.ddd.json", *both]}, files)
+        assert reconciled(fixes_asked(tmp_path, tmp_path / "r.ddd.json")[0]) == [
+            "Use the dimensions declared in w",
+            "Apply this dimensions to 1 other declaration of 'V'",
+        ]
+
+    def test_the_preferred_fix_is_the_one_every_image_leads_with(self, tmp_path: Path) -> None:
+        """Image two has a second writer, which leaves ``V`` no owner there and its fixes no
+        preferred one: the fix image one prefers is not preferred over both."""
+        readers = {
+            "w1.ddd.json": component("W1", declare("output", "V", unit="rpm")),
+            "w2.ddd.json": component("W2", declare("output", "V", unit="rpm")),
+            "r.ddd.json": component("R", declare("input", "V", unit="krpm")),
+        }
+        mine = ["w1.ddd.json", "r.ddd.json"]
+        imaged(tmp_path, {"one": mine, "two": [*mine, "w2.ddd.json"]}, readers)
+        offered, _ = fixes_asked(tmp_path, tmp_path / "r.ddd.json")
+        assert reconciled(offered)[0] == "Use the unit declared in w1"
+        assert preferred(offered) == []
+        imaged(tmp_path, {"one": mine, "two": mine}, readers)
+        assert preferred(fixes_asked(tmp_path, tmp_path / "r.ddd.json")[0]) == [
+            "Use the unit declared in w1"
+        ]
+
+    def test_an_image_a_fix_reaches_holding_a_file_that_did_not_load_withholds_every_fix(
+        self, tmp_path: Path
+    ) -> None:
+        """Image two's reader does not load, so what it states is unknown: the value sent out of
+        image one into the writer would leave it as it is. Nothing is offered, the log saying
+        why, as for a file of the reader's own image that did not load."""
+        imaged(
+            tmp_path,
+            {"one": ["w.ddd.json", "r1.ddd.json"], "two": ["w.ddd.json", "r2.ddd.json"]},
+            {
+                **WRITER_AND_TWO_READERS,
+                "r2.ddd.json": component("R2", declare("input", "V", "uint99")),
+            },
+        )
+        offered, logged = fixes_asked(tmp_path, tmp_path / "r1.ddd.json")
+        assert offered == []
+        assert logged[-1] == (
+            "no quick fix is offered: r2.ddd.json did not load, so the rest of the project cannot "
+            "be edited around it; fix it and try again"
+        )
+
+    @pytest.mark.parametrize("stopped", [True, False], ids=["stopped", "mended"])
+    def test_a_description_a_fix_reaches_that_could_not_be_read_withholds_every_fix(
+        self, tmp_path: Path, stopped: bool
+    ) -> None:
+        """The writer is in a folder of its own, where a second description a plugin stops holds
+        it: what that image's other files state is unknown, so nothing is offered, as a rename is
+        refused for it. Mended, the value reaches the second image's reader."""
+        write_tree(
+            tmp_path,
+            {
+                "tools/exiting_plugin.py": EXITING_MODEL_PLUGIN,
+                "one/one.ddd.json": project("One", "../shared/w.ddd.json", "r1.ddd.json"),
+                "one/r1.ddd.json": component("R1", declare("input", "V", unit="krpm")),
+                "shared/w.ddd.json": component("W", declare("output", "V", unit="rpm")),
+                "shared/r2.ddd.json": component("R2", declare("input", "V", unit="rpm")),
+                "shared/two.ddd.json": project(
+                    "Two",
+                    "w.ddd.json",
+                    "r2.ddd.json",
+                    *(["other.ddd.json"] if stopped else []),
+                    plugins=["../tools/exiting_plugin.py"],
+                ),
+                "shared/other.ddd.json": component(
+                    "O", declare("local", "X", extensions={"exiting": {"tag": "t"}})
+                ),
+            },
+        )
+        r1 = tmp_path / "one/r1.ddd.json"
+        offered, _ = fixes_asked(tmp_path, r1)
+        if stopped:
+            assert offered == []
+            # Asked again, the stopped description is read again, and stops the fixes again: a
+            # description is kept between two questions only where it was read.
+            again = fixes_asked(tmp_path, r1, *[fixes_request(r1)])[0]
+            assert again == []
+        else:
+            title = "Apply this unit to 2 other declarations of 'V'"
+            assert touched(offered[reconciled(offered).index(title)]) == {
+                "w.ddd.json",
+                "r2.ddd.json",
+            }
+
+    def test_the_outermost_description_above_a_file_a_fix_reaches_answers_for_it(
+        self, tmp_path: Path
+    ) -> None:
+        """No build record. The writer the fix reaches lies under a sub-project of its own and an
+        outer project above that, which also holds a second reader: the outer one answers, as it
+        answers the search for a document, and its reader takes the value too. Answered by the
+        sub-project, the fix reached the writer alone."""
+        write_tree(
+            tmp_path,
+            {
+                "one/one.ddd.json": project("One", "r1.ddd.json", "../sub/w.ddd.json"),
+                "one/r1.ddd.json": component("R1", declare("input", "V", unit="krpm")),
+                "sub/inner.ddd.json": project("Inner", "w.ddd.json"),
+                "sub/w.ddd.json": component("W", declare("output", "V", unit="rpm")),
+                "sub/r2.ddd.json": component("R2", declare("input", "V", unit="rpm")),
+                "outer.ddd.json": project("Outer", "sub/w.ddd.json", "sub/r2.ddd.json"),
+            },
+        )
+        offered, _ = fixes_asked(tmp_path, tmp_path / "one/r1.ddd.json")
+        title = "Apply this unit to 2 other declarations of 'V'"
+        assert touched(offered[reconciled(offered).index(title)]) == {"w.ddd.json", "r2.ddd.json"}
+
+    def test_the_folder_a_fix_reaches_into_is_listed_once_for_all_its_files(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No build record, one flat folder: the value sent out from the writer reaches twenty
+        readers, and the projects holding each are looked for above it. Asked file by file, the
+        folder was listed once for each of them; it is listed once for the writer's own search, and
+        once for all twenty."""
+        readers = {
+            f"r{n}.ddd.json": component(f"R{n}", declare("input", "V", unit="krpm"))
+            for n in range(20)
+        }
+        files = {"w.ddd.json": component("W", declare("output", "V", unit="rpm")), **readers}
+        write_tree(tmp_path, {"p.ddd.json": project("P", *files), **files})
+        server = Server(io.BytesIO(), io.BytesIO(), root=tmp_path)
+        assert server._handle({"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {}})
+        listed: list[tuple[Path, str]] = []
+        glob = Path.glob
+
+        def spy(self: Path, pattern: str, **options: Any) -> Any:
+            listed.append((self, pattern))
+            return glob(self, pattern, **options)
+
+        monkeypatch.setattr(Path, "glob", spy)
+        assert server._handle(fixes_request(tmp_path / "w.ddd.json"))
+        assert listed.count((tmp_path.resolve(), "*.ddd.json")) == 2
+
+    def test_a_fix_asked_again_reads_no_description_again(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A client asks for the fixes at every move of the caret, and the value sent out reaches
+        image two each time: read once until the next refresh, as a rename's closure reads each
+        description once. A save reads them again."""
+        imaged(
+            tmp_path,
+            {"one": ["w.ddd.json", "r1.ddd.json"], "two": ["w.ddd.json", "r2.ddd.json"]},
+            {
+                **WRITER_AND_TWO_READERS,
+                "r2.ddd.json": component("R2", declare("input", "V", unit="rpm")),
+            },
+        )
+        r1 = tmp_path / "r1.ddd.json"
+        request = fixes_request(r1, request_id=13)
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle({"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {}})
+        seen: list[Path] = []
+
+        def spy(path: Path, bag: DiagnosticBag) -> Any:
+            seen.append(path.resolve())
+            return load_workspace(path, bag)
+
+        monkeypatch.setattr(navigation, "load_workspace", spy)
+        assert server._handle(request)
+        assert sorted(path.name for path in seen) == ["one.ddd.json", "two.ddd.json"]
+        seen.clear()
+        assert server._handle(request)
+        assert seen == []
+        assert server._handle(
+            {
+                "jsonrpc": "2.0",
+                "method": "textDocument/didSave",
+                "params": {"textDocument": {"uri": r1.as_uri()}},
+            }
+        )
+        seen.clear()
+        assert server._handle(request)
+        assert sorted(path.name for path in seen) == ["one.ddd.json", "two.ddd.json"]
+        (answer, *_) = [m for m in sent(writer) if m.get("id") == 13]
+        assert "Apply this unit to 2 other declarations of 'V'" in reconciled(answer["result"])
+
+
+class TestAWriterNamingATypeAndASilentReader:
+    """A reader stating no unit, beside a writer whose type states one: the check files the two
+    disagreeing, and neither end was offered anything, the unit being listed by no declaration's
+    file. Read through the type, as the checks read it, each end is offered what settles it."""
+
+    FILES: ClassVar[dict[str, Any]] = {
+        "t.ddd.json": types(scalar_type("Speed_t", "uint8", unit="rpm")),
+        "w.ddd.json": component("W", declare("output", "V", typename="Speed_t")),
+        "r.ddd.json": component("R", declare("input", "V", "uint8")),
+    }
+
+    @pytest.mark.parametrize(
+        ("source", "fix"),
+        [
+            ("r.ddd.json", "Use the unit declared in w"),
+            ("w.ddd.json", "Apply this unit to 1 other declaration of 'V'"),
+        ],
+        ids=["at-the-reader", "at-the-writer"],
+    )
+    def test_each_end_is_offered_the_unit_the_type_states(
+        self, tmp_path: Path, source: str, fix: str
+    ) -> None:
+        offered = offered_at(tmp_path, source, self.FILES, MISMATCH_REPORTED)
+        assert [s for s in mismatches(tmp_path) if "(unit: '' != 'rpm')" in s] != []
+        assert reconciled(offered) == [fix]
+        assert preferred(offered) == [fix]
+        applied(tmp_path, offered[0])
+        assert mismatches(tmp_path) == []
+
+
+UNKNOWN_REPORTED: Final = ({"code": "unknown-unit", "source": "ddd", "message": "not listed"},)
+"""What a client sends with its request on an ``unknown-unit``."""
+
+AT_THE_UNIT: Final = "component.interface[0].definition.unit"
+
+
+class TestAUnitFixInTwoImages:
+    """The vocabulary's fixes across images: each offered once, the unit added only where every
+    image planning it adds it alike, and renamed as Rename Symbol renames it, over every image the
+    rename reaches."""
+
+    def test_a_unit_fix_both_images_offer_alike_is_offered_once(self, tmp_path: Path) -> None:
+        both = ["u.ddd.json", "c.ddd.json"]
+        imaged(
+            tmp_path,
+            {"one": both, "two": both},
+            {
+                "u.ddd.json": {"units": ["rpm", "Nm"]},
+                "c.ddd.json": component("C", declare("local", "V", unit="RPM")),
+            },
+        )
+        offered, _ = fixes_asked(
+            tmp_path, tmp_path / "c.ddd.json", reported=UNKNOWN_REPORTED, pointer=AT_THE_UNIT
+        )
+        assert [action["title"] for action in offered] == [
+            "Add 'RPM' to the vocabulary",
+            "Rename 'RPM' to 'rpm' everywhere",
+        ]
+
+    def test_a_unit_two_images_would_add_to_different_files_is_added_to_neither(
+        self, tmp_path: Path
+    ) -> None:
+        """Each image's first units file is its own: added to both, the unit would be listed twice
+        in an image holding the two."""
+        imaged(
+            tmp_path,
+            {"one": ["u1.ddd.json", "c.ddd.json"], "two": ["u2.ddd.json", "c.ddd.json"]},
+            {
+                "u1.ddd.json": {"units": ["rpm"]},
+                "u2.ddd.json": {"units": ["rpm"]},
+                "c.ddd.json": component("C", declare("local", "V", unit="RPM")),
+            },
+        )
+        offered, _ = fixes_asked(
+            tmp_path, tmp_path / "c.ddd.json", reported=UNKNOWN_REPORTED, pointer=AT_THE_UNIT
+        )
+        assert [action["title"] for action in offered] == ["Rename 'RPM' to 'rpm' everywhere"]
+
+    def renaming_across(self, tmp_path: Path) -> Path:
+        """Image one lists ``rpm`` and states ``Rpm`` in a component of its own and in one it
+        shares with image two, which lists ``Rpm``: unknown in image one, known in image two."""
+        return imaged(
+            tmp_path,
+            {
+                "one": ["u1.ddd.json", "c.ddd.json", "s.ddd.json"],
+                "two": ["u2.ddd.json", "s.ddd.json"],
+            },
+            {
+                "u1.ddd.json": {"units": ["rpm"]},
+                "u2.ddd.json": {"units": ["Rpm"]},
+                "c.ddd.json": component("C", declare("local", "V", unit="Rpm")),
+                "s.ddd.json": component("S", declare("local", "X", unit="Rpm")),
+            },
+        )
+
+    def test_the_rename_fix_reaches_the_image_it_rewrites_a_file_of(self, tmp_path: Path) -> None:
+        """Respelled in image one alone, the component the two share named a unit image two does
+        not list. Renamed as Rename Symbol renames it, image two's vocabulary is respelled too, and
+        neither image reports a unit it does not list."""
+        images = self.renaming_across(tmp_path)
+        offered, _ = fixes_asked(
+            tmp_path, tmp_path / "c.ddd.json", reported=UNKNOWN_REPORTED, pointer=AT_THE_UNIT
+        )
+        (renaming,) = [a for a in offered if a["title"] == "Rename 'Rpm' to 'rpm' everywhere"]
+        assert touched(renaming) == {"c.ddd.json", "s.ddd.json", "u2.ddd.json"}
+        applied(tmp_path, renaming)
+        assert [findings_of(images / f"{image}.ddd.json") for image in ("one", "two")] == [[], []]
+
+    def test_the_rename_fix_is_withheld_where_rename_symbol_refuses_it(
+        self, tmp_path: Path
+    ) -> None:
+        """An open document of image two holds what its file does not, which the rename could not
+        see: Rename Symbol is refused, and the fix that is the same rename is not offered."""
+        self.renaming_across(tmp_path)
+        s = tmp_path / "s.ddd.json"
+        typed = json.dumps(component("S", declare("local", "X", unit="Rpm"), declare("local", "Y")))
+        offered, _ = fixes_asked(
+            tmp_path,
+            tmp_path / "c.ddd.json",
+            holding(s, typed),
+            reported=UNKNOWN_REPORTED,
+            pointer=AT_THE_UNIT,
+        )
+        assert [action["title"] for action in offered] == ["Add 'Rpm' to the vocabulary"]
+
+
+class TestAUnitRenamedOntoAUnitOneImageListsAlone:
+    """Two images share a units file listing ``RPM``, and one of them lists ``rpm`` in a file of its
+    own: renaming ``RPM`` onto ``rpm`` merges it in that image and respells it in the other, at
+    the entry the two share. The two plans were sent as one, keyed by where each edit began: the
+    second image's dropped, or the two overlapping. The rename is refused naming both."""
+
+    def units(self, tmp_path: Path, listing: str | None) -> Path:
+        both = ["u.ddd.json", "c.ddd.json"]
+        mine = {
+            image: [*both, *(["own.ddd.json"] if listing in (image, "both") else [])]
+            for image in ("one", "two")
+        }
+        imaged(
+            tmp_path,
+            mine,
+            {
+                "u.ddd.json": {"units": ["RPM", "Nm"]},
+                "own.ddd.json": {"units": ["rpm"]},
+                "c.ddd.json": component("C", declare("local", "V", unit="RPM")),
+            },
+        )
+        return tmp_path / "c.ddd.json"
+
+    def renamed(self, tmp_path: Path, c: Path) -> dict[str, Any]:
+        at = Document(c.read_text(encoding="utf-8")).text_range_of(AT_THE_UNIT)
+        assert at is not None
+        request = {
+            "jsonrpc": "2.0",
+            "id": 14,
+            "method": "textDocument/rename",
+            "params": {
+                "textDocument": {"uri": c.as_uri()},
+                "position": at["start"],
+                "newName": "rpm",
+            },
+        }
+        writer = io.BytesIO()
+        assert Server(session(request, *END), writer, root=tmp_path).run() == 0
+        return next(m for m in sent(writer) if m.get("id") == 14)
+
+    @pytest.mark.parametrize(("listing", "other"), [("one", "two"), ("two", "one")])
+    def test_the_rename_is_refused_naming_both_images(
+        self, tmp_path: Path, listing: str, other: str
+    ) -> None:
+        answer = self.renamed(tmp_path, self.units(tmp_path, listing))
+        assert answer["error"] == {
+            "code": REQUEST_FAILED,
+            "message": (
+                f"{listing}.elf lists 'rpm' and {other}.elf does not, so this rename would rewrite "
+                "u.ddd.json two ways, merging 'RPM' into 'rpm' for the one and respelling it for "
+                "the other: list 'rpm' in both or in neither, and rename again"
+            ),
+        }
+
+    @pytest.mark.parametrize("listing", ["both", None], ids=["both-list-it", "neither-does"])
+    def test_the_rename_goes_on_where_the_images_agree(
+        self, tmp_path: Path, listing: str | None
+    ) -> None:
+        """The control: merged in both, or respelled in both, the two plans are one edit."""
+        c = self.units(tmp_path, listing)
+        rewritten = rewritten_by(self.renamed(tmp_path, c)["result"]["changes"])
+        expected = ["Nm"] if listing == "both" else ["rpm", "Nm"]
+        assert json.loads(rewritten["u.ddd.json"])["units"] == expected
+
+
+class TestGatheringARenamesEdits:
+    """How the projects' edits of a rename are put together: each place once, and two that differ
+    there are told apart as two."""
+
+    def edit(self, start: tuple[int, int], end: tuple[int, int], text: str) -> dict[str, Any]:
+        return {
+            "range": {
+                "start": {"line": start[0], "character": start[1]},
+                "end": {"line": end[0], "character": end[1]},
+            },
+            "newText": text,
+        }
+
+    @pytest.mark.parametrize(
+        ("second", "clash", "kept"),
+        [
+            (((0, 2), (0, 5), "x"), False, 1),
+            (((0, 2), (0, 5), "y"), True, 1),
+            (((0, 4), (0, 7), "x"), True, 1),
+            (((0, 5), (0, 7), "x"), False, 2),
+            (((0, 0), (0, 2), "x"), False, 2),
+            (((0, 2), (0, 2), "x"), False, 2),
+        ],
+        ids=["the-same", "another-text", "overlapping", "after-it", "before-it", "inserted-before"],
+    )
+    def test_an_edit_beside_one_another_project_made(
+        self,
+        tmp_path: Path,
+        second: tuple[tuple[int, int], tuple[int, int], str],
+        clash: bool,
+        kept: int,
+    ) -> None:
+        """The first project replaced characters 2 to 5 of a line with ``x``. The same edit from a
+        second is kept once; one overlapping it, or writing another text there, is the first
+        project's edit met; one beside it, or inserting at its start, is an edit of its own."""
+        write_tree(
+            tmp_path, {"p.ddd.json": project("P", "a.ddd.json"), "a.ddd.json": component("A")}
+        )
+        first = navigation.read_project(tmp_path / "p.ddd.json")
+        other = navigation.read_project(tmp_path / "a.ddd.json")
+        assert first is not None
+        assert other is not None
+        changes: dict[str, list[dict[str, Any]]] = {}
+        made: dict[str, Any] = {}
+        assert Server._gather(changes, made, {"f": [self.edit((0, 2), (0, 5), "x")]}, first) is None
+        found = Server._gather(changes, made, {"f": [self.edit(*second)]}, other)
+        assert found == (("f", first) if clash else None)
+        assert len(changes["f"]) == kept
+
+    def test_two_insertions_at_one_place_are_two_ways(self, tmp_path: Path) -> None:
+        write_tree(tmp_path, {"p.ddd.json": project("P")})
+        loaded = navigation.read_project(tmp_path / "p.ddd.json")
+        assert loaded is not None
+        changes: dict[str, list[dict[str, Any]]] = {}
+        made: dict[str, Any] = {}
+        Server._gather(changes, made, {"f": [self.edit((1, 1), (1, 1), "a")]}, loaded)
+        assert Server._gather(changes, made, {"f": [self.edit((1, 1), (1, 1), "b")]}, loaded) == (
+            "f",
+            loaded,
         )
 
 

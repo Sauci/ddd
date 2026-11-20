@@ -56,7 +56,7 @@ from __future__ import annotations
 
 import contextlib
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from enum import Enum
 from functools import partial
@@ -235,6 +235,37 @@ def _give_an_identity(
     }
 
 
+@dataclass(frozen=True, slots=True)
+class Asked:
+    """One project a position's quick fixes are asked of."""
+
+    description: Path
+    """The description it was read from, resolved: what tells it from another project."""
+
+    built: Index
+    project: UnitProject | None = None
+    """Where a unit's plans are made in it, for a request about a unit; ``None`` otherwise, and
+    for a project reached beyond the document's (:attr:`Elsewhere.holding`)."""
+
+
+@dataclass(frozen=True, slots=True)
+class Elsewhere:
+    """What a position's quick fixes reach beyond the projects holding the document.
+
+    The language server's are its closure of projects (:class:`ddd.lsp.navigation.Reach`) and a
+    unit renamed as Rename Symbol renames it; a project asked alone reaches nothing beyond itself
+    (:func:`actions`).
+    """
+
+    holding: Callable[[set[Path]], Sequence[Asked] | None]
+    """Every project reached that holds one of these files, those reached only now included; or
+    ``None`` where one reached only now may not be edited, which withholds every fix."""
+
+    renamed: Callable[[str, str], dict[str, list[dict[str, Any]]] | None]
+    """The first unit respelled as the second everywhere its rename reaches, as text edits by file
+    uri; or ``None`` where the rename is refused."""
+
+
 def actions(
     built: Index,
     path: Path,
@@ -244,7 +275,8 @@ def actions(
     reported: Sequence[dict[str, Any]] = (),
     project: UnitProject | None = None,
 ) -> list[dict[str, Any]]:
-    """What an editor may offer at this position.
+    """What an editor may offer at this position, in one project, which reaches nothing beyond
+    itself: :func:`actions_across` for that project alone.
 
     On a key that can be propagated, that key. Anywhere else inside the declaration - on the
     ``"definition"`` line, on a nested ``limits.min``, on a selection covering the lot - every
@@ -268,24 +300,58 @@ def actions(
     reason, and on whatever states the unit - a scalar type or a structure member as much as a
     declaration. They are planned in the project ``project`` names; without one, none is.
     """
-    # After the declaration's own actions, so that neither inherits the other's findings, and
-    # a fix the reader asked for about the declaration keeps the preferred slot.
-    return [
-        *_on_the_declaration(built, path, document, pointer, cache, reported),
-        *_vocabulary_actions(built, document, pointer, cache, reported, project),
-    ]
+    alone = Elsewhere(lambda _: (), partial(_renamed_in, built, project, cache))
+    asked = (Asked(path, built, project),)
+    return actions_across(asked, path, document, pointer, cache, reported, alone) or []
 
 
-def _on_the_declaration(
-    built: Index,
+def actions_across(
+    asked: Sequence[Asked],
     path: Path,
     document: Document,
     pointer: str,
     cache: dict[Path, Document],
     reported: Sequence[dict[str, Any]],
-) -> list[dict[str, Any]]:
+    elsewhere: Elsewhere,
+) -> list[dict[str, Any]] | None:
+    """What an editor may offer at this position, over every project holding the document - the
+    projects ``asked``, which a component linked into two images is in two of - each fix once.
+
+    Offered once rather than once per project: two images offering one fix offered it twice,
+    with one edit, and both marked preferred. A fix taking another declaration's answer into
+    this one is offered where the projects offering it write the same edit under the same title,
+    and not where two of them write different edits under one title, since no single press could
+    be both. A fix sending this declaration's answer out is one fix over every declaration of the
+    variable in every project holding the document, and in every project holding a file it
+    writes, until none is new (:func:`_reached`): offered in each image apart, the fixes at a
+    writer each reached one image's reader under the same title, and none reached both - and
+    pressed at a reader of one image, the writer it rewrote left the other image's reader
+    disagreeing. A unit's rename is planned as Rename Symbol plans it, over every project it
+    reaches (:attr:`Elsewhere.renamed`).
+
+    ``None`` where a project the fixes reach may not be edited (:attr:`Elsewhere.holding`): then
+    nothing is offered.
+    """
+    # After the declaration's own actions, so that neither inherits the other's findings, and
+    # a fix the reader asked for about the declaration keeps the preferred slot.
+    declared = _on_the_declaration(asked, path, document, pointer, cache, reported, elsewhere)
+    if declared is None:
+        return None
+    return [*declared, *_vocabulary_actions(asked, document, pointer, cache, reported, elsewhere)]
+
+
+def _on_the_declaration(
+    asked: Sequence[Asked],
+    path: Path,
+    document: Document,
+    pointer: str,
+    cache: dict[Path, Document],
+    reported: Sequence[dict[str, Any]],
+    elsewhere: Elsewhere,
+) -> list[dict[str, Any]] | None:
     """The actions on the declaration around the cursor: its keys brought into agreement with
-    the other declarations of its object, and an identity where ``missing-id`` was reported."""
+    the other declarations of its object, and an identity where ``missing-id`` was reported -
+    ``None`` where a project the fixes reach may not be edited."""
     within = WITHIN_DEFINITION.match(pointer)
     if within is None:
         return []
@@ -294,7 +360,10 @@ def _on_the_declaration(
     if not isinstance(name, str):
         return []
 
-    reconciled = reconciliations(built, path, document, pointer, cache)
+    joined = _joined(asked, path, document, pointer, name, cache, elsewhere)
+    if joined is None:
+        return None
+    reconciled, preferred = joined
     offered = [_protocol_action(action, cache) for action in reconciled]
     settles = [entry for entry in reported if entry.get("code") in RECONCILED]
     if settles and offered:
@@ -305,7 +374,7 @@ def _on_the_declaration(
         # other way round - a reader's own value sent into its producer's file, or the producer
         # taking what its readers say - and passing the slot down to it would apply what nobody
         # chose (``Reconciliation.leads``).
-        if reconciled[0].leads:
+        if preferred:
             offered[0]["isPreferred"] = True
 
     # Appended rather than folded into the loop above: it settles its own finding and answers
@@ -318,6 +387,180 @@ def _on_the_declaration(
             identity["diagnostics"] = unstamped
             offered.append(identity)
     return offered
+
+
+type _Fix = tuple[str, str]
+"""What tells one way of settling a declaration from another across projects: one sending this
+declaration's answer out, by its key; one taking another's in, by its title, which names whose."""
+
+
+def _fix(decision: Reconciliation) -> _Fix:
+    return ("sends", decision.key) if decision.spreads else ("takes", decision.title)
+
+
+def _spread_value(decision: Reconciliation) -> str | None:
+    """The value a decision sending this declaration's answer out spreads: what each declaration
+    it changes comes to state, or ``None`` for the key taken out. A builder makes such a decision
+    only where it changes one."""
+    return decision.settlement.changes[0].raw
+
+
+def _differs(known: Reconciliation, other: Reconciliation) -> bool:
+    """Whether two projects' ways of one :func:`_fix` would write different things: two values
+    sent out for one key, or two edits taken in under one title."""
+    if known.spreads:
+        return _spread_value(known) != _spread_value(other)
+    return known.settlement != other.settlement
+
+
+def _joined(
+    asked: Sequence[Asked],
+    path: Path,
+    document: Document,
+    pointer: str,
+    name: str,
+    cache: dict[Path, Document],
+    elsewhere: Elsewhere,
+) -> tuple[list[Reconciliation], bool] | None:
+    """Every project's ways to settle the declaration at ``pointer``, put together, and whether the
+    first of them is preferred; ``None`` where a project they reach may not be edited.
+
+    One way is offered once however many projects offer it, in the order the first of them does.
+    Two projects offering one under one title and writing different edits - two producers'
+    values, two consensuses, two values a type states in two images - offer neither, nor two
+    sending out different values for one key. The first is preferred where it leads in every
+    project that offers a way at all, which a project offering none - the declaration alone in it
+    - has no say in.
+    """
+    offered: dict[_Fix, Reconciliation] = {}
+    differing: set[_Fix] = set()
+    firsts: list[_Fix | None] = []
+    for each in asked:
+        decisions = reconciliations(each.built, path, document, pointer, cache)
+        if decisions:
+            firsts.append(_fix(decisions[0]) if decisions[0].leads else None)
+        for decision in decisions:
+            if _differs(offered.setdefault(_fix(decision), decision), decision):
+                differing.add(_fix(decision))
+    sending = {
+        fix: decision
+        for fix, decision in offered.items()
+        if decision.spreads and fix not in differing
+    }
+    reached = _reached(sending, asked, name, cache, elsewhere)
+    if reached is None:
+        return None
+    joined: list[Reconciliation] = []
+    for fix, decision in offered.items():
+        if fix in differing:
+            continue
+        spread = _spread(decision, name, reached[fix]) if decision.spreads else decision
+        if spread is not None:
+            joined.append(spread)
+    preferred = bool(joined) and all(first == _fix(joined[0]) for first in firsts)
+    return joined, preferred
+
+
+def _reached(
+    sending: dict[_Fix, Reconciliation],
+    asked: Sequence[Asked],
+    name: str,
+    cache: dict[Path, Document],
+    elsewhere: Elsewhere,
+) -> dict[_Fix, list[Settlement]] | None:
+    """Each decision sending this declaration's answer out, settled in every project holding the
+    document, and then in every project holding a file one of them writes there, until none is
+    new; ``None`` where a project reached so may not be edited.
+
+    A component linked into two images is in two projects, and a value written into it is
+    written for both: a reader's unit sent into the writer two images share is the writer's in
+    the other image too, and the reader of that image has to take it as well, or the fix moves the
+    disagreement there. One closure for every decision of the position, as Rename Symbol has one:
+    a project one of them reaches is settled by the others too, for the variable they all settle.
+    """
+    settled: dict[_Fix, list[Settlement]] = {fix: [] for fix in sending}
+    seen: set[Path] = set()
+    projects: Sequence[Asked] = asked
+    while projects:
+        written: set[Path] = set()
+        for each in projects:
+            seen.add(each.description)
+            for fix, decision in sending.items():
+                settlement = settle(each.built, name, decision.key, _spread_value(decision), cache)
+                settled[fix].append(settlement)
+                written.update(change.site.path for change in settlement.changes)
+        if not written:
+            # Nothing is sent out: no file is written, and none of another project is reached.
+            break
+        held = elsewhere.holding(written)
+        if held is None:
+            return None
+        projects = [each for each in held if each.description not in seen]
+    return settled
+
+
+def _spread(
+    decision: Reconciliation, name: str, settlements: Sequence[Settlement]
+) -> Reconciliation | None:
+    """A decision sending this declaration's answer out, over every project it reaches, or
+    nothing where that is not one fix the editor offers.
+
+    Each declaration is changed once, however many of those projects hold it, and not where one of
+    them cannot change it there. What cannot take the value is left out of the fix and the rest
+    reconciled, as one project's fix always was (:func:`settle`) - but for a declaration whose
+    buffer has moved since the index was built (``unreachable``), whose file no longer names the
+    variable at that pointer: the fix is withheld then, rather than performed in part, as the fixes
+    that read the other declarations withhold, and a rename beside it is refused. Nor is a key
+    taken out while a declaration naming a type that states it is among those that cannot lose it,
+    this one or another: that declaration goes on stating the key whatever the rest lose, and the
+    silence spread to them is not one it shares.
+    """
+    raw = _spread_value(decision)
+    changes: dict[Site, Settled] = {}
+    unsettled: dict[Site, Unsettled] = {}
+    for settlement in settlements:
+        for left in settlement.unsettled:
+            unsettled.setdefault(left.site, left)
+        for change in settlement.changes:
+            changes.setdefault(change.site, change)
+    reasons = {left.reason for left in unsettled.values()}
+    if "unreachable" in reasons or (raw is None and "type" in reasons):
+        return None
+    taken = tuple(change for site, change in changes.items() if site not in unsettled)
+    if not taken:
+        return None
+    return replace(
+        decision,
+        title=_sent_out(decision.key, name, raw, len(taken)),
+        settlement=Settlement(taken, tuple(unsettled.values())),
+    )
+
+
+def _sent_out(key: str, name: str, raw: str | None, elsewhere: int) -> str:
+    """The title of a fix sending this declaration's answer for ``key`` out to ``elsewhere`` other
+    declarations: its value applied to them, or the key taken out of them for ``None``."""
+    others = f"{elsewhere} other declaration{'s' if elsewhere != 1 else ''} of '{name}'"
+    if raw is None:
+        return f"Remove the {key} from {others}"
+    return f"Apply this {key} to {others}"
+
+
+def _renamed_in(
+    built: Index, project: UnitProject | None, cache: dict[Path, Document], unit: str, new: str
+) -> dict[str, list[dict[str, Any]]] | None:
+    """``unit`` respelled ``new`` in one project alone, as ``ddd gui`` plans it in the project it
+    has open; ``None`` where the plan is refused, would be made in a buffer that has moved what the
+    index found - its pointers are the disk's, and made there it would respell whatever sits there
+    now - or cannot be made in a buffer as it stands, a units file caught halfway through an edit.
+    """
+    # Asked only for a project the request planned a unit's fixes in (:func:`_vocabulary_actions`).
+    assert project is not None
+    if unit_drift(built, unit, cache):
+        return None
+    try:
+        return text_edits(rename_unit(built, project, unit, new, cache), cache)
+    except (UnitRefusalError, EditError):
+        return None
 
 
 def reconciliations(
@@ -363,6 +606,12 @@ def reconciliations(
     offered to the editor, never to the page. It only ever arises with a silent producer - the
     one case ``_from_producer`` cannot answer for - and a silent owner is not standing in for
     its readers' consensus, whatever they happen to agree on among themselves.
+
+    A way sending this declaration's answer out is answered with every declaration it leaves out
+    among its settlement's ``unsettled``, which the page refuses whole. The editor puts every
+    project's ways together (:func:`_joined`), settles such a way again over every project it
+    reaches, and withholds it there for a declaration whose buffer moved or whose type keeps the
+    key it takes out (:func:`_spread`).
     """
     within = WITHIN_DEFINITION.match(pointer)
     if within is None:
@@ -375,7 +624,7 @@ def reconciliations(
     if pointer == f"{definition}.{key}" and key in PROPAGATED_KEYS:
         wanted = [key]
     else:
-        wanted = interface_keys(document.value_at(definition)) + _missing(
+        wanted = _keys_stated(built, document, definition, cache) + _missing(
             built, path, document, name, definition, cache
         )
     here = Site(path, definition)
@@ -450,12 +699,12 @@ def _across(
 
 
 def _vocabulary_actions(
-    built: Index,
+    asked: Sequence[Asked],
     document: Document,
     pointer: str,
     cache: dict[Path, Document],
     reported: Sequence[dict[str, Any]],
-    project: UnitProject | None,
+    elsewhere: Elsewhere,
 ) -> list[dict[str, Any]]:
     """Put the unit under the cursor into the vocabulary, or respell it everywhere as a unit the
     vocabulary lists.
@@ -465,41 +714,45 @@ def _vocabulary_actions(
     :func:`ddd.analysis.close_units` over the same vocabulary - so the lightbulb never proposes
     a unit the message did not name, and a unit nothing is close to is offered no rename at
     all. A plan that is refused is not offered.
+
+    Planned in each project asked whose vocabulary does not list the unit, and offered once. The
+    unit is added where every one of them adds it with the same edit, and nowhere where they add
+    it to different files: an image holding both would list it twice. It is renamed as Rename
+    Symbol renames it (:attr:`Elsewhere.renamed`), over every project the rename reaches, onto
+    each spelling one of them suggests.
     """
     unknown = [entry for entry in reported if entry.get("code") in UNKNOWN_UNIT]
     subject = renameable_at(document, pointer)
-    if project is None or not unknown or subject is None or subject[0] != "unit":
+    if not unknown or subject is None or subject[0] != "unit":
         return []
     unit = subject[1]
-    if unit in built.vocabulary:
-        # The finding is older than the vocabulary, which lists the unit now.
-        return []
-    plans = [(f"Add '{unit}' to the vocabulary", partial(add_unit, built, project, unit, cache))]
-    # A rename's pointers are the disk's, and made in a buffer that has moved one of them it
-    # would respell whatever sits there now: none is offered until that buffer is saved.
-    if not unit_drift(built, unit, cache):
-        plans.extend(
-            (
-                f"Rename '{unit}' to '{close}' everywhere",
-                partial(rename_unit, built, project, unit, close, cache),
-            )
-            for close in close_units(unit, sorted(built.vocabulary))
-        )
-    offered: list[dict[str, Any]] = []
-    for title, plan in plans:
+    # A vocabulary that lists the unit now is newer than the finding.
+    planning = [
+        (each.built, each.project)
+        for each in asked
+        if each.project is not None and unit not in each.built.vocabulary
+    ]
+    added: list[dict[str, list[dict[str, Any]]]] = []
+    for built, project in planning:
         # Refused, or not an edit the engine can make in the buffer as it stands - a units file
         # caught halfway through an edit: either way there is nothing to offer.
         with contextlib.suppress(UnitRefusalError, EditError):
-            changes = text_edits(plan(), cache)
-            offered.append(
-                {
-                    "title": title,
-                    "kind": QUICK_FIX,
-                    "edit": {"changes": changes},
-                    "diagnostics": unknown,
-                }
-            )
-    return offered
+            added.append(text_edits(add_unit(built, project, unit, cache), cache))
+    plans: list[tuple[str, dict[str, list[dict[str, Any]]] | None]] = []
+    if added and all(changes == added[0] for changes in added):
+        plans.append((f"Add '{unit}' to the vocabulary", added[0]))
+    suggested = dict.fromkeys(
+        close for built, _ in planning for close in close_units(unit, sorted(built.vocabulary))
+    )
+    plans.extend(
+        (f"Rename '{unit}' to '{close}' everywhere", elsewhere.renamed(unit, close))
+        for close in suggested
+    )
+    return [
+        {"title": title, "kind": QUICK_FIX, "edit": {"changes": changes}, "diagnostics": unknown}
+        for title, changes in plans
+        if changes is not None
+    ]
 
 
 def interface_keys(members: Any) -> list[str]:
@@ -755,6 +1008,12 @@ class Reconciliation:
     prefers its first fix only when that one leads (:func:`_on_the_declaration`); the page keeps
     no other (``owned=True``)."""
 
+    spreads: bool = False
+    """Whether this sends the declaration's own answer out to the others (:func:`_propagate`,
+    :func:`_remove_elsewhere`): a settlement :func:`settle` makes of one value, which the editor
+    makes again in every project it reaches (:func:`_reached`) - where the others take one
+    answer into this declaration alone."""
+
 
 def _protocol_action(reconciliation: Reconciliation, cache: dict[Path, Document]) -> dict[str, Any]:
     """A decision as the protocol carries it: a titled quick fix over one or more files, whose
@@ -877,9 +1136,11 @@ def _missing(
     only file offering a fix was one of the files that was already right.
 
     Keys this declaration already has are left out, or every shared key would be considered
-    twice and offered twice.
+    twice and offered twice. What each declaration states is read through the type it names
+    (:func:`_keys_stated`): a reader stating no unit, beside a writer whose type states one, was
+    offered nothing at either end, while the check filed the two disagreeing.
     """
-    mine = set(interface_keys(document.value_at(definition)))
+    mine = set(_keys_stated(built, document, definition, cache))
     absent: set[str] = set()
     for site in built.declarations.get(name, ()):
         if site.path == path and site.pointer == definition:
@@ -887,9 +1148,29 @@ def _missing(
         target = _at_site(site, name, cache)
         if target is None:
             continue
-        absent.update(interface_keys(target.value_at(site.pointer)))
+        absent.update(_keys_stated(built, target, site.pointer, cache))
     # A key this declaration may defer on is not missing from it.
     return sorted(absent - mine - DEFERRED_KEYS)
+
+
+def _keys_stated(
+    built: Index, document: Document, definition: str, cache: dict[Path, Document]
+) -> list[str]:
+    """The propagatable keys the declaration at ``definition`` states, as the checks read it: the
+    ones its file states, in the order it writes them, and then the ones a declared type it names
+    states for it (:func:`_fixed_by`), in the order :data:`FIXED_BY_A_TYPE` lists them.
+
+    A type whose entry has moved states nothing anybody can read, and adds no key.
+    """
+    stated = interface_keys(document.value_at(definition))
+    typename = _type_named(document, definition)
+    if typename is not None:
+        stated.extend(
+            key
+            for key in FIXED_BY_A_TYPE
+            if key not in stated and isinstance(_fixed_by(built, typename, key, cache), str)
+        )
+    return stated
 
 
 def _adopt(
@@ -1071,23 +1352,17 @@ def _remove_elsewhere(
     where a type it names states the key for it, which is a declaration that cannot lose it
     either and is exactly how a removal that settles nothing used to be offered.
 
-    So nothing is offered while a declaration naming a type that states the key is among those
-    the settlement cannot change, this one or another: that declaration goes on stating the key
-    whatever the rest lose, and the silence spread to them is not one it shares.
+    So the editor offers none while a declaration naming a type that states the key is among
+    those the settlement cannot change, this one or another, in any project the removal reaches
+    (:func:`_spread`): that declaration goes on stating the key whatever the rest lose.
     """
     if key in DEFERRED_KEYS or document.raw_at(f"{here.pointer}.{key}") is not None:
         return None
     settlement = settle(built, name, key, None, cache)
-    if any(unsettled.reason == "type" for unsettled in settlement.unsettled):
-        return None
-    elsewhere = len(settlement.changes)
-    if elsewhere == 0:
+    if not settlement.changes:
         return None
     return Reconciliation(
-        f"Remove the {key} from {elsewhere} other declaration"
-        f"{'s' if elsewhere != 1 else ''} of '{name}'",
-        key,
-        settlement,
+        _sent_out(key, name, None, len(settlement.changes)), key, settlement, spreads=True
     )
 
 
@@ -1118,20 +1393,22 @@ def _propagate(
 
     Which declarations it reaches is :func:`settle`'s to say, as it is for ``ddd gui``. One that
     cannot take the value is left out of the action rather than refusing it: the others can
-    still be reconciled from here, and an editor offers what it can.
+    still be reconciled from here, and an editor offers what it can - but for one whose buffer
+    has moved, which withholds the action in the editor (:func:`_spread`).
+
+    What this declaration sends out is what it resolves to (:func:`_resolved`): a writer naming
+    a declared type sends the unit the type states, though its file states none, where it was
+    offered nothing to send while the check filed its reader's other unit.
     """
-    raw = document.raw_at(f"{here.pointer}.{key}")
-    if raw is None:
+    raw = _resolved(built, here, document, key, cache)
+    if not isinstance(raw, str):
+        # Nothing stated, or a type whose entry has moved: no value to send out either way.
         return None
     settlement = settle(built, name, key, raw, cache)
-    elsewhere = len(settlement.changes)
-    if elsewhere == 0:
+    if not settlement.changes:
         return None
     return Reconciliation(
-        f"Apply this {key} to {elsewhere} other declaration"
-        f"{'s' if elsewhere != 1 else ''} of '{name}'",
-        key,
-        settlement,
+        _sent_out(key, name, raw, len(settlement.changes)), key, settlement, spreads=True
     )
 
 

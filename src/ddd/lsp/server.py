@@ -32,6 +32,7 @@ to a buffer with one extra line rewrote an unrelated line.
 
 from __future__ import annotations
 
+import bisect
 import contextlib
 import io
 import queue
@@ -40,6 +41,8 @@ import sys
 import threading
 import traceback
 from collections.abc import Sequence
+from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import IO, Any, Final, Protocol
 from urllib.parse import urlparse
@@ -50,7 +53,7 @@ from ddd.build_info import BuildInfo
 from ddd.ir import DataDictionary
 from ddd.lsp.diagnostics import collect
 from ddd.lsp.discovery import build_files, load_builds
-from ddd.lsp.edits import QUICK_FIX, UNKNOWN_UNIT, actions
+from ddd.lsp.edits import QUICK_FIX, UNKNOWN_UNIT, Asked, Elsewhere, actions_across
 from ddd.lsp.hover import describe, describe_constant, describe_external, describe_type, resolve
 from ddd.lsp.navigation import (
     Descriptions,
@@ -241,6 +244,32 @@ def _reported(context: dict[str, Any]) -> list[dict[str, Any]]:
     return reported
 
 
+type _Span = tuple[tuple[int, int], tuple[int, int]]
+"""Where a text edit lies: its start and its end, each a line and a character."""
+
+
+def _span(edit: dict[str, Any]) -> _Span:
+    start, end = edit["range"]["start"], edit["range"]["end"]
+    return (start["line"], start["character"]), (end["line"], end["character"])
+
+
+def _meet(one: _Span, other: _Span) -> bool:
+    """Whether two edits of one text cannot both be applied, as a client applies a file's edits
+    all at once: where they overlap, or insert at one place, which of the two comes first nothing
+    says."""
+    return (one[0] < other[1] and other[0] < one[1]) or one[0] == one[1] == other[0] == other[1]
+
+
+@dataclass(frozen=True, slots=True)
+class _Made:
+    """One edit a rename has gathered for a file (:meth:`Server._gather`)."""
+
+    span: _Span
+    text: str
+    by: Loaded
+    """The project whose plan made it."""
+
+
 type _Read = dict[str, Any] | Exception | None
 """One thing the reading thread took off the stream (:meth:`Server.run`): a message; a frame
 holding none, a :class:`~ddd.lsp.protocol.MessageError` to answer; what ended the reading, broken
@@ -306,6 +335,15 @@ class Server:
         from disk at open and at save and nowhere else, which is what its ``textDocumentSync``
         tells the client. Between two saves the answer cannot have changed, so the second
         question is entitled to the first one's answer; :meth:`_forget` is where that stops.
+        """
+
+        self._described = Descriptions()
+        """Every description read since :meth:`_forget`, by the path it resolves to, as each
+        question reads them (:meth:`_descriptions`): kept for the reason the projects are, one
+        level down. The quick fixes reach the projects holding each file they write, as a rename
+        does (:meth:`_holding`), and a client asks for them at every move of the caret: read
+        anew for each request, every build's description and every candidate above those files
+        was read again at each move.
         """
 
         self._dictionaries: dict[Path, DataDictionary | None] = {}
@@ -806,7 +844,7 @@ class Server:
         found = self._projects.get(document)
         if found is None:
             if descriptions is None:
-                descriptions = Descriptions()
+                descriptions = self._descriptions()
             projects = workspaces(
                 self._builds_now(), document, self._root_for(document), descriptions
             )
@@ -814,9 +852,9 @@ class Server:
         return found
 
     def _reach(self, document: Path) -> Reach:
-        """Every project a rename started from ``document`` reaches, each description read at
-        most once for it."""
-        descriptions = Descriptions()
+        """Every project a rename, or a quick fix, started from ``document`` reaches, each
+        description read at most once for it - and once since :meth:`_forget`, whatever asked."""
+        descriptions = self._descriptions()
         start, failed = self._searched(document, descriptions)
         descriptions.failed.update(failed)
         return Reach(self._builds_now(), start, self._root_for, descriptions)
@@ -865,7 +903,22 @@ class Server:
         """
         self._builds = None
         self._projects.clear()
+        self._described = Descriptions()
         self._dictionaries.clear()
+
+    def _descriptions(self) -> Descriptions:
+        """What the next question reads descriptions through: every description read since
+        :meth:`_forget`, kept (:attr:`_described`). One a plugin stopped is read again, so that
+        why it could not be read is the question's own (:attr:`~ddd.lsp.navigation.Reach.unread`):
+        a rename is refused naming only a description its own search met.
+        """
+        kept = self._described
+        for stopped in kept.failed:
+            # Read, or restored from the search that read it (:meth:`_reach`), which a question
+            # since may have read again already.
+            kept.pop(stopped, None)
+        kept.failed.clear()
+        return kept
 
     def refresh(self, *documents: Path) -> None:
         """Re-run the checks over these documents and publish what they say about every file
@@ -1129,7 +1182,7 @@ class Server:
         into two images is rewritten for both, so the reader of the image the document is not
         in is rewritten too. Every one of them is asked each refusal before anything is
         answered, and the refusal one of them gives names its image where the document is not
-        in it (:meth:`_refuse`).
+        in it (:meth:`_in_image`).
 
         A refusal is an error rather than an empty edit: an editor shows the message, where an
         empty edit looks like a rename that quietly did nothing. A drifted buffer is refused
@@ -1138,12 +1191,12 @@ class Server:
         prevent, and it would happen silently, because the client asked for one rename, not a
         rename of everything except what it could not reach.
 
-        A unit is renamed by :meth:`_rename_unit` instead: its rename is a plan that rewrites
+        A unit is renamed by :meth:`_unit_rename` instead: its rename is a plan that rewrites
         the vocabulary as well, and merges two spellings where a variable's would collide.
 
         Before any of that, a description the search could not read is named
-        (:meth:`_refused_unread`), and where no project is known only a local's rename goes on
-        (:meth:`_refused_alone`).
+        (:meth:`_unread_refusal`), and where no project is known only a local's rename goes on
+        (:meth:`_alone_refusal`).
         """
         path = self._document(message)
         cache = self._cache(path)
@@ -1153,48 +1206,63 @@ class Server:
         wanted = _field(params.get("newName"), str, "params.newName")
         subject = renameable_at(document, pointer)
         if subject is not None and subject[0] == "unit":
-            self._rename_unit(request_id, path, subject[1], wanted, cache)
-            return
-        changes: dict[str, list[dict[str, Any]]] = {}
-        seen: set[tuple[str, int, int]] = set()
-        drifted: set[Path] = set()
-        reach = self._reach(path)
-        if self._refused_unread(request_id, reach) or self._refused_alone(
-            request_id, path, reach, subject
-        ):
-            return
-        for loaded in reach:
-            unreadable = self._unreadable(loaded)
-            if unreadable is not None:
-                self._refuse(request_id, reach, loaded, unreadable)
-                return
-            built = index(loaded.workspace)
-            refused = rename_problem(built, wanted, subject[0] if subject else "variable")
-            if refused is not None:
-                self._refuse(request_id, reach, loaded, refused)
-                return
-            edited = rename_edits(built, document, pointer, wanted, cache)
-            drifted.update(edited.drifted)
-            self._gather(changes, seen, edited.changes)
-            reach.touch([*map(uri_to_path, edited.changes), *edited.drifted])
-        if self._refused_unread(request_id, reach) or self._refused_unseen(request_id, reach):
-            return
-        if drifted:
-            refusal = self._drifted(drifted, "moved a declaration")
-            write_message(self.writer, error(request_id, REQUEST_FAILED, refusal))
-            return
-        if self._refused_empty(request_id, changes):
+            planned = self._unit_rename(path, subject[1], wanted, cache)
+        else:
+            planned = self._name_rename(path, document, pointer, wanted, subject, cache)
+        if isinstance(planned, str):
+            write_message(self.writer, error(request_id, REQUEST_FAILED, planned))
             return
         # The edits rewrite the very files every answer above was read out of, so anything
         # kept from before them now describes the past.
         self._forget()
-        write_message(self.writer, response(request_id, self._workspace_edit(changes, "Rename")))
+        write_message(self.writer, response(request_id, self._workspace_edit(planned, "Rename")))
 
-    def _rename_unit(
-        self, request_id: Any, path: Path, old: str, new: str, cache: dict[Path, Document]
-    ) -> None:
-        """Respell a unit everywhere each project the rename reaches states or lists it, or say
-        why it cannot be.
+    def _name_rename(
+        self,
+        path: Path,
+        document: Document,
+        pointer: str,
+        wanted: str,
+        subject: tuple[str, str] | None,
+        cache: dict[Path, Document],
+    ) -> dict[str, list[dict[str, Any]]] | str:
+        """The edits of a rename of anything but a unit, by file uri, over every project it
+        reaches, or why it is refused (:meth:`_answer_rename`)."""
+        changes: dict[str, list[dict[str, Any]]] = {}
+        made: dict[str, list[_Made]] = {}
+        drifted: set[Path] = set()
+        reach = self._reach(path)
+        refused = self._unread_refusal(reach) or self._alone_refusal(path, reach, subject)
+        if refused is not None:
+            return refused
+        for loaded in reach:
+            unreadable = self._unreadable(loaded)
+            if unreadable is not None:
+                return self._in_image(reach, loaded, unreadable)
+            built = index(loaded.workspace)
+            problem = rename_problem(built, wanted, subject[0] if subject else "variable")
+            if problem is not None:
+                return self._in_image(reach, loaded, problem)
+            edited = rename_edits(built, document, pointer, wanted, cache)
+            drifted.update(edited.drifted)
+            # A name is written alike wherever every project reads one file alike, so two
+            # projects' edits of it never differ - a unit's plans can (:meth:`_unit_rename`).
+            clash = self._gather(changes, made, edited.changes, loaded)
+            assert clash is None, clash
+            reach.touch([*map(uri_to_path, edited.changes), *edited.drifted])
+        refused = self._unread_refusal(reach) or self._unseen_refusal(reach)
+        if refused is not None:
+            return refused
+        if drifted:
+            return self._drifted(drifted, "moved a declaration")
+        return self._empty_refusal(changes) or changes
+
+    def _unit_rename(
+        self, path: Path, old: str, new: str, cache: dict[Path, Document]
+    ) -> dict[str, list[dict[str, Any]]] | str:
+        """The edits respelling a unit everywhere each project the rename reaches states or lists
+        it, by file uri, or why it is refused: Rename Symbol's, and the quick fix's that respells
+        an unknown unit (:func:`~ddd.lsp.edits.actions_across`), which is the same rename.
 
         The projects reached are a variable's (:meth:`_answer_rename`): the document's, and
         every project holding a file their plans write, until none is new. A project whose
@@ -1210,15 +1278,20 @@ class Server:
         buffer that no longer holds the unit where the index found it refuses the rename before
         the plan is made: the plan's pointers are the disk's, and made in that buffer they would
         respell whatever sits there now.
+
+        Two projects planning one place of a file they share differently refuse it, both named
+        (:meth:`_two_ways`): two images sharing a units file, of which one lists the unit renamed
+        onto and the other does not, take the entry out in one plan and respell it in the other.
+        Sent as one, the plan reached second was dropped there, or the two overlapped.
         """
         changes: dict[str, list[dict[str, Any]]] = {}
-        seen: set[tuple[str, int, int]] = set()
+        made: dict[str, list[_Made]] = {}
         drifted: set[Path] = set()
+        listing: set[Path] = set()
         reach = self._reach(path)
-        if self._refused_unread(request_id, reach) or self._refused_alone(
-            request_id, path, reach, ("unit", old)
-        ):
-            return
+        refused = self._unread_refusal(reach) or self._alone_refusal(path, reach, ("unit", old))
+        if refused is not None:
+            return refused
         for loaded in reach:
             built = index(loaded.workspace)
             moved = unit_drift(built, old, cache)
@@ -1228,57 +1301,76 @@ class Server:
             project = unit_project(loaded.path, loaded.unloaded, cache)
             try:
                 plan = rename_unit(built, project, old, new, cache)
-            except UnitRefusalError as refused:
-                self._refuse(request_id, reach, loaded, refused.message)
-                return
+            except UnitRefusalError as unplanned:
+                return self._in_image(reach, loaded, unplanned.message)
+            if new in built.vocabulary:
+                listing.add(loaded.path.resolve())
             edits = text_edits(plan, cache)
-            self._gather(changes, seen, edits)
+            clash = self._gather(changes, made, edits, loaded)
+            if clash is not None:
+                file, first = clash
+                return self._two_ways(reach, file, (first, loaded), listing, old, new)
             reach.touch(map(uri_to_path, edits))
-        if self._refused_unread(request_id, reach) or self._refused_unseen(request_id, reach):
-            return
+        refused = self._unread_refusal(reach) or self._unseen_refusal(reach)
+        if refused is not None:
+            return refused
         if drifted:
-            refusal = self._drifted(drifted, "moved or respelled a unit")
-            write_message(self.writer, error(request_id, REQUEST_FAILED, refusal))
-            return
-        if self._refused_empty(request_id, changes):
-            return
-        self._forget()
-        write_message(self.writer, response(request_id, self._workspace_edit(changes, "Rename")))
+            return self._drifted(drifted, "moved or respelled a unit")
+        return self._empty_refusal(changes) or changes
 
-    def _refuse(self, request_id: Any, reach: Reach, loaded: Loaded, refusal: str) -> None:
-        """Answer a rename with one of its projects' refusals, naming the image it comes from
-        where that is not the reader's own: asked from image one, a name "already declared by
-        this project" in image two sends the reader looking in the wrong one."""
+    @staticmethod
+    def _in_image(reach: Reach, loaded: Loaded, refusal: str) -> str:
+        """One of a rename's projects' refusals, naming the image it comes from where that is not
+        the reader's own: asked from image one, a name "already declared by this project" in
+        image two sends the reader looking in the wrong one."""
         image = reach.image(loaded)
         if image is not None:
             refusal = f"in {image}, which this rename reaches too: {refusal}"
-        write_message(self.writer, error(request_id, REQUEST_FAILED, refusal))
+        return refusal
 
-    def _refused_unread(self, request_id: Any, reach: Reach) -> bool:
-        """Refuse a rename that meets a description it could not read, and say whether it did.
+    @staticmethod
+    def _two_ways(
+        reach: Reach, file: str, both: tuple[Loaded, Loaded], listing: set[Path], old: str, new: str
+    ) -> str:
+        """Why a unit's rename is refused where two projects it reaches plan one place of a file
+        differently, each named as a refusal names an image
+        (:meth:`~ddd.lsp.navigation.Reach.described`).
+
+        Two plans of a unit differ by the vocabulary alone: one of the two projects lists the unit
+        renamed onto - in ``listing``, by description - and merges the old spelling into it, and
+        the other respells the old one, at the entry of the units file the two share."""
+        merging, respelling = sorted(both, key=lambda each: each.path.resolve() not in listing)
+        return (
+            f"{reach.described(merging)} lists '{new}' and {reach.described(respelling)} does not, "
+            f"so this rename would rewrite {uri_to_path(file).name} two ways, merging '{old}' into "
+            f"'{new}' for the one and respelling it for the other: list '{new}' in both or in "
+            "neither, and rename again"
+        )
+
+    def _unread_refusal(self, reach: Reach) -> str | None:
+        """Why a rename that meets a description it could not read is refused, or nothing where
+        it met none.
 
         Asked before the first project is looked at, for the descriptions the search for the
         document's projects met, and again once the reach is complete, for those the closure met:
         a description a plugin stops may hold the file the rename rewrites, and the rename would
         then rewrite one image and leave the other naming what is gone. The component alone is
         what the search answers where its project cannot be read, so it is asked before
-        :meth:`_refused_alone`, which would blame the wrong thing.
+        :meth:`_alone_refusal`, which would blame the wrong thing.
         """
         if not reach.unread:
-            return False
+            return None
         description, reason = min(reach.unread.items())
-        refusal = (
+        return (
             f"{reach.named(description)} could not be read, so this rename cannot tell what it "
             f"reaches: {reason}"
         )
-        write_message(self.writer, error(request_id, REQUEST_FAILED, refusal))
-        return True
 
-    def _refused_alone(
-        self, request_id: Any, path: Path, reach: Reach, subject: tuple[str, str] | None
-    ) -> bool:
-        """Refuse a rename of anything but a local while no project is known for the document,
-        and say whether it did.
+    def _alone_refusal(
+        self, path: Path, reach: Reach, subject: tuple[str, str] | None
+    ) -> str | None:
+        """Why a rename of anything but a local is refused while no project is known for the
+        document, or nothing where it may go on.
 
         A component read on its own has no writer for its inputs and no reader for its outputs,
         and no type, constant, section, raster or unit but its own: a rename of any of them would
@@ -1286,20 +1378,18 @@ class Server:
         nothing. A local is spelled where it is declared and nowhere else, so its rename is whole.
         """
         if subject is None or not is_alone(path, reach.projects, self._builds_now()):
-            return False
+            return None
         if subject[0] == "variable" and is_local(index(reach.projects[0].workspace), subject[1]):
-            return False
-        refusal = (
+            return None
+        return (
             f"no project is known for {path.name}: only a local variable can be renamed without "
             "one, because a rename has to reach every file that spells the name - put a project "
             "file above it that includes it, or configure the build (ddd-build.json)"
         )
-        write_message(self.writer, error(request_id, REQUEST_FAILED, refusal))
-        return True
 
-    def _refused_unseen(self, request_id: Any, reach: Reach) -> bool:
-        """Refuse a rename while an open document of a project it reaches holds
-        what its file on disk does not, and say whether it did.
+    def _unseen_refusal(self, reach: Reach) -> str | None:
+        """Why a rename is refused while an open document of a project it reaches holds what its
+        file on disk does not, or nothing where none does.
 
         A rename is planned from the disk, whatever the buffers hold: what a buffer added -
         a mention typed and not saved - is invisible to it, so it is left naming what the rest
@@ -1317,47 +1407,61 @@ class Server:
             if path in sources and differs_from_disk(path, text)
         }
         if not differing:
-            return False
+            return None
         names = ", ".join(sorted(path.name for path in differing))
         verb, them = ("has", "it") if len(differing) == 1 else ("have", "them")
-        refusal = (
+        return (
             f"{names} {verb} unsaved changes this rename would not see; save {them} and rename "
             "again"
         )
-        write_message(self.writer, error(request_id, REQUEST_FAILED, refusal))
-        return True
 
-    def _refused_empty(self, request_id: Any, changes: dict[str, Any]) -> bool:
-        """Refuse a rename that rewrites nothing, and say whether it did.
+    @staticmethod
+    def _empty_refusal(changes: dict[str, Any]) -> str | None:
+        """Why a rename that rewrites nothing is refused, or nothing where it rewrites a file.
 
         An empty answer is applied by a client without a word, so the box closes on a rename
         that did nothing: the reader is told instead that no saved file spells the name.
         """
         if changes:
-            return False
-        refusal = "nothing on disk spells that name, so this rename would change nothing"
-        write_message(self.writer, error(request_id, REQUEST_FAILED, refusal))
-        return True
+            return None
+        return "nothing on disk spells that name, so this rename would change nothing"
 
     @staticmethod
     def _gather(
         changes: dict[str, list[dict[str, Any]]],
-        seen: set[tuple[str, int, int]],
+        made: dict[str, list[_Made]],
         found: dict[str, list[dict[str, Any]]],
-    ) -> None:
-        """Add one project's edits to a rename's, each place once.
+        origin: Loaded,
+    ) -> tuple[str, Loaded] | None:
+        """Add one project's edits to a rename's, each place once; or, where one of them meets an
+        edit another project made of that file and is not that edit, the file and the project
+        that made the other.
 
         A component linked into two images is in two projects, and both of them mention the
         same characters. Sending that edit twice is not a duplicate an editor tolerates: it is
-        two overlapping rewrites of one range.
+        two overlapping rewrites of one range. Nor is keeping one of two edits that differ at one
+        place, which an edit was told apart from another by its start alone: of two images'
+        plans that differ there, the one reached second was dropped where the two began at one
+        character, and the two overlapped where they did not.
+
+        ``made`` holds each file's edits gathered so far, by where they lie, with the project
+        that made each: a client applies a file's edits all at once, so an edit meeting none of
+        its neighbours there meets none of them.
         """
         for uri, edits in found.items():
+            kept = made.setdefault(uri, [])
             for edit in edits:
-                start = edit["range"]["start"]
-                where = (uri, start["line"], start["character"])
-                if where not in seen:
-                    seen.add(where)
-                    changes.setdefault(uri, []).append(edit)
+                span = _span(edit)
+                at = bisect.bisect_left(kept, span, key=lambda each: each.span)
+                beside = kept[max(at - 1, 0) : at + 1]
+                if any(each.span == span and each.text == edit["newText"] for each in beside):
+                    continue
+                meeting = next((each for each in beside if _meet(each.span, span)), None)
+                if meeting is not None:
+                    return uri, meeting.by
+                kept.insert(at, _Made(span, edit["newText"], origin))
+                changes.setdefault(uri, []).append(edit)
+        return None
 
     @staticmethod
     def _drifted(drifted: set[Path], changed: str) -> str:
@@ -1375,8 +1479,12 @@ class Server:
 
         The range a client sends covers a selection rather than a point, so the start of it is
         what decides: an author asking for a fix has put the caret on the thing they mean.
-        Nothing is offered while a file of the document's projects did not load
-        (:meth:`_withheld`).
+
+        Asked of every project holding the document, each fix once, and of every project holding
+        a file a fix writes there, until none is new (:func:`~ddd.lsp.edits.actions_across`):
+        the closure a rename reaches by (:meth:`_holding`), and a unit's rename planned as Rename
+        Symbol plans it (:meth:`_unit_rename`). Nothing is offered while a file of a project the
+        fixes reach did not load (:meth:`_withheld`).
         """
         path = self._document(message)
         cache = self._cache(path)
@@ -1388,18 +1496,63 @@ class Server:
         # reads every file the description includes. A client asks for actions at every move
         # of the caret, so they are looked for only when it sent a finding about a unit.
         about_units = any(entry.get("code") in UNKNOWN_UNIT for entry in reported)
-        offered: list[dict[str, Any]] = []
-        projects = self._projects_of(path)
-        if self._withheld(projects):
-            return offered
-        for loaded in projects:
-            project = unit_project(loaded.path, loaded.unloaded, cache) if about_units else None
-            offered.extend(
-                actions(index(loaded.workspace), path, document, pointer, cache, reported, project)
+        reach = self._reach(path)
+        if self._withheld(reach.projects):
+            return []
+        asked = {
+            loaded.path.resolve(): Asked(
+                loaded.path.resolve(),
+                index(loaded.workspace),
+                unit_project(loaded.path, loaded.unloaded, cache) if about_units else None,
             )
+            for loaded in reach.projects
+        }
+        elsewhere = Elsewhere(
+            partial(self._holding, reach, asked, set(reach.unread)),
+            partial(self._renamed, path, cache),
+        )
+        offered = actions_across(
+            list(asked.values()), path, document, pointer, cache, reported, elsewhere
+        )
+        if offered is None:
+            return []
         for action in offered:
             action["edit"] = self._workspace_edit(action["edit"]["changes"], action["title"])
         return offered
+
+    def _holding(
+        self, reach: Reach, asked: dict[Path, Asked], unread: set[Path], files: set[Path]
+    ) -> list[Asked] | None:
+        """Every project of ``reach`` holding one of ``files``, those holding them that it reaches
+        only now included, each indexed once; or ``None`` where one reached now may not be
+        edited, which withholds every fix.
+
+        A project reached now may not be edited where a file of it did not load, as a project
+        holding the document may not (:meth:`_withheld`), or where the closure met a description
+        it could not read, which may hold one of the files, as a rename is refused for it
+        (:meth:`_unread_refusal`) - one the search for the document's own projects met is the
+        search's, and stops none of its fixes, as ever.
+        """
+        before = len(reach.projects)
+        reach.touch(files)
+        if self._withheld(reach.projects[before:]) or not unread.issuperset(reach.unread):
+            return None
+        for loaded in reach.projects[before:]:
+            key = loaded.path.resolve()
+            asked[key] = Asked(key, index(loaded.workspace))
+        return [
+            asked[loaded.path.resolve()]
+            for loaded in reach.projects
+            if not files.isdisjoint(loaded.workspace.sources())
+        ]
+
+    def _renamed(
+        self, path: Path, cache: dict[Path, Document], unit: str, new: str
+    ) -> dict[str, list[dict[str, Any]]] | None:
+        """``unit`` respelled ``new`` everywhere its rename from ``path`` reaches, as Rename
+        Symbol respells it (:meth:`_unit_rename`), or ``None`` where that rename is refused."""
+        planned = self._unit_rename(path, unit, new, cache)
+        return None if isinstance(planned, str) else planned
 
     def _withheld(self, projects: Sequence[Loaded]) -> bool:
         """Whether the quick fixes are withheld because a file of one of these projects did not

@@ -212,7 +212,9 @@ rather than re-serialised, so `{ "kind": "linear", "factor": 0.25 }` arrives loo
 itself; a declaration that never mentioned the key gets it inserted, on one line or its own
 depending on how that file is written.  Nothing is offered when everybody already agrees - and
 `limits` nobody else states are agreement, since a declaration that leaves them out defers to
-the one that states them, exactly as the checker reads it.
+the one that states them, exactly as the checker reads it.  A component linked into two images
+is offered each fix once, and a value sent out from it reaches the declarations of every image
+holding a file the fix writes.
 
 **Rename** (`F2`) on a variable name rewrites it in every component that declares it and in
 every `axis`, `x_axis`, `y_axis` or `input` that names it; on a declared type, in its
@@ -227,12 +229,12 @@ reserves, one that is not a usable identifier, or one a project it reaches alrea
 is refused with the reason before a single file is touched - a rename writes into several at
 once, and an unusable name is otherwise noticed a build later.  Free text is left alone: a
 `description` that mentions the old name still mentions it, because rewriting prose by
-substring is how a rename tool starts corrupting files.  A rename and the quick fixes are
-refused outright, naming the file, while a document has unsaved changes that moved a
-declaration they would touch, and while a file of the project did not load a rename is refused
-the same way and the quick fixes offer nothing, the server's log saying why once: the project
-the edit would be computed from is not the project on disk, and rewriting the rest of it around
-the gap is exactly the half-done rename the refusal exists to prevent.  A rename is refused
+substring is how a rename tool starts corrupting files.  A rename is refused outright, naming
+the file, while a document has unsaved changes that moved a declaration it would touch, and a
+quick fix that would touch one is not offered; while a file of the project did not load a rename
+is refused the same way and the quick fixes offer nothing, the server's log saying why once: the
+project the edit would be computed from is not the project on disk, and rewriting the rest of it
+around the gap is exactly the half-done rename the refusal exists to prevent.  A rename is refused
 too while an open document of a project it reaches holds what its file on disk does not,
 naming it, and when it would rewrite nothing.  It is refused, saying that no project is known,
 for anything but a local variable while none is: a component no record claims, that no

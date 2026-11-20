@@ -1794,8 +1794,8 @@ class TestWhatARenameReaches:
                 "and one a project it reaches already declares as a section: the format permits "
                 "two",
                 "or one a project it reaches already declares as a raster, is refused",
-                "It is refused, naming the file, only while a file of a project it reaches does "
-                "not load at all - ",
+                "It is refused, naming the file, while a file of a project it reaches does not "
+                "load at all, and for no lesser error of a file - ",
                 "A rename reaches every project that holds a file it rewrites: the projects of the "
                 f"file it starts from, {REACHED}, as *Which project a file belongs to* below says "
                 f"- {FOUND}variable it writes is then renamed in the readers of both images, "
@@ -2000,8 +2000,6 @@ class TestWhatTheQuickFixesAnswerWhileAFileDidNotLoad:
         "README.md": (
             README,
             (
-                "A rename and the quick fixes are refused outright, naming the file, while a "
-                "document has unsaved changes that moved a declaration they would touch, and "
                 "while a file of the project did not load a rename is refused the same way and "
                 "the quick fixes offer nothing, the server's log saying why once:",
             ),
@@ -2073,6 +2071,114 @@ class TestWhatADefectOfTheServerCosts:
         said = flattened(text)
         for phrase in phrases:
             assert phrase in said, f"{page} no longer says: {phrase!r}"
+
+
+class TestAQuickFixUnderAMovedBufferAndAcrossImages:
+    """10:M2 and 10:M3. A quick fix is not offered, rather than refused or performed in part,
+    while a buffer has moved a declaration its edit would touch; it is offered once over every
+    image holding the document, a value it sends out reaching every image holding a file it writes;
+    and a unit's rename is refused naming both images where two would rewrite a units file two
+    ways. SPEC 7.2, the editor page and the README say so."""
+
+    MOVED: ClassVar[str] = (
+        "while an open document has unsaved changes that moved a declaration the edit would "
+        "touch, and while a file of the project reported an error that stopped it being read."
+    )
+    FIRST: ClassVar[str] = (
+        "In the first state a quick fix is not offered rather than offered for the declarations "
+        "the buffer left in place, and nothing is said: the buffer is the reader's own, and "
+        "saving it brings the fix back."
+    )
+    ACROSS: ClassVar[str] = (
+        "A quick fix is offered once however many projects holding the document offer it, and a "
+        "fix sending the declaration's own answer out - its value applied to the other "
+        "declarations of the object, or a key taken out of them - reaches the declarations of "
+        "each of those projects, and of every project holding a file it writes, until none is "
+        "new, as a rename does."
+    )
+    NEITHER: ClassVar[str] = (
+        "Where two of them offer one fix under one title with different edits, it is not offered; "
+        "and every fix is withheld where one reaches a project holding a file that did not load, "
+        "or a description, beyond the document's own projects, that cannot be read."
+    )
+    TWO_WAYS: ClassVar[str] = (
+        "A unit's rename is refused as well, naming both, where two projects it reaches would "
+        "rewrite a units file they share two ways: the one listing the unit renamed onto merges "
+        "the old spelling into it, and the other respells it."
+    )
+    PHRASES: ClassVar[dict[str, tuple[str, tuple[str, ...]]]] = {
+        "SPEC.md": (
+            SPEC,
+            (
+                "A rename is also refused, naming the file, and a quick fix is not offered, in two "
+                "states where the project the edit would be computed from is not the project on "
+                f"disk: {MOVED} Neither is performed in part. {FIRST} In the second state a "
+                "request for the quick fixes",
+                f"{ACROSS} {NEITHER}",
+                "A fix renaming a unit is the rename of that unit (`F2`), over every project it "
+                "reaches, and is not offered where that rename is refused.",
+                f"wherever it is. {TWO_WAYS}",
+            ),
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            (
+                "A variable's, a type's, a constant's or a section's rename is also refused - "
+                "naming the file, and before anything is written - and a quick fix below is not "
+                "offered, while the project on disk is not the project the edit would be computed "
+                f"from: {MOVED}",
+                f"exactly that key. {FIRST} In the second state",
+                "A component linked into two images is in two projects, and a fix the two offer "
+                "alike is offered once. A fix sending this declaration's value out, or taking a "
+                "key out of the others, reaches the declarations of both images, and of every "
+                "image holding a file it writes, until none is new, as a rename does. Where two "
+                "images offer one fix under one title with different edits - two values one type "
+                "states in two images, say - neither is offered; and every fix is withheld where "
+                "one reaches an image holding a file that did not load, or a description, beyond "
+                "the document's own images, that cannot be read.",
+                "The rename is the one ``F2`` makes from the unit, over every image it reaches, "
+                "and is not offered where that rename is refused; the unit is added only where "
+                "every image planning it adds it to the same file, since an image holding both "
+                "files would list it twice.",
+                "It is refused, naming the file, while a file of a project it reaches does not "
+                "load at all, and for no lesser error of a file - a unit listed twice",
+                f"wherever it is. {TWO_WAYS}",
+            ),
+        ),
+        "README.md": (
+            README,
+            (
+                "A rename is refused outright, naming the file, while a document has unsaved "
+                "changes that moved a declaration it would touch, and a quick fix that would touch "
+                "one is not offered; while a file of the project did not load a rename is refused "
+                "the same way and the quick fixes offer nothing, the server's log saying why once:",
+                "A component linked into two images is offered each fix once, and a value sent "
+                "out from it reaches the declarations of every image holding a file the fix "
+                "writes.",
+            ),
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(PHRASES))
+    def test_the_page_says_what_a_quick_fix_reaches_and_withholds(self, page: str) -> None:
+        text, phrases = self.PHRASES[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"
+
+    @pytest.mark.parametrize("page", sorted(PHRASES))
+    def test_no_page_still_says_the_quick_fixes_are_refused_under_a_moved_buffer(
+        self, page: str
+    ) -> None:
+        said = flattened(self.PHRASES[page][0])
+        for stale in (
+            "A rename and the quick fixes are also refused, naming the file",
+            "rename, and every quick fix below, is also refused",
+            "A rename and the quick fixes are refused outright",
+            "Both are refused whole rather than performed in part",
+            "It is refused, naming the file, only while a file of a project it reaches",
+        ):
+            assert stale not in said, f"{page} still says: {stale!r}"
 
 
 class TestWhatAMalformedRequestIsAnswered:

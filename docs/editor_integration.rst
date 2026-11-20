@@ -131,25 +131,28 @@ permits two there as well, reporting them as ``duplicate-raster``, but each carr
 ``event`` and ``cycle``, and a rename that merged them would sample one signal on another's
 channel. A unit is renamed from any place it is stated, or from its entry in a units file;
 renaming onto a unit that already exists merges the two instead of refusing the collision, as
-a variable's rename would. It is refused, naming the file, only while a file of a project it
-reaches does not load at all - a unit listed twice, reported as ``duplicate-unit``, does not
-stop it, because renaming may be how such a mistake is fixed. Only the characters between the
-quotes are replaced - in a ``condition``, the constant's own word, never a longer identifier
-holding it - and the new name is written there as json spells it, escaping the quote or the
-backslash a raster's name may hold, so formatting survives and free text is left alone.
+a variable's rename would. It is refused, naming the file, while a file of a project it reaches
+does not load at all, and for no lesser error of a file - a unit listed twice, reported as
+``duplicate-unit``, does not stop it, because renaming may be how such a mistake is fixed. Only
+the characters between the quotes are replaced - in a ``condition``, the constant's own word,
+never a longer identifier holding it - and the new name is written there as json spells it,
+escaping the quote or the backslash a raster's name may hold, so formatting survives and free
+text is left alone.
 
-A variable's, a type's, a constant's or a section's rename, and every quick fix below, is
-also refused - naming the file, and before anything is written - while the project on disk is
-not the project the edit would be computed from: while an open document has unsaved changes that
-moved a declaration the edit would touch, and while a file of the project reported an error
-that stopped it being read. A project is indexed from what loaded, so a file a ``schema``
-error dropped mid edit declares nothing as far as the index knows: the rename would rewrite
-every other file and leave that one holding the old name, and a fix would offer to remove a
-key "no other declaration has" while the unloaded producer states exactly that key.
-In the second state a request for the quick fixes, which the editor makes at every move of the
-caret, is answered with none rather than with an error, which it would show as a failed request
-each time: an empty lightbulb in such a project has its reason in the unread file's own
-finding, and in the server's log, which says it once for as long as it stands.
+A variable's, a type's, a constant's or a section's rename is also refused - naming the file,
+and before anything is written - and a quick fix below is not offered, while the project on
+disk is not the project the edit would be computed from: while an open document has unsaved
+changes that moved a declaration the edit would touch, and while a file of the project reported
+an error that stopped it being read. A project is indexed from what loaded, so a file a
+``schema`` error dropped mid edit declares nothing as far as the index knows: the rename would
+rewrite every other file and leave that one holding the old name, and a fix would offer to
+remove a key "no other declaration has" while the unloaded producer states exactly that key.
+In the first state a quick fix is not offered rather than offered for the declarations the
+buffer left in place, and nothing is said: the buffer is the reader's own, and saving it brings
+the fix back. In the second state a request for the quick fixes, which the editor makes at every
+move of the caret, is answered with none rather than with an error, which it would show as a
+failed request each time: an empty lightbulb in such a project has its reason in the unread
+file's own finding, and in the server's log, which says it once for as long as it stands.
 A rename is refused as well, naming the document, while an open document of a project it
 reaches holds what its file on disk does not, since the rename is planned from the files and a
 mention typed and not saved is one it cannot see; and it is refused when it would rewrite
@@ -175,7 +178,9 @@ starts from does not belong to already uses the name, or holds a file that did n
 refusal names that project's image, or its description where no build record names it -
 asked from one image, a name "already declared by this project" in the other sends the reader
 looking in the wrong one; unsaved changes are refused naming the file that holds them,
-wherever it is.
+wherever it is. A unit's rename is refused as well, naming both, where two projects it reaches
+would rewrite a units file they share two ways: the one listing the unit renamed onto merges the
+old spelling into it, and the other respells it.
 
 An edit reaching two files or more, a rename's or a quick fix's, is sent marked
 ``needsConfirmation`` to a client that announced both ``documentChanges`` and
@@ -224,6 +229,14 @@ elements of a map over its axes, the constant a dimension names, a plugin's ``ex
 may reach one of those, and the next analysis reports it - as it reports a range wider than the
 datatype, which only loads.
 
+A component linked into two images is in two projects, and a fix the two offer alike is offered
+once. A fix sending this declaration's value out, or taking a key out of the others, reaches the
+declarations of both images, and of every image holding a file it writes, until none is new, as a
+rename does. Where two images offer one fix under one title with different edits - two values one
+type states in two images, say - neither is offered; and every fix is withheld where one reaches
+an image holding a file that did not load, or a description, beyond the document's own images,
+that cannot be read.
+
 A ``missing-id`` offers one fix of its own: give this object an identity. It writes the same
 key ``ddd id --assign`` would write, in the same place - right after the declaration's ``name``
 - and which declarations want one is decided by the same code: the command stamps a whole file,
@@ -235,7 +248,10 @@ An ``unknown-unit`` finding, which only a project with a units file reports, off
 of its own: "Add 'RPM' to the vocabulary", and, for each spelling close enough to suggest,
 "Rename 'RPM' to 'rpm' everywhere" - the same rename ``F2`` makes, merging into a unit that
 exists. Both are the plans ``ddd gui`` previews and applies, so the editor and the page never
-disagree about what either does; a plan that is refused is not offered.
+disagree about what either does; a plan that is refused is not offered. The rename is the one
+``F2`` makes from the unit, over every image it reaches, and is not offered where that rename is
+refused; the unit is added only where every image planning it adds it to the same file, since an
+image holding both files would list it twice.
 
 Which project a file belongs to
 -------------------------------

@@ -677,18 +677,9 @@ def resolve_projects(
     if descriptions is None:
         descriptions = Descriptions()
     resolved = document.resolve()
-    stop = root.resolve() if root is not None else document.parent.resolve()
-    directories = []
-    current = document.parent.resolve()
-    while True:
-        directories.append(current)
-        if current == stop or current.parent == current or stop not in current.parents:
-            break
-        current = current.parent
-
     failed: dict[Path, str] = {}
     outermost: list[Loaded] = []
-    for directory in directories:
+    for directory in _walked(document, root):
         found = []
         for candidate in sorted(directory.glob("*.ddd.json")):
             if candidate == resolved:
@@ -703,6 +694,63 @@ def resolve_projects(
             # would say everything twice, so the nearer one is dropped.
             outermost = found
     return Containing(tuple(outermost), failed)
+
+
+def _walked(document: Path, root: Path | None) -> list[Path]:
+    """The directories the search above ``document`` walks, resolved, the nearest first: from the
+    one holding it up to ``root``, the editor's own, or the one holding it alone without one."""
+    stop = root.resolve() if root is not None else document.parent.resolve()
+    directories = []
+    current = document.parent.resolve()
+    while True:
+        directories.append(current)
+        if current == stop or current.parent == current or stop not in current.parents:
+            return directories
+        current = current.parent
+
+
+def _held_above(
+    files: Iterable[Path], root_for: Callable[[Path], Path], descriptions: Descriptions
+) -> list[Loaded]:
+    """The descriptions of the outermost directory above each of ``files`` that include it, as
+    :func:`resolve_projects` answers for each file alone, file after file, in the order given.
+
+    The same candidates are read as each file's own search reads - every description of a
+    directory one of the files' walks reaches, but for the file itself - and each directory is
+    listed, and each candidate asked which of the files it holds, once for them all. Asked file by
+    file, a fix sent from a writer to two hundred readers of one flat directory listed it two
+    hundred times, and resolved and sorted every candidate's sources as often, at every move of
+    the caret.
+    """
+    walks: dict[Path, list[Path]] = {}
+    asking: dict[Path, set[Path]] = {}
+    for file in files:
+        resolved = file.resolve()
+        walks[resolved] = _walked(file, root_for(file))
+        for directory in walks[resolved]:
+            asking.setdefault(directory, set()).add(resolved)
+    failed: dict[Path, str] = {}
+    holding: dict[tuple[Path, Path], list[Loaded]] = {}
+    for directory, asked in asking.items():
+        for candidate in sorted(directory.glob("*.ddd.json")):
+            if asked == {candidate}:
+                # The one file whose walk reaches here is this candidate, which is not asked
+                # whether it holds itself.
+                continue
+            loaded = _read_once(candidate, failed, descriptions)
+            if loaded is None:
+                continue
+            for held in asked.intersection(loaded.workspace.sources()) - {candidate}:
+                holding.setdefault((directory, held), []).append(loaded)
+    found: list[Loaded] = []
+    for resolved, walk in walks.items():
+        outermost: list[Loaded] = []
+        for directory in walk:
+            # Every level is walked, and the last one holding a description that includes the
+            # file answers, as :func:`resolve_projects` answers.
+            outermost = holding.get((directory, resolved), outermost)
+        found.extend(outermost)
+    return found
 
 
 class Reach:
@@ -776,9 +824,8 @@ class Reach:
             if loaded is not None and (holds := new.intersection(loaded.workspace.sources())):
                 held |= holds
                 self._add(loaded)
-        for file in sorted(new - held):
-            for loaded in resolve_projects(file, self._root_for(file), self._descriptions).projects:
-                self._add(loaded)
+        for loaded in _held_above(sorted(new - held), self._root_for, self._descriptions):
+            self._add(loaded)
 
     @property
     def unread(self) -> dict[Path, str]:
@@ -794,9 +841,14 @@ class Reach:
         folder - two images' descriptions often share a file name, and in a folder each - or in
         full where it lies in none; and nothing for a project holding the document the rename
         started from, which is the reader's own."""
-        key = loaded.path.resolve()
-        if key in self._own:
+        if loaded.path.resolve() in self._own:
             return None
+        return self.described(loaded)
+
+    def described(self, loaded: Loaded) -> str:
+        """What a sentence calls ``loaded`` where it names two projects, the reader's own among
+        them as readily as another: as :meth:`image` names one that is not the reader's."""
+        key = loaded.path.resolve()
         return self._record_image(key) or self._in_folder(key)
 
     def named(self, description: Path) -> str:

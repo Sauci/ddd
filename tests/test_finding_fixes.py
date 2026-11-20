@@ -573,6 +573,29 @@ class TestAMismatch:
         analyze(workspace, bag)
         assert "definition-mismatch" not in checks(bag), messages(bag)
 
+    @pytest.mark.parametrize("source", ["a.ddd.json", "b.ddd.json"])
+    def test_nothing_is_removed_beside_a_type_moved_on_disk_since_the_analysis(
+        self, tmp_path: Path, source: str
+    ) -> None:
+        # The page asks the index of the revision it analysed, and reads the files as they stand:
+        # the types file now holds another type where the index found `Speed_t`. What `Speed_t`
+        # states is not known there, which is neither rpm nor silence. Read as silence, `b`'s row
+        # was offered to take its unit out "which a does not declare", and `a`'s to take it out of
+        # `b`; either leaves `Speed_t` stating rpm against none.
+        built, root = built_of(
+            tmp_path,
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed", typename="Speed_t")),
+                "b.ddd.json": component("B", declare("input", "Speed", "uint8", unit="kPa")),
+                "t.ddd.json": types(scalar_type("Speed_t", "uint8", unit="rpm")),
+            },
+        )
+        moved = types(
+            scalar_type("Other_t", "uint8", unit="kPa"), scalar_type("Speed_t", "uint8", unit="rpm")
+        )
+        (root / "t.ddd.json").write_text(json.dumps(moved, indent=2), encoding="utf-8", newline="")
+        assert fixes_for("definition-mismatch", root / source, DEFINITION, {}, built) == ()
+
     def test_a_declaration_that_cannot_take_the_value_stops_the_fix_being_offered(
         self, tmp_path: Path
     ) -> None:

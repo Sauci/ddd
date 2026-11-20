@@ -54,6 +54,7 @@ import contextlib
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
+from enum import Enum
 from functools import partial
 from pathlib import Path
 from typing import Any, Final, Literal
@@ -523,7 +524,8 @@ class Unsettled:
     reason: Literal["unreachable", "kind", "type", "storage", "load"]
     """``unreachable``: its file no longer names the variable at that pointer, or no longer
     reads as json. ``kind``: its kind has no such key, or requires the one being taken out.
-    ``type``: it names a declared type that fixes the key to another value. ``storage``: the
+    ``type``: it names a declared type that fixes the key to another value, or whose entry has
+    moved since the index was built, so that what it fixes cannot be read. ``storage``: the
     key is the storage it named, or would name it a second way - what
     :func:`ddd.models.objects.storage_keys` answers. ``load``: the models or the analysis refuse
     its definition with the key written, or the type it names, by a rule none of the others
@@ -667,6 +669,8 @@ def settled_at(
         return Unsettled(site, "unreachable")
     typename = _type_named(document, site.pointer)
     if key in FIXED_BY_A_TYPE and typename is not None:
+        # A type whose entry has moved (:class:`_Unread`) equals no text and no silence, so it is
+        # refused whatever ``raw`` is: taking the key out beside it settles nothing anybody knows.
         if _fixed_by(built, typename, key, cache) != raw:
             return Unsettled(site, "type", typename)
         return None
@@ -770,27 +774,41 @@ def _protocol_action(reconciliation: Reconciliation, cache: dict[Path, Document]
     }
 
 
-def _fixed_by(built: Index, typename: str, key: str, cache: dict[Path, Document]) -> str | None:
+class _Unread(Enum):
+    """What a declared type states, where the place the index found it holds another entry now.
+
+    A types file edited since the index was built - a type inserted above, as a buffer holds it
+    before it is saved, or a file the page reads as it stands after the revision it analysed.
+    What the type states for any key is then not known: neither a value, nor the silence that a
+    removal beside the declaration naming it would take for agreement. It equals neither.
+    """
+
+    MOVED = "moved"
+
+
+def _fixed_by(
+    built: Index, typename: str, key: str, cache: dict[Path, Document]
+) -> str | _Unread | None:
     """The json text a declared type states for ``key``, or ``None`` when it states none - a
     structure, which has no room for a unit, or a name no type of the project declares.
 
     Read where the index found the entry, and only while that entry still names the type: a types
     file edited since may hold another entry at that place, whose keys are another type's. Such a
-    place says nothing of this type, as :func:`type_conversions` reads it, the way a declaration
-    that has drifted is treated as absent (:func:`_at_site`).
+    place is answered as unread (:class:`_Unread`) rather than as silence, the way a declaration
+    that has drifted is withheld from rather than counted as agreeing (:func:`_at_site`).
     """
     site = built.types.get(typename)
     if site is None:
         return None
     document = read(site.path, cache)
     if document.value_at(f"{site.pointer}.name") != typename:
-        return None
+        return _Unread.MOVED
     return document.raw_at(f"{site.pointer}.{key}")
 
 
 def _resolved(
     built: Index, site: Site, document: Document, key: str, cache: dict[Path, Document]
-) -> str | None:
+) -> str | _Unread | None:
     """The json text the declaration at ``site`` means for ``key``, or ``None`` where it means none.
 
     What its file states, or, for a key a declared type fixes (:data:`FIXED_BY_A_TYPE`), what the
@@ -799,6 +817,9 @@ def _resolved(
     and read from its file alone it is silent where it means the type's answer: a writer naming
     ``Speed_t`` had no unit to give its reader, and a reader naming one looked like nobody stating
     a unit, so the only fixes left took a unit out and settled nothing.
+
+    Where the type's entry has moved, what the declaration means is not known (:class:`_Unread`):
+    there is nothing in it to take, and a statement that may be there all the same.
     """
     typename = _type_named(document, site.pointer)
     if key in FIXED_BY_A_TYPE and typename is not None:
@@ -934,7 +955,8 @@ def _from_producer(
     producer = producers[0]
     target = _at_site(producer, name, cache)
     raw = None if target is None else _resolved(built, producer, target, key, cache)
-    if raw is None:
+    if not isinstance(raw, str):
+        # Nothing stated, or a type whose entry has moved: no value to take either way.
         return None
     decided = settled_at(built, here, name, key, raw, cache)
     if not isinstance(decided, Settled):
@@ -972,6 +994,8 @@ def _remove_here(
     declared type states what the type fixes, whatever its file holds, and goes on stating it
     once this one is silent - so neither a reader agreeing with its writer's type nor a writer
     whose reader's type states another value is offered a removal under a title that is untrue.
+    One naming a type whose entry has moved is not known not to state it, and counts as stating it,
+    for the reason a declaration that has drifted withholds the offer.
     """
     if key in DEFERRED_KEYS or document.raw_at(f"{here.pointer}.{key}") is None:
         return None
@@ -991,6 +1015,7 @@ def _remove_here(
             # "other declarations" the title speaks for; withhold the offer instead.
             return None
         targets.append(target)
+    # Unread (:class:`_Unread`) is not ``None``: a type whose entry has moved counts as stating.
     stating = {
         site
         for site, target in zip(others, targets, strict=True)

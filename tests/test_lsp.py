@@ -8853,6 +8853,28 @@ class TestAKeyATypeStates:
         own, whose type states krpm."""
         assert offered_at(tmp_path, "r.ddd.json", READER_NAMES_A_TYPE, MISMATCH_REPORTED) == []
 
+    @pytest.mark.parametrize(
+        ("files", "source"),
+        [
+            pytest.param(WRITER_NAMES_A_TYPE, "r.ddd.json", id="the-writer-s-type-from-the-reader"),
+            pytest.param(WRITER_NAMES_A_TYPE, "w.ddd.json", id="the-writer-s-type-from-the-writer"),
+            pytest.param(READER_NAMES_A_TYPE, "w.ddd.json", id="the-reader-s-type-from-the-writer"),
+            pytest.param(READER_NAMES_A_TYPE, "r.ddd.json", id="the-reader-s-type-from-the-reader"),
+        ],
+    )
+    def test_no_key_is_removed_beside_a_type_a_buffer_has_moved(
+        self, tmp_path: Path, files: dict[str, Any], source: str
+    ) -> None:
+        """The types file is open with another type inserted above the one the index found, as a
+        reader adding one leaves it before saving. What the type states is then not known, which
+        is neither its value nor its silence: read as silence, every removal above came back, two
+        of them preferred. Nothing is offered beside it, as nothing is beside a declaration whose
+        buffer has moved it."""
+        (named,) = files["t.ddd.json"]["types"]
+        moved = types(scalar_type("Other_t", "uint8", unit="Hz"), named)
+        buffers = {"t.ddd.json": moved}
+        assert offered_at(tmp_path, source, files, MISMATCH_REPORTED, buffers) == []
+
 
 class TestWhichFixIsPreferred:
     """The fix a lightbulb applies by itself is the one the ownership rule orders first: the

@@ -6,6 +6,8 @@ import copy
 import json
 from pathlib import Path
 
+import pytest
+
 from conftest import (
     DOUBLE_BESIDE_SCALED,
     FLOAT_BESIDE_ENUM,
@@ -71,22 +73,22 @@ class TestWhatATypeFixes:
         refused = settled_at(built, a, "Speed", "unit", None, {})
         assert (refused.site, refused.reason) == (a, "type")
 
+    @pytest.mark.parametrize("raw", ['"Hz"', '"rpm"', None])
     def test_a_type_whose_entry_has_moved_is_not_read_at_its_old_place(
-        self, tmp_path: Path
+        self, tmp_path: Path, raw: str | None
     ) -> None:
         """The index names the place it found ``Speed_t``, and a types buffer edited since holds
         another type there, whose unit is Hz: read as ``Speed_t``'s, it had ``a`` already meaning
-        the Hz it does not, and nothing to refuse. It says nothing of ``Speed_t``, as
-        ``type_conversions`` reads such a place, and ``a`` takes no unit beside its type."""
+        the Hz it does not. What ``Speed_t`` states is not known there, which is neither a value
+        nor silence: ``a`` takes no unit beside its type, Hz or the rpm it states on disk, and is
+        not counted as agreeing that there is none - which had every removal beside it settle."""
         built, a, _ = drifted(tmp_path)
         moved = types(
             scalar_type("Other_t", datatype="uint16", unit="Hz"),
             scalar_type("Speed_t", datatype="uint16", unit="rpm"),
         )
         cache = {built.types["Speed_t"].path: Document(json.dumps(moved, indent=2))}
-        assert settled_at(built, a, "Speed", "unit", '"Hz"', cache) == Unsettled(
-            a, "type", "Speed_t"
-        )
+        assert settled_at(built, a, "Speed", "unit", raw, cache) == Unsettled(a, "type", "Speed_t")
 
     def test_a_name_no_type_of_the_project_declares_fixes_nothing(self, tmp_path: Path) -> None:
         """What a type states is read where the index found it, and a name the project declares

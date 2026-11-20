@@ -7625,20 +7625,20 @@ class TestServer:
     @pytest.mark.parametrize(
         "capabilities",
         [
-            "nonsense",
-            {"workspace": "nonsense"},
-            {"workspace": {"workspaceEdit": "nonsense"}},
+            {},
+            {"workspace": {}},
             {"workspace": {"workspaceEdit": {}}},
+            {"workspace": {"workspaceEdit": {"documentChanges": False}}},
         ],
     )
     def test_anything_short_of_the_exact_announcement_keeps_the_plain_changes_form(
         self, tmp_path: Path, capabilities: Any
     ) -> None:
-        """Each guard in ``_initialise`` refuses a shape one step short of the real
-        announcement: capabilities not a dict, workspace not a dict, workspaceEdit not a dict,
-        and workspaceEdit a dict that never actually says ``documentChanges: true``. Short of
-        the exact shape, the client gets the ``changes`` form, which is the only one it has
-        said it can apply.
+        """Each step of the real announcement left out: no workspace, no workspaceEdit, a
+        workspaceEdit that says nothing of ``documentChanges``, and one that says ``false``.
+        Short of ``documentChanges: true``, the client gets the ``changes`` form, which is the
+        only one it has said it can apply. A step there in another shape is a handshake refused
+        (``TestAMalformedFieldIsRefused``).
         """
         write_tree(
             tmp_path,
@@ -7746,7 +7746,7 @@ class TestServer:
             {"workspace": {"workspaceEdit": {"changeAnnotationSupport": {}}}},
             {
                 "workspace": {
-                    "workspaceEdit": {"documentChanges": True, "changeAnnotationSupport": 1}
+                    "workspaceEdit": {"documentChanges": False, "changeAnnotationSupport": {}}
                 }
             },
         ],
@@ -7755,7 +7755,9 @@ class TestServer:
         self, tmp_path: Path, answer: str, capabilities: Any
     ) -> None:
         """An annotated edit exists only inside ``documentChanges``, and an annotation is
-        outside what a client that did not announce it negotiated."""
+        outside what a client that did not announce it negotiated: ``documentChanges`` left out
+        or said ``false`` beside it is not announced. A ``changeAnnotationSupport`` that is not
+        an object is a handshake refused (``TestAMalformedFieldIsRefused``)."""
         edit = self.edit_answers(tmp_path, capabilities, 3)[answer]
         assert "changeAnnotations" not in edit
         assert "annotationId" not in json.dumps(edit)
@@ -9522,6 +9524,373 @@ class TestMessagesTheClientGetsWrong:
         assert answers[12]["error"]["code"] == INVALID_PARAMS
         assert "untitled:Untitled-1" in answers[12]["error"]["message"]
         assert answers[99]["result"] is None
+
+
+NOT_A: Final = "'{}' is missing or is not {}"
+"""How a field that is not the shape its method takes is refused, by its name and its kind."""
+
+BEFORE_THE_START: Final = "'{}' is {}; a position counts lines and characters from 0"
+"""How a coordinate of a position before the start of the document is refused."""
+
+NO_FILE: Final = (
+    "'{}' cannot name a file: its path holds a null character or a lone surrogate, which no "
+    "file name holds"
+)
+"""How a ``file:`` uri whose path no file system can be asked about is refused."""
+
+
+def a_null_in(path: Path) -> str:
+    """The uri of ``path`` with a null character escaped into its file name."""
+    return path.as_uri().replace(".ddd.json", "%00.ddd.json")
+
+
+class TestAMalformedFieldIsRefused:
+    """10:M1. Every field the server reads from a request's params is refused with the
+    invalid-parameters error naming it, where it is not the shape the protocol gives it, and the
+    session goes on: a request sent wrong is the client's mistake, answered as one.
+
+    Each test also asserts that nothing went to stderr, which is where the net writes the trace of
+    a defect of the server's own: since a defect costs one answer rather than the session, a test of
+    the session going on would pass with every refusal here taken out, each fault answered as the
+    server's own defect, naming no field. A field the protocol lets a client leave out takes its
+    default, and one the protocol lets it send as null is null; any other value of another shape is
+    refused.
+    """
+
+    AT: ClassVar[dict[str, int]] = {"line": 0, "character": 0}
+
+    def refused(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        request: dict[str, Any],
+        *before: dict[str, Any],
+    ) -> dict[str, Any]:
+        """What the server answers ``request``, sent after ``before`` in a session the client ends
+        cleanly, with nothing on stderr."""
+        writer = io.BytesIO()
+        assert Server(session(*before, request, *END), writer, root=tmp_path).run() == 0
+        assert capsys.readouterr().err == ""
+        answers = {message["id"]: message for message in answered(writer) if "id" in message}
+        assert answers[99] == response(99, None), "the session goes on"
+        return answers[request["id"]]
+
+    def code_action(self, path: Path, **params: Any) -> dict[str, Any]:
+        """A request for the quick fixes at the start of ``path``, with ``params`` in place of the
+        well formed ones."""
+        well_formed: dict[str, Any] = {
+            "textDocument": {"uri": path.as_uri()},
+            "range": {"start": self.AT, "end": self.AT},
+            "context": {"diagnostics": []},
+        }
+        return {
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "textDocument/codeAction",
+            "params": {**well_formed, **params},
+        }
+
+    def positioned(self, method: str, path: Path, position: Any, **more: Any) -> dict[str, Any]:
+        """A request at ``position`` of ``path``: a hover, a jump, a rename or its preparation."""
+        return {
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": method,
+            "params": {"textDocument": {"uri": path.as_uri()}, "position": position, **more},
+        }
+
+    @pytest.mark.parametrize(
+        ("context", "message"),
+        [
+            ({"diagnostics": None}, NOT_A.format("params.context.diagnostics", "list")),
+            ({"diagnostics": 3}, NOT_A.format("params.context.diagnostics", "list")),
+            ({"diagnostics": [1]}, NOT_A.format("params.context.diagnostics[]", "dict")),
+            (
+                {"diagnostics": [{"code": []}]},
+                "'params.context.diagnostics[].code' is not int or str",
+            ),
+            (
+                {"diagnostics": [{"code": None}]},
+                "'params.context.diagnostics[].code' is not int or str",
+            ),
+            (
+                {"diagnostics": [{"code": True}]},
+                "'params.context.diagnostics[].code' is not int or str",
+            ),
+        ],
+        ids=["null", "a-number", "not-a-finding", "a-list-code", "a-null-code", "a-bool-code"],
+    )
+    def test_a_code_action_s_findings(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        context: dict[str, Any],
+        message: str,
+    ) -> None:
+        """The findings a code action is asked about: a list of findings, each an object whose
+        ``code``, where it has one, is a number or a string. Each of these ended the session with a
+        trace, and then cost its answer."""
+        request = self.code_action(tmp_path / "a.ddd.json", context=context)
+        assert self.refused(tmp_path, capsys, request) == error(7, INVALID_PARAMS, message)
+
+    def test_a_code_action_s_findings_may_be_left_out(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The control: a context with no ``diagnostics`` at all is asked about none, and a finding
+        with no ``code``, or one numbered by another server, is one this server has no fix for."""
+        write_tree(tmp_path, {"a.ddd.json": component("A", declare("local", "V"))})
+        for context in ({}, {"diagnostics": [{"message": "x"}, {"code": 7}]}):
+            request = self.code_action(tmp_path / "a.ddd.json", context=context)
+            assert self.refused(tmp_path, capsys, request) == response(7, [])
+
+    @pytest.mark.parametrize(
+        ("start", "message"),
+        [
+            ({"line": True, "character": 0}, NOT_A.format("params.range.start.line", "int")),
+            ({"line": 0}, NOT_A.format("params.range.start.character", "int")),
+            ({"line": -1, "character": 0}, BEFORE_THE_START.format("params.range.start.line", -1)),
+            (
+                {"line": 0, "character": -2},
+                BEFORE_THE_START.format("params.range.start.character", -2),
+            ),
+        ],
+        ids=["a-bool-line", "no-character", "a-line-before-the-start", "a-character-before-it"],
+    )
+    def test_a_code_action_s_range(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        start: dict[str, Any],
+        message: str,
+    ) -> None:
+        """A range's start is named as the start it is, where a refusal named it
+        ``params.range.line``, which no client sends."""
+        request = self.code_action(tmp_path / "a.ddd.json", range={"start": start, "end": self.AT})
+        assert self.refused(tmp_path, capsys, request) == error(7, INVALID_PARAMS, message)
+
+    @pytest.mark.parametrize(
+        "method",
+        [
+            "textDocument/hover",
+            "textDocument/definition",
+            "textDocument/references",
+            "textDocument/prepareRename",
+            "textDocument/rename",
+        ],
+    )
+    @pytest.mark.parametrize(
+        ("position", "message"),
+        [
+            (
+                {"line": -1000, "character": 0},
+                BEFORE_THE_START.format("params.position.line", -1000),
+            ),
+            (
+                {"line": 0, "character": -1},
+                BEFORE_THE_START.format("params.position.character", -1),
+            ),
+            ({"line": "0", "character": 0}, NOT_A.format("params.position.line", "int")),
+            ({"line": 0, "character": 1.5}, NOT_A.format("params.position.character", "int")),
+        ],
+        ids=["a-line-before-the-start", "a-character-before-it", "a-text-line", "a-fraction"],
+    )
+    def test_a_position(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        method: str,
+        position: dict[str, Any],
+        message: str,
+    ) -> None:
+        """A line before the first ended a hover with ``IndexError``, every request at a position
+        reading it the same way; a character before the first was read as the line's start."""
+        write_tree(tmp_path, {"a.ddd.json": component("A", declare("local", "V"))})
+        request = self.positioned(method, tmp_path / "a.ddd.json", position, newName="W")
+        assert self.refused(tmp_path, capsys, request) == error(7, INVALID_PARAMS, message)
+
+    @pytest.mark.parametrize(
+        "method",
+        [
+            "textDocument/hover",
+            "textDocument/definition",
+            "textDocument/references",
+            "textDocument/prepareRename",
+            "textDocument/rename",
+            "textDocument/codeAction",
+        ],
+    )
+    @pytest.mark.parametrize("escaped", ["%00", "\x00", "\ud800"], ids=["escaped", "null", "lone"])
+    def test_a_uri_whose_path_no_file_system_takes(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], method: str, escaped: str
+    ) -> None:
+        """A null character in a uri, escaped or not, ended every request reading the document with
+        ``embedded null character``, and so did a surrogate standing alone - ``\\ud800`` written
+        into the uri's json - wherever a path is spelled in utf-8."""
+        uri = (tmp_path / "a.ddd.json").as_uri().replace(".ddd.json", f"{escaped}.ddd.json")
+        request = (
+            self.code_action(tmp_path / "a.ddd.json")
+            if method == "textDocument/codeAction"
+            else self.positioned(method, tmp_path / "a.ddd.json", self.AT, newName="W")
+        )
+        request["params"]["textDocument"]["uri"] = uri
+        assert self.refused(tmp_path, capsys, request) == error(
+            7, INVALID_PARAMS, NO_FILE.format(uri)
+        )
+
+    @pytest.mark.parametrize("method", ["didOpen", "didChange", "didSave", "didClose", "watched"])
+    def test_a_notification_whose_uri_no_file_system_takes_is_answered_with_nothing(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], method: str
+    ) -> None:
+        """A notification gets no answer, a refused one included, and nothing is said on stderr
+        either: it is the client's mistake, not a defect of the server's. Opening one ended the
+        session, and then wrote a trace."""
+        uri = a_null_in(tmp_path / "a.ddd.json")
+        document = {"uri": uri, "version": 1, "text": "{}"}
+        notified = {
+            "didOpen": ("textDocument/didOpen", {"textDocument": document}),
+            "didChange": (
+                "textDocument/didChange",
+                {"textDocument": document, "contentChanges": [{"text": "{}"}]},
+            ),
+            "didSave": ("textDocument/didSave", {"textDocument": {"uri": uri}}),
+            "didClose": ("textDocument/didClose", {"textDocument": {"uri": uri}}),
+            "watched": ("workspace/didChangeWatchedFiles", {"changes": [{"uri": uri, "type": 2}]}),
+        }[method]
+        writer = io.BytesIO()
+        stream = session({"jsonrpc": "2.0", "method": notified[0], "params": notified[1]}, *END)
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        assert answered(writer) == [response(99, None)]
+        assert capsys.readouterr().err == ""
+
+    def initialized(self, params: Any) -> dict[str, Any]:
+        return {"jsonrpc": "2.0", "id": 7, "method": "initialize", "params": params}
+
+    @pytest.mark.parametrize(
+        ("params", "message"),
+        [
+            ([1], NOT_A.format("params", "dict")),
+            (None, NOT_A.format("params", "dict")),
+            ({"rootUri": 3}, NOT_A.format("params.rootUri", "str")),
+            ({"workspaceFolders": 3}, NOT_A.format("params.workspaceFolders", "list")),
+            ({"workspaceFolders": [3]}, NOT_A.format("params.workspaceFolders[]", "dict")),
+            (
+                {"workspaceFolders": [{"uri": None}]},
+                NOT_A.format("params.workspaceFolders[].uri", "str"),
+            ),
+            ({"capabilities": "nonsense"}, NOT_A.format("params.capabilities", "dict")),
+            (
+                {"capabilities": {"workspace": "nonsense"}},
+                NOT_A.format("params.capabilities.workspace", "dict"),
+            ),
+            (
+                {"capabilities": {"workspace": {"workspaceEdit": "nonsense"}}},
+                NOT_A.format("params.capabilities.workspace.workspaceEdit", "dict"),
+            ),
+            (
+                {"capabilities": {"workspace": {"workspaceEdit": {"documentChanges": "yes"}}}},
+                NOT_A.format("params.capabilities.workspace.workspaceEdit.documentChanges", "bool"),
+            ),
+            (
+                {"capabilities": {"workspace": {"workspaceEdit": {"documentChanges": None}}}},
+                NOT_A.format("params.capabilities.workspace.workspaceEdit.documentChanges", "bool"),
+            ),
+            (
+                {
+                    "capabilities": {
+                        "workspace": {
+                            "workspaceEdit": {"documentChanges": True, "changeAnnotationSupport": 1}
+                        }
+                    }
+                },
+                NOT_A.format(
+                    "params.capabilities.workspace.workspaceEdit.changeAnnotationSupport", "dict"
+                ),
+            ),
+        ],
+        ids=[
+            "params-a-list",
+            "params-null",
+            "root-a-number",
+            "folders-a-number",
+            "a-folder-a-number",
+            "a-folder-uri-null",
+            "capabilities-text",
+            "workspace-text",
+            "workspace-edit-text",
+            "document-changes-text",
+            "document-changes-null",
+            "annotations-a-number",
+        ],
+    )
+    def test_the_handshake(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], params: Any, message: str
+    ) -> None:
+        """Every field ``initialize`` reads, the capabilities its edits are shaped by among them.
+        A refused handshake leaves the session unopened, so the client may send a well formed one
+        and be served from there."""
+        writer = io.BytesIO()
+        hello = {"jsonrpc": "2.0", "id": 8, "method": "initialize", "params": {}}
+        stream = framed(self.initialized(params), hello, *END)
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        assert capsys.readouterr().err == ""
+        refusal, opened, ended = sent(writer)
+        assert refusal == error(7, INVALID_PARAMS, message)
+        assert opened["result"]["serverInfo"]["name"] == "ddd"
+        assert ended == response(99, None)
+
+    @pytest.mark.parametrize("field", ["rootUri", "workspaceFolders"])
+    def test_a_folder_uri_whose_path_no_file_system_takes(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], field: str
+    ) -> None:
+        """Taken as a workspace folder, it ended the first request that resolved a document under
+        it; refused, the session waits for a handshake it can open."""
+        uri = a_null_in(tmp_path / "w.ddd.json").removesuffix(".ddd.json")
+        params = {"rootUri": uri} if field == "rootUri" else {"workspaceFolders": [{"uri": uri}]}
+        writer = io.BytesIO()
+        stream = framed(self.initialized(params), *END)
+        Server(stream, writer, root=tmp_path).run()
+        assert capsys.readouterr().err == ""
+        assert sent(writer)[0] == error(7, INVALID_PARAMS, NO_FILE.format(uri))
+
+    def test_a_handshake_refused_after_a_field_it_had_read_changes_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        """Its folders were taken before its capabilities were refused, so a refused handshake left
+        the session rooted where the refused one said. Every field is read before any is kept."""
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        server = Server(io.BytesIO(), io.BytesIO(), root=tmp_path)
+        refused = {"rootUri": elsewhere.as_uri(), "capabilities": "nonsense"}
+        with pytest.raises(MessageError, match=r"^'params\.capabilities' is missing"):
+            server._handle(self.initialized(refused))
+        assert server.roots == [tmp_path]
+        assert not server._initialised
+
+    @pytest.mark.parametrize(
+        "params",
+        [
+            {},
+            {"rootUri": None, "workspaceFolders": None},
+            {"rootUri": "", "workspaceFolders": []},
+            {"capabilities": {}},
+            {"capabilities": {"workspace": {}}},
+            {"capabilities": {"workspace": {"workspaceEdit": {}}}},
+        ],
+        ids=["empty", "nulls", "empty-folders", "no-workspace", "no-edit", "nothing-announced"],
+    )
+    def test_a_handshake_may_leave_out_what_the_protocol_lets_it(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], params: dict[str, Any]
+    ) -> None:
+        """The control: what the protocol lets a client leave out, or send as null, takes its
+        default - the folder the server was started with, and edits in the plain form."""
+        writer = io.BytesIO()
+        server = Server(framed(self.initialized(params), *END), writer, root=tmp_path)
+        assert server.run() == 0
+        assert capsys.readouterr().err == ""
+        assert sent(writer)[0]["result"]["serverInfo"]["name"] == "ddd"
+        assert server.roots == [tmp_path]
+        assert not server._versioned_edits
+        assert not server._annotated_edits
 
 
 class TestTheLifecycle:

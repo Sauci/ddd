@@ -3063,8 +3063,10 @@ not read a second time on their own.
 
 A message body the server cannot parse is answered with the protocol's parse or
 invalid-request error and does not stop the server, and a request whose parameters are not
-the shape its method takes is answered with the invalid-parameters error, while a
-notification is answered with nothing, which is what a notification always gets. A message the
+the shape its method takes - a field of another type than the protocol gives it, a position
+before the start of the document, a uri whose path holds a null character - is answered with
+the invalid-parameters error naming what is wrong, while a notification is answered with
+nothing, which is what a notification always gets. A message the
 server fails to answer through a defect of its own does not stop it either: a request is
 answered with the protocol's internal error, a notification with nothing, and the trace is
 written to the server's standard error, which is its log. A frame header whose

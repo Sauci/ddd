@@ -145,6 +145,10 @@ def uri_to_path(uri: str) -> Path:
     workspace. There is nothing on disk to check, and saying so is the honest answer. The
     extension sends only ``file:`` (``extension.ts`` registers that scheme alone); another
     client need not.
+
+    So is a path no file system can be asked about (:func:`_nameable`): a null character,
+    escaped as ``%00`` or not, ended every request that read the document, with ``embedded
+    null character``.
     """
     parsed = urlparse(uri)
     if parsed.scheme != "file":
@@ -157,6 +161,12 @@ def uri_to_path(uri: str) -> Path:
     if not parsed.netloc or parsed.netloc == "localhost":
         path = _ESCAPED_DRIVE.sub(r"/\1:", path)
     path = url2pathname(path)
+    if not _nameable(path):
+        msg = (
+            f"'{uri}' cannot name a file: its path holds a null character or a lone surrogate, "
+            "which no file name holds"
+        )
+        raise MessageError(INVALID_PARAMS, msg)
     if parsed.netloc and parsed.netloc != "localhost":
         # file://server/share/...: a network share, whose host is the start of the path - its
         # first segment is a share name, never a drive, however much it may look like one.
@@ -164,21 +174,71 @@ def uri_to_path(uri: str) -> Path:
     return Path(path)
 
 
+def _nameable(path: str) -> bool:
+    """Whether a file system can be asked about ``path`` at all.
+
+    Not where it holds a null character, which ends a name early wherever a name is passed on;
+    nor where it holds a surrogate standing alone, ``\\ud800`` written into the uri's json, which
+    no utf-8 spells. Asked by encoding it as python encodes a name on posix, where a surrogate
+    that decoding the uri made of a byte that is not utf-8 stands for that byte, and asked so on
+    every platform alike: a uri is text, and a lone surrogate is none.
+    """
+    if "\x00" in path:
+        return False
+    try:
+        path.encode("utf-8", "surrogateescape")
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
 def _field[T](value: Any, wanted: type[T], named: str) -> T:
     """One field of the client's message, or a refusal that names what was wrong with it.
 
     Every field a handler reads goes through here rather than being indexed, because these
-    are somebody else's bytes and not this server's invariant. A field that is wrong is the
-    client's mistake rather than a defect of the server, and is answered as one: refused with
-    the invalid-parameters error naming it, and nothing written to stderr, where the net the
-    module docstring describes writes the trace of a defect. Indexed instead, a frame without
-    the ``params`` every editor sends would reach that net as the server's own defect, with no
-    field named.
+    are somebody else's bytes and not this server's invariant - but for what a notification
+    carries beside its document, which is read for what it holds (:meth:`Server._remember`). A
+    field that is wrong is the client's mistake rather than a defect of the server, and is
+    answered as one: refused with the invalid-parameters error naming it, and nothing written to
+    stderr, where the net the module docstring describes writes the trace of a defect. Indexed
+    instead, a frame without the ``params`` every editor sends would reach that net as the
+    server's own defect, with no field named.
+
+    A field the protocol lets a client leave out is asked for with its default, and one it lets
+    the client send as null is asked for only where it is not null; any other value of another
+    shape is refused. ``true`` is no number, although python counts a ``bool`` an ``int``.
     """
-    if not isinstance(value, wanted):
+    if not isinstance(value, wanted) or (wanted is int and isinstance(value, bool)):
         msg = f"'{named}' is missing or is not {wanted.__name__}"
         raise MessageError(INVALID_PARAMS, msg)
     return value
+
+
+def _count(value: Any, named: str) -> int:
+    """One coordinate of a position the client sent: a count from zero, as the protocol's
+    ``uinteger`` is. A line before the first ended a hover with ``IndexError``, every request
+    at a position reading it the same way."""
+    count = _field(value, int, named)
+    if count < 0:
+        msg = f"'{named}' is {count}; a position counts lines and characters from 0"
+        raise MessageError(INVALID_PARAMS, msg)
+    return count
+
+
+def _reported(context: dict[str, Any]) -> list[dict[str, Any]]:
+    """The findings a code action is asked about: a list of them, left out where it asks about
+    none, each an object whose ``code``, where it states one, is a number or a string - another
+    server's findings among them, which are told from this one's by that code. A finding that is
+    no object, or a code of another shape, raised: it ended the session, and inside the net it
+    cost the answer, naming no field."""
+    named = "params.context.diagnostics"
+    reported = _field(context.get("diagnostics", []), list, named)
+    for entry in reported:
+        code = _field(entry, dict, f"{named}[]").get("code", "")
+        if isinstance(code, bool) or not isinstance(code, int | str):
+            msg = f"'{named}[].code' is not int or str"
+            raise MessageError(INVALID_PARAMS, msg)
+    return reported
 
 
 type _Read = dict[str, Any] | Exception | None
@@ -524,7 +584,7 @@ class Server:
                 write_message(self.writer, error(request_id, *refusal))
             return True
         if method == "initialize":
-            self._initialise(message.get("params") or {})
+            self._initialise(_field(message.get("params", {}), dict, "params"))
             self._initialised = True
             write_message(self.writer, response(request_id, self._capabilities()))
         elif method == "shutdown":
@@ -672,14 +732,15 @@ class Server:
         return entry[1] if entry is not None else None
 
     def _at(self, message: dict[str, Any], key: str = "position") -> dict[str, int]:
-        """The position a request is about, which a code action sends as the start of a range."""
+        """The position a request is about, which a code action sends as the start of a range,
+        each of its coordinates named where it is refused as the field it is."""
         params = _field(message.get("params"), dict, "params")
-        where = _field(params.get(key), dict, f"params.{key}")
+        named = f"params.{key}"
+        where = _field(params.get(key), dict, named)
         if key == "range":
-            where = _field(where.get("start"), dict, "params.range.start")
-        for axis in ("line", "character"):
-            _field(where.get(axis), int, f"params.{key}.{axis}")
-        return where
+            named = "params.range.start"
+            where = _field(where.get("start"), dict, named)
+        return {axis: _count(where.get(axis), f"{named}.{axis}") for axis in ("line", "character")}
 
     def _builds_now(self) -> list[BuildInfo]:
         """The build records, found once per refresh rather than once per keypress.
@@ -1322,8 +1383,7 @@ class Server:
         document = read(path, cache)
         pointer = document.pointer_at(self._at(message, "range"))
         params = _field(message.get("params"), dict, "params")
-        context = _field(params.get("context"), dict, "params.context")
-        reported = context.get("diagnostics", [])
+        reported = _reported(_field(params.get("context"), dict, "params.context"))
         # A unit is fixed from the project's units files, and telling which files those are
         # reads every file the description includes. A client asks for actions at every move
         # of the caret, so they are looked for only when it sent a finding about a unit.
@@ -1364,28 +1424,44 @@ class Server:
         return withheld
 
     def _initialise(self, params: dict[str, Any]) -> None:
-        """Take the workspace folders from whichever of the two ways the client offers them."""
-        folders = params.get("workspaceFolders") or []
-        if folders:
-            self.roots = [
-                uri_to_path(
-                    _field(
-                        _field(folder, dict, "params.workspaceFolders[]").get("uri"),
-                        str,
-                        "params.workspaceFolders[].uri",
-                    )
+        """Take the workspace folders from whichever of the two ways the client offers them, and
+        the shapes of edit it says it applies.
+
+        Every field is read before any is kept, so a handshake refused for one of them leaves the
+        session as it was: the folders of one were taken before its capabilities were refused,
+        and the session stayed in them. The protocol lets a client send both ways of naming the
+        folders as null, and leave out its capabilities, or any step of them, which then announce
+        nothing (:func:`_field`).
+        """
+        folders = params.get("workspaceFolders")
+        if folders is None:
+            folders = []
+        roots = [
+            uri_to_path(
+                _field(
+                    _field(folder, dict, "params.workspaceFolders[]").get("uri"),
+                    str,
+                    "params.workspaceFolders[].uri",
                 )
-                for folder in folders
-            ]
-        elif params.get("rootUri"):
-            self.roots = [uri_to_path(params["rootUri"])]
-        capabilities = params.get("capabilities")
-        workspace = capabilities.get("workspace") if isinstance(capabilities, dict) else None
-        edit = workspace.get("workspaceEdit") if isinstance(workspace, dict) else None
-        self._versioned_edits = isinstance(edit, dict) and edit.get("documentChanges") is True
-        self._annotated_edits = isinstance(edit, dict) and isinstance(
-            edit.get("changeAnnotationSupport"), dict
-        )
+            )
+            for folder in _field(folders, list, "params.workspaceFolders")
+        ]
+        root = params.get("rootUri")
+        if not roots and root is not None and _field(root, str, "params.rootUri"):
+            roots = [uri_to_path(root)]
+        capabilities = _field(params.get("capabilities", {}), dict, "params.capabilities")
+        named = "params.capabilities.workspace"
+        workspace = _field(capabilities.get("workspace", {}), dict, named)
+        named = f"{named}.workspaceEdit"
+        edit = _field(workspace.get("workspaceEdit", {}), dict, named)
+        versioned = _field(edit.get("documentChanges", False), bool, f"{named}.documentChanges")
+        annotated = "changeAnnotationSupport" in edit
+        if annotated:
+            _field(edit["changeAnnotationSupport"], dict, f"{named}.changeAnnotationSupport")
+        if roots:
+            self.roots = roots
+        self._versioned_edits = versioned
+        self._annotated_edits = annotated
 
     def _capabilities(self) -> dict[str, Any]:
         return {

@@ -2075,6 +2075,21 @@ class TestWhatADefectOfTheServerCosts:
             assert phrase in said, f"{page} no longer says: {phrase!r}"
 
 
+class TestWhatAMalformedRequestIsAnswered:
+    """10:M1. A request whose parameters are not the shape its method takes is refused with the
+    invalid-parameters error naming what is wrong, and a notification is answered with nothing:
+    SPEC 7.2 says which shapes those are."""
+
+    def test_spec_says_what_a_malformed_request_is_answered(self) -> None:
+        assert (
+            "a request whose parameters are not the shape its method takes - a field of another "
+            "type than the protocol gives it, a position before the start of the document, a uri "
+            "whose path holds a null character - is answered with the invalid-parameters error "
+            "naming what is wrong, while a notification is answered with nothing, which is what a "
+            "notification always gets."
+        ) in flattened(SPEC)
+
+
 class TestWhatAQuickFixReadsThroughAType:
     """10:I8. A declaration naming a declared type states, as the checker reads it, every key the
     type fixes: the producing component's value is the one its type states, and no key is offered

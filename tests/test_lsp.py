@@ -7110,6 +7110,340 @@ class TestServer:
         for action in answer["result"]:
             assert not action["title"].startswith("Take the unit"), action["title"]
 
+    def alone(self, tmp_path: Path) -> Path:
+        """A reader no record claims, no description includes and no project holds, beside a
+        writer of its input that it knows nothing of: 10:I5's trigger, one folder with no project
+        file and no record. It states a variable, a type, a constant, a section, a raster, a unit
+        and a local (:attr:`RENAMES`, and the local at interface 2)."""
+        write_tree(
+            tmp_path,
+            {
+                "writer.ddd.json": component("W", declare("output", "Speed", unit="rpm")),
+                "reader.ddd.json": component(
+                    "R",
+                    declare("input", "Speed", unit="rpm"),
+                    declare("local", "Probe", typename="Sensor_t"),
+                    declare("local", "Buf", dimensions=["N"], section=".calib", raster="10ms"),
+                ),
+            },
+        )
+        return tmp_path / "reader.ddd.json"
+
+    NO_PROJECT: Final = (
+        "no project is known for reader.ddd.json: only a local variable can be renamed without "
+        "one, because a rename has to reach every file that spells the name - put a project "
+        "file above it that includes it, or configure the build (ddd-build.json)"
+    )
+
+    @pytest.mark.parametrize(
+        ("pointer", "name"),
+        RENAMES,
+        ids=["variable", "type", "constant", "section", "raster", "unit"],
+    )
+    def test_with_no_project_known_every_rename_but_a_locals_is_refused(
+        self, tmp_path: Path, pointer: str, name: str
+    ) -> None:
+        """F2 on an input, a type, a constant, a section, a raster or a unit of a component read
+        on its own rewrote that one file and said nothing, while its writer, a file away, kept the
+        old name. A unit is planned elsewhere (``_rename_unit``) and is refused the same."""
+        reader = self.alone(tmp_path)
+        answer = self.answer_to(tmp_path, self.rename_request(reader, pointer, name))
+        assert answer["error"] == {"code": REQUEST_FAILED, "message": self.NO_PROJECT}
+        assert "result" not in answer
+
+    def test_an_output_with_no_project_known_is_refused_too(self, tmp_path: Path) -> None:
+        """The finding's own trigger: F2 on a writer's output, with its reader beside it."""
+        self.alone(tmp_path)
+        request = self.rename_request(
+            tmp_path / "writer.ddd.json", "component.interface[0].definition.name", "Velocity"
+        )
+        answer = self.answer_to(tmp_path, request)
+        assert answer["error"] == {
+            "code": REQUEST_FAILED,
+            "message": self.NO_PROJECT.replace("reader.ddd.json", "writer.ddd.json"),
+        }
+
+    @pytest.mark.parametrize("position", [1, 2], ids=["a local typed", "a local sized"])
+    def test_with_no_project_known_a_locals_rename_goes_through(
+        self, tmp_path: Path, position: int
+    ) -> None:
+        """A local is spelled in the file declaring it and nowhere else, which is all a component
+        read on its own has."""
+        reader = self.alone(tmp_path)
+        request = self.rename_request(
+            reader, f"component.interface[{position}].definition.name", "Renamed"
+        )
+        answer = self.answer_to(tmp_path, request)
+        assert set(answer["result"]["changes"]) == {reader.as_uri()}
+        assert '"Renamed"' in rewritten_by(answer["result"]["changes"])["reader.ddd.json"]
+
+    def test_a_name_that_is_a_locals_in_one_file_and_not_in_another_is_not_a_locals(
+        self, tmp_path: Path
+    ) -> None:
+        """What is local is what every declaration of the name states: one file declaring a
+        local and an output of one name has an output, which a reader elsewhere may name."""
+        write_tree(
+            tmp_path,
+            {
+                "reader.ddd.json": component(
+                    "R", declare("local", "Speed"), declare("output", "Speed")
+                )
+            },
+        )
+        request = self.rename_request(
+            tmp_path / "reader.ddd.json", "component.interface[0].definition.name", "Velocity"
+        )
+        answer = self.answer_to(tmp_path, request)
+        assert answer["error"]["message"] == self.NO_PROJECT
+
+    def test_a_build_record_naming_the_component_as_its_description_is_a_project(
+        self, tmp_path: Path
+    ) -> None:
+        """An image of one component: the record claims it, so what the rename reaches is known
+        - the component itself."""
+        reader = self.alone(tmp_path)
+        build_record(tmp_path, reader, image="reader.elf")
+        loaded = navigation.workspaces(discover(tmp_path), reader, tmp_path)
+        assert not navigation.is_alone(reader, loaded, discover(tmp_path))
+        request = self.rename_request(reader, "component.interface[0].definition.name", "Rate")
+        answer = self.answer_to(tmp_path, request)
+        assert set(answer["result"]["changes"]) == {reader.as_uri()}
+
+    def test_a_reference_naming_nothing_is_not_a_locals_rename(self, tmp_path: Path) -> None:
+        """A name no declaration states states no scope, so nothing says it is spelled here
+        alone."""
+        write_tree(
+            tmp_path,
+            {
+                "reader.ddd.json": component(
+                    "R", declare("local", "Curve", kind="curve", datatype="uint8", axis="Absent")
+                )
+            },
+        )
+        request = self.rename_request(
+            tmp_path / "reader.ddd.json", "component.interface[0].definition.axis", "Gone"
+        )
+        answer = self.answer_to(tmp_path, request)
+        assert answer["error"]["message"] == self.NO_PROJECT
+
+    def test_a_project_file_read_alone_is_a_known_project(self, tmp_path: Path) -> None:
+        """What the read alone answers for a description naming components: the project, whole,
+        which is no ignorance of what a rename reaches."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed")),
+            },
+        )
+        loaded = navigation.workspaces([], tmp_path / "p.ddd.json")
+        assert not navigation.is_alone(tmp_path / "p.ddd.json", loaded, [])
+        (single,) = navigation.workspaces([], tmp_path / "a.ddd.json")
+        assert single.path == tmp_path / "p.ddd.json"
+        assert not navigation.is_alone(tmp_path / "a.ddd.json", [single], [])
+
+    def test_a_component_read_on_its_own_is_alone(self, tmp_path: Path) -> None:
+        reader = self.alone(tmp_path)
+        loaded = navigation.workspaces([], reader, tmp_path)
+        assert navigation.is_alone(reader, loaded, [])
+        assert not navigation.is_alone(reader, [], [])
+
+    def test_with_a_project_file_above_the_same_rename_edits_every_file(
+        self, tmp_path: Path
+    ) -> None:
+        """The control: the finding's folder with a project file beside the pair."""
+        self.alone(tmp_path)
+        write_tree(tmp_path, {"p.ddd.json": project("P", "writer.ddd.json", "reader.ddd.json")})
+        request = self.rename_request(
+            tmp_path / "writer.ddd.json", "component.interface[0].definition.name", "Velocity"
+        )
+        answer = self.answer_to(tmp_path, request)
+        assert set(answer["result"]["changes"]) == {
+            (tmp_path / name).as_uri() for name in ("writer.ddd.json", "reader.ddd.json")
+        }
+
+    def stopped(self, tmp_path: Path, *, above: str = "") -> Path:
+        """A project, in ``above`` below the workspace, whose plugin stops the read of its
+        description, including a component with a shared output. Returns the component."""
+        write_tree(
+            tmp_path,
+            {
+                f"{above}tools/exiting_plugin.py": EXITING_MODEL_PLUGIN,
+                f"{above}project.ddd.json": project(
+                    "P", "a.ddd.json", "b.ddd.json", plugins=["tools/exiting_plugin.py"]
+                ),
+                f"{above}a.ddd.json": component("A", declare("output", "Speed")),
+                f"{above}b.ddd.json": component(
+                    "B",
+                    declare("input", "Speed"),
+                    declare("local", "X", extensions={"exiting": {"tag": "t"}}),
+                ),
+            },
+        )
+        return tmp_path / f"{above}a.ddd.json"
+
+    REASON: Final = "plugin 'exiting' failed validating an 'extensions' block"
+
+    def test_a_description_above_that_could_not_be_read_is_named_with_its_reason(
+        self, tmp_path: Path
+    ) -> None:
+        """Read alone, the component would answer 'no project is known', which is not what is
+        wrong: a project holds it, and a plugin stops that project's read."""
+        document = self.stopped(tmp_path)
+        request = self.rename_request(document, "component.interface[0].definition.name", "V")
+        message = self.answer_to(tmp_path, request)["error"]["message"]
+        assert message.startswith("project.ddd.json could not be read, so this rename cannot ")
+        assert self.REASON in message
+        assert "no project is known" not in message
+
+    def test_a_description_that_could_not_be_read_is_named_after_a_hover_read_the_projects(
+        self, tmp_path: Path
+    ) -> None:
+        """The projects of a document are kept until the next refresh, and a hover asks for them:
+        the rename that follows finds them read, and still names what stopped one."""
+        document = self.stopped(tmp_path)
+        hover = {
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "textDocument/hover",
+            "params": {
+                "textDocument": {"uri": document.as_uri()},
+                "position": Document(document.read_text(encoding="utf-8")).range_of(
+                    "component.interface[0].definition.name"
+                )["start"],
+            },
+        }
+        request = self.rename_request(document, "component.interface[0].definition.name", "V")
+        message = self.answer_to(tmp_path, request, hover)["error"]["message"]
+        assert message.startswith("project.ddd.json could not be read")
+        assert self.REASON in message
+
+    def test_the_first_of_two_descriptions_that_could_not_be_read_is_the_one_named(
+        self, tmp_path: Path
+    ) -> None:
+        """One refusal, and the same one whichever order the reads happened in: by path."""
+        document = self.stopped(tmp_path)
+        shutil.copy(tmp_path / "project.ddd.json", tmp_path / "another.ddd.json")
+        request = self.rename_request(document, "component.interface[0].definition.name", "V")
+        message = self.answer_to(tmp_path, request)["error"]["message"]
+        assert message.startswith("another.ddd.json could not be read")
+
+    def test_a_description_that_could_not_be_read_refuses_a_locals_rename_too(
+        self, tmp_path: Path
+    ) -> None:
+        """The refusal comes before any closure, whatever the kind: a rename that half-applies to
+        an image whose description a plugin stops is the half-renamed project."""
+        write_tree(
+            tmp_path,
+            {
+                "tools/exiting_plugin.py": EXITING_MODEL_PLUGIN,
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/exiting_plugin.py"]),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "X", extensions={"exiting": {"tag": "t"}}),
+                    declare("local", "Y"),
+                ),
+            },
+        )
+        request = self.rename_request(
+            tmp_path / "a.ddd.json", "component.interface[1].definition.name", "Z"
+        )
+        message = self.answer_to(tmp_path, request)["error"]["message"]
+        assert message.startswith("project.ddd.json could not be read")
+
+    def test_a_unit_rename_is_refused_for_a_description_that_could_not_be_read(
+        self, tmp_path: Path
+    ) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "tools/exiting_plugin.py": EXITING_MODEL_PLUGIN,
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/exiting_plugin.py"]),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "X", extensions={"exiting": {"tag": "t"}}),
+                    declare("local", "Y", unit="rpm"),
+                ),
+            },
+        )
+        request = self.rename_request(
+            tmp_path / "a.ddd.json", "component.interface[1].definition.unit", "1/min"
+        )
+        message = self.answer_to(tmp_path, request)["error"]["message"]
+        assert message.startswith("project.ddd.json could not be read")
+        assert self.REASON in message
+
+    def test_a_record_naming_a_description_that_could_not_be_read_names_its_image(
+        self, tmp_path: Path
+    ) -> None:
+        """Where a build record names the description, its image names it too."""
+        document = self.stopped(tmp_path, above="images/")
+        build_record(tmp_path, tmp_path / "images/project.ddd.json", image="one.elf")
+        request = self.rename_request(document, "component.interface[0].definition.name", "V")
+        message = self.answer_to(tmp_path, request)["error"]["message"]
+        assert message.startswith(
+            "images/project.ddd.json of the image one.elf could not be read, so this rename "
+        )
+        assert self.REASON in message
+
+    def test_a_description_the_closure_meets_and_cannot_read_refuses_the_rename(
+        self, tmp_path: Path
+    ) -> None:
+        """Image one reads, and the rename started in its reader reaches the shared writer, a
+        file a second description holds and a plugin stops: the rename would rewrite image one
+        and leave the second reading a name nothing declares. It is refused, naming that
+        description."""
+        write_tree(
+            tmp_path,
+            {
+                "tools/exiting_plugin.py": EXITING_MODEL_PLUGIN,
+                "one/one.ddd.json": project("One", "../shared/writer.ddd.json", "reader.ddd.json"),
+                "one/reader.ddd.json": component("R", declare("input", "Speed")),
+                "shared/writer.ddd.json": component("W", declare("output", "Speed")),
+                "shared/two.ddd.json": project(
+                    "Two",
+                    "writer.ddd.json",
+                    "other.ddd.json",
+                    plugins=["../tools/exiting_plugin.py"],
+                ),
+                "shared/other.ddd.json": component(
+                    "O", declare("local", "X", extensions={"exiting": {"tag": "t"}})
+                ),
+            },
+        )
+        request = self.rename_request(
+            tmp_path / "one/reader.ddd.json", "component.interface[0].definition.name", "V"
+        )
+        message = self.answer_to(tmp_path, request)["error"]["message"]
+        assert message.startswith(
+            "shared/two.ddd.json could not be read, so this rename cannot tell what it reaches: "
+        )
+        assert self.REASON in message
+
+    def test_the_closure_reads_on_once_the_description_it_could_not_read_is_mended(
+        self, tmp_path: Path
+    ) -> None:
+        """The control of the test above: the same trees, the plugin's block mended."""
+        write_tree(
+            tmp_path,
+            {
+                "tools/exiting_plugin.py": EXITING_MODEL_PLUGIN,
+                "one/one.ddd.json": project("One", "../shared/writer.ddd.json", "reader.ddd.json"),
+                "one/reader.ddd.json": component("R", declare("input", "Speed")),
+                "shared/writer.ddd.json": component("W", declare("output", "Speed")),
+                "shared/two.ddd.json": project(
+                    "Two", "writer.ddd.json", plugins=["../tools/exiting_plugin.py"]
+                ),
+            },
+        )
+        request = self.rename_request(
+            tmp_path / "one/reader.ddd.json", "component.interface[0].definition.name", "V"
+        )
+        answer = self.answer_to(tmp_path, request)
+        assert set(answer["result"]["changes"]) == {
+            (tmp_path / name).as_uri() for name in ("one/reader.ddd.json", "shared/writer.ddd.json")
+        }
+
     def test_the_server_asks_for_the_full_text_on_every_change(self, tmp_path: Path) -> None:
         stream = framed(
             {

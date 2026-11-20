@@ -2945,6 +2945,13 @@ A rename is refused as well, naming the document, while an open document of a pr
 reaches holds what its file on disk does not, since the rename is planned from
 the files and a mention typed and not saved is one it cannot see; and it is refused when it
 would rewrite nothing, which an editor applies without a word.
+A rename of anything but a local variable is refused as well, saying that no project is known,
+while none is: a component that no build record claims, that no description above it includes
+and that declares no project itself is read on its own, and renaming what it shares would
+rewrite that one file and leave every other file spelling the name holding it. And a rename is
+refused, naming the description and why, where a description it needs could not be read - one a
+plugin stops, whether a build record names it or the search above a file found it: the files it
+holds would be rewritten for no image, and the others left reading a name nothing declares.
 
 A rename reaches every project that holds a file it rewrites: the projects the file it starts
 from belongs to, then every project holding a file their edits rewrite, until none is new. A

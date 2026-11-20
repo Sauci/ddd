@@ -45,6 +45,8 @@ from ddd.lsp.navigation import (
     constant_at,
     definition,
     index,
+    is_alone,
+    is_local,
     locations,
     references,
     rename_edits,
@@ -189,8 +191,9 @@ class Server:
         walk behind a gesture that is supposed to feel like a tooltip.
         """
 
-        self._projects: dict[Path, list[Loaded]] = {}
-        """The projects containing each document, loaded once and kept until the next refresh.
+        self._projects: dict[Path, tuple[list[Loaded], dict[Path, str]]] = {}
+        """The projects containing each document, loaded once and kept until the next refresh,
+        each with why the descriptions the search for them could not read could not be read.
 
         The same reasoning one level up: answering a hover used to read and validate every
         description file of every image the component is linked into, twice over - the
@@ -502,17 +505,29 @@ class Server:
         """The projects containing a document, loaded once per refresh; where they are loaded
         now, ``descriptions`` takes what the search reads (:func:`~ddd.lsp.navigation.workspaces`).
         """
+        return self._searched(document, descriptions)[0]
+
+    def _searched(
+        self, document: Path, descriptions: Descriptions | None = None
+    ) -> tuple[list[Loaded], dict[Path, str]]:
+        """:meth:`_projects_of`, with why each description the search could not read could not
+        be read."""
         found = self._projects.get(document)
         if found is None:
-            found = workspaces(self._builds_now(), document, self._root_for(document), descriptions)
-            self._projects[document] = found
+            if descriptions is None:
+                descriptions = Descriptions()
+            projects = workspaces(
+                self._builds_now(), document, self._root_for(document), descriptions
+            )
+            found = self._projects[document] = (projects, dict(descriptions.failed))
         return found
 
     def _reach(self, document: Path) -> Reach:
         """Every project a rename started from ``document`` reaches, each description read at
         most once for it."""
-        descriptions: Descriptions = {}
-        start = self._projects_of(document, descriptions)
+        descriptions = Descriptions()
+        start, failed = self._searched(document, descriptions)
+        descriptions.failed.update(failed)
         return Reach(self._builds_now(), start, self._root_for, descriptions)
 
     @staticmethod
@@ -770,6 +785,10 @@ class Server:
 
         A unit is renamed by :meth:`_rename_unit` instead: its rename is a plan that rewrites
         the vocabulary as well, and merges two spellings where a variable's would collide.
+
+        Before any of that, a description the search could not read is named
+        (:meth:`_refused_unread`), and where no project is known only a local's rename goes on
+        (:meth:`_refused_alone`).
         """
         path = self._document(message)
         cache = self._cache(path)
@@ -785,6 +804,10 @@ class Server:
         seen: set[tuple[str, int, int]] = set()
         drifted: set[Path] = set()
         reach = self._reach(path)
+        if self._refused_unread(request_id, reach) or self._refused_alone(
+            request_id, path, reach, subject
+        ):
+            return
         for loaded in reach:
             unreadable = self._unreadable(loaded)
             if unreadable is not None:
@@ -799,7 +822,7 @@ class Server:
             drifted.update(edited.drifted)
             self._gather(changes, seen, edited.changes)
             reach.touch([*map(uri_to_path, edited.changes), *edited.drifted])
-        if self._refused_unseen(request_id, reach):
+        if self._refused_unread(request_id, reach) or self._refused_unseen(request_id, reach):
             return
         if drifted:
             refusal = self._drifted(drifted, "moved a declaration")
@@ -837,6 +860,10 @@ class Server:
         seen: set[tuple[str, int, int]] = set()
         drifted: set[Path] = set()
         reach = self._reach(path)
+        if self._refused_unread(request_id, reach) or self._refused_alone(
+            request_id, path, reach, ("unit", old)
+        ):
+            return
         for loaded in reach:
             built = index(loaded.workspace)
             moved = unit_drift(built, old, cache)
@@ -852,7 +879,7 @@ class Server:
             edits = text_edits(plan, cache)
             self._gather(changes, seen, edits)
             reach.touch(map(uri_to_path, edits))
-        if self._refused_unseen(request_id, reach):
+        if self._refused_unread(request_id, reach) or self._refused_unseen(request_id, reach):
             return
         if drifted:
             refusal = self._drifted(drifted, "moved or respelled a unit")
@@ -871,6 +898,49 @@ class Server:
         if image is not None:
             refusal = f"in {image}, which this rename reaches too: {refusal}"
         write_message(self.writer, error(request_id, REQUEST_FAILED, refusal))
+
+    def _refused_unread(self, request_id: Any, reach: Reach) -> bool:
+        """Refuse a rename that meets a description it could not read, and say whether it did.
+
+        Asked before the first project is looked at, for the descriptions the search for the
+        document's projects met, and again once the reach is complete, for those the closure met:
+        a description a plugin stops may hold the file the rename rewrites, and the rename would
+        then rewrite one image and leave the other naming what is gone. The component alone is
+        what the search answers where its project cannot be read, so it is asked before
+        :meth:`_refused_alone`, which would blame the wrong thing.
+        """
+        if not reach.unread:
+            return False
+        description, reason = min(reach.unread.items())
+        refusal = (
+            f"{reach.named(description)} could not be read, so this rename cannot tell what it "
+            f"reaches: {reason}"
+        )
+        write_message(self.writer, error(request_id, REQUEST_FAILED, refusal))
+        return True
+
+    def _refused_alone(
+        self, request_id: Any, path: Path, reach: Reach, subject: tuple[str, str] | None
+    ) -> bool:
+        """Refuse a rename of anything but a local while no project is known for the document,
+        and say whether it did.
+
+        A component read on its own has no writer for its inputs and no reader for its outputs,
+        and no type, constant, section, raster or unit but its own: a rename of any of them would
+        rewrite that one file and leave every other file that spells the name holding it, saying
+        nothing. A local is spelled where it is declared and nowhere else, so its rename is whole.
+        """
+        if subject is None or not is_alone(path, reach.projects, self._builds_now()):
+            return False
+        if subject[0] == "variable" and is_local(index(reach.projects[0].workspace), subject[1]):
+            return False
+        refusal = (
+            f"no project is known for {path.name}: only a local variable can be renamed without "
+            "one, because a rename has to reach every file that spells the name - put a project "
+            "file above it that includes it, or configure the build (ddd-build.json)"
+        )
+        write_message(self.writer, error(request_id, REQUEST_FAILED, refusal))
+        return True
 
     def _refused_unseen(self, request_id: Any, reach: Reach) -> bool:
         """Refuse a rename while an open document of a project it reaches holds

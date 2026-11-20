@@ -80,7 +80,8 @@ constants file, or inside the component that publishes it - and back to every sh
 spells it, and from an ``includes`` entry to the files it matches, wildcards included.
 
 **Rename.** ``F2`` on a variable renames it in every declaration and in every reference that
-names it, across as many files as that takes. A declared type is renamed the same way, from
+names it, across as many files as that takes once the server knows the project holding
+them - a ``local`` variable needs none. A declared type is renamed the same way, from
 the ``name`` of its entry or from any ``typename`` spelling it, in the file declaring it and
 in every definition and structure member naming it; a declared constant from its entry or from
 any dimension or axis ``size`` spelling it. For those three, a name c reserves, one that is
@@ -130,10 +131,17 @@ error dropped mid edit declares nothing as far as the index knows: the rename wo
 every other file and leave that one holding the old name, and a fix would offer to remove a
 key "no other declaration has" while the unloaded producer states exactly that key.
 A rename is refused as well, naming the document, while an open document of a project it
-reaches holds what its file on disk does not, since the rename is planned from
-the files and a mention typed and not saved is one it cannot see; and it is refused when it
-would rewrite nothing, which an editor applies without a word.
-Fix or save the file and ask again.
+reaches holds what its file on disk does not, since the rename is planned from the files and a
+mention typed and not saved is one it cannot see; and it is refused when it would rewrite
+nothing, which an editor applies without a word. Fix or save the file and ask again.
+A rename of anything but a local variable is refused as well, saying that no project is known,
+while none is: a component that no build record claims, that no description above it includes
+and that declares no project itself is read on its own, and renaming what it shares would
+rewrite that one file and leave every other file spelling the name holding it. Put a project
+file above it that includes it, or configure the build. And a rename is refused, naming the
+description and why, where a description it needs could not be read - one a plugin stops,
+whether a build record names it or the search above a file found it: the files it holds would
+be rewritten for no image, and the others left reading a name nothing declares.
 
 A rename reaches every project that holds a file it rewrites: the projects of the file it
 starts from, then every project holding a file their edits rewrite, until none is new. A

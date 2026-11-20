@@ -232,8 +232,13 @@ declaration they would touch or while a file of the project did not load: the pr
 edit would be computed from is not the project on disk, and rewriting the rest of it around
 the gap is exactly the half-done rename the refusal exists to prevent.  A rename is refused
 too while an open document of a project it reaches holds what its file on disk does not,
-naming it, and when it would rewrite nothing.  Where an image the file you started from is not in already declares the name, or holds a file that did not load,
-the refusal names that image, or its project description where no build record names one.
+naming it, and when it would rewrite nothing.  It is refused, saying that no project is known,
+for anything but a local variable while none is: a component no record claims, that no
+description above it includes and that declares no project itself is read on its own.  And it
+is refused, naming the description and why, where a description it needs could not be read: a
+plugin stops it.  Where an image the file you started from is not in already declares the
+name, or holds a file that did not load, the refusal names that image, or its project
+description where no build record names one.
 
 Which project a file belongs to is not something the file can say, so the server reads the
 `ddd-build.json` that `ddd_generate` leaves in the build tree, and applies the same severities

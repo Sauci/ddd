@@ -426,9 +426,15 @@ class Containing:
     """
 
 
-type Descriptions = dict[Path, Loaded | None]
-"""Every description one question has read, by the path it resolves to: what it read as, or
-``None`` where it could not be read."""
+class Descriptions(dict[Path, Loaded | None]):
+    """Every description one question has read, by the path it resolves to: what it read as, or
+    ``None`` where it could not be read."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.failed: dict[Path, str] = {}
+        """Why each description a plugin defect stopped could not be read, by the path it
+        resolves to: what a rename that depends on a description it cannot read says."""
 
 
 def workspaces(
@@ -456,7 +462,7 @@ def workspaces(
     description twice (:class:`Reach`).
     """
     if descriptions is None:
-        descriptions = {}
+        descriptions = Descriptions()
     # What stopped a read is collected and then dropped: a hover or a jump is a question a
     # person asked and wants an answer to, and the squiggles are where a broken plugin is
     # named. Reporting it twice, once as a finding and once instead of a jump, helps nobody.
@@ -481,10 +487,13 @@ def workspaces(
 def _read_once(path: Path, failed: dict[Path, str], descriptions: Descriptions) -> Loaded | None:
     """:func:`_loaded`, unless the question has read ``path`` already: ``descriptions`` holds what
     it has read, by resolved path, ``None`` standing for a description that could not be read -
-    whose reason is in the ``failed`` of the search that met it first."""
+    whose reason is in the ``failed`` of the search that met it first, and in
+    ``descriptions.failed`` for whoever asks later."""
     key = path.resolve()
     if key not in descriptions:
         descriptions[key] = _loaded(path, failed)
+        if path in failed:
+            descriptions.failed[key] = failed[path]
     return descriptions[key]
 
 
@@ -559,7 +568,7 @@ def resolve_projects(
     Bounded by the editor's own root, so the walk cannot wander up into a home directory.
     """
     if descriptions is None:
-        descriptions = {}
+        descriptions = Descriptions()
     resolved = document.resolve()
     stop = root.resolve() if root is not None else document.parent.resolve()
     directories = []
@@ -664,6 +673,14 @@ class Reach:
             for loaded in resolve_projects(file, self._root_for(file), self._descriptions).projects:
                 self._add(loaded)
 
+    @property
+    def unread(self) -> dict[Path, str]:
+        """Every description the search has met and could not read, with why, by the path it
+        resolves to: the ones a plugin defect stopped, whether a build record names them or the
+        search above a file found them. What a rename must not go on without, since the files
+        such a description holds are rewritten for no image."""
+        return self._descriptions.failed
+
     def image(self, loaded: Loaded) -> str | None:
         """What a refusal from ``loaded`` names it by: the image of the build naming its
         description; where no build names one, the description, by its path in its workspace
@@ -673,9 +690,22 @@ class Reach:
         key = loaded.path.resolve()
         if key in self._own:
             return None
+        return self._record_image(key) or self._in_folder(key)
+
+    def named(self, description: Path) -> str:
+        """What a refusal about a description that could not be read calls it: its path in its
+        workspace folder, and the image of the build naming it where one does."""
+        key = description.resolve()
+        image = self._record_image(key)
+        return self._in_folder(key) + (f" of the image {image}" if image else "")
+
+    def _record_image(self, key: Path) -> str | None:
         for info in self._builds:
             if info.image and Path(info.project).resolve() == key:
                 return info.image
+        return None
+
+    def _in_folder(self, key: Path) -> str:
         folder = self._root_for(key).resolve()
         if key.is_relative_to(folder):
             return key.relative_to(folder).as_posix()
@@ -818,6 +848,28 @@ def references(built: Index, document: Document, pointer: str) -> list[Site]:
     if name is not None:
         return list(built.declarations.get(name, ()))
     return []
+
+
+def is_alone(document: Path, projects: Sequence[Loaded], builds: Sequence[BuildInfo]) -> bool:
+    """Whether ``projects``, which :func:`workspaces` answered for ``document``, are no project
+    at all: the document read on its own, a component that no record claims, that no description
+    above includes, and that declares no project itself.
+
+    The third answer of :func:`workspaces` is also the whole project of a project file opened
+    alone, which is a project known; and a component whose description above could not be read
+    is read alone too, which is not what is wrong with it (:attr:`Reach.unread`). A build record
+    naming the component as its description is a claim, so a project of its own, however thin.
+    """
+    if len(projects) != 1 or projects[0].workspace.projects:
+        return False
+    return all(Path(info.project).resolve() != document.resolve() for info in builds)
+
+
+def is_local(built: Index, name: str) -> bool:
+    """Whether every declaration of ``name`` states it ``local``: spelled in the file declaring
+    it and nowhere else, which is why its rename is the one that needs no project."""
+    sites = built.declarations.get(name, ())
+    return bool(sites) and all(built.scopes[site] == "local" for site in sites)
 
 
 def renameable_at(document: Document, pointer: str) -> tuple[str, str] | None:

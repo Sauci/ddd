@@ -1902,6 +1902,75 @@ class TestWhatARenameIsRefusedFor:
             assert phrase in said, f"{page} no longer says: {phrase!r}"
 
 
+class TestWhatARenameIsRefusedForWithNoProject:
+    """10:I5. With no project known, a rename of anything but a local variable is refused, saying
+    so, and a rename that needs a description which could not be read is refused naming it and
+    why. The three pages that list the refusals say so, and the editor page's first sentence on
+    the rename no longer promises every file where no project is known."""
+
+    ALONE: ClassVar[str] = (
+        "a component that no build record claims, that no description above it includes and "
+        "that declares no project itself is read on its own"
+    )
+    PHRASES: ClassVar[dict[str, tuple[str, tuple[str, ...]]]] = {
+        "SPEC.md": (
+            SPEC,
+            (
+                "A rename of anything but a local variable is refused as well, saying that no "
+                f"project is known, while none is: {ALONE}, and renaming what it shares would "
+                "rewrite that one file and leave every other file spelling the name holding it.",
+                "And a rename is refused, naming the description and why, where a description "
+                "it needs could not be read - one a plugin stops, whether a build record names "
+                "it or the search above a file found it",
+            ),
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            (
+                "A rename of anything but a local variable is refused as well, saying that no "
+                f"project is known, while none is: {ALONE}, and renaming what it shares would "
+                "rewrite that one file and leave every other file spelling the name holding it. "
+                "Put a project file above it that includes it, or configure the build.",
+                "And a rename is refused, naming the description and why, where a description "
+                "it needs could not be read - one a plugin stops, whether a build record names "
+                "it or the search above a file found it",
+                "across as many files as that takes once the server knows the project holding "
+                "them - a ``local`` variable needs none.",
+            ),
+        ),
+        "README.md": (
+            README,
+            (
+                "It is refused, saying that no project is known, for anything but a local "
+                "variable while none is: a component no record claims, that no description "
+                "above it includes and that declares no project itself is read on its own.",
+                "And it is refused, naming the description and why, where a description it "
+                "needs could not be read: a plugin stops it.",
+            ),
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(PHRASES))
+    def test_the_page_says_when_a_rename_is_refused_with_no_project_known(self, page: str) -> None:
+        text, phrases = self.PHRASES[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"
+
+    def test_the_readme_paragraph_is_wrapped_to_its_width(self) -> None:
+        """Task 4 joined two of its sentences onto one line, 150 characters long."""
+        start = README.index("**Rename** (`F2`)")
+        paragraph = README[start : README.index("\n\n", start)]
+        assert max(len(line) for line in paragraph.splitlines()) <= 100
+
+    def test_the_editor_page_wraps_the_sentence_after_the_drift_one_to_its_width(self) -> None:
+        """The sentence on an open document that differs was wrapped short, ending a line after
+        'planned from'."""
+        assert (
+            "since the rename is planned from the files and a\nmention typed" in EDITOR_INTEGRATION
+        )
+
+
 class TestWhatThePolicySaysOfAnAdvisory:
     """20:I4. ``SECURITY.md`` said which release is supported and how to report a vulnerability
     privately, and nothing of an advisory: which versions one names, or where one is published.

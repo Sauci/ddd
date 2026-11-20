@@ -255,14 +255,15 @@ _TWO_USES = {
 }
 
 
-# 10:I10 and 14:M13 on the page: `Big` sized by `CELLS` and declared only where `CELLS > 2`, and
-# `UNUSED`, which no shape names and one condition spells. The shipped templates define each
-# constant as a macro in the types header, and `#if` reads a name nothing defines as 0.
+# 10:I10 and 14:M13 on the page: `Big` sized by `CELLS` and declared only where
+# `defined(CELLS) && CELLS > 2`, which spells it twice, and `UNUSED`, which no shape names and one
+# condition spells. The shipped templates define each constant as a macro in the types header,
+# and `#if` reads a name nothing defines as 0.
 _UNDER_CONDITIONS = {
     "c.ddd.json": {"constants": [{"name": "CELLS", "value": 4}, {"name": "UNUSED", "value": 3}]},
     "w.ddd.json": component(
         "W",
-        declare("output", "Big", dimensions=["CELLS"], condition="CELLS > 2"),
+        declare("output", "Big", dimensions=["CELLS"], condition="defined(CELLS) && CELLS > 2"),
         declare("output", "V", condition="UNUSED > 3"),
     ),
 }
@@ -569,14 +570,17 @@ class TestRenaming:
         self, tmp_path: Path
     ) -> None:
         """10:I10 on the page, which renames through the editor's sites: the condition is set
-        with the constant's word rewritten in it, and once applied, it reads the new name."""
+        with the constant's word rewritten in it, each of the two times it spells it, and once
+        applied, it reads the new name."""
         built = _index(tmp_path, _UNDER_CONDITIONS)
         plan = rename_entry(project_shared.CONSTANTS, built, "CELLS", "SLOTS", {})
         assert {edit.path.name: edit.operations for edit in plan.edits} == {
             "c.ddd.json": (Operation("set", "constants[0].name", '"SLOTS"'),),
             "w.ddd.json": (
                 Operation("set", "component.interface[0].definition.dimensions[0]", '"SLOTS"'),
-                Operation("set", "component.interface[0].condition", '"SLOTS > 2"'),
+                Operation(
+                    "set", "component.interface[0].condition", '"defined(SLOTS) && SLOTS > 2"'
+                ),
             ),
         }
         _made(plan)
@@ -584,7 +588,7 @@ class TestRenaming:
         assert workspace is not None
         (loaded,) = workspace.components
         assert [declared.condition for declared in loaded.component.interface] == [
-            "SLOTS > 2",
+            "defined(SLOTS) && SLOTS > 2",
             "UNUSED > 3",
         ]
 
@@ -592,7 +596,7 @@ class TestRenaming:
         """Only the word is rewritten: an escape the author wrote stays the escape, as a value
         travels as the json text its author wrote."""
         text = json.dumps(_UNDER_CONDITIONS["w.ddd.json"], indent=2).replace(
-            '"CELLS > 2"', '"CELLS \\u003e 2"'
+            '"defined(CELLS) && CELLS > 2"', '"defined(CELLS) && CELLS \\u003e 2"'
         )
         built = _index(tmp_path, {**_UNDER_CONDITIONS, "w.ddd.json": text})
         plan = rename_entry(project_shared.CONSTANTS, built, "CELLS", "SLOTS", {})
@@ -602,7 +606,7 @@ class TestRenaming:
             for operation in edit.operations
             if operation.pointer == "component.interface[0].condition"
         ]
-        assert condition.raw == '"SLOTS \\u003e 2"'
+        assert condition.raw == '"defined(SLOTS) && SLOTS \\u003e 2"'
 
     @pytest.mark.parametrize(
         ("to", "because"),
@@ -762,7 +766,12 @@ class TestAnEntryMovedSinceTheIndex:
             {
                 "w.ddd.json": component(
                     "W",
-                    declare("output", "Big", dimensions=["CELLS"], condition="CELLS > 2"),
+                    declare(
+                        "output",
+                        "Big",
+                        dimensions=["CELLS"],
+                        condition="defined(CELLS) && CELLS > 2",
+                    ),
                     declare("output", "V", condition="defined(FEATURE_X)"),
                 )
             },

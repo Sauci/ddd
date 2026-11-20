@@ -17,7 +17,7 @@ from collections import Counter
 from collections.abc import Callable, Sequence
 from functools import partial
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, ClassVar, Final
 
 import pytest
 from generate_project import generate
@@ -7663,6 +7663,111 @@ class TestServer:
         answer = next(m for m in sent(writer) if m.get("id") == 11)
         assert "changes" in answer["result"]
         assert "documentChanges" not in answer["result"]
+
+    ANNOUNCED: ClassVar[dict[str, Any]] = {
+        "workspace": {"workspaceEdit": {"documentChanges": True, "changeAnnotationSupport": {}}}
+    }
+
+    def edit_answers(self, tmp_path: Path, capabilities: Any, files: int) -> dict[str, Any]:
+        """The rename of ``Speed``, which reaches ``files`` files, and the quick fix that
+        applies its unit to the other declarations, which reach one file fewer, answered to a
+        client that announced ``capabilities``."""
+        names = ["a", "b", "c"][:files]
+        write_tree(
+            tmp_path,
+            {
+                "project.ddd.json": project("P", *(f"{n}.ddd.json" for n in names)),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="Hz")),
+                "b.ddd.json": component("B", declare("input", "Speed")),
+                "c.ddd.json": component("C", declare("input", "Speed")),
+            },
+        )
+        a_text = (tmp_path / "a.ddd.json").read_text(encoding="utf-8")
+        stream = framed(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"rootUri": tmp_path.as_uri(), "capabilities": capabilities},
+            },
+            self.rename_request(
+                tmp_path / "a.ddd.json", "component.interface[0].definition.name", "Velocity"
+            ),
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "textDocument/codeAction",
+                "params": {
+                    "textDocument": {"uri": (tmp_path / "a.ddd.json").as_uri()},
+                    "range": Document(a_text).range_of("component.interface[0].definition"),
+                    "context": {"diagnostics": []},
+                },
+            },
+            {"jsonrpc": "2.0", "id": 3, "method": "shutdown"},
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+        writer = io.BytesIO()
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        sent_back = sent(writer)
+        fixes = next(m for m in sent_back if m.get("id") == 2)["result"]
+        fix = next((f for f in fixes if f["title"].startswith("Apply this unit")), {})
+        return {
+            "rename": next(m for m in sent_back if m.get("id") == 11)["result"],
+            "fix": fix.get("edit"),
+            "title": fix.get("title"),
+        }
+
+    @pytest.mark.parametrize("answer", ["rename", "fix"])
+    def test_an_edit_reaching_two_files_asks_the_client_to_confirm_it(
+        self, tmp_path: Path, answer: str
+    ) -> None:
+        """10:I11. A client applies a code action's edit and saves every file it touches, so
+        an edit across files is marked for the preview, and every edit of it names the mark."""
+        got = self.edit_answers(tmp_path, self.ANNOUNCED, 3)
+        edit = got[answer]
+        assert "changes" not in edit
+        assert len(edit["documentChanges"]) == (3 if answer == "rename" else 2)
+        (identifier,) = edit["changeAnnotations"]
+        note = edit["changeAnnotations"][identifier]
+        assert note["needsConfirmation"] is True
+        assert note["label"] == ("Rename" if answer == "rename" else got["title"])
+        assert all(
+            text_edit["annotationId"] == identifier
+            for change in edit["documentChanges"]
+            for text_edit in change["edits"]
+        )
+
+    @pytest.mark.parametrize("answer", ["rename", "fix"])
+    @pytest.mark.parametrize(
+        "capabilities",
+        [
+            {"workspace": {"workspaceEdit": {"documentChanges": True}}},
+            {"workspace": {"workspaceEdit": {"changeAnnotationSupport": {}}}},
+            {
+                "workspace": {
+                    "workspaceEdit": {"documentChanges": True, "changeAnnotationSupport": 1}
+                }
+            },
+        ],
+    )
+    def test_a_client_short_of_either_capability_is_sent_no_annotation(
+        self, tmp_path: Path, answer: str, capabilities: Any
+    ) -> None:
+        """An annotated edit exists only inside ``documentChanges``, and an annotation is
+        outside what a client that did not announce it negotiated."""
+        edit = self.edit_answers(tmp_path, capabilities, 3)[answer]
+        assert "changeAnnotations" not in edit
+        assert "annotationId" not in json.dumps(edit)
+        assert ("documentChanges" in edit) is bool(
+            capabilities["workspace"]["workspaceEdit"].get("documentChanges")
+        )
+
+    @pytest.mark.parametrize("answer", ["rename", "fix"])
+    def test_an_edit_reaching_one_file_stays_unannotated(self, tmp_path: Path, answer: str) -> None:
+        edit = self.edit_answers(tmp_path, self.ANNOUNCED, 1 if answer == "rename" else 2)[answer]
+        assert len(edit["documentChanges"]) == 1
+        assert "changeAnnotations" not in edit
+        assert "annotationId" not in json.dumps(edit)
 
     def test_a_removal_is_not_offered_while_another_declaration_is_unreadable(
         self, tmp_path: Path

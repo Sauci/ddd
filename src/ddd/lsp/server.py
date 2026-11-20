@@ -101,6 +101,7 @@ _NAVIGATING: Final = frozenset({_DEFINITION, "textDocument/references"})
 _HOVER: Final = "textDocument/hover"
 _PREPARE_RENAME: Final = "textDocument/prepareRename"
 _RENAME: Final = "textDocument/rename"
+_CONFIRM: Final = "ddd-confirm"
 _CODE_ACTION: Final = "textDocument/codeAction"
 
 
@@ -230,6 +231,13 @@ class Server:
 
         self._versioned_edits = False
         """Whether the client takes ``documentChanges``, which carry the version an edit is for."""
+
+        self._annotated_edits = False
+        """Whether the client also announced ``changeAnnotationSupport``.
+
+        An annotated text edit exists only inside ``documentChanges``, so this is read apart
+        from the other and counts only beside it (:meth:`_workspace_edit`).
+        """
 
         self._initialised = False
         """Whether the client has said what the workspace is, which it does exactly once.
@@ -835,7 +843,9 @@ class Server:
         span = document.text_range_of(pointer)
         return None if span is None else {"range": span, "placeholder": subject[1]}
 
-    def _workspace_edit(self, changes: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
+    def _workspace_edit(
+        self, changes: dict[str, list[dict[str, Any]]], label: str
+    ) -> dict[str, Any]:
         """The edits in the shape the client asked for.
 
         ``documentChanges`` names, for each file, the version of the text the edit was
@@ -847,19 +857,32 @@ class Server:
         The one funnel both a rename and a quick fix pass through, which is why the client's
         spelling is put back here: an edit is applied to the document the uri names, and the
         one on screen is the one the client opened.
+
+        An edit reaching two files or more is marked ``needsConfirmation`` for a client that
+        announced both ``documentChanges`` and ``changeAnnotationSupport``, ``label`` naming it:
+        a client applies an edit it is handed and saves every file it touched, unless it is
+        marked, and then it shows the edit first, where the reader can leave a file out. Every
+        text edit of it names the one annotation; any other client gets the edit unmarked,
+        because an annotation is outside what it negotiated.
         """
         changes = {self._respell(uri): edits for uri, edits in changes.items()}
         if not self._versioned_edits:
             return {"changes": changes}
-        return {
+        annotated = self._annotated_edits and len(changes) > 1
+        result: dict[str, Any] = {
             "documentChanges": [
                 {
                     "textDocument": {"uri": uri, "version": self._version_of(uri_to_path(uri))},
-                    "edits": edits,
+                    "edits": [{**edit, "annotationId": _CONFIRM} for edit in edits]
+                    if annotated
+                    else edits,
                 }
                 for uri, edits in changes.items()
             ]
         }
+        if annotated:
+            result["changeAnnotations"] = {_CONFIRM: {"label": label, "needsConfirmation": True}}
+        return result
 
     def _answer_rename(self, request_id: Any, message: dict[str, Any]) -> None:
         """Rewrite a name wherever a project the rename reaches writes it, or say why it cannot
@@ -929,7 +952,7 @@ class Server:
         # The edits rewrite the very files every answer above was read out of, so anything
         # kept from before them now describes the past.
         self._forget()
-        write_message(self.writer, response(request_id, self._workspace_edit(changes)))
+        write_message(self.writer, response(request_id, self._workspace_edit(changes, "Rename")))
 
     def _rename_unit(
         self, request_id: Any, path: Path, old: str, new: str, cache: dict[Path, Document]
@@ -984,7 +1007,7 @@ class Server:
         if self._refused_empty(request_id, changes):
             return
         self._forget()
-        write_message(self.writer, response(request_id, self._workspace_edit(changes)))
+        write_message(self.writer, response(request_id, self._workspace_edit(changes, "Rename")))
 
     def _refuse(self, request_id: Any, reach: Reach, loaded: Loaded, refusal: str) -> None:
         """Answer a rename with one of its projects' refusals, naming the image it comes from
@@ -1140,7 +1163,7 @@ class Server:
                 actions(index(loaded.workspace), path, document, pointer, cache, reported, project)
             )
         for action in offered:
-            action["edit"] = self._workspace_edit(action["edit"]["changes"])
+            action["edit"] = self._workspace_edit(action["edit"]["changes"], action["title"])
         return offered
 
     def _withheld(self, projects: Sequence[Loaded]) -> bool:
@@ -1185,6 +1208,9 @@ class Server:
         workspace = capabilities.get("workspace") if isinstance(capabilities, dict) else None
         edit = workspace.get("workspaceEdit") if isinstance(workspace, dict) else None
         self._versioned_edits = isinstance(edit, dict) and edit.get("documentChanges") is True
+        self._annotated_edits = isinstance(edit, dict) and isinstance(
+            edit.get("changeAnnotationSupport"), dict
+        )
 
     def _capabilities(self) -> dict[str, Any]:
         return {

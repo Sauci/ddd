@@ -6,8 +6,10 @@ to make every other declaration of that object say the same thing.
 
 The protocol has no notion of an edit that propagates - nothing says "when this changes, change
 that too" - so this is a code action, offered where the cursor is rather than applied behind
-one. That is the better shape anyway: a client shows a multi-file code action in a preview
-first, so nobody's files change without being seen.
+one. That is the better shape anyway: the server marks a multi-file code action
+``needsConfirmation`` for a client that announced it (``_workspace_edit``), so that client shows
+it in a preview first and nobody's files change without being seen - where the reader may leave
+a file out, which applies the fix in part.
 
 Four rules keep the writing safe:
 

@@ -172,6 +172,12 @@ asked from one image, a name "already declared by this project" in the other sen
 looking in the wrong one; unsaved changes are refused naming the file that holds them,
 wherever it is.
 
+An edit reaching two files or more, a rename's or a quick fix's, is sent marked
+``needsConfirmation`` to a client that announced both ``documentChanges`` and
+``changeAnnotationSupport``, so that the client shows it before applying and saving it. The reader
+can then leave a file out of the edit, which applies it in part, by the reader's choice; a client
+that announced only one of the two is sent the edit unmarked, and applies it at once.
+
 **Quick fixes.** They change descriptions: the code of the components that read the variable is
 not touched, and the title of each fix reconciling a ``definition-mismatch`` says so, as the one
 a finding of ``ddd gui`` carries does. On a key the declarations of one object have to agree on -

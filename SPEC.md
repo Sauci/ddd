@@ -2970,6 +2970,12 @@ the name, or holds a file that did not load, the refusal names that project's im
 description where no build record names it; unsaved changes are refused naming the file that
 holds them, wherever it is.
 
+An edit reaching two files or more, a rename's or a quick fix's, is sent marked `needsConfirmation`
+to a client that announced both `documentChanges` and `changeAnnotationSupport`, so that the client
+shows it before applying and saving it. The reader can then leave a file out of the edit, which
+applies it in part, by the reader's choice; a client that announced only one of the two is sent the
+edit unmarked, and applies it at once.
+
 A hover on a name naming a declared type describes the data object that names it where
 there is one, and otherwise the type itself: a structure and its members, a scalar type's
 storage and conversion, an external type and the header that defines it. Inside a types file

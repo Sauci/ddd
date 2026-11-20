@@ -10430,3 +10430,49 @@ def test_the_command_line_page_says_which_hosts_ddd_gui_takes() -> None:
         "``--host`` takes that address, the default ``127.0.0.1`` or a name resolving to either, "
         "and refuses any other." in flat
     )
+
+
+class TestAMultiFileEditIsPreviewed:
+    """10:I11. An edit reaching two files or more is sent marked for confirmation to a client that
+    announced both capabilities, so the reader sees it first and may leave a file out, which
+    applies it in part."""
+
+    SAID: ClassVar[dict[str, tuple[str, tuple[str, ...]]]] = {
+        "SPEC.md": (
+            SPEC,
+            (
+                "An edit reaching two files or more, a rename's or a quick fix's, is sent marked "
+                "`needsConfirmation` to a client that announced both `documentChanges` and "
+                "`changeAnnotationSupport`, so that the client shows it before applying and "
+                "saving it. The reader can then leave a file out of the edit, which applies it "
+                "in part, by the reader's choice; a client that announced only one of the two "
+                "is sent the edit unmarked, and applies it at once.",
+            ),
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            (
+                "An edit reaching two files or more, a rename's or a quick fix's, is sent marked "
+                "``needsConfirmation`` to a client that announced both ``documentChanges`` and "
+                "``changeAnnotationSupport``, so that the client shows it before applying and "
+                "saving it. The reader can then leave a file out of the edit, which applies it "
+                "in part, by the reader's choice; a client that announced only one of the two "
+                "is sent the edit unmarked, and applies it at once.",
+            ),
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(SAID))
+    def test_the_page_says_a_multi_file_edit_is_previewed(self, page: str) -> None:
+        text, phrases = self.SAID[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"
+
+    def test_the_module_says_what_marks_the_preview(self) -> None:
+        said = flattened((ROOT / "src" / "ddd" / "lsp" / "edits.py").read_text(encoding="utf-8"))
+        assert (
+            "marks a multi-file code action ``needsConfirmation`` for a client that announced it"
+            in said
+        )
+        assert "a client shows a multi-file code action in a preview first" not in said

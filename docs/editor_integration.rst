@@ -188,7 +188,8 @@ than re-serialised, so the project's formatting survives the fix. The fixes are 
 component owns the variable: a component that reads it is offered the producer's value first,
 and the producer its own, sent out. The first is marked as the preferred fix, the one the
 editor's automatic fix applies, only where it goes the owner's way: where that way is not
-offered, none is marked, rather than the other way round.
+offered, none is marked, rather than the other way round, and none is where two components write
+the variable, or none does, which leaves it no owner.
 
 A fix is offered only where every file it writes still loads, as far as the declaration and the
 type it names can say. Some rules hold between keys, and the models say them: an enumeration needs

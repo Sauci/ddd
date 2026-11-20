@@ -2116,7 +2116,8 @@ class TestWhatAQuickFixReadsThroughAType:
 
 class TestWhichQuickFixIsPreferred:
     """The editor's preferred fix is the one the ownership rule orders first, and none where that
-    one is not offered, rather than the next in the list. The editor page says so."""
+    one is not offered, rather than the next in the list, nor where the variable has two producers
+    or none and so no owner. The editor page says so."""
 
     def test_the_editor_page_says_which_fix_is_preferred(self) -> None:
         assert (
@@ -2124,7 +2125,8 @@ class TestWhichQuickFixIsPreferred:
             "it is offered the producer's value first, and the producer its own, sent out. The "
             "first is marked as the preferred fix, the one the editor's automatic fix applies, "
             "only where it goes the owner's way: where that way is not offered, none is marked, "
-            "rather than the other way round."
+            "rather than the other way round, and none is where two components write the "
+            "variable, or none does, which leaves it no owner."
         ) in flattened(EDITOR_INTEGRATION)
 
     def test_the_editor_page_no_longer_hands_the_place_down_the_list(self) -> None:

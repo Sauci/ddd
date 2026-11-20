@@ -8945,6 +8945,37 @@ class TestWhichFixIsPreferred:
             [],
         )
 
+    def test_two_producers_prefer_no_fix(self, tmp_path: Path) -> None:
+        """Two components write the variable and disagree: neither owns it, so neither one's value
+        sent over the other's is a fix to apply by itself, where the producer asked was preferred
+        its own, overwriting the other writer."""
+        files = {
+            "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            "b.ddd.json": component("B", declare("output", "Speed", unit="Hz")),
+        }
+        offered = offered_at(tmp_path, "b.ddd.json", files, MISMATCH_REPORTED)
+        assert (reconciled(offered), preferred(offered)) == (
+            ["Apply this unit to 1 other declaration of 'Speed'", "Use the unit declared in a"],
+            [],
+        )
+
+    def test_no_producer_prefers_no_fix(self, tmp_path: Path) -> None:
+        """Nobody writes the variable, and of its two readers one states a unit: no owner's way
+        exists, so taking the unit out is offered and not applied by itself, where it was
+        preferred."""
+        files = {
+            "a.ddd.json": component("A", declare("input", "Speed", unit="rpm")),
+            "b.ddd.json": component("B", declare("input", "Speed")),
+        }
+        offered = offered_at(tmp_path, "a.ddd.json", files, MISMATCH_REPORTED)
+        assert (reconciled(offered), preferred(offered)) == (
+            [
+                "Remove this unit, which no other declaration of 'Speed' has",
+                "Apply this unit to 1 other declaration of 'Speed'",
+            ],
+            [],
+        )
+
 
 class TestMessagesTheClientGetsWrong:
     """Somebody else's bytes, in the shapes a client actually sends them wrong.

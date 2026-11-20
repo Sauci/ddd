@@ -378,7 +378,8 @@ def reconciliations(
         )
     here = Site(path, definition)
     produces = here in built.producers.get(name, ())
-    if owned and len(built.producers.get(name, ())) != 1:
+    owner = len(built.producers.get(name, ())) == 1
+    if owned and not owner:
         # No single owner, so no direction for a fix to flow in. Two components writing one
         # variable - or none writing it - is its own finding, and settling the disagreement
         # between them would be choosing a winner this has no standing to choose.
@@ -414,7 +415,9 @@ def reconciliations(
             if widened and first is not None:
                 first = _across(built, name, first, cache)
             ordered = [first]
-        if ordered[0] is not None:
+        if owner and ordered[0] is not None:
+            # Where two components write the variable, or none does, the editor still offers
+            # both ways in the order above, but neither is an owner's, so neither leads.
             ordered[0] = replace(ordered[0], leads=True)
         offered.extend(action for action in ordered if action is not None)
     return offered
@@ -745,7 +748,8 @@ class Reconciliation:
     leads: bool = False
     """Whether this is the first of its key's pair as the ownership rule orders them: somebody
     else's answer taken, asked at a declaration that does not produce the variable - the
-    producer's, for preference - and this one's own sent out, asked at one that does. The editor
+    producer's, for preference - and this one's own sent out, asked at one that does. Nothing
+    leads where the variable has two producers or none, which leaves it no owner. The editor
     prefers its first fix only when that one leads (:func:`_on_the_declaration`); the page keeps
     no other (``owned=True``)."""
 

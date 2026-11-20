@@ -2924,15 +2924,14 @@ initial value included; renaming an object, a declared type or a declared consta
 everywhere the projects it reaches write it - the declaration and every reference,
 `typename`, dimension or axis `size` spelling it - refused up front for a name the C language
 does not allow, a type name spelling a base datatype, or one a project it reaches already
-uses, whether for
-another object, an enum, an enumerator, a type or a constant, because a rename that silently
-merges two objects compiles, links, and shares storage nobody intended to share; and quick
-fixes that reconcile one key across the declarations of one object, in either direction,
-including removing a key the others do not have, which change descriptions and never the code
-of the components that read the variable, and none of which is offered where writing it
-would leave a file the loader refuses; and, on a `missing-id`, a fix that gives the
-declaration an identity, writing what `ddd id --assign` would write and offered only where
-that finding is reported.
+uses, whether for another object, an enum, an enumerator, a type or a constant, because a
+rename that silently merges two objects compiles, links, and shares storage nobody intended
+to share; and quick fixes that reconcile one key across the declarations of one object, in
+either direction, including removing a key the others do not have, which change descriptions
+and never the code of the components that read the variable, and none of which is offered
+where writing it would leave a file the loader refuses; and, on a `missing-id`, a fix that
+gives the declaration an identity, writing what `ddd id --assign` would write and offered
+only where that finding is reported.
 
 A rename and the quick fixes are also refused, naming the file, in two states where the
 project the edit would be computed from is not the project on disk: while an open document
@@ -2945,13 +2944,15 @@ other declaration has" while the unloaded producer states exactly that key.
 
 A rename reaches every project that holds a file it rewrites: the projects the file it starts
 from belongs to, then every project holding a file their edits rewrite, until none is new. A
-component linked into two images is in two projects, so a rename that rewrites it rewrites
-the readers of both images, whichever of the two the file it starts from is in; reaching only
-the projects of that file would leave the other image reading a name nothing declares. Every
-project the rename reaches is asked each refusal above before anything is written. Where a
-project the file it starts from does not belong to already uses the name, or holds a file that
-did not load, the refusal names that project's image, or its description where no build
-record names it; unsaved changes are refused naming the file that holds them, wherever it is.
+component linked into two images is in two projects where both are found for it as below -
+by their build records, or, where no record claims it, by the search above it - and a rename
+that rewrites it then rewrites the readers of both images, whichever of the two the file it
+starts from is in; reaching only the projects of that file would leave the other image reading
+a name nothing declares. Every project the rename reaches is asked each refusal above before
+anything is written. Where a project the file it starts from does not belong to already uses
+the name, or holds a file that did not load, the refusal names that project's image, or its
+description where no build record names it; unsaved changes are refused naming the file that
+holds them, wherever it is.
 
 A hover on a name naming a declared type describes the data object that names it where
 there is one, and otherwise the type itself: a structure and its members, a scalar type's

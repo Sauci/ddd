@@ -107,19 +107,19 @@ dot is an ordinary spelling, and a section may be spelled exactly as a variable 
 no namespace with it; a raster's name is the short name of its XCP event rather than a c
 identifier either - printable ASCII with no space, eight characters at most - and it may be
 spelled exactly as a variable is too, sharing no namespace with it. What is refused is a
-name those characters do not spell, and one the project already declares as a section: the
-format permits two, reporting them as ``duplicate-section``, but each carries its own
-``access`` and ``alignment``, and a rename that merged them would move data into memory with
-different properties. A raster answers the same way: a name outside its own alphabet, or one
-the project already declares as a raster, is refused - the format permits two there as well,
-reporting them as ``duplicate-raster``, but each carries its own ``event`` and ``cycle``,
-and a rename that merged them would sample one signal on another's channel. A unit is renamed
-from any place it is stated, or from its entry in a units file; renaming onto a unit that
-already exists merges the two instead of refusing the collision, as a variable's rename
-would. It is refused, naming the file, only while a file of a project it reaches does not load
-at all - a unit listed twice, reported as ``duplicate-unit``, does
-not stop it, because renaming may be how such a mistake is fixed. Only the characters between
-the quotes are replaced, so formatting survives and free text is left alone.
+name those characters do not spell, and one a project it reaches already declares as a
+section: the format permits two, reporting them as ``duplicate-section``, but each carries
+its own ``access`` and ``alignment``, and a rename that merged them would move data into
+memory with different properties. A raster answers the same way: a name outside its own
+alphabet, or one a project it reaches already declares as a raster, is refused - the format
+permits two there as well, reporting them as ``duplicate-raster``, but each carries its own
+``event`` and ``cycle``, and a rename that merged them would sample one signal on another's
+channel. A unit is renamed from any place it is stated, or from its entry in a units file;
+renaming onto a unit that already exists merges the two instead of refusing the collision, as
+a variable's rename would. It is refused, naming the file, only while a file of a project it
+reaches does not load at all - a unit listed twice, reported as ``duplicate-unit``, does not
+stop it, because renaming may be how such a mistake is fixed. Only the characters between the
+quotes are replaced, so formatting survives and free text is left alone.
 
 A variable's, a type's, a constant's or a section's rename, and every quick fix below, is
 also refused - naming the file, and before anything is written - while the project on disk is
@@ -133,15 +133,17 @@ file and ask again.
 
 A rename reaches every project that holds a file it rewrites: the projects of the file it
 starts from, then every project holding a file their edits rewrite, until none is new. A
-component linked into two images is in two projects, so a variable it writes is renamed in
-the readers of both images, whichever of the two the file the rename starts from is in - and
-so is a type, a constant, a section, a raster or a unit that a file of both spells. Every
-project the rename reaches is asked each refusal above before anything is written. Where a
-project the file it starts from does not belong to already uses the name, or holds a file that
-did not load, the refusal names that project's image, or its description where no build
-record names it - asked from one image, a name "already declared by this project" in the
-other sends the reader looking in the wrong one; unsaved changes are refused naming the file
-that holds them, wherever it is.
+component linked into two images is in two projects where both are found for it, as
+*Which project a file belongs to* below says - by their build records, or, where no record
+claims it, by the search above it - and a variable it writes is then renamed in the readers of
+both images, whichever of the two the file the rename starts from is in; so is a type, a
+constant, a section, a raster or a unit that a file of both spells. Every project the rename
+reaches is asked each refusal above before anything is written. Where a project the file it
+starts from does not belong to already uses the name, or holds a file that did not load, the
+refusal names that project's image, or its description where no build record names it -
+asked from one image, a name "already declared by this project" in the other sends the reader
+looking in the wrong one; unsaved changes are refused naming the file that holds them,
+wherever it is.
 
 **Quick fixes.** They change descriptions: the code of the components that read the variable is
 not touched, and the title of the fix a finding of ``ddd gui`` carries says so. On a key the declarations of one object have to agree on - a ``unit``, a

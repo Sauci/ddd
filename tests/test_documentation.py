@@ -1742,13 +1742,17 @@ class TestWhichDescriptionAnswersForAFile:
 
 class TestWhatARenameReaches:
     """10:I3. A rename reaches every project holding a file it rewrites, until none is new, so a
-    component linked into two images is renamed with the readers of both; and where a project
-    the file it starts from is not in uses the name or holds a file that did not load, the
-    refusal names that project's image. Every page that says what a rename reaches says so."""
+    component linked into two images, both found for it, is renamed with the readers of both;
+    and where a project the file it starts from is not in uses the name or holds a file that did
+    not load, the refusal names that project's image, or its description. Every page that says
+    what a rename reaches says so."""
 
     REACHED: ClassVar[str] = (
         "then every project holding a file their edits rewrite, until none is new. A component "
-        "linked into two images is in two projects, so a "
+        "linked into two images is in two projects where both are found for it"
+    )
+    FOUND: ClassVar[str] = (
+        "by their build records, or, where no record claims it, by the search above it - and a "
     )
     ASKED: ClassVar[str] = (
         "Every project the rename reaches is asked each refusal above before anything is "
@@ -1759,8 +1763,15 @@ class TestWhatARenameReaches:
     UNSAVED: ClassVar[str] = (
         "unsaved changes are refused naming the file that holds them, wherever it is."
     )
-    """What SPEC 7.2 and the editor page say in the same words: how far a rename reaches, which
-    refusals each project it reaches is asked, and what a refusal from another image names."""
+    """What SPEC 7.2 and the editor page say in the same words: how far a rename reaches, where
+    it finds the images, which refusals each project it reaches is asked, and what a refusal
+    from another image names."""
+
+    FINDS: ClassVar[str] = (
+        "as long as the server finds both images for it: through their build records, or, "
+        "without records, through a project description above it."
+    )
+    """Where the two READMEs say, in the same words, when the other image is found."""
 
     STATED: ClassVar[dict[str, tuple[str, tuple[str, ...]]]] = {
         "SPEC.md": (
@@ -1770,22 +1781,26 @@ class TestWhatARenameReaches:
                 "projects it reaches write it - ",
                 "or one a project it reaches already uses, whether for another object",
                 "A rename reaches every project that holds a file it rewrites: the projects the "
-                f"file it starts from belongs to, {REACHED}rename that rewrites it rewrites the "
-                "readers of both images, whichever of the two the file it starts from is in; "
-                "reaching only the projects of that file would leave the other image reading a "
-                f"name nothing declares. {ASKED}; {UNSAVED}",
+                f"file it starts from belongs to, {REACHED} as below - {FOUND}rename that rewrites "
+                "it then rewrites the readers of both images, whichever of the two the file it "
+                "starts from is in; reaching only the projects of that file would leave the other "
+                f"image reading a name nothing declares. {ASKED}; {UNSAVED}",
             ),
         ),
         "docs/editor_integration.rst": (
             EDITOR_INTEGRATION,
             (
                 "or one a project it reaches already uses - for another object",
+                "and one a project it reaches already declares as a section: the format permits "
+                "two",
+                "or one a project it reaches already declares as a raster, is refused",
                 "It is refused, naming the file, only while a file of a project it reaches does "
                 "not load at all - ",
                 "A rename reaches every project that holds a file it rewrites: the projects of the "
-                f"file it starts from, {REACHED}variable it writes is renamed in the readers of "
-                "both images, whichever of the two the file the rename starts from is in - and so "
-                "is a type, a constant, a section, a raster or a unit that a file of both spells. "
+                f"file it starts from, {REACHED}, as *Which project a file belongs to* below says "
+                f"- {FOUND}variable it writes is then renamed in the readers of both images, "
+                "whichever of the two the file the rename starts from is in; so is a type, a "
+                "constant, a section, a raster or a unit that a file of both spells. "
                 f'{ASKED} - asked from one image, a name "already declared by this project" in '
                 f"the other sends the reader looking in the wrong one; {UNSAVED}",
             ),
@@ -1793,13 +1808,15 @@ class TestWhatARenameReaches:
         "README.md": (
             README,
             (
-                "It reaches every project holding a file it rewrites, and every project holding "
-                "one of theirs in turn, so a component linked into two images is renamed with the "
-                "readers of both, whichever image the file you start from is in. A name c "
-                "reserves, one that is not a usable identifier, or one a project it reaches "
-                "already declares is refused with the reason before a single file is touched",
+                "It reaches every project holding a file it rewrites, and in turn every project "
+                "holding a file those projects' edits rewrite, so a component linked into two "
+                "images is renamed with the readers of both, whichever image the file you start "
+                f"from is in - {FINDS} A name c reserves, one that is not a usable identifier, or "
+                "one a project it reaches already declares is refused with the reason before a "
+                "single file is touched",
                 "Where an image the file you started from is not in already declares the name, or "
-                "holds a file that did not load, the refusal names that image.",
+                "holds a file that did not load, the refusal names that image, or its project "
+                "description where no build record names one.",
             ),
         ),
         "editors/vscode/README.md": (
@@ -1807,10 +1824,10 @@ class TestWhatARenameReaches:
             (
                 "spelling it - in every project holding a file the rename rewrites, so a "
                 "component linked into two images is renamed with the readers of both, whichever "
-                "image the file you start from is in. A name c reserves, one that is not a usable "
-                "identifier, or one a project it reaches already declares is refused with the "
-                "reason rather than half applied, naming the image it comes from when that is not "
-                "yours.",
+                f"image the file you start from is in, {FINDS} A name c reserves, one that is not "
+                "a usable identifier, or one a project it reaches already declares is refused "
+                "with the reason rather than half applied, naming the image it comes from - or its "
+                "project description, without a build record - when that is not yours.",
             ),
         ),
     }
@@ -1832,6 +1849,13 @@ class TestWhatARenameReaches:
             "or one the project already uses",
             "only while a file of the project does not load at all",
             "or one the project already declares is refused",
+            "one the project already declares as a section",
+            "the project already declares as a raster",
+            "every project holding one of theirs in turn",
+            "is in two projects, so a",
+            "whichever image the file you start from is in. A name",
+            "the refusal names that image.",
+            "naming the image it comes from when that is not yours",
         ):
             assert stale not in said, f"{page} still says: {stale!r}"
 

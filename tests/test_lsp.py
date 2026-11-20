@@ -4976,18 +4976,18 @@ class TestServer:
         project file, reached as a root, used to be read under the policy for a lone
         component, so the second refresh republished the same files without the two checks the
         project exists to answer.
+
+        One check per document, driven message by message: opened together, the two are one
+        check, in which the project the component's search finds reports on the project file,
+        so the project file is never read as a root.
         """
         tree = tmp_path / "inconsistent"
         shutil.copytree(INCONSISTENT.parent, tree)
-        stream = framed(
-            self.handshake(tree),
-            self.opened(tree / "component_c.ddd.json"),
-            self.opened(tree / "project.ddd.json"),
-            {"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
-            {"jsonrpc": "2.0", "method": "exit"},
-        )
         writer = io.BytesIO()
-        assert Server(stream, writer, root=tree).run() == 0
+        server = Server(io.BytesIO(), writer, root=tree)
+        assert server._handle(self.handshake(tree))
+        assert server._handle(self.opened(tree / "component_c.ddd.json"))
+        assert server._handle(self.opened(tree / "project.ddd.json"))
         # The last word on each file, which is what stays on screen.
         final = published(writer)
         drawn = {

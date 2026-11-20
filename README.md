@@ -172,8 +172,8 @@ loudly to report it, in which case both are shown.
 
 Hovering anywhere in a declaration shows what the **project** made of that variable, which
 the file under the cursor does not say: the shape a curve got from its axis, limits derived
-from a datatype and a conversion nobody wrote down, who writes it and who reads it, what an
-enum's numbers mean, and the initial values as a sparkline.
+from a datatype and a conversion nobody wrote down, who writes it and who reads it in every
+image holding the file, what an enum's numbers mean, and the initial values as a sparkline.
 
 ```text
 CurveA — curve, uint16          |  unit        ms

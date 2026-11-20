@@ -12143,3 +12143,208 @@ class TestAHoverResolvesOncePerCheck:
         )
         assert not draft.exists()
         assert sent(writer)[-1] == response(7, None)
+
+
+class TestAHoverSpeaksForEveryProjectHoldingTheDocument:
+    """10:M4. Who writes a variable and who reads it is said for every project holding the document,
+    each component named once. Said from the first project alone, a writer linked into two images
+    was read by the first image's reader, while find references listed the second's too, and of two
+    writers the hover named one. Where it says that nothing produces the variable, or that nobody
+    reads it, the files of those projects that did not load are named under it: what such a file
+    declares is in no project's answer, and the sentence was untrue of a project whose writer, or
+    whose reader, is in that file."""
+
+    NAME: ClassVar[str] = "component.interface[0].definition.name"
+
+    def asked(self, tmp_path: Path, *requests: dict[str, Any]) -> dict[int, Any]:
+        """What a session answers each of ``requests``, by its id."""
+        writer = io.BytesIO()
+        assert Server(session(*requests, *END), writer, root=tmp_path).run() == 0
+        return {message["id"]: message.get("result") for message in answered(writer)}
+
+    def at(self, method: str, path: Path, request_id: int = 7) -> dict[str, Any]:
+        """A request at the name of the first declaration of ``path``."""
+        position = Document(path.read_text(encoding="utf-8")).range_of(self.NAME)["start"]
+        return {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "method": method,
+            "params": {"textDocument": {"uri": path.as_uri()}, "position": position},
+        }
+
+    def hovered(self, tmp_path: Path, path: Path) -> str:
+        """The markdown a hover at the name of the first declaration of ``path`` answers."""
+        answer = self.asked(tmp_path, self.at("textDocument/hover", path))[7]
+        assert answer is not None
+        return str(answer["contents"]["value"])
+
+    @pytest.mark.parametrize("typed", [{}, {"typename": "S_t"}], ids=["a-value", "a-structure"])
+    def test_a_writer_in_two_images_names_the_reader_of_each(
+        self, tmp_path: Path, typed: dict[str, str]
+    ) -> None:
+        """The readers find references lists, the second image's as much as the first's."""
+        imaged(
+            tmp_path,
+            {
+                "one": ["t.ddd.json", "w.ddd.json", "r1.ddd.json"],
+                "two": ["t.ddd.json", "w.ddd.json", "r2.ddd.json"],
+            },
+            {
+                "t.ddd.json": types(struct_type("S_t")),
+                "w.ddd.json": component("Writer", declare("output", "V", **typed)),
+                "r1.ddd.json": component("ReaderOne", declare("input", "V", **typed)),
+                "r2.ddd.json": component("ReaderTwo", declare("input", "V", **typed)),
+            },
+        )
+        w = tmp_path / "w.ddd.json"
+        answers = self.asked(
+            tmp_path, self.at("textDocument/hover", w), self.at("textDocument/references", w, 8)
+        )
+        assert sorted(uri_to_path(found["uri"]).name for found in answers[8]) == [
+            "r1.ddd.json",
+            "r2.ddd.json",
+            "w.ddd.json",
+        ]
+        said = answers[7]["contents"]["value"]
+        assert "Written by **Writer**, read by **ReaderOne** and **ReaderTwo**." in said
+
+    def test_a_component_both_images_hold_is_named_once(self, tmp_path: Path) -> None:
+        imaged(
+            tmp_path,
+            {"one": ["w.ddd.json", "r.ddd.json"], "two": ["w.ddd.json", "r.ddd.json"]},
+            {
+                "w.ddd.json": component("Writer", declare("output", "V")),
+                "r.ddd.json": component("Reader", declare("input", "V")),
+            },
+        )
+        for hovered in ("w.ddd.json", "r.ddd.json"):
+            said = self.hovered(tmp_path, tmp_path / hovered)
+            assert "Written by **Writer**, read by **Reader**." in said, hovered
+
+    @pytest.mark.parametrize(
+        ("apart", "first"),
+        [(False, "output"), (True, "output"), (False, "local")],
+        ids=["in-one-project", "one-per-image", "one-of-them-local"],
+    )
+    def test_two_writers_are_both_named(self, tmp_path: Path, apart: bool, first: str) -> None:
+        """Two components writing the variable in one project, which ``ddd check`` files as
+        ``multiple-producers`` - or as ``local-conflict``, where one of them declares it local - or
+        one in each image holding the reader: the hover named one of them, the one the analysis
+        builds the object from."""
+        files = {
+            "w1.ddd.json": component("W1", declare(first, "V")),
+            "w2.ddd.json": component("W2", declare("output", "V")),
+            "r.ddd.json": component("R", declare("input", "V")),
+        }
+        if apart:
+            imaged(
+                tmp_path,
+                {"one": ["w1.ddd.json", "r.ddd.json"], "two": ["w2.ddd.json", "r.ddd.json"]},
+                files,
+            )
+        else:
+            write_tree(tmp_path, {"p.ddd.json": project("P", *files), **files})
+        said = self.hovered(tmp_path, tmp_path / "r.ddd.json")
+        assert "Written by **W1** and **W2**, read by **R**." in said
+
+    def test_a_reader_s_file_that_did_not_load_is_named_where_nobody_reads(
+        self, tmp_path: Path
+    ) -> None:
+        """``r.ddd.json`` states a datatype there is not, and the reader it declares is in no
+        dictionary: the writer was read by nobody."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "w.ddd.json", "r.ddd.json"),
+                "w.ddd.json": component("W", declare("output", "V")),
+                "r.ddd.json": component("R", declare("input", "V", "uint99")),
+            },
+        )
+        said = self.hovered(tmp_path, tmp_path / "w.ddd.json")
+        assert (
+            "Written by **W**, read by *nobody*.\n\n"
+            "*`r.ddd.json` did not load, so a reader there would not be named.*"
+        ) in said
+
+    def test_a_writer_s_file_that_did_not_load_is_named_where_nothing_produces_it(
+        self, tmp_path: Path
+    ) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "w.ddd.json", "r.ddd.json"),
+                "w.ddd.json": component("W", declare("output", "V", "uint99")),
+                "r.ddd.json": component("R", declare("input", "V")),
+            },
+        )
+        said = self.hovered(tmp_path, tmp_path / "r.ddd.json")
+        assert (
+            "*No component produces this.*\n\n"
+            "*`w.ddd.json` did not load, so a writer there would not be named.*"
+        ) in said
+
+    def test_the_files_that_did_not_load_are_those_of_every_project_holding_it(
+        self, tmp_path: Path
+    ) -> None:
+        """The writer is in two images, and its reader's file, in the second, did not load; two
+        files of one name are told apart, each by its path from the first directory they do not
+        share."""
+        imaged(
+            tmp_path,
+            {
+                "one": ["w.ddd.json", "one/r.ddd.json"],
+                "two": ["w.ddd.json", "two/r.ddd.json"],
+            },
+            {
+                "w.ddd.json": component("W", declare("output", "V")),
+                "one/r.ddd.json": component("R1", declare("input", "V", "uint99")),
+                "two/r.ddd.json": component("R2", declare("input", "V", "uint99")),
+            },
+        )
+        said = self.hovered(tmp_path, tmp_path / "w.ddd.json")
+        assert (
+            "*`one/r.ddd.json`, `two/r.ddd.json` did not load, so a reader there would not be "
+            "named.*"
+        ) in said
+
+    def test_a_file_that_did_not_load_is_not_named_beside_a_writer_and_a_reader(
+        self, tmp_path: Path
+    ) -> None:
+        """The hover says nothing untrue of a variable it names a writer and a reader of: the line
+        is for the sentence saying there is none."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "w.ddd.json", "r.ddd.json", "x.ddd.json"),
+                "w.ddd.json": component("W", declare("output", "V")),
+                "r.ddd.json": component("R", declare("input", "V")),
+                "x.ddd.json": component("X", declare("input", "Y", "uint99")),
+            },
+        )
+        said = self.hovered(tmp_path, tmp_path / "w.ddd.json")
+        assert "Written by **W**, read by **R**." in said
+        assert "did not load" not in said
+
+    def test_a_project_a_plugin_stops_resolving_is_left_out(self, tmp_path: Path) -> None:
+        """Image one's plugin raises in its check hook, so that project resolves to nothing for a
+        hover: the hover answers from image two, where it answered nothing at all."""
+        write_tree(
+            tmp_path,
+            {
+                "tools/exiting_plugin.py": EXITING_CHECK_PLUGIN,
+                "images/one.ddd.json": project(
+                    "One",
+                    "../w.ddd.json",
+                    "../r1.ddd.json",
+                    plugins=["../tools/exiting_plugin.py"],
+                ),
+                "images/two.ddd.json": project("Two", "../w.ddd.json", "../r2.ddd.json"),
+                "w.ddd.json": component("Writer", declare("output", "V")),
+                "r1.ddd.json": component("ReaderOne", declare("input", "V")),
+                "r2.ddd.json": component("ReaderTwo", declare("input", "V")),
+            },
+        )
+        for image in ("one", "two"):
+            build_record(tmp_path, tmp_path / "images" / f"{image}.ddd.json", image=f"{image}.elf")
+        said = self.hovered(tmp_path, tmp_path / "w.ddd.json")
+        assert "Written by **Writer**, read by **ReaderTwo**." in said

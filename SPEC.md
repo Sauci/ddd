@@ -2989,6 +2989,12 @@ shows it before applying and saving it. The reader can then leave a file out of 
 applies it in part, by the reader's choice; a client that announced only one of the two is sent the
 edit unmarked, and applies it at once.
 
+A hover on a data object says who writes it and who reads it in every project holding the file,
+each component named once: a component linked into two images is read by the readers of both, and
+an object two components write names both. Where it says that no component produces the object,
+or that none reads it, it names under that sentence every file of those projects that did not
+load, since what such a file declares is in no project's answer.
+
 A hover on a name naming a declared type describes the data object that names it where
 there is one, and otherwise the type itself: a structure and its members, a scalar type's
 storage and conversion, an external type and the header that defines it. Inside a types file

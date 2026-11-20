@@ -21,15 +21,17 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from math import isinf
+from pathlib import Path
 from typing import Final
 
 from ddd.analysis import analyze
 from ddd.diagnostics import DiagnosticBag
 from ddd.ir import DataDictionary, ResolvedInstance, ResolvedLeaf, ResolvedObject
-from ddd.lsp.navigation import Loaded
+from ddd.lsp.navigation import Loaded, told_apart
 from ddd.models.common import format_number
+from ddd.models.component import Scope
 from ddd.models.conversion import EnumConversion, conversion_range, raw_reading
 from ddd.models.objects import ObjectKind, broadcast, flatten, format_shape
 from ddd.models.types import ExternalType, Member, ScalarType, StructType
@@ -258,35 +260,56 @@ def _member_type(member: Member) -> str:
 
 
 def describe(dictionary: DataDictionary, name: str) -> str | None:
-    """The markdown an editor shows for one data object, or nothing if it has none."""
+    """The markdown an editor shows for one data object, or nothing if it has none: as one
+    project resolves it, which reaches no project beside it (:func:`describe_across`)."""
+    return describe_across((dictionary,), name)
+
+
+def describe_across(
+    dictionaries: Sequence[DataDictionary], name: str, unloaded: Sequence[Path] = ()
+) -> str | None:
+    """The markdown an editor shows for one data object, or nothing if the first of these
+    projects has none.
+
+    ``dictionaries`` are every project holding the document a hover is asked in, the first first,
+    and ``unloaded`` the files of any of them that did not load. The object is described as the
+    first resolves it; who writes it and who reads it is said for all of them
+    (:func:`_ownership`), since a component linked into two images is in two projects, and a
+    variable it writes is read by the readers of both. Said from the first alone, a writer in two
+    images was read by the first image's reader, while find references listed the second's too.
+    """
+    dictionary = dictionaries[0]
     instance = next((entry for entry in dictionary.instances if entry.name == name), None)
     if instance is not None:
-        return _describe_instance(dictionary, instance)
+        return _describe_instance(dictionary, instance, _ownership(dictionaries, name, unloaded))
     entry = dictionary.by_name.get(name)
     if entry is None:
         return None
     lines = [f"**{entry.name}** — {entry.kind.value}, `{entry.datatype.value}`", ""]
     if entry.description:
         lines += [entry.description, ""]
-    lines += [_ownership(entry), "", *_facts(entry, dictionary)]
+    lines += [*_ownership(dictionaries, name, unloaded), "", *_facts(entry, dictionary)]
     drawn = _drawing(entry)
     if drawn:
         lines += ["", *drawn]
     return "\n".join(lines)
 
 
-def _describe_instance(dictionary: DataDictionary, entry: ResolvedInstance) -> str:
+def _describe_instance(
+    dictionary: DataDictionary, entry: ResolvedInstance, ownership: list[str]
+) -> str:
     """What a structured variable is: the type it names, and what that type holds.
 
     The members are the whole point of hovering one. The file under the cursor says
     ``"typename": "Sensor_t"`` and nothing else; what a reader wants is what is inside it,
     which lives in another file - and, for each member, the unit and limits the project worked
-    out rather than the ones anybody wrote down.
+    out rather than the ones anybody wrote down. Who writes it and who reads it is
+    ``ownership``, said for every project holding the document (:func:`_ownership`).
     """
     lines = [f"**{entry.name}** — {entry.kind.value}, `{entry.type}`", ""]
     if entry.description:
         lines += [entry.description, ""]
-    lines += [_ownership(entry), ""]
+    lines += [*ownership, ""]
     facts = [("type", f"`{entry.type}`")]
     if entry.shape:
         facts.append(("shape", f"`{format_shape(entry.spelled_shape)}`"))
@@ -323,14 +346,62 @@ def _member_storage(leaf: ResolvedLeaf) -> str:
     )
 
 
-def _ownership(entry: ResolvedObject | ResolvedInstance) -> str:
-    """Who writes it and who reads it, which is the whole point of a data dictionary."""
-    if entry.owner is None:
-        return "*No component produces this.*"
-    if entry.local:
-        return f"Local to **{entry.owner}**."
-    readers = ", ".join(f"**{name}**" for name in entry.consumers) or "*nobody*"
-    return f"Written by **{entry.owner}**, read by {readers}."
+def _ownership(
+    dictionaries: Sequence[DataDictionary], name: str, unloaded: Sequence[Path]
+) -> list[str]:
+    """Who writes it and who reads it, which is the whole point of a data dictionary: in every
+    project of ``dictionaries``, each component named once, however many of them hold it.
+
+    Read off the components each project resolved, which keep every declaration the analysis
+    kept, rather than off the object, which keeps the one producer it is built from: of two
+    components writing it - ``multiple-producers``, or one in each of two images - the hover named
+    that one alone. A component declaring it ``local`` is the only one that may, and the sentence
+    says so where it is the only writer.
+
+    Where it says that no component produces the object, or that none reads it, the files of those
+    projects that did not load are named under it (:func:`_unloaded`): what such a file declares
+    is in no project's answer, and the sentence was untrue of a project whose writer, or whose
+    reader, is there. Where it names both, an unread file takes nothing from what it says.
+    """
+    writers: set[str] = set()
+    local: set[str] = set()
+    readers: set[str] = set()
+    for dictionary in dictionaries:
+        for component in dictionary.components:
+            for declared in component.declarations:
+                if declared.name != name:
+                    continue
+                if declared.scope is Scope.INPUT:
+                    readers.add(component.name)
+                    continue
+                writers.add(component.name)
+                if declared.scope is Scope.LOCAL:
+                    local.add(component.name)
+    if not writers:
+        return ["*No component produces this.*", *_unloaded(unloaded, "writer")]
+    if len(writers) == 1 and writers == local:
+        return [f"Local to **{next(iter(writers))}**."]
+    said = f"Written by {_listed(writers)}, read by {_listed(readers) or '*nobody*'}."
+    return [said] if readers else [said, *_unloaded(unloaded, "reader")]
+
+
+def _listed(names: Iterable[str]) -> str:
+    """Components named in a sentence, in order of their names: ``**A**``, ``**A** and **B**``,
+    ``**A**, **B** and **C**``; nothing for none."""
+    bold = [f"**{name}**" for name in sorted(names)]
+    if len(bold) < 2:
+        return "".join(bold)
+    return f"{', '.join(bold[:-1])} and {bold[-1]}"
+
+
+def _unloaded(unloaded: Sequence[Path], role: str) -> list[str]:
+    """The line under a sentence saying that no ``role`` - a writer, or a reader - is known,
+    naming the files that did not load, each told apart from another of its name
+    (:func:`~ddd.lsp.navigation.told_apart`); nothing where every file loaded."""
+    if not unloaded:
+        return []
+    named = ", ".join(_span(file) for file in told_apart(unloaded))
+    return ["", f"*{named} did not load, so a {role} there would not be named.*"]
 
 
 def _facts(entry: ResolvedObject, dictionary: DataDictionary) -> list[str]:

@@ -70,11 +70,16 @@ case spells every path in it differently from the way the loader resolves it.
 
 **Hover.** A summary of the data object under the cursor, resolved against the whole
 project rather than read off the file: the shape a curve took from its axis, the limits
-derived from a datatype and a conversion nobody wrote down, its producer and its consumers,
-what an enum's numbers are called, the physical reading of a scalar ``init`` beside the raw
-value the file states, and the initial values as a sparkline. Those are the *initial*
-values - DDD describes an interface, and what an engineer calibrates lives in the
-calibration tool. A dimension spelled as the name of a
+derived from a datatype and a conversion nobody wrote down, who writes it and who reads it in
+every project holding the file, what an enum's numbers are called, the physical reading of a
+scalar ``init`` beside the raw value the file states, and the initial values as a sparkline.
+Those are the *initial* values - DDD describes an interface, and what an engineer calibrates
+lives in the calibration tool. A component linked into two images is in two projects, and a
+variable it writes is read by the readers of both: the hover names each component once, and
+both components where two write one variable. Where it says that no component produces the
+variable, or that none reads it, it names under that line every file of those projects that
+did not load, since what such a file declares is in no project's answer. A dimension spelled
+as the name of a
 :doc:`declared constant <file_formats/constants>` hovers as the constant itself - its value
 and its description - because the number is declared somewhere else, next to the one
 statement of what is being counted. A name that names a declared type and no data object -

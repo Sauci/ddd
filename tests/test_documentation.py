@@ -10637,3 +10637,67 @@ class TestWhatArrivesTogetherIsCheckedTogether:
         said = flattened(text)
         for phrase in phrases:
             assert phrase in said, f"{page} no longer says: {phrase!r}"
+
+
+class TestWhatAHoverSaysOfWhoWritesAndReadsIt:
+    """10:M4. A hover says who writes a data object and who reads it in every project holding the
+    file, each component named once, and names under a sentence saying that nothing writes it or
+    that nothing reads it every file of those projects that did not load."""
+
+    SAID: ClassVar[dict[str, tuple[str, tuple[str, ...], tuple[str, ...]]]] = {
+        "SPEC.md": (
+            SPEC,
+            (
+                "A hover on a data object says who writes it and who reads it in every project "
+                "holding the file, each component named once: a component linked into two images "
+                "is read by the readers of both, and an object two components write names both. "
+                "Where it says that no component produces the object, or that none reads it, it "
+                "names under that sentence every file of those projects that did not load, since "
+                "what such a file declares is in no project's answer.",
+            ),
+            (),
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            (
+                "the limits derived from a datatype and a conversion nobody wrote down, who writes "
+                "it and who reads it in every project holding the file, what an enum's numbers "
+                "are called,",
+                "A component linked into two images is in two projects, and a variable it writes "
+                "is read by the readers of both: the hover names each component once, and both "
+                "components where two write one variable. Where it says that no component "
+                "produces the variable, or that none reads it, it names under that line every "
+                "file of those projects that did not load, since what such a file declares is in "
+                "no project's answer.",
+            ),
+            ("its producer and its consumers",),
+        ),
+        "README.md": (
+            README,
+            (
+                "limits derived from a datatype and a conversion nobody wrote down, who writes it "
+                "and who reads it in every image holding the file, what an enum's numbers mean,",
+            ),
+            ("who writes it and who reads it, what an enum's numbers mean",),
+        ),
+        "editors/vscode/README.md": (
+            (ROOT / "editors" / "vscode" / "README.md").read_text(encoding="utf-8"),
+            (
+                "limits derived from a datatype and a conversion, who writes it and who reads it "
+                "in every image holding the file, what an enum's numbers mean,",
+            ),
+            ("who writes it and who reads it, what an enum's numbers mean",),
+        ),
+    }
+    """Each page, what it says now, and what it said before of a hover's writers and readers."""
+
+    @pytest.mark.parametrize("page", sorted(SAID))
+    def test_the_page_says_a_hover_speaks_for_every_project_holding_the_file(
+        self, page: str
+    ) -> None:
+        text, phrases, stale = self.SAID[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"
+        for phrase in stale:
+            assert phrase not in said, f"{page} still says: {phrase!r}"

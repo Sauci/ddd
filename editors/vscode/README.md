@@ -67,8 +67,9 @@ of it, and a file with no finding on it would otherwise read as the correct one.
 
 Hovering anywhere in a declaration shows what the project made of that variable - on the name,
 on the datatype, on the scope, the same answer from all of them. That is the shape a curve took
-from its axis, limits derived from a datatype and a conversion, who writes it and who reads it,
-what an enum's numbers mean, and the initial values as a sparkline. Those are the values
+from its axis, limits derived from a datatype and a conversion, who writes it and who reads it
+in every image holding the file, what an enum's numbers mean, and the initial values as a
+sparkline. Those are the values
 compiled in at startup, not calibration data, which lives in the calibration tool rather than
 here.
 

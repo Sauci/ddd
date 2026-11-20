@@ -54,7 +54,13 @@ from ddd.ir import DataDictionary
 from ddd.lsp.diagnostics import collect
 from ddd.lsp.discovery import build_files, load_builds
 from ddd.lsp.edits import QUICK_FIX, UNKNOWN_UNIT, Asked, Elsewhere, actions_across
-from ddd.lsp.hover import describe, describe_constant, describe_external, describe_type, resolve
+from ddd.lsp.hover import (
+    describe_across,
+    describe_constant,
+    describe_external,
+    describe_type,
+    resolve,
+)
 from ddd.lsp.navigation import (
     Descriptions,
     Loaded,
@@ -1085,12 +1091,15 @@ class Server:
         if named_type is not None:
             described = describe_external(projects, named_type)
         if described is None and (constant is not None or name is not None):
-            dictionary = self._dictionary(projects)
-            if dictionary is not None:
+            dictionaries = self._dictionaries_of(projects)
+            if dictionaries:
                 if constant is not None:
-                    described = describe_constant(dictionary, constant)
+                    described = describe_constant(dictionaries[0], constant)
                 if described is None and name is not None:
-                    described = describe(dictionary, name)
+                    # Who writes it and who reads it is every project's, as find references
+                    # lists them, and so are the files that did not load (:func:`describe_across`).
+                    unloaded = sorted({file for loaded in projects for file in loaded.unloaded})
+                    described = describe_across(dictionaries, name, unloaded)
         if described is None and named_type is not None:
             # Last, and after the object: from a component a ``typename`` is about the
             # variable that names it. Inside a types file there is no variable to describe,
@@ -1104,16 +1113,19 @@ class Server:
             "range": document.range_of(pointer),
         }
 
-    def _dictionary(self, projects: Sequence[Loaded]) -> DataDictionary | None:
-        """What a hover answers from: the first of the projects, resolved as
-        :func:`~ddd.lsp.hover.resolve` resolves it, once per description until :meth:`_forget`;
-        nothing when there is no project."""
-        if not projects:
-            return None
-        description = projects[0].path.resolve()
-        if description not in self._dictionaries:
-            self._dictionaries[description] = resolve(projects[:1])
-        return self._dictionaries[description]
+    def _dictionaries_of(self, projects: Sequence[Loaded]) -> list[DataDictionary]:
+        """What a hover answers from: each of the projects holding the document, in their order,
+        resolved as :func:`~ddd.lsp.hover.resolve` resolves it, once per description until
+        :meth:`_forget`; a project a plugin stopped resolving is left out."""
+        found = []
+        for loaded in projects:
+            description = loaded.path.resolve()
+            if description not in self._dictionaries:
+                self._dictionaries[description] = resolve([loaded])
+            dictionary = self._dictionaries[description]
+            if dictionary is not None:
+                found.append(dictionary)
+        return found
 
     def _prepare_rename(self, message: dict[str, Any]) -> dict[str, Any] | None:
         """Whether a rename may start here, and over which characters.

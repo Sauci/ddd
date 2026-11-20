@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Sequence
+from math import isinf
 from typing import Final
 
 from ddd.analysis import analyze
@@ -56,8 +57,16 @@ def sparkline(values: list[float], low: float, high: float) -> str:
     ``high`` above ``low`` is the caller's promise; a set with no variation in it is not drawn
     at all, because a row of identical bars looks like a reading of the data rather than the
     absence of one.
+
+    Two finite values can lie further apart than a float counts: ``-1.7e308`` and ``1.7e308``
+    are both doubles, and the distance between them is not. The span is halved there, every
+    value with it, which leaves each bar where it falls and the arithmetic finite. Taken whole,
+    the span was infinite: every bar fell to the lowest, the highest value's position was NaN,
+    and a hover on a project ``ddd check`` passes ended the session.
     """
     span = high - low
+    if isinf(span):
+        values, low, span = [value / 2 for value in values], low / 2, high / 2 - low / 2
     return "".join(
         BARS[min(int((value - low) / span * len(BARS)), len(BARS) - 1)] for value in values
     )
@@ -68,9 +77,11 @@ def rows(entry: ResolvedObject) -> list[list[float]]:
 
     A map is stored row wise, so the last dimension is the width of a row: that is the
     direction the x axis runs in, and drawing it that way puts the picture the same way round
-    as the calibration tool shows it. A string init flattens to no values and so draws no
-    rows; ``_drawing`` states it as text before it ever asks, and the one dimension every
-    string has keeps the row width positive should anything else ask.
+    as the calibration tool shows it. An init that flattens to no values draws no rows: a
+    string, which ``_drawing`` states as text before it ever asks, and a list stating nothing,
+    which the checks report as ``init-invalid``. A scalar has no dimension to take the width of
+    a row from, so the rows of such a list were cut at a width of nothing, and a hover on it
+    ended the session.
     """
     if entry.init is None:
         return []
@@ -78,6 +89,8 @@ def rows(entry: ResolvedObject) -> list[list[float]]:
         entry.conversion.to_physical(value)
         for value in flatten(broadcast(entry.init, tuple(entry.shape)))
     ]
+    if not values:
+        return []
     width = entry.shape[-1] if entry.shape else len(values)
     return [values[start : start + width] for start in range(0, len(values), width)]
 
@@ -352,9 +365,10 @@ def _facts(entry: ResolvedObject, dictionary: DataDictionary) -> list[str]:
 def _axis_range(dictionary: DataDictionary, target: str) -> str:
     """The span an axis covers, which is what makes its name mean something.
 
-    Only for an axis, and only when it has points. The ``input`` of an axis names a
-    measurement rather than an axis, and its init is one value, so a range of it would be a
-    number repeated twice.
+    Only for an axis, and only when it has points: an init stating none, which the checks
+    report as ``init-invalid``, has no span either, and asking one of no points ended the
+    session. The ``input`` of an axis names a measurement rather than an axis, and its init is
+    one value, so a range of it would be a number repeated twice.
     """
     axis = dictionary.by_name.get(target)
     if axis is None or axis.kind is not ObjectKind.AXIS or axis.init is None:
@@ -363,6 +377,8 @@ def _axis_range(dictionary: DataDictionary, target: str) -> str:
         axis.conversion.to_physical(value)
         for value in flatten(broadcast(axis.init, tuple(axis.shape)))
     ]
+    if not points:
+        return ""
     span = f"{format_number(min(points))} .. {format_number(max(points))} {_bars(axis.unit)}"
     return f" — {span.rstrip()}"
 

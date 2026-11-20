@@ -35,6 +35,12 @@ and stdout and expects an editor on the other end. Editors that launch language 
 themselves - Neovim, Helix, Emacs - need only the command; VS Code needs the extension
 described at the bottom of this page.
 
+A request the server fails on, through a defect of its own rather than anything in the files,
+is answered with the protocol's internal error, and the session goes on with every finding on
+screen. A client shows such a request as a failed request - VS Code with a notification - and
+the trace is in the server's log, its standard error, which VS Code shows in the **DDD**
+output channel.
+
 What the server offers
 ----------------------
 
@@ -222,10 +228,11 @@ three stages:
   the path it resolves to, so a link inside a build tree does not turn one record into a
   record per way of spelling it.
   The records a search discovers are announced as log messages, and a record written by a
-  newer DDD, or that names a check this version of DDD has not got, is skipped and the reason
-  announced with it - skipped in silence, a record nothing can use looks exactly like a
-  workspace nobody ever configured a build in. A file that is not a build record at all is
-  skipped without a word: a build wrote it, and nobody fixes it in an editor. A record whose
+  newer DDD, that names a check this version of DDD has not got, or that names its project by
+  a relative path, which a build never writes, is skipped and the reason announced with it -
+  skipped in silence, a record nothing can use looks exactly like a workspace nobody ever
+  configured a build in. A file that is not a build record at all is skipped without a word:
+  a build wrote it, and nobody fixes it in an editor. A record whose
   severities name a *plugin's* check that no plugin of the project registers is reported as a
   ``plugin-invalid`` finding on the project file, which is what ``ddd check`` refuses the
   same ``-W`` for.

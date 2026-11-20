@@ -1971,6 +1971,55 @@ class TestWhatARenameIsRefusedForWithNoProject:
         )
 
 
+class TestWhatADefectOfTheServerCosts:
+    """10:I13. A message the server fails on through a defect of its own costs that answer and
+    not the session: a request is answered with the internal error and a notification with
+    nothing, the trace going to the server's log, and the editor page says how a client shows
+    it. A record naming its project by a relative path is skipped, and why announced, as any
+    record the server cannot use is."""
+
+    PHRASES: ClassVar[dict[str, tuple[str, tuple[str, ...]]]] = {
+        "SPEC.md": (
+            SPEC,
+            (
+                "A message the server fails to answer through a defect of its own does not stop "
+                "it either: a request is answered with the protocol's internal error, a "
+                "notification with nothing, and the trace is written to the server's standard "
+                "error, which is its log.",
+                "or naming a check this version has not got or its project by a relative path, "
+                "which a build never writes, is skipped and the reason announced with them.",
+            ),
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            (
+                "A request the server fails on, through a defect of its own rather than anything "
+                "in the files, is answered with the protocol's internal error, and the session "
+                "goes on with every finding on screen. A client shows such a request as a failed "
+                "request - VS Code with a notification - and the trace is in the server's log, "
+                "its standard error, which VS Code shows in the **DDD** output channel.",
+                "a record written by a newer DDD, that names a check this version of DDD has not "
+                "got, or that names its project by a relative path, which a build never writes, "
+                "is skipped and the reason announced with it",
+            ),
+        ),
+        "README.md": (
+            README,
+            (
+                "one written by a newer DDD, naming a check this one has not got, or naming its "
+                "project by a relative path -",
+            ),
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(PHRASES))
+    def test_the_page_says_what_a_defect_of_the_server_costs(self, page: str) -> None:
+        text, phrases = self.PHRASES[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"
+
+
 class TestWhatThePolicySaysOfAnAdvisory:
     """20:I4. ``SECURITY.md`` said which release is supported and how to report a vulnerability
     privately, and nothing of an advisory: which versions one names, or where one is published.

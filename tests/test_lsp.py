@@ -526,6 +526,53 @@ class TestDiscovery:
             "analysed"
         ]
 
+    def test_a_record_naming_its_project_by_a_relative_path_is_said_out_loud(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``ddd build-info`` writes the path absolute, because whoever reads the record is not
+        in the directory the build ran in. A hand-made record naming it relative was taken and
+        analysed from the server's working directory, and with a check no plugin registers, the
+        finding filed at that path had no uri: the first open ended the session. Opened from
+        the directory the path is relative to, as it was, so that the path names a file."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("input", "X")),
+            },
+        )
+        record = build_record(
+            tmp_path,
+            tmp_path / "p.ddd.json",
+            severity=["nosuch/check=ignore"],
+            project="p.ddd.json",
+        )
+        monkeypatch.chdir(tmp_path)
+        opened = tmp_path / "a.ddd.json"
+        writer = io.BytesIO()
+        stream = session(
+            {
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {"textDocument": {"uri": opened.as_uri()}},
+            },
+            *END,
+        )
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        said = [
+            message["params"]["message"]
+            for message in sent(writer)
+            if message.get("method") == "window/logMessage"
+        ]
+        assert said == [
+            f"{record}: its project 'p.ddd.json' is a relative path, which a build never writes: "
+            "it names a different file from each directory the record is read in; this record is "
+            "ignored, so the project it names is not analysed"
+        ]
+        # Checked as any file no usable record claims is, through the project above it.
+        drawn = published(writer)[opened.as_uri()]
+        assert [entry["code"] for entry in drawn] == ["missing-producer"]
+
 
 NEWER_RECORD = (
     f"written in format {BUILD_INFO_FORMAT + 1} by a newer DDD, and this one understands up to "
@@ -4729,13 +4776,13 @@ class TestServer:
         )
         build_record(tmp_path, tmp_path / "p.ddd.json")
         walks: list[Path] = []
-        original = server_module.discover
+        original = server_module.build_files
 
-        def counted(root: Path, configured: Any = (), refused: Any = None) -> Any:
+        def counted(root: Path, configured: Any = ()) -> Any:
             walks.append(root)
-            return original(root, configured, refused)
+            return original(root, configured)
 
-        monkeypatch.setattr(server_module, "discover", counted)
+        monkeypatch.setattr(server_module, "build_files", counted)
         asked = [
             self.navigation_request(
                 "textDocument/hover",
@@ -7962,6 +8009,26 @@ class TestTheClientsSpelling:
         answer = next(message for message in answered(writer) if message.get("id") == 3)
         assert list(answer["result"]["changes"]) == [opened.as_uri()]
 
+    def test_a_file_the_client_never_opened_is_answered_under_its_resolved_path(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The resolved path is the only spelling anybody knows for such a file, and the only one
+        a uri can be built from when the path is relative: ``as_uri`` refuses a relative path,
+        and the refusal ended the session."""
+        monkeypatch.chdir(tmp_path)
+        server = Server(io.BytesIO(), io.BytesIO(), root=tmp_path)
+        assert server._uri(Path("p.ddd.json")) == (tmp_path / "p.ddd.json").resolve().as_uri()
+
+    def test_a_file_the_client_opened_is_answered_in_its_words_with_no_uri_built(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Built whether it was wanted or not, the uri of a relative path raised even where the
+        client had said how it spells the file."""
+        monkeypatch.chdir(tmp_path)
+        server = Server(io.BytesIO(), io.BytesIO(), root=tmp_path)
+        server._spelled[(tmp_path / "p.ddd.json").resolve()] = "file:///c%3A/work/p.ddd.json"
+        assert server._uri(Path("p.ddd.json")) == "file:///c%3A/work/p.ddd.json"
+
 
 class TestWorkspaceFolders:
     def test_the_folder_containing_the_document_bounds_the_search(self, tmp_path: Path) -> None:
@@ -8597,6 +8664,167 @@ class TestTheLifecycle:
         """A client that gave up before saying hello still gets a server that goes away; the
         protocol names this case so that such a server is not left running."""
         assert Server(framed({"jsonrpc": "2.0", "method": "exit"}), io.BytesIO()).run() == 1
+
+
+class TestADefectInAnsweringOneMessage:
+    """10:I13 and decision 10.1: a defect in answering one message costs that answer, not the
+    session.
+
+    The front end reports through findings rather than raising, but what translates them is code
+    like any other, and a hover that raised ended the session: every finding on screen went with
+    it, and a client gives up restarting a server that the next hover ends again. Each test makes
+    one handler raise, as a defect would.
+    """
+
+    @staticmethod
+    def defect(*_: Any) -> None:
+        """A handler failing as a defect of the server would, whatever it is asked."""
+        msg = "a defect of the server's own"
+        raise RuntimeError(msg)
+
+    def hover(self, path: Path) -> dict[str, Any]:
+        return {
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "textDocument/hover",
+            "params": {
+                "textDocument": {"uri": path.as_uri()},
+                "position": {"line": 0, "character": 0},
+            },
+        }
+
+    def test_a_request_the_server_fails_on_is_answered_and_the_session_goes_on(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Answered with the protocol's internal error, -32603, naming the method and the fault,
+        with the trace on stderr, which is the server's log; and the next message is read."""
+        monkeypatch.setattr(Server, "_hover", self.defect)
+        writer = io.BytesIO()
+        stream = session(self.hover(tmp_path / "a.ddd.json"), *END)
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        failed, ended = answered(writer)
+        assert failed == error(
+            7,
+            -32603,
+            "textDocument/hover failed on a defect of ddd (RuntimeError: a defect of the server's "
+            "own); the trace is in the server's log",
+        )
+        assert ended == response(99, None)
+        trace = capsys.readouterr().err
+        assert trace.startswith(
+            "ddd: textDocument/hover failed on a defect of this server, and the session goes on\n"
+            "Traceback (most recent call last):\n"
+        )
+        assert trace.endswith("RuntimeError: a defect of the server's own\n")
+
+    def test_a_notification_the_server_fails_on_is_answered_with_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A notification never gets an answer, a failed one included: the trace on stderr is all
+        there is of it, and the next message is read. A relative record ended the session on the
+        first ``didOpen``, which is a notification."""
+        monkeypatch.setattr(Server, "refresh", self.defect)
+        opened = {
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": {"textDocument": {"uri": (tmp_path / "a.ddd.json").as_uri()}},
+        }
+        writer = io.BytesIO()
+        assert Server(session(opened, *END), writer, root=tmp_path).run() == 0
+        assert answered(writer) == [response(99, None)]
+        trace = capsys.readouterr().err
+        assert trace.startswith(
+            "ddd: textDocument/didOpen failed on a defect of this server, and the session goes "
+            "on\nTraceback (most recent call last):\n"
+        )
+        assert trace.endswith("RuntimeError: a defect of the server's own\n")
+
+    def test_an_interrupt_still_ends_the_run(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The net is for defects, and an interrupt is not one: it is no ``Exception``, and it
+        still ends the run."""
+
+        def interrupted(*_: Any) -> None:
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(Server, "_hover", interrupted)
+        stream = session(self.hover(tmp_path / "a.ddd.json"), *END)
+        with pytest.raises(KeyboardInterrupt):
+            Server(stream, io.BytesIO(), root=tmp_path).run()
+
+
+class TestHoversThatEndedTheSession:
+    """10:I13: hovers that raised out of the session, each now answered with what the object is.
+
+    Asked through a session, as a client asks: each of these ended it.
+    """
+
+    def hovered(self, tmp_path: Path, *declarations: dict[str, Any]) -> str:
+        """What a hover on the name of the last of ``declarations`` answers, in a project above
+        the component declaring them."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", *declarations),
+            },
+        )
+        path = tmp_path / "a.ddd.json"
+        position = Document(path.read_text(encoding="utf-8")).range_of(
+            f"component.interface[{len(declarations) - 1}].definition.name"
+        )["start"]
+        request = {
+            "jsonrpc": "2.0",
+            "id": 12,
+            "method": "textDocument/hover",
+            "params": {"textDocument": {"uri": path.as_uri()}, "position": position},
+        }
+        writer = io.BytesIO()
+        assert Server(session(request, *END), writer, root=tmp_path).run() == 0
+        (answer,) = [message for message in answered(writer) if message.get("id") == 12]
+        described: str = answer["result"]["contents"]["value"]
+        return described
+
+    def test_an_init_that_states_no_value_draws_nothing(self, tmp_path: Path) -> None:
+        """A parameter whose ``init`` is ``[]``, which the checks report as ``init-invalid``: a
+        scalar has no dimension to take the width of a row from, so the rows were cut at a width
+        of nothing. There is nothing to draw, and nothing is drawn."""
+        described = self.hovered(
+            tmp_path, declare("output", "K", "uint8", kind="parameter", init=[])
+        )
+        assert described.startswith("**K** — parameter, `uint8`")
+        assert described.endswith("| volatile | no |")
+
+    def test_an_axis_whose_init_states_no_point_has_no_span(self, tmp_path: Path) -> None:
+        """The same init on an axis, met from the curve it gives a shape: the span of its points
+        was asked of no points."""
+        described = self.hovered(
+            tmp_path,
+            declare("output", "X", "uint8", kind="axis", size=2, init=[]),
+            declare("output", "K", "uint8", kind="curve", axis="X", init=[1, 2]),
+        )
+        assert "| axis | `X` |" in described
+
+    def test_a_float64_block_spanning_more_than_a_float_holds_is_drawn(
+        self, tmp_path: Path
+    ) -> None:
+        """A valid project whose init runs from ``-1.7e308`` to ``1.7e308``: both are doubles and
+        the distance between them is not, so the span was infinite and the highest value's
+        position was NaN. Each bar is drawn where it falls."""
+        described = self.hovered(
+            tmp_path,
+            declare(
+                "output",
+                "K",
+                "float64",
+                kind="value_block",
+                dimensions=[3],
+                init=[-1.7e308, 1.7e308, 0],
+            ),
+        )
+        assert main(["check", str(tmp_path / "p.ddd.json")]) == EXIT_OK
+        assert described.endswith("```text\n▁█▅\n-1.7e+308 .. 1.7e+308\n```")
 
 
 class TestWhatTheServerSaysAboutARecord:

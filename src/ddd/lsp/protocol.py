@@ -138,6 +138,14 @@ reads the log: this one is the client's message being wrong, and ``REQUEST_FAILE
 server declining a message it understood perfectly well.
 """
 
+INTERNAL_ERROR = -32603
+"""The json-rpc code for a request the server failed on through a defect of its own.
+
+Its own code rather than a request failure: ``REQUEST_FAILED`` is the server declining, for a
+reason it states, a request it understood, where this one is the server going wrong while it
+answered - something a reader reports rather than mends in their files.
+"""
+
 REQUEST_FAILED = -32803
 """A request the server understood and could not carry out; the message says why."""
 

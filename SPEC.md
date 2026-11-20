@@ -3028,10 +3028,10 @@ locations of its notes - a note stating no place of its own being published at t
 of the file its finding is on, the protocol having no way to say "here". The build records a
 search discovers are announced as log messages, and a record written by a newer DDD - its
 `format` higher than this version reads, whether or not its keys are ones this version knows -
-or naming a check this version has not got is skipped and the reason announced with them. A
-record that is not a build record at all is skipped without one: a build wrote it, and nobody
-fixes it in an editor. A record whose severities name a plugin's check that no plugin of the
-project registers is
+or naming a check this version has not got or its project by a relative path, which a build
+never writes, is skipped and the reason announced with them. A record that is not a build
+record at all is skipped without one: a build wrote it, and nobody fixes it in an editor. A
+record whose severities name a plugin's check that no plugin of the project registers is
 reported as a `plugin-invalid` finding at the project file, which is the editor's answer to
 what `ddd check` refuses a `-W` for: silently accepted, a build silencing a check by a name
 nothing registers looks exactly like a build silencing one that exists.
@@ -3048,10 +3048,13 @@ not read a second time on their own.
 A message body the server cannot parse is answered with the protocol's parse or
 invalid-request error and does not stop the server, and a request whose parameters are not
 the shape its method takes is answered with the invalid-parameters error, while a
-notification is answered with nothing, which is what a notification always gets. A frame
-header whose `Content-Length` is not a count of bytes written in decimal digits - after which
-no message boundary can be trusted - ends the session with a message rather than a failure
-trace, and a header block without a length is read as the end of the conversation.
+notification is answered with nothing, which is what a notification always gets. A message the
+server fails to answer through a defect of its own does not stop it either: a request is
+answered with the protocol's internal error, a notification with nothing, and the trace is
+written to the server's standard error, which is its log. A frame header whose
+`Content-Length` is not a count of bytes written in decimal digits - after which no message
+boundary can be trusted - ends the session with a message rather than a failure trace, and a
+header block without a length is read as the end of the conversation.
 
 The session has a beginning and an end. A request arriving before `initialize` is answered
 with the protocol's server-not-initialized error and a notification is dropped, because until

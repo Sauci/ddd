@@ -5,11 +5,16 @@ Everything that decides anything lives in :mod:`ddd.lsp.diagnostics` and
 this is the layer a test can only reach through a protocol: keeping it thin keeps the thinking
 somewhere that can be tested directly.
 
-There is no net around the analysis, and that is not an oversight. The front end reports
-through a diagnostic bag rather than raising - the developer documentation states it as a
-rule - so a project that cannot be read, or whose plugin raises out of a hook, produces
-findings, not an exception. A server that wrapped it in a catch-all would be insuring against
-a thing the design already prevents, and would hide it if that ever stopped being true.
+Each message is answered inside a net. The front end reports through a diagnostic bag rather
+than raising - the developer documentation states it as a rule - so a project that cannot be
+read, or whose plugin raises out of a hook, produces findings, not an exception. What turns
+those findings into answers is code like any other, though, and a hover that raised on an init
+nobody had foreseen ended the session: every finding on screen went with it, and a client stops
+restarting a server that the next hover ends again. So a message the server fails on through a
+defect of its own costs that answer and nothing more - a request is answered with the
+protocol's internal error, a notification with nothing, as ever - and the trace goes to stderr,
+the server's log, where a defect is seen rather than hidden. Only ``Exception`` is caught, so an
+interrupt still ends the run.
 
 Only ``didOpen`` and ``didSave`` refresh. Nothing is analysed per keystroke: the analysis
 reads the files from disk, so the editor and the server agree exactly at the moment of a
@@ -25,6 +30,7 @@ from __future__ import annotations
 import contextlib
 import re
 import sys
+import traceback
 from collections.abc import Sequence
 from pathlib import Path
 from typing import IO, Any, Final
@@ -34,7 +40,7 @@ from urllib.request import url2pathname
 from ddd import __version__
 from ddd.build_info import BuildInfo
 from ddd.lsp.diagnostics import collect
-from ddd.lsp.discovery import discover
+from ddd.lsp.discovery import build_files, load_builds
 from ddd.lsp.edits import QUICK_FIX, UNKNOWN_UNIT, actions
 from ddd.lsp.hover import describe, describe_constant, describe_external, describe_type, resolve
 from ddd.lsp.navigation import (
@@ -57,6 +63,7 @@ from ddd.lsp.navigation import (
     workspaces,
 )
 from ddd.lsp.protocol import (
+    INTERNAL_ERROR,
     INVALID_PARAMS,
     INVALID_REQUEST,
     METHOD_NOT_FOUND,
@@ -149,10 +156,12 @@ def _field[T](value: Any, wanted: type[T], named: str) -> T:
     """One field of the client's message, or a refusal that names what was wrong with it.
 
     Every field a handler reads goes through here rather than being indexed, because these
-    are somebody else's bytes and not this server's invariant. The analysis stays unguarded
-    on purpose - the module docstring says why - but a frame that arrives without the
-    ``params`` every editor sends is not a defect in the checks, and taking the conversation
-    down over one costs the reader every DDD finding on screen until they restart the server.
+    are somebody else's bytes and not this server's invariant. A field that is wrong is the
+    client's mistake rather than a defect of the server, and is answered as one: refused with
+    the invalid-parameters error naming it, and nothing written to stderr, where the net the
+    module docstring describes writes the trace of a defect. Indexed instead, a frame without
+    the ``params`` every editor sends would reach that net as the server's own defect, with no
+    field named.
     """
     if not isinstance(value, wanted):
         msg = f"'{named}' is missing or is not {wanted.__name__}"
@@ -252,9 +261,10 @@ class Server:
         """Serve until the client says to stop, or stops talking.
 
         One bad frame is not the end of the conversation: a body that is not a request gets
-        the json-rpc refusal it defines a code for, and the loop reads on. Only broken
-        framing ends the run, because after it nothing on the stream can be trusted - and
-        that is said once on stderr, where the log goes, never on stdout, which is the wire.
+        the json-rpc refusal it defines a code for, and the loop reads on, as it does past a
+        message the server failed to answer (:meth:`_defect`). Only broken framing ends the
+        run, because after it nothing on the stream can be trusted - and that is said once on
+        stderr, where the log goes, never on stdout, which is the wire.
         """
         while True:
             try:
@@ -280,10 +290,35 @@ class Server:
                 if "id" in message:
                     write_message(self.writer, error(message["id"], fault.code, str(fault)))
                 continue
+            except Exception as fault:
+                # Anything else is a defect of this server's own in answering this one message,
+                # which costs that answer and not the session (the module docstring).
+                self._defect(message, fault)
+                continue
             if not keep_going:
                 # An exit that was prepared for is a clean end and anything else is not, which
                 # is the one thing an exit code can tell a client that is watching the process.
                 return 0 if self._shutting_down else 1
+
+    def _defect(self, message: dict[str, Any], fault: Exception) -> None:
+        """Answer a message this server failed on through a defect of its own, and say so.
+
+        The trace goes to stderr, which a client keeps as the server's log. A request is
+        answered with the protocol's internal error, naming the method and the fault, which a
+        client shows as a failed request; a notification is answered with nothing, as ever.
+        """
+        method = message.get("method")
+        print(
+            f"ddd: {method} failed on a defect of this server, and the session goes on",
+            file=sys.stderr,
+        )
+        traceback.print_exception(fault, file=sys.stderr)
+        if "id" in message:
+            failed = (
+                f"{method} failed on a defect of ddd ({type(fault).__name__}: {fault}); the trace "
+                "is in the server's log"
+            )
+            write_message(self.writer, error(message["id"], INTERNAL_ERROR, failed))
 
     def _out_of_turn(self, method: Any) -> tuple[int, str] | None:
         """Why this message may not be acted on where the conversation has got to.
@@ -381,8 +416,12 @@ class Server:
         return path
 
     def _uri(self, path: Path) -> str:
-        """The uri to answer under for a file: the client's own, where it gave one."""
-        return self._spelled.get(path.resolve(), path.as_uri())
+        """The uri to answer under for a file: the client's own, where it gave one, and otherwise
+        the one its resolved path makes - the only spelling known for a file the client never
+        opened, and the only one a uri can be built from where the path is relative."""
+        resolved = path.resolve()
+        spelled = self._spelled.get(resolved)
+        return resolved.as_uri() if spelled is None else spelled
 
     def _respell(self, uri: str) -> str:
         """The same, for a uri already built from a resolved path somewhere below."""
@@ -472,14 +511,34 @@ class Server:
         return where
 
     def _builds_now(self) -> list[BuildInfo]:
-        """The build records, found once per refresh rather than once per keypress."""
+        """The build records, found once per refresh rather than once per keypress.
+
+        A record naming its project by a relative path is refused here, and its reason
+        announced as any record's this version cannot use is. ``ddd build-info`` writes the path
+        absolute, because whoever reads a record is not in the directory the build ran in: a
+        relative one names a file under whatever directory reads it, so it was analysed from
+        this server's working directory, and a finding filed at it had no uri, which ended the
+        session. Refused by the server rather than where every record is read, which ``ddd gui``
+        does too.
+
+        Relative is a path with no root, whose file depends on the directory reading it. A root
+        without a drive is kept: on Windows it is what a record written in a container names,
+        ``/work/...``, which is then said to be no such file, as before.
+        """
         if self._builds is None:
             self._refused = {}
-            self._builds = [
-                info
-                for root in self.roots
-                for info in discover(root, self.build_directories, self._refused)
-            ]
+            self._builds = []
+            for root in self.roots:
+                for record in build_files(root, self.build_directories):
+                    for info in load_builds([record], self._refused):
+                        if Path(info.project).root:
+                            self._builds.append(info)
+                        else:
+                            self._refused[record] = (
+                                f"its project '{info.project}' is a relative path, which a build "
+                                "never writes: it names a different file from each directory the "
+                                "record is read in"
+                            )
         return self._builds
 
     @property

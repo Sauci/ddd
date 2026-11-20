@@ -2075,6 +2075,96 @@ class TestWhatADefectOfTheServerCosts:
             assert phrase in said, f"{page} no longer says: {phrase!r}"
 
 
+class TestWhatAQuickFixReadsThroughAType:
+    """10:I8. A declaration naming a declared type states, as the checker reads it, every key the
+    type fixes: the producing component's value is the one its type states, and no key is offered
+    for removal while a type states it. SPEC 7.2 and the editor page say so."""
+
+    PHRASES: ClassVar[dict[str, tuple[str, tuple[str, ...]]]] = {
+        "SPEC.md": (
+            SPEC,
+            (
+                "including removing a key the others do not have - a declaration naming a "
+                "declared type having every key the type fixes, as the checks read it - which "
+                "change descriptions and never the code of the components that read the variable",
+            ),
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            (
+                "the type fixes its ``datatype``, ``unit``, ``conversion`` and ``limits``, which "
+                "may not be stated beside the ``typename``, so none of them is offered to it, and "
+                "spreading one of them to the other declarations leaves it out.",
+                "It states them all the same, as the checker reads it: the producing component's "
+                "value is the one its type states, where it names one, and no key is offered for "
+                "removal while a type one of the declarations names states it, since that "
+                "declaration would go on stating it and the removal would settle nothing.",
+            ),
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(PHRASES))
+    def test_the_page_says_a_type_states_what_it_fixes(self, page: str) -> None:
+        text, phrases = self.PHRASES[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"
+
+    def test_the_editor_page_no_longer_counts_three_keys_a_type_fixes(self) -> None:
+        assert "so none of the three is offered to it" not in flattened(EDITOR_INTEGRATION)
+
+
+class TestWhichQuickFixIsPreferred:
+    """The editor's preferred fix is the one the ownership rule orders first, and none where that
+    one is not offered, rather than the next in the list. The editor page says so."""
+
+    def test_the_editor_page_says_which_fix_is_preferred(self) -> None:
+        assert (
+            "The fixes are listed by which component owns the variable: a component that reads "
+            "it is offered the producer's value first, and the producer its own, sent out. The "
+            "first is marked as the preferred fix, the one the editor's automatic fix applies, "
+            "only where it goes the owner's way: where that way is not offered, none is marked, "
+            "rather than the other way round."
+        ) in flattened(EDITOR_INTEGRATION)
+
+    def test_the_editor_page_no_longer_hands_the_place_down_the_list(self) -> None:
+        said = flattened(EDITOR_INTEGRATION)
+        assert "the next one in the list takes the preferred place" not in said
+        assert (
+            "so it is not offered. A fix that reaches several declarations is offered for those "
+            "that load."
+        ) in said
+
+
+class TestWhatAQuickFixTitleSays:
+    """Every reconcile fix says in its title that the code of the readers is not touched, the
+    editor's as the page's, and the two pages that say what such a title says, say so."""
+
+    PHRASES: ClassVar[dict[str, tuple[str, str, str]]] = {
+        "README.md": (
+            README,
+            "They change descriptions only: the code of the readers is not touched, and each fix "
+            "says so in its title, in the editor as in `ddd gui`.",
+            "and the fix a finding of `ddd gui` carries says so in its title",
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            "They change descriptions: the code of the components that read the variable is not "
+            "touched, and the title of each fix says so, as the one a finding of ``ddd gui`` "
+            "carries does.",
+            "the title of the fix a finding of ``ddd gui`` carries says so",
+        ),
+    }
+    """Each page, what it says now, and what it said of the page's fix alone."""
+
+    @pytest.mark.parametrize("page", sorted(PHRASES))
+    def test_the_page_says_each_fix_s_title_says_so(self, page: str) -> None:
+        text, now, before = self.PHRASES[page]
+        said = flattened(text)
+        assert now in said, f"{page} no longer says: {now!r}"
+        assert before not in said, f"{page} still says: {before!r}"
+
+
 class TestWhatThePolicySaysOfAnAdvisory:
     """20:I4. ``SECURITY.md`` said which release is supported and how to report a vulnerability
     privately, and nothing of an advisory: which versions one names, or where one is published.

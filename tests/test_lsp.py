@@ -54,6 +54,7 @@ from ddd.build_info import BUILD_INFO_FILENAME, BUILD_INFO_FORMAT, BuildInfo
 from ddd.cli import EXIT_OK, main
 from ddd.diagnostics import Diagnostic, DiagnosticBag, Location, Severity
 from ddd.editing import INVALID, EditError, Operation, edit_text
+from ddd.finding_fixes import CODE_NOT_TOUCHED
 from ddd.loading import load_workspace
 from ddd.lsp import diagnostics as service
 from ddd.lsp import navigation
@@ -2392,6 +2393,14 @@ def rewritten_by(changes: dict[str, list[dict[str, Any]]]) -> dict[str, str]:
     }
 
 
+def reconciled(offered: list[dict[str, Any]]) -> list[str]:
+    """What each reconcile fix offered changes, after pinning that its title ends saying, in the
+    page's words, that the code of the readers is not touched."""
+    titles = [action["title"] for action in offered]
+    assert all(title.endswith(CODE_NOT_TOUCHED) for title in titles), titles
+    return [title.removesuffix(CODE_NOT_TOUCHED) for title in titles]
+
+
 class TestRename:
     """Rewriting a name everywhere the project writes it."""
 
@@ -3190,7 +3199,7 @@ class TestPropagating:
                 "b.ddd.json": component("B", declare("input", "Speed", unit="1/min")),
             },
         )
-        assert offered[0]["title"] == "Apply this unit to 1 other declaration of 'Speed'"
+        assert reconciled(offered)[0] == "Apply this unit to 1 other declaration of 'Speed'"
         (edits,) = offered[0]["edit"]["changes"].values()
         assert edits[0]["newText"] == '"rpm"'
 
@@ -3215,7 +3224,7 @@ class TestPropagating:
         offered = actions(
             built, path, read(path, cache), "component.interface[0].definition", cache, UNSTAMPED
         )
-        titles = [entry["title"] for entry in offered]
+        titles = reconciled(offered)
         assert titles == ["Use the volatile declared in a"]
 
     def test_a_key_the_other_kind_does_not_have_is_not_written_into_it(
@@ -3394,6 +3403,24 @@ class TestPropagating:
         # the lightbulb on a squiggle it does nothing about.
         assert [entry["code"] for entry in action["diagnostics"]] == ["definition-mismatch"]
 
+    def test_a_reconcile_fix_says_the_readers_code_is_not_touched(self, tmp_path: Path) -> None:
+        """The check goes green once the descriptions agree, and the readers keep the scale they
+        were written with: the editor's titles say so after what they change, as the page's do."""
+        offered, _ = self.offer(
+            tmp_path,
+            "b.ddd.json",
+            "component.interface[0].definition.unit",
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": component("B", declare("input", "Speed", unit="1/min")),
+            },
+        )
+        assert [action["title"] for action in offered] == [
+            "Use the unit declared in a (the code of the readers is not touched)",
+            "Apply this unit to 1 other declaration of 'Speed' (the code of the readers is not "
+            "touched)",
+        ]
+
     def test_an_action_with_nothing_to_settle_carries_no_finding(self, tmp_path: Path) -> None:
         offered, _ = self.offer(
             tmp_path,
@@ -3422,7 +3449,7 @@ class TestPropagating:
                 "b.ddd.json": component("B", declare("input", "Speed", unit="1/min")),
             },
         )
-        assert [action["title"] for action in offered] == [
+        assert reconciled(offered) == [
             "Use the unit declared in a",
             "Apply this unit to 1 other declaration of 'Speed'",
         ]
@@ -3437,7 +3464,7 @@ class TestPropagating:
                 "b.ddd.json": component("B", declare("input", "Speed", unit="1/min")),
             },
         )
-        assert offered[0]["title"] == "Apply this unit to 1 other declaration of 'Speed'"
+        assert reconciled(offered)[0] == "Apply this unit to 1 other declaration of 'Speed'"
 
     def test_taking_the_producer_value_edits_only_this_file(self, tmp_path: Path) -> None:
         offered, _ = self.offer(
@@ -3464,7 +3491,7 @@ class TestPropagating:
                 "b.ddd.json": component("B", declare("input", "Speed")),
             },
         )
-        assert offered[0]["title"] == "Use the unit declared in a"
+        assert reconciled(offered)[0] == "Use the unit declared in a"
 
     def test_with_no_single_producer_only_the_outward_fix_is_offered(self, tmp_path: Path) -> None:
         """Two producers is its own finding, and not one to guess a value through."""
@@ -3478,9 +3505,7 @@ class TestPropagating:
                 "c.ddd.json": component("C", declare("input", "Speed", unit="1/min")),
             },
         )
-        assert [action["title"] for action in offered] == [
-            "Apply this unit to 2 other declarations of 'Speed'"
-        ]
+        assert reconciled(offered) == ["Apply this unit to 2 other declarations of 'Speed'"]
 
     def test_a_key_nobody_else_states_can_be_removed(self, tmp_path: Path) -> None:
         """Two declarations disagree just as much when one of them says nothing.
@@ -3497,7 +3522,7 @@ class TestPropagating:
                 "b.ddd.json": component("B", declare("input", "Speed", unit="rpm")),
             },
         )
-        assert [action["title"] for action in offered] == [
+        assert reconciled(offered) == [
             "Remove this unit, which a does not declare",
             "Apply this unit to 1 other declaration of 'Speed'",
         ]
@@ -3529,7 +3554,9 @@ class TestPropagating:
                 "b.ddd.json": component("B", declare("input", "Speed", unit="rpm")),
             },
         )
-        assert offered[0]["title"] == "Remove this unit, which no other declaration of 'Speed' has"
+        assert (
+            reconciled(offered)[0] == "Remove this unit, which no other declaration of 'Speed' has"
+        )
 
     @pytest.mark.parametrize("key", ["unit", "limits"])
     def test_removing_a_member_takes_exactly_one_comma_with_it(
@@ -3587,7 +3614,7 @@ class TestPropagating:
                 "c.ddd.json": component("C", declare("input", "Speed", unit="rpm")),
             },
         )
-        assert [action["title"] for action in offered] == [
+        assert reconciled(offered) == [
             # The producer's silence, sent out - and the value the others agree on, brought in.
             "Remove the unit from 2 other declarations of 'Speed'",
             "Take the unit the other declarations of 'Speed' state",
@@ -3613,9 +3640,7 @@ class TestPropagating:
                 "c.ddd.json": component("C", declare("input", "Speed", unit="1/min")),
             },
         )
-        assert [action["title"] for action in offered] == [
-            "Remove the unit from 2 other declarations of 'Speed'"
-        ]
+        assert reconciled(offered) == ["Remove the unit from 2 other declarations of 'Speed'"]
 
     def test_one_value_the_others_spell_differently_is_still_the_answer_they_agree_on(
         self, tmp_path: Path
@@ -3651,7 +3676,7 @@ class TestPropagating:
                 ),
             },
         )
-        assert [action["title"] for action in offered] == [
+        assert reconciled(offered) == [
             # Taken first: a declaration the loader dropped is in nobody's producer list, so
             # this reads as a consumer, which is offered somebody else's answer first.
             "Take the conversion the other declarations of 'Speed' state",
@@ -3762,7 +3787,7 @@ class TestPropagating:
         )
         # b states no limits, and a declaration that omits them defers to the one that states
         # them - the checker's rule - so the limits are not a disagreement to settle.
-        assert [action["title"] for action in offered] == [
+        assert reconciled(offered) == [
             "Apply this datatype to 1 other declaration of 'Speed'",
             "Apply this unit to 1 other declaration of 'Speed'",
         ]
@@ -3803,14 +3828,14 @@ class TestPropagating:
         consumer, _ = self.offer(
             tmp_path, "cons.ddd.json", "component.interface[0].definition", **files
         )
-        assert [action["title"] for action in consumer] == [
+        assert reconciled(consumer) == [
             "Use the limits declared in prod",
             "Apply this limits to 1 other declaration of 'T'",
         ]
         producer, _ = self.offer(
             tmp_path, "prod.ddd.json", "component.interface[0].definition", **files
         )
-        assert [action["title"] for action in producer] == [
+        assert reconciled(producer) == [
             "Apply this limits to 1 other declaration of 'T'",
         ]
 
@@ -3865,7 +3890,7 @@ class TestPropagating:
                 "b.ddd.json": component("B", declare("input", "Speed")),
             },
         )
-        assert [action["title"] for action in offered] == [
+        assert reconciled(offered) == [
             "Use the unit declared in a",
             "Remove the unit from 1 other declaration of 'Speed'",
         ]
@@ -4069,7 +4094,9 @@ class TestPropagating:
             },
         )
         (use_unit,) = [
-            action for action in offered if action["title"] == "Use the unit declared in a"
+            action
+            for action, changes in zip(offered, reconciled(offered), strict=True)
+            if changes == "Use the unit declared in a"
         ]
         (edits,) = use_unit["edit"]["changes"].values()
         rewritten = apply_edits(tmp_path / "b.ddd.json", edits)
@@ -5313,7 +5340,7 @@ class TestServer:
             for message in messages
             if message.get("method") == "window/logMessage"
         ]
-        return logged, [action["title"] for action in answer["result"]]
+        return logged, reconciled(answer["result"])
 
     def saved(self, server: Server, path: Path) -> None:
         """The client saving ``path``, which refreshes."""
@@ -8461,7 +8488,7 @@ class TestAFixThatWouldNotLoad:
         return actions(built, path, read(path, cache), self.AT_A_DECLARATION, cache)
 
     def titles(self, tmp_path: Path, source: str, **files: Any) -> list[str]:
-        return [action["title"] for action in self.offered(tmp_path, source, **files)]
+        return reconciled(self.offered(tmp_path, source, **files))
 
     def test_a_datatype_is_not_taken_from_a_float_writer_beside_an_enumeration(
         self, tmp_path: Path
@@ -8504,8 +8531,11 @@ class TestAFixThatWouldNotLoad:
             "Apply this conversion to 1 other declaration of 'V'"
         ]
 
-    def test_the_preferred_fix_is_one_that_loads(self, tmp_path: Path) -> None:
-        """The slot goes to the first fix left: the one the lightbulb applies on its own."""
+    def test_no_fix_is_preferred_where_the_owner_s_way_is_withheld(self, tmp_path: Path) -> None:
+        """The slot is the fix the ownership rule orders first, the one the lightbulb applies on
+        its own: the reader's is the writer's datatype, which the loader refuses under the
+        enumeration. The first fix left sends the reader's datatype out, into the writer's file,
+        and none is preferred in its place."""
         from ddd.lsp.edits import actions
 
         built, _ = built_of(tmp_path, **FLOAT_BESIDE_ENUM)
@@ -8513,8 +8543,11 @@ class TestAFixThatWouldNotLoad:
         path = tmp_path / "r.ddd.json"
         reported = [{"code": "definition-mismatch", "source": "ddd", "message": "differs"}]
         offered = actions(built, path, read(path, cache), self.AT_A_DECLARATION, cache, reported)
-        (preferred,) = [entry for entry in offered if entry.get("isPreferred")]
-        assert preferred["title"] == "Apply this datatype to 1 other declaration of 'V'"
+        assert [entry["title"] for entry in offered if entry.get("isPreferred")] == []
+        assert reconciled(offered) == [
+            "Apply this datatype to 1 other declaration of 'V'",
+            "Use the conversion declared in w",
+        ]
 
     def test_a_fix_is_offered_for_the_declarations_that_load_and_not_for_the_one_that_does_not(
         self, tmp_path: Path
@@ -8530,7 +8563,7 @@ class TestAFixThatWouldNotLoad:
         }
         offered = self.offered(tmp_path, "w.ddd.json", **files)
         (spread,) = [entry for entry in offered if "datatype" in entry["title"]]
-        assert spread["title"] == "Apply this datatype to 1 other declaration of 'V'"
+        assert reconciled([spread]) == ["Apply this datatype to 1 other declaration of 'V'"]
         assert [uri_to_path(uri).name for uri in spread["edit"]["changes"]] == ["r2.ddd.json"]
 
     def test_a_dimension_is_not_taken_away_from_a_string(self, tmp_path: Path) -> None:
@@ -8550,7 +8583,8 @@ class TestAFixThatWouldNotLoad:
 
     def test_the_lightbulb_the_server_answers_offers_only_what_loads(self, tmp_path: Path) -> None:
         """Through the protocol, as an editor asks: the reader's declaration, with the finding it
-        carries, is offered what still loads - the preferred fix among them."""
+        carries, is offered what still loads - and none of it is preferred, the fix the owner's
+        way being the one withheld."""
         write_tree(tmp_path, {"p.ddd.json": project("P", *FLOAT_BESIDE_ENUM), **FLOAT_BESIDE_ENUM})
         build_record(tmp_path, tmp_path / "p.ddd.json")
         reader = tmp_path / "r.ddd.json"
@@ -8573,12 +8607,10 @@ class TestAFixThatWouldNotLoad:
             root=tmp_path,
         ).run()
         (answer,) = answered(writer)
-        assert [action["title"] for action in answer["result"]] == [
+        assert [action["title"] for action in answer["result"] if action.get("isPreferred")] == []
+        assert reconciled(answer["result"]) == [
             "Apply this datatype to 1 other declaration of 'V'",
             "Use the conversion declared in w",
-        ]
-        assert [action["title"] for action in answer["result"] if action.get("isPreferred")] == [
-            "Apply this datatype to 1 other declaration of 'V'"
         ]
 
     def test_a_value_the_other_readers_agree_on_is_not_adopted_by_a_string(
@@ -8617,7 +8649,7 @@ class TestAFixThatWouldNotLoad:
         }
         offered = self.offered(tmp_path, "w.ddd.json", **files)
         (removal,) = [entry for entry in offered if entry["title"].startswith("Remove the")]
-        assert removal["title"] == "Remove the dimensions from 1 other declaration of 'V'"
+        assert reconciled([removal]) == ["Remove the dimensions from 1 other declaration of 'V'"]
         assert [uri_to_path(uri).name for uri in removal["edit"]["changes"]] == ["r2.ddd.json"]
 
     def test_a_datatype_is_not_taken_from_a_double_writer_beside_a_scaled_reader(
@@ -8717,10 +8749,158 @@ class TestAFixThatWouldNotLoad:
             root=tmp_path,
         ).run()
         replies = {message["id"]: message for message in answered(writer) if "id" in message}
-        assert [action["title"] for action in replies[15]["result"]] == [
-            "Use the limits declared in w"
-        ]
+        assert reconciled(replies[15]["result"]) == ["Use the limits declared in w"]
         assert 99 in replies, "the server read the request after it"
+
+
+WRITER_NAMES_A_TYPE: Final = {
+    "t.ddd.json": types(scalar_type("Speed_t", "uint8", unit="rpm")),
+    "w.ddd.json": component("W", declare("output", "V", typename="Speed_t")),
+    "r.ddd.json": component("R", declare("input", "V", "uint8", unit="krpm")),
+}
+"""A writer meaning rpm through the type it names, and a reader stating krpm: the type stores the
+reader's byte under the reader's identity, so the unit is all the two disagree about."""
+
+READER_NAMES_A_TYPE: Final = {
+    "t.ddd.json": types(scalar_type("Krpm_t", "uint8", unit="krpm")),
+    "w.ddd.json": component("W", declare("output", "V", "uint8", unit="rpm")),
+    "r.ddd.json": component("R", declare("input", "V", typename="Krpm_t")),
+}
+"""The other way round: the writer states rpm, and the reader means krpm through its type."""
+
+
+class TestAKeyATypeStates:
+    """10:I8. A declaration naming a declared type states, as the checks read it, every key the
+    type fixes, though its file holds none of them: a writer naming a type gives its reader the
+    type's unit, and no fix takes a key out of the declarations around a type stating it, which
+    would go on stating it whatever the others lose."""
+
+    AT_A_DECLARATION = "component.interface[0].definition"
+
+    def offered(self, tmp_path: Path, source: str, files: dict[str, Any]) -> list[dict[str, Any]]:
+        """What the editor offers on the declaration of ``source``, the mismatch reported."""
+        from ddd.lsp.edits import actions
+
+        built, _ = built_of(tmp_path, **files)
+        cache: dict[Path, Document] = {}
+        path = tmp_path / source
+        reported = [{"code": "definition-mismatch", "source": "ddd", "message": "differs"}]
+        return actions(built, path, read(path, cache), self.AT_A_DECLARATION, cache, reported)
+
+    def test_a_reader_is_offered_the_unit_its_writer_s_type_states(self, tmp_path: Path) -> None:
+        """The writer's file says nothing of a unit and the writer means rpm. Read from the file
+        alone, the reader's one fix took its own unit out, under a title saying the writer
+        declares none, and that fix was the preferred one."""
+        offered = self.offered(tmp_path, "r.ddd.json", WRITER_NAMES_A_TYPE)
+        assert reconciled(offered) == ["Use the unit declared in w"]
+        assert [entry["title"] for entry in offered if entry.get("isPreferred")] == [
+            offered[0]["title"]
+        ]
+        assert [entry["code"] for entry in offered[0]["diagnostics"]] == ["definition-mismatch"]
+
+    def test_taking_the_unit_the_type_states_settles_the_mismatch(self, tmp_path: Path) -> None:
+        """Applied, and the project analysed again: the reader states what the writer means, and
+        nothing differs. The removal it replaces left the reader stating no unit against rpm."""
+        from ddd.analysis import analyze
+
+        (fix,) = self.offered(tmp_path, "r.ddd.json", WRITER_NAMES_A_TYPE)
+        for name, text in rewritten_by(fix["edit"]["changes"]).items():
+            (tmp_path / name).write_text(text, encoding="utf-8", newline="")
+        bag = DiagnosticBag()
+        workspace = load_workspace(tmp_path / "p.ddd.json", bag)
+        assert workspace is not None
+        analyze(workspace, bag)
+        assert "definition-mismatch" not in checks(bag), [entry.render() for entry in bag]
+
+    def test_the_writer_is_offered_no_removal_its_type_would_undo(self, tmp_path: Path) -> None:
+        """From the writer, the reader was offered to lose its unit, 'Remove the unit from 1 other
+        declaration': the writer's type goes on stating rpm, and the two went on disagreeing."""
+        assert self.offered(tmp_path, "w.ddd.json", WRITER_NAMES_A_TYPE) == []
+
+    def test_a_reader_agreeing_with_its_writer_s_type_keeps_its_unit(self, tmp_path: Path) -> None:
+        """The reader means rpm, as the writer's type does, and disagrees about its volatility:
+        its unit was offered out all the same, 'which w does not declare', and taking it made the
+        two disagree about the unit too."""
+        files = {
+            **WRITER_NAMES_A_TYPE,
+            "r.ddd.json": component("R", declare("input", "V", "uint8", unit="rpm", volatile=True)),
+        }
+        assert reconciled(self.offered(tmp_path, "r.ddd.json", files)) == [
+            "Use the volatile declared in w",
+            "Apply this volatile to 1 other declaration of 'V'",
+        ]
+
+    def test_the_writer_keeps_its_unit_while_its_reader_s_type_states_one(
+        self, tmp_path: Path
+    ) -> None:
+        """The second shape, from the writer: it was offered to take its own unit out, as a unit
+        nobody else states, and that fix was preferred, while the reader's type goes on stating
+        krpm."""
+        assert self.offered(tmp_path, "w.ddd.json", READER_NAMES_A_TYPE) == []
+
+    def test_a_reader_naming_a_type_is_offered_no_removal_from_its_writer(
+        self, tmp_path: Path
+    ) -> None:
+        """The second shape, from the reader: the writer was offered to lose its unit, 'Remove the
+        unit from 1 other declaration', the one declaration it could not reach being the reader's
+        own, whose type states krpm."""
+        assert self.offered(tmp_path, "r.ddd.json", READER_NAMES_A_TYPE) == []
+
+
+class TestWhichFixIsPreferred:
+    """The fix a lightbulb applies by itself is the one the ownership rule orders first: the
+    producer's answer taken, at a reader, and the producer's own sent out, at the producer. Where
+    that one is withheld, none is preferred, since the next in the list goes the other way round."""
+
+    AT_A_DECLARATION = "component.interface[0].definition"
+
+    def asked(self, tmp_path: Path, source: str, **files: Any) -> tuple[list[str], list[str]]:
+        """What the editor offers on the declaration of ``source``, the mismatch reported, and
+        which of it is preferred, each by what it changes."""
+        from ddd.lsp.edits import actions
+
+        built, _ = built_of(tmp_path, **files)
+        cache: dict[Path, Document] = {}
+        path = tmp_path / source
+        reported = [{"code": "definition-mismatch", "source": "ddd", "message": "differs"}]
+        offered = actions(built, path, read(path, cache), self.AT_A_DECLARATION, cache, reported)
+        changes = [entry["title"].removesuffix(CODE_NOT_TOUCHED) for entry in offered]
+        preferred = [
+            entry["title"].removesuffix(CODE_NOT_TOUCHED)
+            for entry in offered
+            if entry.get("isPreferred")
+        ]
+        return changes, preferred
+
+    def test_a_reader_prefers_its_producer_s_value_and_the_producer_its_own(
+        self, tmp_path: Path
+    ) -> None:
+        files = {
+            "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            "b.ddd.json": component("B", declare("input", "Speed", unit="Hz")),
+        }
+        assert self.asked(tmp_path, "b.ddd.json", **files) == (
+            ["Use the unit declared in a", "Apply this unit to 1 other declaration of 'Speed'"],
+            ["Use the unit declared in a"],
+        )
+        assert self.asked(tmp_path, "a.ddd.json", **files) == (
+            ["Apply this unit to 1 other declaration of 'Speed'"],
+            ["Apply this unit to 1 other declaration of 'Speed'"],
+        )
+
+    def test_a_reader_s_own_value_sent_out_is_not_preferred(self, tmp_path: Path) -> None:
+        """The producer states no unit, and both readers state rpm: this reader cannot take the
+        producer's silence while the other keeps its unit, and what is left is its own unit sent
+        out, into the producer's file - offered, and not applied by itself."""
+        files = {
+            "a.ddd.json": component("A", declare("output", "Speed")),
+            "b.ddd.json": component("B", declare("input", "Speed", unit="rpm")),
+            "c.ddd.json": component("C", declare("input", "Speed", unit="rpm")),
+        }
+        assert self.asked(tmp_path, "b.ddd.json", **files) == (
+            ["Apply this unit to 1 other declaration of 'Speed'"],
+            [],
+        )
 
 
 class TestMessagesTheClientGetsWrong:

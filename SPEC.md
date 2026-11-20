@@ -2927,7 +2927,8 @@ does not allow, a type name spelling a base datatype, or one a project it reache
 uses, whether for another object, an enum, an enumerator, a type or a constant, because a
 rename that silently merges two objects compiles, links, and shares storage nobody intended
 to share; and quick fixes that reconcile one key across the declarations of one object, in
-either direction, including removing a key the others do not have, which change descriptions
+either direction, including removing a key the others do not have - a declaration naming a
+declared type having every key the type fixes, as the checks read it - which change descriptions
 and never the code of the components that read the variable, and none of which is offered
 where writing it would leave a file the loader refuses; and, on a `missing-id`, a fix that
 gives the declaration an identity, writing what `ddd id --assign` would write and offered

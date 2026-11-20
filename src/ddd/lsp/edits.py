@@ -21,7 +21,9 @@ Four rules keep the writing safe:
   when one of them says nothing, so a key can be removed from here to match the others, or
   removed from the others to match here. Removing takes exactly one comma with it - the one
   after the member, or the one before it when the member is last - which is the fiddly part
-  and the reason this came last.
+  and the reason this came last. A declaration naming a declared type is not silent about a key
+  the type fixes, whatever its file holds: it states what the type states (:func:`_resolved`),
+  as the checks read it.
 * **A fix that would leave a file the project refuses is not offered.** What a definition is,
   once the key is written, is asked of the models and of the rules of the analysis that need no
   more of the project than the declaration and the type it names (:func:`loading_problem`): a
@@ -51,7 +53,7 @@ from __future__ import annotations
 import contextlib
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import partial
 from pathlib import Path
 from typing import Any, Final, Literal
@@ -124,6 +126,14 @@ reconciled both ways.
 """
 
 QUICK_FIX: Final = "quickfix"
+
+CODE_NOT_TOUCHED: Final = " (the code of the readers is not touched)"
+"""What every reconcile fix's title says after what it changes: ``ddd check`` goes green once the
+descriptions agree, and the code that reads the variable keeps the scale it was written with.
+
+The page's fix says it in the same words (:data:`ddd.finding_fixes.CODE_NOT_TOUCHED`), and a test
+holds the two to one text: one decision, titled alike wherever a reader is offered it.
+"""
 
 RECONCILED: Final = frozenset({"definition-mismatch"})
 """The finding these actions settle, so an editor can show them as its fix.
@@ -279,15 +289,19 @@ def _on_the_declaration(
     if not isinstance(name, str):
         return []
 
-    offered = [
-        _protocol_action(action, cache)
-        for action in reconciliations(built, path, document, pointer, cache)
-    ]
+    reconciled = reconciliations(built, path, document, pointer, cache)
+    offered = [_protocol_action(action, cache) for action in reconciled]
     settles = [entry for entry in reported if entry.get("code") in RECONCILED]
     if settles and offered:
         for action in offered:
             action["diagnostics"] = settles
-        offered[0]["isPreferred"] = True
+        # The preferred fix is the one a lightbulb applies by itself, so it is the way the
+        # ownership rule wants or none: where that way is withheld, the fix in front goes the
+        # other way round - a reader's own value sent into its producer's file, or the producer
+        # taking what its readers say - and passing the slot down to it would apply what nobody
+        # chose (``Reconciliation.leads``).
+        if reconciled[0].leads:
+            offered[0]["isPreferred"] = True
 
     # Appended rather than folded into the loop above: it settles its own finding and answers
     # a different question, so it must not inherit the reconcile actions' diagnostics or take
@@ -314,7 +328,9 @@ def reconciliations(
 
     On a key that can be propagated, that key; anywhere else inside the declaration, every key
     that differs from the other declarations. Two ways at most per key - somebody else's answer
-    brought here, and this one's answer sent out - ordered by which side owns the variable.
+    brought here, and this one's answer sent out - ordered by which side owns the variable, the
+    first of each pair marked as the direction the ownership rule wants
+    (:attr:`Reconciliation.leads`).
 
     ``owned=True`` keeps only the first of each key's pair - the direction the ownership rule
     wants for this declaration - or nothing when that direction does not exist, and nothing at
@@ -395,6 +411,8 @@ def reconciliations(
             if widened and first is not None:
                 first = _across(built, name, first, cache)
             ordered = [first]
+        if ordered[0] is not None:
+            ordered[0] = replace(ordered[0], leads=True)
         offered.extend(action for action in ordered if action is not None)
     return offered
 
@@ -718,10 +736,18 @@ class Reconciliation:
     title: str
     key: str
     settlement: Settlement
+    leads: bool = False
+    """Whether this is the first of its key's pair as the ownership rule orders them: somebody
+    else's answer taken, asked at a declaration that does not produce the variable - the
+    producer's, for preference - and this one's own sent out, asked at one that does. The editor
+    prefers its first fix only when that one leads (:func:`_on_the_declaration`); the page keeps
+    no other (``owned=True``)."""
 
 
 def _protocol_action(reconciliation: Reconciliation, cache: dict[Path, Document]) -> dict[str, Any]:
-    """A decision as the protocol carries it: a titled quick fix over one or more files.
+    """A decision as the protocol carries it: a titled quick fix over one or more files, whose
+    title says, after what it changes, that the code of the readers is not touched
+    (:data:`CODE_NOT_TOUCHED`), as the page's does.
 
     ``_assign`` and ``_erase`` answer ``None`` for a change the decision already ruled out, so
     nothing here is expected to skip; the guard is the only-child refusal of :func:`_erase`,
@@ -737,14 +763,47 @@ def _protocol_action(reconciliation: Reconciliation, cache: dict[Path, Document]
         )
         if edit is not None:
             changes.setdefault(change.site.path.as_uri(), []).append(edit)
-    return {"title": reconciliation.title, "kind": QUICK_FIX, "edit": {"changes": changes}}
+    return {
+        "title": f"{reconciliation.title}{CODE_NOT_TOUCHED}",
+        "kind": QUICK_FIX,
+        "edit": {"changes": changes},
+    }
 
 
 def _fixed_by(built: Index, typename: str, key: str, cache: dict[Path, Document]) -> str | None:
     """The json text a declared type states for ``key``, or ``None`` when it states none - a
-    structure, which has no room for a unit, or a name no type of the project declares."""
+    structure, which has no room for a unit, or a name no type of the project declares.
+
+    Read where the index found the entry, and only while that entry still names the type: a types
+    file edited since may hold another entry at that place, whose keys are another type's. Such a
+    place says nothing of this type, as :func:`type_conversions` reads it, the way a declaration
+    that has drifted is treated as absent (:func:`_at_site`).
+    """
     site = built.types.get(typename)
-    return None if site is None else read(site.path, cache).raw_at(f"{site.pointer}.{key}")
+    if site is None:
+        return None
+    document = read(site.path, cache)
+    if document.value_at(f"{site.pointer}.name") != typename:
+        return None
+    return document.raw_at(f"{site.pointer}.{key}")
+
+
+def _resolved(
+    built: Index, site: Site, document: Document, key: str, cache: dict[Path, Document]
+) -> str | None:
+    """The json text the declaration at ``site`` means for ``key``, or ``None`` where it means none.
+
+    What its file states, or, for a key a declared type fixes (:data:`FIXED_BY_A_TYPE`), what the
+    type it names states (:func:`_fixed_by`) - the definition resolved through its type, which is
+    what ``definition-mismatch`` compares. Such a declaration states none of those keys itself,
+    and read from its file alone it is silent where it means the type's answer: a writer naming
+    ``Speed_t`` had no unit to give its reader, and a reader naming one looked like nobody stating
+    a unit, so the only fixes left took a unit out and settled nothing.
+    """
+    typename = _type_named(document, site.pointer)
+    if key in FIXED_BY_A_TYPE and typename is not None:
+        return _fixed_by(built, typename, key, cache)
+    return document.raw_at(f"{site.pointer}.{key}")
 
 
 def _already(key: str, stated: str | None, raw: str | None) -> bool:
@@ -864,6 +923,9 @@ def _from_producer(
     describing what it expects to find, and the component that writes it is the one that
     decides - so "use what the producer says" is a fix, where "make the producer say what I
     say" is a consumer redefining data it does not own.
+
+    What the producer says is what it resolves to (:func:`_resolved`): a producer naming a
+    declared type says what the type states for a key the type fixes, though its file says none.
     """
     producers = [site for site in built.producers.get(name, ()) if site != here]
     if len(producers) != 1:
@@ -871,7 +933,7 @@ def _from_producer(
         return None
     producer = producers[0]
     target = _at_site(producer, name, cache)
-    raw = None if target is None else target.raw_at(f"{producer.pointer}.{key}")
+    raw = None if target is None else _resolved(built, producer, target, key, cache)
     if raw is None:
         return None
     decided = settled_at(built, here, name, key, raw, cache)
@@ -905,6 +967,11 @@ def _remove_here(
     stating the key is a reason to withhold - taking the owner's value is that key's fix then,
     and this title would be untrue besides. Without it the button vanished from every consumer's
     row of a variable with two readers, exactly where the widening exists to reach them both.
+
+    Another declaration states the key when it resolves to one (:func:`_resolved`): one naming a
+    declared type states what the type fixes, whatever its file holds, and goes on stating it
+    once this one is silent - so neither a reader agreeing with its writer's type nor a writer
+    whose reader's type states another value is offered a removal under a title that is untrue.
     """
     if key in DEFERRED_KEYS or document.raw_at(f"{here.pointer}.{key}") is None:
         return None
@@ -927,7 +994,7 @@ def _remove_here(
     stating = {
         site
         for site, target in zip(others, targets, strict=True)
-        if target.raw_at(f"{site.pointer}.{key}") is not None
+        if _resolved(built, site, target, key, cache) is not None
     }
     producers = [site for site in built.producers.get(name, ()) if site != here]
     if across:
@@ -961,10 +1028,16 @@ def _remove_elsewhere(
     among the ones asked and answers nothing, since silence is what it already states - except
     where a type it names states the key for it, which is a declaration that cannot lose it
     either and is exactly how a removal that settles nothing used to be offered.
+
+    So nothing is offered while a declaration naming a type that states the key is among those
+    the settlement cannot change, this one or another: that declaration goes on stating the key
+    whatever the rest lose, and the silence spread to them is not one it shares.
     """
     if key in DEFERRED_KEYS or document.raw_at(f"{here.pointer}.{key}") is not None:
         return None
     settlement = settle(built, name, key, None, cache)
+    if any(unsettled.reason == "type" for unsettled in settlement.unsettled):
+        return None
     elsewhere = len(settlement.changes)
     if elsewhere == 0:
         return None

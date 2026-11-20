@@ -168,19 +168,27 @@ looking in the wrong one; unsaved changes are refused naming the file that holds
 wherever it is.
 
 **Quick fixes.** They change descriptions: the code of the components that read the variable is
-not touched, and the title of the fix a finding of ``ddd gui`` carries says so. On a key the declarations of one object have to agree on - a ``unit``, a
+not touched, and the title of each fix says so, as the one a finding of ``ddd gui`` carries
+does. On a key the declarations of one object have to agree on - a ``unit``, a
 ``conversion``, a ``datatype`` - a ``definition-mismatch`` offers every way of reconciling
 it: take the producing component's value, spread this one to the others, or, when nobody
 else states the key, remove it. ``limits`` are the exception to the last: a declaration that
 leaves them out defers to the one that states them, which the checker counts as agreement, so
 only two stated ranges that differ are offered a fix. A declaration naming a declared type is
-an exception of its own: the type fixes its ``unit``, ``conversion`` and ``limits``, which may
-not be stated beside the ``typename``, so none of the three is offered to it, and spreading
-one of them to the other declarations leaves it out. Neither taking a value nor spreading one
-writes to a declaration that already means it, however differently spelled: a conversion
-written over four lines and the same conversion written on one are one value, as the checks
-have always counted them. The value is copied as source text rather than re-serialised, so
-the project's formatting survives the fix.
+an exception of its own: the type fixes its ``datatype``, ``unit``, ``conversion`` and
+``limits``, which may not be stated beside the ``typename``, so none of them is offered to it,
+and spreading one of them to the other declarations leaves it out. It states them all the same,
+as the checker reads it: the producing component's value is the one its type states, where it
+names one, and no key is offered for removal while a type one of the declarations names states
+it, since that declaration would go on stating it and the removal would settle nothing. Neither
+taking a value nor spreading one writes to a declaration that already means it, however
+differently spelled: a conversion written over four lines and the same conversion written on one
+are one value, as the checks have always counted them. The value is copied as source text rather
+than re-serialised, so the project's formatting survives the fix. The fixes are listed by which
+component owns the variable: a component that reads it is offered the producer's value first,
+and the producer its own, sent out. The first is marked as the preferred fix, the one the
+editor's automatic fix applies, only where it goes the owner's way: where that way is not
+offered, none is marked, rather than the other way round.
 
 A fix is offered only where every file it writes still loads, as far as the declaration and the
 type it names can say. Some rules hold between keys, and the models say them: an enumeration needs
@@ -192,12 +200,12 @@ a string type states exactly one dimension and no display format, which only the
 that would write a ``float32`` under an enumeration, a unit beside a string, or a ``float64``
 under a factor of two, or take the one dimension out of a declaration naming a string type, would
 leave a file the project refuses - a ``schema`` error, which no severity turns down, after which
-the project is no longer analysed and every further fix is refused - so it is not offered, and the
-next one in the list takes the preferred place. A fix that reaches several declarations is
-offered for those that load. What needs more of the project than the declaration and its type is
-not asked: the leaves of an array of structures, the elements of a map over its axes, the
-constant a dimension names, a plugin's ``extensions``. A fix may reach one of those, and the next
-analysis reports it - as it reports a range wider than the datatype, which only loads.
+the project is no longer analysed and every further fix is refused - so it is not offered. A fix
+that reaches several declarations is offered for those that load. What needs more of the project
+than the declaration and its type is not asked: the leaves of an array of structures, the
+elements of a map over its axes, the constant a dimension names, a plugin's ``extensions``. A fix
+may reach one of those, and the next analysis reports it - as it reports a range wider than the
+datatype, which only loads.
 
 A ``missing-id`` offers one fix of its own: give this object an identity. It writes the same
 key ``ddd id --assign`` would write, in the same place - right after the declaration's ``name``

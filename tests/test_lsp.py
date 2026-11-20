@@ -5733,6 +5733,46 @@ class TestServer:
             ),
         }
 
+    @pytest.mark.parametrize("outside", [False, True], ids=["in-the-folder", "outside-it"])
+    def test_a_description_is_named_apart_from_another_of_its_file_name(
+        self, tmp_path: Path, outside: bool
+    ) -> None:
+        """Both images' descriptions are called ``project.ddd.json``, each in a folder of its own,
+        and their records name no image. Named by its file name, image two's description reads
+        as image one's: it is named by its path in the workspace folder instead, and in full
+        where it lies outside it."""
+        workspace = tmp_path / "workspace"
+        two = (tmp_path / "elsewhere" if outside else workspace / "two") / "project.ddd.json"
+        up = Path(os.path.relpath(workspace, two.parent)).as_posix()
+        write_tree(
+            tmp_path,
+            {
+                "workspace/one/project.ddd.json": project(
+                    "One", "../writer.ddd.json", "../reader_one.ddd.json"
+                ),
+                str(two.relative_to(tmp_path)): project(
+                    "Two", f"{up}/writer.ddd.json", f"{up}/reader_two.ddd.json"
+                ),
+                "workspace/writer.ddd.json": component("W", declare("output", "Speed")),
+                "workspace/reader_one.ddd.json": component("R_one", declare("input", "Speed")),
+                "workspace/reader_two.ddd.json": component(
+                    "R_two", declare("input", "Speed"), declare("local", "Taken")
+                ),
+            },
+        )
+        for image, described in (("one", workspace / "one" / "project.ddd.json"), ("two", two)):
+            record = workspace / "build" / image / BUILD_INFO_FILENAME
+            record.parent.mkdir(parents=True)
+            record.write_text(json.dumps({"project": described.as_posix()}), encoding="utf-8")
+        request = self.rename_request(
+            workspace / "reader_one.ddd.json", "component.interface[0].definition.name", "Taken"
+        )
+        named = two.resolve().as_posix() if outside else "two/project.ddd.json"
+        assert self.answer_to(workspace, request)["error"]["message"] == (
+            f"in {named}, which this rename reaches too: 'Taken' is already declared by this "
+            "project"
+        )
+
     @pytest.mark.parametrize(
         ("pointer", "name", "because"),
         [

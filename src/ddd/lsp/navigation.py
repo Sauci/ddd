@@ -661,15 +661,20 @@ class Reach:
 
     def image(self, loaded: Loaded) -> str | None:
         """What a refusal from ``loaded`` names it by: the image of the build naming its
-        description, or the description where no build names one - and nothing for a project
-        holding the document the rename started from, which is the reader's own."""
+        description; where no build names one, the description, by its path in its workspace
+        folder - two images' descriptions often share a file name, and in a folder each - or in
+        full where it lies in none; and nothing for a project holding the document the rename
+        started from, which is the reader's own."""
         key = loaded.path.resolve()
         if key in self._own:
             return None
         for info in self._builds:
             if info.image and Path(info.project).resolve() == key:
                 return info.image
-        return loaded.path.name
+        folder = self._root_for(key).resolve()
+        if key.is_relative_to(folder):
+            return key.relative_to(folder).as_posix()
+        return key.as_posix()
 
     def _add(self, loaded: Loaded) -> None:
         key = loaded.path.resolve()

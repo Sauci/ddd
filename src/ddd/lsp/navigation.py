@@ -111,15 +111,22 @@ checks them against."""
 _BASE_DATATYPES: Final = frozenset(member.value for member in Datatype)
 """The keys whose string value names a constant: one dimension entry, or an axis size."""
 
-_WORD: Final = re.compile(r"[\w$]+")
+_WORD: Final = re.compile(r"[\w$\u0300-\u036f\u1dc0-\u1dff\u20d0-\u20ff\ufe20-\ufe2f]+")
 """One word of a condition: a run of the characters an identifier holds there, as long as it goes -
-a letter or a digit of any script, the underscore, and the dollar sign gcc and clang take in an
-identifier. ``CELLS`` is a word of ``CELLS > 2`` and of ``defined(CELLS)``, and no word of
-``MAX_CELLS``, ``CELLS2`` or ``CELLS$1``, each of which is a longer identifier holding it."""
+a letter or a digit of any script, the underscore, the dollar sign gcc and clang take in an
+identifier, and the combining marks C11's Annex D allows in one after its first character, from
+U+0300 to U+036F, U+1DC0 to U+1DFF, U+20D0 to U+20FF and U+FE20 to U+FE2F. ``CELLS`` is a word of
+``CELLS > 2`` and of ``defined(CELLS)``, and no word of ``MAX_CELLS``, ``CELLS2``, ``CELLS$1`` or
+``CELLS`` and a combining accent, each of which is a longer identifier holding it."""
 
-_JSON_CHARACTER: Final = re.compile(r"\\u[0-9a-fA-F]{4}|\\.|[^\\]")
-"""One character of a json string as it is written between the quotes: an escape - of four hex
-digits, or of the one character after the backslash - or the character itself."""
+_JSON_CHARACTER: Final = re.compile(
+    r"\\u[dD][89abAB][0-9a-fA-F]{2}\\u[dD][c-fC-F][0-9a-fA-F]{2}|\\u[0-9a-fA-F]{4}|\\.|[^\\]"
+)
+"""One character of a json string as it is written between the quotes: an escape - the two of a
+surrogate pair, which json writes for a character beyond the basic plane, four hex digits, or the
+one character after the backslash - or the character itself. The pair is tried first: read half
+by half, a letter beyond the basic plane was two characters no identifier holds, and ``CELLS``
+after one read as a word."""
 
 LOAD_CHECKS: Final = frozenset({"file-not-found", "json-syntax", "file-kind", "schema"})
 """The checks whose error on a file means that file did not load.

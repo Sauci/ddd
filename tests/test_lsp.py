@@ -3168,6 +3168,26 @@ class TestAConditionSpellingAConstant:
                 "\N{LATIN SMALL LETTER E WITH ACUTE}CELLS > CELLS",
                 "\N{LATIN SMALL LETTER E WITH ACUTE}CELLS > SLOT_COUNT",
             ),
+            (
+                "\N{MATHEMATICAL BOLD CAPITAL A}CELLS > CELLS",
+                "\N{MATHEMATICAL BOLD CAPITAL A}CELLS > SLOT_COUNT",
+            ),
+            (
+                "CELLS\N{COMBINING ACUTE ACCENT} > CELLS",
+                "CELLS\N{COMBINING ACUTE ACCENT} > SLOT_COUNT",
+            ),
+            (
+                "CELLS\N{COMBINING DOTTED GRAVE ACCENT} > CELLS",
+                "CELLS\N{COMBINING DOTTED GRAVE ACCENT} > SLOT_COUNT",
+            ),
+            (
+                "CELLS\N{COMBINING RIGHT ARROW ABOVE} > CELLS",
+                "CELLS\N{COMBINING RIGHT ARROW ABOVE} > SLOT_COUNT",
+            ),
+            (
+                "CELLS\N{COMBINING LIGATURE LEFT HALF} > CELLS",
+                "CELLS\N{COMBINING LIGATURE LEFT HALF} > SLOT_COUNT",
+            ),
             ("defined(ROWS) &&\tCELLS > 2", "defined(ROWS) &&\tSLOT_COUNT > 2"),
             ('__has_include("x.h") && CELLS > 2', '__has_include("x.h") && SLOT_COUNT > 2'),
         ],
@@ -3180,6 +3200,11 @@ class TestAConditionSpellingAConstant:
             "other-case",
             "dollar",
             "other-script",
+            "astral-letter",
+            "combining-mark",
+            "combining-mark-supplement",
+            "combining-mark-for-symbols",
+            "combining-half-mark",
             "escaped-tab",
             "escaped-quotes",
         ],
@@ -3189,8 +3214,10 @@ class TestAConditionSpellingAConstant:
     ) -> None:
         """Every word of the condition that is the constant, and nothing else: not another
         constant, not a longer identifier holding it - gcc and clang take a letter of any script
-        and a dollar sign in one - and not the escapes json writes for a tab or a quote before it,
-        which put the word further along in the file than in the condition."""
+        and a dollar sign in one, and C11's Annex D a combining mark after the first character -
+        and not the escapes json writes for a tab or a quote before it, which put the word further
+        along in the file than in the condition. Written by ``json.dumps``, a letter beyond the
+        basic plane is the two escapes of a surrogate pair, and is one letter all the same."""
         rewritten = self.renamed(tmp_path, sized_under(condition))
         assert self.big(rewritten["w.ddd.json"])["condition"] == after
 

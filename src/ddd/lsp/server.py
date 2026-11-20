@@ -315,7 +315,7 @@ class Server:
         self._published: dict[Path, str] = {}
         """Each file whose findings are on screen, by its resolved path, with the uri they went out
         under: a file goes out under its resolved spelling until the client opens it under another,
-        and what went out under the first and was never withdrawn there was never withdrawn at all
+        and its findings are then withdrawn under the first, where nothing would publish again
         (:meth:`_publish`)."""
         self._announced: tuple[str, ...] | None = None
         """What was last said about the configured projects, so it is not said every save."""

@@ -624,8 +624,8 @@ def reconciliations(
     The declaration asked at is the one the index found at ``path`` resolved, which is how every
     site of the index is spelled. An editor sends the path it opened the document under, through a
     junction or a link as readily as not, and taken as it came it equalled no site of the index:
-    the producer was a consumer of its own variable, offered its own value to take and its
-    removal lost, and its fixes ordered as a reader's.
+    the producer was taken for a reader of its own variable, its own declaration counted among the
+    others, so that its removal was lost, and its fixes were ordered as a reader's, none leading.
     """
     within = WITHIN_DEFINITION.match(pointer)
     if within is None:

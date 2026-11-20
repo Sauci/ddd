@@ -359,9 +359,9 @@ def _ownership(
     says so where it is the only writer.
 
     Where it says that no component produces the object, or that none reads it, the files of those
-    projects that did not load are named under it (:func:`_unloaded`): what such a file declares
-    is in no project's answer, and the sentence was untrue of a project whose writer, or whose
-    reader, is there. Where it names both, an unread file takes nothing from what it says.
+    projects that did not load are named under it (:func:`_did_not_load`): what such a file
+    declares is in no project's answer, and the sentence was untrue of a project whose writer, or
+    whose reader, is there. Where it names both, an unread file takes nothing from what it says.
     """
     writers: set[str] = set()
     local: set[str] = set()
@@ -378,11 +378,11 @@ def _ownership(
                 if declared.scope is Scope.LOCAL:
                     local.add(component.name)
     if not writers:
-        return ["*No component produces this.*", *_unloaded(unloaded, "writer")]
+        return ["*No component produces this.*", *_did_not_load(unloaded, "writer")]
     if len(writers) == 1 and writers == local:
         return [f"Local to **{next(iter(writers))}**."]
     said = f"Written by {_listed(writers)}, read by {_listed(readers) or '*nobody*'}."
-    return [said] if readers else [said, *_unloaded(unloaded, "reader")]
+    return [said] if readers else [said, *_did_not_load(unloaded, "reader")]
 
 
 def _listed(names: Iterable[str]) -> str:
@@ -394,7 +394,7 @@ def _listed(names: Iterable[str]) -> str:
     return f"{', '.join(bold[:-1])} and {bold[-1]}"
 
 
-def _unloaded(unloaded: Sequence[Path], role: str) -> list[str]:
+def _did_not_load(unloaded: Sequence[Path], role: str) -> list[str]:
     """The line under a sentence saying that no ``role`` - a writer, or a reader - is known,
     naming the files that did not load, each told apart from another of its name
     (:func:`~ddd.lsp.navigation.told_apart`); nothing where every file loaded."""

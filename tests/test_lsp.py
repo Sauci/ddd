@@ -12418,7 +12418,7 @@ class TestAHoverSpeaksForEveryProjectHoldingTheDocument:
         assert "did not load" not in said
 
     def test_a_project_a_plugin_stops_resolving_is_left_out(self, tmp_path: Path) -> None:
-        """Image one's plugin raises in its check hook, so that project resolves to nothing for a
+        """Image one's plugin exits in its check hook, so that project resolves to nothing for a
         hover: the hover answers from image two, where it answered nothing at all."""
         write_tree(
             tmp_path,

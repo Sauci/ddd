@@ -2990,10 +2990,10 @@ applies it in part, by the reader's choice; a client that announced only one of 
 edit unmarked, and applies it at once.
 
 A hover on a data object says who writes it and who reads it in every project holding the file,
-each component named once: a component linked into two images is read by the readers of both, and
-an object two components write names both. Where it says that no component produces the object,
-or that none reads it, it names under that sentence every file of those projects that did not
-load, since what such a file declares is in no project's answer.
+each component named once: an object a component linked into two images writes is read by the
+readers of both, and one two components write is written by both. Where it says that no
+component produces the object, or that none reads it, it names under that sentence every file of
+those projects that did not load, since what such a file declares is in no project's answer.
 
 A hover on a name naming a declared type describes the data object that names it where
 there is one, and otherwise the type itself: a structure and its members, a scalar type's
@@ -3058,8 +3058,9 @@ the server answers - a rename, a quick fix - is read from and written for that t
 an edit lands where the editor shows it; a client that takes versioned edits is told which
 version of each document an edit was computed for. An open document's findings are drawn in that
 text as well: over the key a finding is about where the text holds it, over the nearest key
-around it that the text holds where it does not, and at the top of a text that is not json, never
-at the place its file on disk gives the key. A finding names its key by its place in the file, so
+around it that the text holds where it does not, and at the top of a text that is not json - the
+place read from that text, and never from the file on disk. A finding names its key by its place
+in the file, so
 where unsaved changes put another item at that place of a list - a declaration typed above the
 one it is about - the finding is drawn over that item until the file is saved. Opens, saves and
 watched changes that arrive

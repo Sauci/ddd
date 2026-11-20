@@ -644,8 +644,13 @@ class Reach:
             position += 1
 
     def touch(self, files: Iterable[Path]) -> None:
-        """Reach every project holding one of ``files``, which a reached project's edits touch."""
+        """Reach every project holding one of ``files``, which a reached project's edits touch.
+
+        Nothing is asked where no file is new: a build's project the rename has not needed yet
+        would be read for nothing, to say which of no files it holds."""
         new = set(files) - self._touched
+        if not new:
+            return
         self._touched |= new
         held: set[Path] = set()
         for info in self._builds:

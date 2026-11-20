@@ -5919,6 +5919,29 @@ class TestServer:
         assert (tmp_path / "reader_two.ddd.json").as_uri() in answer["result"]["changes"]
         assert seen == [(images / "two.ddd.json").resolve()]
 
+    def test_a_rename_that_touches_no_file_reads_no_description(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """At a position naming nothing renameable a rename computes no edit, so it touches no
+        file and reaches no other project. With the document's projects kept from a jump, it has
+        nothing left to read - where it read image two, to ask it which of no files it held."""
+        self.two_images(tmp_path)
+        reader_one = tmp_path / "reader_one.ddd.json"
+        position = Document(reader_one.read_text(encoding="utf-8")).range_of(
+            "component.interface[0].definition.name"
+        )["start"]
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(self.handshake(tmp_path))
+        assert server._handle(
+            self.navigation_request("textDocument/definition", reader_one, position)
+        )
+        seen = self.descriptions_read(monkeypatch)
+        assert server._handle(self.rename_request(reader_one, "component.name", "Other"))
+        (answer,) = (message for message in sent(writer) if message.get("id") == 11)
+        assert answer["result"] == {"changes": {}}
+        assert seen == []
+
     def test_a_code_action_on_an_unknown_unit_offers_the_vocabulary_fixes(
         self, tmp_path: Path
     ) -> None:

@@ -90,8 +90,11 @@ than re-serialised, and a declaration that never mentioned the key gets it inser
 
 `F2` renames a variable across every component that declares it and every `axis`, `x_axis`,
 `y_axis` or `input` that names it - and a declared type or constant across its declaration and
-every `typename`, dimension or `size` spelling it. A name c reserves, one that is not a usable identifier, or
-one the project already declares is refused with the reason rather than half applied. Free text
+every `typename`, dimension or `size` spelling it - in every project holding a file the rename
+rewrites, so a component linked into two images is renamed with the readers of both, whichever
+image the file you start from is in. A name c reserves, one that is not a usable identifier, or
+one a project it reaches already declares is refused with the reason rather than half applied,
+naming the image it comes from when that is not yours. Free text
 is left alone, so a `description` mentioning the old name still mentions it.
 
 The published json schemas keep working alongside this: they do structure, the server does

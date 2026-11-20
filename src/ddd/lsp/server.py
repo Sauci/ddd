@@ -38,7 +38,9 @@ from ddd.lsp.discovery import discover
 from ddd.lsp.edits import QUICK_FIX, UNKNOWN_UNIT, actions
 from ddd.lsp.hover import describe, describe_constant, describe_external, describe_type, resolve
 from ddd.lsp.navigation import (
+    Descriptions,
     Loaded,
+    Reach,
     Site,
     constant_at,
     definition,
@@ -494,13 +496,24 @@ class Server:
                 return root
         return self.roots[0]
 
-    def _projects_of(self, document: Path) -> list[Loaded]:
-        """The projects containing a document, loaded once per refresh."""
+    def _projects_of(
+        self, document: Path, descriptions: Descriptions | None = None
+    ) -> list[Loaded]:
+        """The projects containing a document, loaded once per refresh; where they are loaded
+        now, ``descriptions`` takes what the search reads (:func:`~ddd.lsp.navigation.workspaces`).
+        """
         found = self._projects.get(document)
         if found is None:
-            found = workspaces(self._builds_now(), document, self._root_for(document))
+            found = workspaces(self._builds_now(), document, self._root_for(document), descriptions)
             self._projects[document] = found
         return found
+
+    def _reach(self, document: Path) -> Reach:
+        """Every project a rename started from ``document`` reaches, each description read at
+        most once for it."""
+        descriptions: Descriptions = {}
+        start = self._projects_of(document, descriptions)
+        return Reach(self._builds_now(), start, self._root_for, descriptions)
 
     @staticmethod
     def _unreadable(loaded: Loaded) -> str | None:
@@ -738,7 +751,15 @@ class Server:
         }
 
     def _answer_rename(self, request_id: Any, message: dict[str, Any]) -> None:
-        """Rewrite a name everywhere the project writes it, or say why it cannot be.
+        """Rewrite a name wherever a project the rename reaches writes it, or say why it cannot
+        be.
+
+        The projects reached are the document's, and then every project holding a file their
+        edits rewrite, until none is new (:class:`~ddd.lsp.navigation.Reach`): a writer linked
+        into two images is rewritten for both, so the reader of the image the document is not
+        in is rewritten too. Every one of them is asked each refusal before anything is
+        answered, and the refusal one of them gives names its image where the document is not
+        in it (:meth:`_refuse`).
 
         A refusal is an error rather than an empty edit: an editor shows the message, where an
         empty edit looks like a rename that quietly did nothing. A drifted buffer is refused
@@ -763,19 +784,21 @@ class Server:
         changes: dict[str, list[dict[str, Any]]] = {}
         seen: set[tuple[str, int, int]] = set()
         drifted: set[Path] = set()
-        for loaded in self._projects_of(path):
+        reach = self._reach(path)
+        for loaded in reach:
             unreadable = self._unreadable(loaded)
             if unreadable is not None:
-                write_message(self.writer, error(request_id, REQUEST_FAILED, unreadable))
+                self._refuse(request_id, reach, loaded, unreadable)
                 return
             built = index(loaded.workspace)
             refused = rename_problem(built, wanted, subject[0] if subject else "variable")
             if refused is not None:
-                write_message(self.writer, error(request_id, REQUEST_FAILED, refused))
+                self._refuse(request_id, reach, loaded, refused)
                 return
             edited = rename_edits(built, document, pointer, wanted, cache)
             drifted.update(edited.drifted)
             self._gather(changes, seen, edited.changes)
+            reach.touch([*map(uri_to_path, edited.changes), *edited.drifted])
         if drifted:
             refusal = self._drifted(drifted, "moved a declaration")
             write_message(self.writer, error(request_id, REQUEST_FAILED, refusal))
@@ -788,8 +811,14 @@ class Server:
     def _rename_unit(
         self, request_id: Any, path: Path, old: str, new: str, cache: dict[Path, Document]
     ) -> None:
-        """Respell a unit everywhere each project holding the document states or lists it, or
-        say why it cannot be.
+        """Respell a unit everywhere each project the rename reaches states or lists it, or say
+        why it cannot be.
+
+        The projects reached are a variable's (:meth:`_answer_rename`): the document's, and
+        every project holding a file their plans write, until none is new. A project whose
+        buffer moved the unit is not planned, so the files it would write are not known and it
+        leads to no other project; the rename is refused for that buffer whatever else it
+        reaches.
 
         The plan is :func:`ddd.lsp.units.rename_unit`'s, the one ``ddd gui`` previews and
         applies, so an editor and the page cannot disagree about what a rename reaches or when
@@ -803,7 +832,8 @@ class Server:
         changes: dict[str, list[dict[str, Any]]] = {}
         seen: set[tuple[str, int, int]] = set()
         drifted: set[Path] = set()
-        for loaded in self._projects_of(path):
+        reach = self._reach(path)
+        for loaded in reach:
             built = index(loaded.workspace)
             moved = unit_drift(built, old, cache)
             if moved:
@@ -813,15 +843,26 @@ class Server:
             try:
                 plan = rename_unit(built, project, old, new, cache)
             except UnitRefusalError as refused:
-                write_message(self.writer, error(request_id, REQUEST_FAILED, refused.message))
+                self._refuse(request_id, reach, loaded, refused.message)
                 return
-            self._gather(changes, seen, text_edits(plan, cache))
+            edits = text_edits(plan, cache)
+            self._gather(changes, seen, edits)
+            reach.touch(map(uri_to_path, edits))
         if drifted:
             refusal = self._drifted(drifted, "moved or respelled a unit")
             write_message(self.writer, error(request_id, REQUEST_FAILED, refusal))
             return
         self._forget()
         write_message(self.writer, response(request_id, self._workspace_edit(changes)))
+
+    def _refuse(self, request_id: Any, reach: Reach, loaded: Loaded, refusal: str) -> None:
+        """Answer a rename with one of its projects' refusals, naming the image it comes from
+        where that is not the reader's own: asked from image one, a name "already declared by
+        this project" in image two sends the reader looking in the wrong one."""
+        image = reach.image(loaded)
+        if image is not None:
+            refusal = f"in {image}, which this rename reaches too: {refusal}"
+        write_message(self.writer, error(request_id, REQUEST_FAILED, refusal))
 
     @staticmethod
     def _gather(

@@ -2921,9 +2921,10 @@ file; go to definition and find references across files, which is the question a
 cannot answer at all, because the producer of an `input` is in a file the author might not
 know the name of; a summary of a data object on hover, the physical reading of its
 initial value included; renaming an object, a declared type or a declared constant
-everywhere the project writes it - the declaration and every reference, `typename`,
-dimension or axis `size` spelling it - refused up front for a name the C language does not
-allow, a type name spelling a base datatype, or one the project already uses, whether for
+everywhere the projects it reaches write it - the declaration and every reference,
+`typename`, dimension or axis `size` spelling it - refused up front for a name the C language
+does not allow, a type name spelling a base datatype, or one a project it reaches already
+uses, whether for
 another object, an enum, an enumerator, a type or a constant, because a rename that silently
 merges two objects compiles, links, and shares storage nobody intended to share; and quick
 fixes that reconcile one key across the declarations of one object, in either direction,
@@ -2941,6 +2942,16 @@ performed in part. A project is indexed from what loaded, so a file a `schema` e
 mid edit declares nothing as far as the index knows: the rename would rewrite every other
 file and leave that one holding the old name, and a fix would offer to remove a key "no
 other declaration has" while the unloaded producer states exactly that key.
+
+A rename reaches every project that holds a file it rewrites: the projects the file it starts
+from belongs to, then every project holding a file their edits rewrite, until none is new. A
+component linked into two images is in two projects, so a rename that rewrites it rewrites
+the readers of both images, whichever of the two the file it starts from is in; reaching only
+the projects of that file would leave the other image reading a name nothing declares. Every
+project the rename reaches is asked each refusal above before anything is written. Where a
+project the file it starts from does not belong to already uses the name, or holds a file that
+did not load, the refusal names that project's image, or its description where no build
+record names it; unsaved changes are refused naming the file that holds them, wherever it is.
 
 A hover on a name naming a declared type describes the data object that names it where
 there is one, and otherwise the type itself: a structure and its members, a scalar type's

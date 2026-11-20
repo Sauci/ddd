@@ -217,16 +217,21 @@ that states them, exactly as the checker reads it.
 **Rename** (`F2`) on a variable name rewrites it in every component that declares it and in
 every `axis`, `x_axis`, `y_axis` or `input` that names it; on a declared type, in its
 declaration and in every `typename` naming it; on a declared constant, in its declaration and
-in every dimension or axis `size` spelling it.  A name c reserves, one that is
-not a usable identifier, or one the project already declares is refused with the reason
-before a single file is touched - a rename writes into several at once, and an unusable
-name is otherwise noticed a build later.  Free text is left alone: a `description` that
+in every dimension or axis `size` spelling it.  It reaches every project holding a file it
+rewrites, and every project holding one of theirs in turn, so a component linked into two
+images is renamed with the readers of both, whichever image the file you start from is in.
+A name c reserves, one that is not a usable identifier, or one a project it reaches already
+declares is refused with the reason before a single file is touched - a rename writes into
+several at once, and an unusable name is otherwise noticed a build later.  Free text is left
+alone: a `description` that
 mentions the old name still mentions it, because rewriting prose by substring is how a
 rename tool starts corrupting files.  A rename and the quick fixes are refused outright,
 naming the file, while a document has unsaved changes that moved a declaration they would
 touch or while a file of the project did not load: the project the edit would be computed
 from is not the project on disk, and rewriting the rest of it around the gap is exactly the
-half-done rename the refusal exists to prevent.
+half-done rename the refusal exists to prevent.  Where an image the file you started from is
+not in already declares the name, or holds a file that did not load, the refusal names that
+image.
 
 Which project a file belongs to is not something the file can say, so the server reads the
 `ddd-build.json` that `ddd_generate` leaves in the build tree, and applies the same severities

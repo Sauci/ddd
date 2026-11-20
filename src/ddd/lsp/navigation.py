@@ -25,7 +25,7 @@ What can be jumped from, and to:
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Final, Literal
@@ -426,8 +426,16 @@ class Containing:
     """
 
 
+type Descriptions = dict[Path, Loaded | None]
+"""Every description one question has read, by the path it resolves to: what it read as, or
+``None`` where it could not be read."""
+
+
 def workspaces(
-    builds: Sequence[BuildInfo], document: Path, root: Path | None = None
+    builds: Sequence[BuildInfo],
+    document: Path,
+    root: Path | None = None,
+    descriptions: Descriptions | None = None,
 ) -> list[Loaded]:
     """The projects that contain a document, or the document read on its own.
 
@@ -441,26 +449,43 @@ def workspaces(
     neither exists is the file read on its own, which is a real answer but a thin one: a
     component alone has no producers for its inputs, no readers for its outputs, and no types
     or constants beyond the ones it declares inline.
+
+    ``descriptions`` is what the question asking has read already, and takes what this reads of
+    the builds and of the descriptions above the document: a rename asks this of the document it
+    starts from, and goes on to the projects holding the files it rewrites without reading any
+    description twice (:class:`Reach`).
     """
+    if descriptions is None:
+        descriptions = {}
     # What stopped a read is collected and then dropped: a hover or a jump is a question a
     # person asked and wants an answer to, and the squiggles are where a broken plugin is
     # named. Reporting it twice, once as a finding and once instead of a jump, helps nobody.
     unreadable: dict[Path, str] = {}
     found = []
     for info in builds:
-        loaded = _loaded(Path(info.project), unreadable)
+        loaded = _read_once(Path(info.project), unreadable, descriptions)
         if loaded is not None and document.resolve() in loaded.workspace.sources():
             found.append(loaded)
     if not found:
         # Already read, by the search that found them: asking for them again is the second of
         # the two reads per project this used to cost, and the pair is what made the first
         # hover after a save take three times what checking the whole project takes.
-        found.extend(resolve_projects(document, root).projects)
+        found.extend(resolve_projects(document, root, descriptions).projects)
     if not found:
         alone = _loaded(document, unreadable)
         if alone is not None:
             found.append(alone)
     return found
+
+
+def _read_once(path: Path, failed: dict[Path, str], descriptions: Descriptions) -> Loaded | None:
+    """:func:`_loaded`, unless the question has read ``path`` already: ``descriptions`` holds what
+    it has read, by resolved path, ``None`` standing for a description that could not be read -
+    whose reason is in the ``failed`` of the search that met it first."""
+    key = path.resolve()
+    if key not in descriptions:
+        descriptions[key] = _loaded(path, failed)
+    return descriptions[key]
 
 
 def _loaded(path: Path, failed: dict[Path, str]) -> Loaded | None:
@@ -500,7 +525,9 @@ def _unreadable(bag: DiagnosticBag, checks: frozenset[str] | None = None) -> tup
     return tuple(sorted(found))
 
 
-def resolve_projects(document: Path, root: Path | None = None) -> Containing:
+def resolve_projects(
+    document: Path, root: Path | None = None, descriptions: Descriptions | None = None
+) -> Containing:
     """Descriptions lying at or above the document that turn out to include it, as they read.
 
     A search rather than a guess: every candidate is loaded and asked whether this file is one
@@ -519,7 +546,9 @@ def resolve_projects(document: Path, root: Path | None = None) -> Containing:
     and the jumps, and neither has to read the file a second time to have it.
 
     A candidate that could not be read answers neither way: the walk carries on past it, and
-    it is named in ``failed`` so that the caller can say so.
+    it is named in ``failed`` so that the caller can say so - where this search is the first of
+    its question to meet it: a candidate ``descriptions`` holds already is not read again, as
+    :func:`workspaces` says.
 
     The document is resolved once, above the walk, because that is what the candidates are:
     they come from a resolved directory and every ``sources()`` is resolved too. Compared with
@@ -529,6 +558,8 @@ def resolve_projects(document: Path, root: Path | None = None) -> Containing:
 
     Bounded by the editor's own root, so the walk cannot wander up into a home directory.
     """
+    if descriptions is None:
+        descriptions = {}
     resolved = document.resolve()
     stop = root.resolve() if root is not None else document.parent.resolve()
     directories = []
@@ -546,7 +577,7 @@ def resolve_projects(document: Path, root: Path | None = None) -> Containing:
         for candidate in sorted(directory.glob("*.ddd.json")):
             if candidate == resolved:
                 continue
-            loaded = _loaded(candidate, failed)
+            loaded = _read_once(candidate, failed, descriptions)
             if loaded is not None and resolved in loaded.workspace.sources():
                 found.append(loaded)
         if found:
@@ -556,6 +587,95 @@ def resolve_projects(document: Path, root: Path | None = None) -> Containing:
             # would say everything twice, so the nearer one is dropped.
             outermost = found
     return Containing(tuple(outermost), failed)
+
+
+class Reach:
+    """Every project a rename reaches: the ones holding the document it starts from, then every
+    project holding a file a reached project's edits touch, until none is new.
+
+    The projects of the document alone made a rename's reach depend on where it started. A
+    writer linked into two images, read by a reader in each: started from the writer, the
+    rename rewrote all three; started from image one's reader, it rewrote that reader and the
+    writer, and left image two's reader naming an object that is gone. Reaching every project
+    that holds a file the rename rewrites, and every project holding a file those rewrite in
+    turn, makes it the same rename from either reader as from the writer.
+
+    The projects holding a file are the ones :func:`workspaces` answers for it - the builds
+    holding it, and, for a file no build holds, the descriptions of the outermost directory above
+    it that include it - found without reading any description twice: the projects read already
+    are asked which of the new files they hold, and a description is read only where nothing has
+    read it for this rename yet. Asked of :func:`workspaces` file by file, the search would read
+    every build's project once for each file the rename touches. A file no project holds is not
+    read on its own: a project reached already holds it, since its edits touch it. A description
+    that cannot be read reaches nothing, as :func:`workspaces` answers.
+
+    Iterated while it grows: :meth:`touch` adds the projects holding what a reached project's
+    edits touch, and the iteration goes on to them.
+    """
+
+    def __init__(
+        self,
+        builds: Sequence[BuildInfo],
+        start: Sequence[Loaded],
+        root_for: Callable[[Path], Path],
+        descriptions: Descriptions,
+    ) -> None:
+        self.projects: list[Loaded] = []
+        """The projects reached so far, in the order they were reached, the document's first."""
+        self._builds = builds
+        self._root_for = root_for
+        """The workspace folder bounding the search above a file, as the server answers it."""
+        self._descriptions = descriptions
+        self._reached: set[Path] = set()
+        self._touched: set[Path] = set()
+        for loaded in start:
+            # The document's projects may have been read for an earlier request, and kept: the
+            # rename goes on from that read rather than reading them again.
+            descriptions.setdefault(loaded.path.resolve(), loaded)
+            self._add(loaded)
+        self._own = frozenset(self._reached)
+        """The descriptions holding the document the rename started from: the reader's own."""
+
+    def __iter__(self) -> Iterator[Loaded]:
+        """Every project reached, those :meth:`touch` adds while this runs included."""
+        position = 0
+        while position < len(self.projects):
+            yield self.projects[position]
+            position += 1
+
+    def touch(self, files: Iterable[Path]) -> None:
+        """Reach every project holding one of ``files``, which a reached project's edits touch."""
+        new = set(files) - self._touched
+        self._touched |= new
+        held: set[Path] = set()
+        for info in self._builds:
+            # Why a build's project could not be read is not this question's to report, as in
+            # :func:`workspaces`: the findings of the same refresh name it.
+            loaded = _read_once(Path(info.project), {}, self._descriptions)
+            if loaded is not None and (holds := new.intersection(loaded.workspace.sources())):
+                held |= holds
+                self._add(loaded)
+        for file in sorted(new - held):
+            for loaded in resolve_projects(file, self._root_for(file), self._descriptions).projects:
+                self._add(loaded)
+
+    def image(self, loaded: Loaded) -> str | None:
+        """What a refusal from ``loaded`` names it by: the image of the build naming its
+        description, or the description where no build names one - and nothing for a project
+        holding the document the rename started from, which is the reader's own."""
+        key = loaded.path.resolve()
+        if key in self._own:
+            return None
+        for info in self._builds:
+            if info.image and Path(info.project).resolve() == key:
+                return info.image
+        return loaded.path.name
+
+    def _add(self, loaded: Loaded) -> None:
+        key = loaded.path.resolve()
+        if key not in self._reached:
+            self._reached.add(key)
+            self.projects.append(loaded)
 
 
 def variable_at(document: Document, pointer: str) -> str | None:

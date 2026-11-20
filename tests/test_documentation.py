@@ -1740,6 +1740,102 @@ class TestWhichDescriptionAnswersForAFile:
             assert stale not in said, f"{page} still says: {stale!r}"
 
 
+class TestWhatARenameReaches:
+    """10:I3. A rename reaches every project holding a file it rewrites, until none is new, so a
+    component linked into two images is renamed with the readers of both; and where a project
+    the file it starts from is not in uses the name or holds a file that did not load, the
+    refusal names that project's image. Every page that says what a rename reaches says so."""
+
+    REACHED: ClassVar[str] = (
+        "then every project holding a file their edits rewrite, until none is new. A component "
+        "linked into two images is in two projects, so a "
+    )
+    ASKED: ClassVar[str] = (
+        "Every project the rename reaches is asked each refusal above before anything is "
+        "written. Where a project the file it starts from does not belong to already uses the "
+        "name, or holds a file that did not load, the refusal names that project's image, or its "
+        "description where no build record names it"
+    )
+    UNSAVED: ClassVar[str] = (
+        "unsaved changes are refused naming the file that holds them, wherever it is."
+    )
+    """What SPEC 7.2 and the editor page say in the same words: how far a rename reaches, which
+    refusals each project it reaches is asked, and what a refusal from another image names."""
+
+    STATED: ClassVar[dict[str, tuple[str, tuple[str, ...]]]] = {
+        "SPEC.md": (
+            SPEC,
+            (
+                "renaming an object, a declared type or a declared constant everywhere the "
+                "projects it reaches write it - ",
+                "or one a project it reaches already uses, whether for another object",
+                "A rename reaches every project that holds a file it rewrites: the projects the "
+                f"file it starts from belongs to, {REACHED}rename that rewrites it rewrites the "
+                "readers of both images, whichever of the two the file it starts from is in; "
+                "reaching only the projects of that file would leave the other image reading a "
+                f"name nothing declares. {ASKED}; {UNSAVED}",
+            ),
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            (
+                "or one a project it reaches already uses - for another object",
+                "It is refused, naming the file, only while a file of a project it reaches does "
+                "not load at all - ",
+                "A rename reaches every project that holds a file it rewrites: the projects of the "
+                f"file it starts from, {REACHED}variable it writes is renamed in the readers of "
+                "both images, whichever of the two the file the rename starts from is in - and so "
+                "is a type, a constant, a section, a raster or a unit that a file of both spells. "
+                f'{ASKED} - asked from one image, a name "already declared by this project" in '
+                f"the other sends the reader looking in the wrong one; {UNSAVED}",
+            ),
+        ),
+        "README.md": (
+            README,
+            (
+                "It reaches every project holding a file it rewrites, and every project holding "
+                "one of theirs in turn, so a component linked into two images is renamed with the "
+                "readers of both, whichever image the file you start from is in. A name c "
+                "reserves, one that is not a usable identifier, or one a project it reaches "
+                "already declares is refused with the reason before a single file is touched",
+                "Where an image the file you started from is not in already declares the name, or "
+                "holds a file that did not load, the refusal names that image.",
+            ),
+        ),
+        "editors/vscode/README.md": (
+            (ROOT / "editors" / "vscode" / "README.md").read_text(encoding="utf-8"),
+            (
+                "spelling it - in every project holding a file the rename rewrites, so a "
+                "component linked into two images is renamed with the readers of both, whichever "
+                "image the file you start from is in. A name c reserves, one that is not a usable "
+                "identifier, or one a project it reaches already declares is refused with the "
+                "reason rather than half applied, naming the image it comes from when that is not "
+                "yours.",
+            ),
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(STATED))
+    def test_the_page_says_a_rename_reaches_every_project_holding_a_file_it_rewrites(
+        self, page: str
+    ) -> None:
+        text, phrases = self.STATED[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"
+
+    @pytest.mark.parametrize("page", sorted(STATED))
+    def test_no_page_still_says_a_rename_stays_in_one_project(self, page: str) -> None:
+        said = flattened(self.STATED[page][0])
+        for stale in (
+            "everywhere the project writes it",
+            "or one the project already uses",
+            "only while a file of the project does not load at all",
+            "or one the project already declares is refused",
+        ):
+            assert stale not in said, f"{page} still says: {stale!r}"
+
+
 class TestWhatThePolicySaysOfAnAdvisory:
     """20:I4. ``SECURITY.md`` said which release is supported and how to report a vulnerability
     privately, and nothing of an advisory: which versions one names, or where one is published.

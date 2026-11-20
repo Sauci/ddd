@@ -84,11 +84,11 @@ names it, across as many files as that takes. A declared type is renamed the sam
 the ``name`` of its entry or from any ``typename`` spelling it, in the file declaring it and
 in every definition and structure member naming it; a declared constant from its entry or from
 any dimension or axis ``size`` spelling it. For those three, a name c reserves, one that is
-not a usable identifier, or one the project already uses - for another object, an enum, an
-enumerator, a type or a declared constant - is refused with the reason before anything is
-written, because a rename that silently merges two objects compiles, links, and shares
-storage nobody intended to share; a type may not take the spelling of a base datatype either,
-which the loader would refuse. A memory section is renamed from its entry in a
+not a usable identifier, or one a project it reaches already uses - for another object, an
+enum, an enumerator, a type or a declared constant - is refused with the reason before
+anything is written, because a rename that silently merges two objects compiles, links, and
+shares storage nobody intended to share; a type may not take the spelling of a base datatype
+either, which the loader would refuse. A memory section is renamed from its entry in a
 :doc:`sections file <file_formats/sections>`, or from the ``section`` key of any definition
 placing its data there, and both ends are rewritten together: a rename reaching the entry
 alone would leave every one of those definitions naming a section nothing declares. A
@@ -116,8 +116,8 @@ reporting them as ``duplicate-raster``, but each carries its own ``event`` and `
 and a rename that merged them would sample one signal on another's channel. A unit is renamed
 from any place it is stated, or from its entry in a units file; renaming onto a unit that
 already exists merges the two instead of refusing the collision, as a variable's rename
-would. It is refused, naming the file, only while a file of
-the project does not load at all - a unit listed twice, reported as ``duplicate-unit``, does
+would. It is refused, naming the file, only while a file of a project it reaches does not load
+at all - a unit listed twice, reported as ``duplicate-unit``, does
 not stop it, because renaming may be how such a mistake is fixed. Only the characters between
 the quotes are replaced, so formatting survives and free text is left alone.
 
@@ -130,6 +130,18 @@ error dropped mid edit declares nothing as far as the index knows: the rename wo
 every other file and leave that one holding the old name, and a fix would offer to remove a
 key "no other declaration has" while the unloaded producer states exactly that key. Fix the
 file and ask again.
+
+A rename reaches every project that holds a file it rewrites: the projects of the file it
+starts from, then every project holding a file their edits rewrite, until none is new. A
+component linked into two images is in two projects, so a variable it writes is renamed in
+the readers of both images, whichever of the two the file the rename starts from is in - and
+so is a type, a constant, a section, a raster or a unit that a file of both spells. Every
+project the rename reaches is asked each refusal above before anything is written. Where a
+project the file it starts from does not belong to already uses the name, or holds a file that
+did not load, the refusal names that project's image, or its description where no build
+record names it - asked from one image, a name "already declared by this project" in the
+other sends the reader looking in the wrong one; unsaved changes are refused naming the file
+that holds them, wherever it is.
 
 **Quick fixes.** They change descriptions: the code of the components that read the variable is
 not touched, and the title of the fix a finding of ``ddd gui`` carries says so. On a key the declarations of one object have to agree on - a ``unit``, a

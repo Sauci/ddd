@@ -13,6 +13,7 @@ import os
 import re
 import shutil
 import sys
+from collections import Counter
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
@@ -106,6 +107,13 @@ def published(stream: io.BytesIO) -> dict[str, list[dict[str, Any]]]:
         for message in sent(stream)
         if message.get("method") == "textDocument/publishDiagnostics"
     }
+
+
+END: Final = (
+    {"jsonrpc": "2.0", "id": 99, "method": "shutdown"},
+    {"jsonrpc": "2.0", "method": "exit"},
+)
+"""How a client ends a session it means to end, which ``run`` answers with 0."""
 
 
 class TestFraming:
@@ -5487,6 +5495,321 @@ class TestServer:
         assert answer["error"]["code"] == REQUEST_FAILED
         assert answer["error"]["message"].startswith("b.ddd.json has unsaved changes")
         assert "result" not in answer
+
+    def test_a_rename_from_a_reader_reaches_the_other_images_reader(self, tmp_path: Path) -> None:
+        """A writer linked into two images, each with a reader of its own. Started from the
+        reader of image one, a rename visited the projects holding that reader alone, so it
+        rewrote the writer and left image two's reader naming an object gone - started from the
+        writer, the same rename reached all three."""
+        write_tree(
+            tmp_path,
+            {
+                "one.ddd.json": project("One", "writer.ddd.json", "reader_one.ddd.json"),
+                "two.ddd.json": project("Two", "writer.ddd.json", "reader_two.ddd.json"),
+                "writer.ddd.json": component("W", declare("output", "Speed")),
+                "reader_one.ddd.json": component("R1", declare("input", "Speed")),
+                "reader_two.ddd.json": component("R2", declare("input", "Speed")),
+            },
+        )
+        build_record(tmp_path, tmp_path / "one.ddd.json", image="one.elf")
+        build_record(tmp_path, tmp_path / "two.ddd.json", image="two.elf")
+        reader_one = tmp_path / "reader_one.ddd.json"
+        writer = io.BytesIO()
+        request = self.rename_request(
+            reader_one, "component.interface[0].definition.name", "Velocity"
+        )
+        Server(framed(self.handshake(tmp_path), request, *END), writer, root=tmp_path).run()
+        answer = next(m for m in sent(writer) if m.get("id") == 11)
+        touched = set(answer["result"].get("changes", {})) | {
+            c["textDocument"]["uri"] for c in answer["result"].get("documentChanges", [])
+        }
+        assert (tmp_path / "reader_two.ddd.json").as_uri() in touched, (
+            f"half renamed: {sorted(touched)}"
+        )
+
+    def two_images(self, tmp_path: Path, *, records: bool = True) -> Path:
+        """A writer and the vocabularies shared by two images, and a reader of each image's own:
+        SPEC 7.2's component linked into two images. Each reader reads the writer's ``Speed`` in
+        ``rpm`` and names the shared type, constant, section and raster. Both images check clean,
+        and ``reader_one.ddd.json`` is in image one alone, which reaches image two only through
+        a file the two share.
+
+        Returns the directory holding the two image descriptions. With ``records`` it is one of
+        their own, as a build tree holds a collected description, so that only the records find
+        them; without, it is the workspace, beside the files they include, where the search above
+        a file finds them.
+        """
+        where = "images/" if records else ""
+        up = "../" if records else ""
+        shared = [
+            f"{up}{name}"
+            for name in (
+                "types.ddd.json",
+                "constants.ddd.json",
+                "s.ddd.json",
+                "r.ddd.json",
+                "units.ddd.json",
+                "writer.ddd.json",
+            )
+        ]
+        write_tree(
+            tmp_path,
+            {
+                f"{where}one.ddd.json": project("One", *shared, f"{up}reader_one.ddd.json"),
+                f"{where}two.ddd.json": project("Two", *shared, f"{up}reader_two.ddd.json"),
+                "types.ddd.json": types(struct_type("Sensor_t", value_member("v", unit="rpm"))),
+                "constants.ddd.json": {"constants": [{"name": "N", "value": 4}]},
+                "s.ddd.json": PLACED["s.ddd.json"],
+                "r.ddd.json": TIMED["r.ddd.json"],
+                "units.ddd.json": {"units": ["rpm"]},
+                "writer.ddd.json": component("W", declare("output", "Speed", unit="rpm")),
+                **{
+                    f"reader_{image}.ddd.json": component(
+                        f"R_{image}",
+                        declare("input", "Speed", unit="rpm"),
+                        declare("local", "Probe", typename="Sensor_t"),
+                        declare("local", "Buf", dimensions=["N"], section=".calib", raster="10ms"),
+                    )
+                    for image in ("one", "two")
+                },
+            },
+        )
+        images = tmp_path / where
+        if records:
+            build_record(tmp_path, images / "one.ddd.json", image="one.elf")
+            build_record(tmp_path, images / "two.ddd.json", image="two.elf")
+        return images
+
+    def opened_holding(self, path: Path, text: str) -> dict[str, Any]:
+        """The client opening ``path`` with ``text`` in its buffer, unsaved."""
+        return {
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": {
+                "textDocument": {
+                    "uri": path.as_uri(),
+                    "languageId": "json",
+                    "version": 1,
+                    "text": text,
+                }
+            },
+        }
+
+    def answer_to(
+        self, tmp_path: Path, request: dict[str, Any], *before: dict[str, Any]
+    ) -> dict[str, Any]:
+        """The server's answer to ``request``, asked after ``before`` in a session the client
+        ends."""
+        writer = io.BytesIO()
+        stream = framed(self.handshake(tmp_path), *before, request, *END)
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        return next(message for message in sent(writer) if message.get("id") == request["id"])
+
+    RENAMES: Final = (
+        ("component.interface[0].definition.name", "Velocity"),
+        ("component.interface[1].definition.typename", "Probe_t"),
+        ("component.interface[2].definition.dimensions[0]", "SLOTS"),
+        ("component.interface[2].definition.section", ".cal"),
+        ("component.interface[2].definition.raster", "20ms"),
+        ("component.interface[0].definition.unit", "1/min"),
+    )
+    """Each kind of rename, asked in :meth:`two_images`'s reader: a variable, a type, a constant,
+    a section, a raster and a unit."""
+
+    @pytest.mark.parametrize(
+        ("pointer", "name"),
+        RENAMES,
+        ids=["variable", "type", "constant", "section", "raster", "unit"],
+    )
+    @pytest.mark.parametrize("records", [True, False], ids=["records", "searched"])
+    def test_every_kind_of_rename_reaches_every_image_holding_a_file_it_touches(
+        self, tmp_path: Path, pointer: str, name: str, records: bool
+    ) -> None:
+        """Each rename starts in image one alone and touches a file image two holds too, so image
+        two is renamed with it: afterwards both images check as clean as before, which a rename
+        stopping at image one leaves image two reading a name nothing declares."""
+        images = self.two_images(tmp_path, records=records)
+        checked = [str(images / image) for image in ("one.ddd.json", "two.ddd.json")]
+        assert [main(["check", image]) for image in checked] == [EXIT_OK, EXIT_OK]
+        reader_one = tmp_path / "reader_one.ddd.json"
+        answer = self.answer_to(tmp_path, self.rename_request(reader_one, pointer, name))
+        rewritten = rewritten_by(answer["result"]["changes"])
+        assert "reader_two.ddd.json" in rewritten, f"half renamed: {sorted(rewritten)}"
+        write_tree(tmp_path, rewritten)
+        assert [main(["check", image]) for image in checked] == [EXIT_OK, EXIT_OK], "half renamed"
+
+    @pytest.mark.parametrize(("records", "image"), [(True, "two.elf"), (False, "two.ddd.json")])
+    def test_a_name_another_image_declares_is_refused_naming_that_image(
+        self, tmp_path: Path, records: bool, image: str
+    ) -> None:
+        """Image two's reader keeps a 'Taken' of its own, which image one has never heard of. The
+        rename is refused before anything is written, and the refusal says which image declares
+        the name: asked from image one, 'this project' alone sends the reader looking in theirs.
+        """
+        self.two_images(tmp_path, records=records)
+        reader_one = tmp_path / "reader_one.ddd.json"
+        write_tree(
+            tmp_path,
+            {
+                "reader_two.ddd.json": component(
+                    "R_two", declare("input", "Speed", unit="rpm"), declare("local", "Taken")
+                )
+            },
+        )
+        request = self.rename_request(reader_one, "component.interface[0].definition.name", "Taken")
+        assert self.answer_to(tmp_path, request)["error"] == {
+            "code": REQUEST_FAILED,
+            "message": (
+                f"in {image}, which this rename reaches too: 'Taken' is already declared by this "
+                "project"
+            ),
+        }
+
+    @pytest.mark.parametrize(
+        ("pointer", "name", "because"),
+        [
+            (
+                "component.interface[0].definition.name",
+                "Velocity",
+                "has an error that stopped the project reading it",
+            ),
+            (
+                "component.interface[0].definition.unit",
+                "1/min",
+                "did not load, so renaming 'rpm' could not reach every place it is stated",
+            ),
+        ],
+        ids=["variable", "unit"],
+    )
+    def test_a_file_another_image_could_not_load_refuses_the_rename_naming_that_image(
+        self, tmp_path: Path, pointer: str, name: str, because: str
+    ) -> None:
+        """Image two's reader does not load, so nothing can say what it names: rewriting the
+        writer the two images share would leave it reading a name that is gone."""
+        self.two_images(tmp_path)
+        reader_one = tmp_path / "reader_one.ddd.json"
+        write_tree(
+            tmp_path,
+            {"reader_two.ddd.json": component("R_two", declare("input", "Speed", "uint99"))},
+        )
+        refused = self.answer_to(tmp_path, self.rename_request(reader_one, pointer, name))
+        assert refused["error"]["code"] == REQUEST_FAILED
+        assert refused["error"]["message"].startswith(
+            f"in two.elf, which this rename reaches too: reader_two.ddd.json {because}"
+        )
+
+    @pytest.mark.parametrize(
+        ("pointer", "name"), [RENAMES[0], RENAMES[-1]], ids=["variable", "unit"]
+    )
+    def test_a_buffer_of_another_image_that_moved_a_site_refuses_the_rename(
+        self, tmp_path: Path, pointer: str, name: str
+    ) -> None:
+        """Image two's reader is open with a declaration put in front of the one the index
+        knows, which is drift the rename has to see wherever it reaches."""
+        self.two_images(tmp_path)
+        reader_one = tmp_path / "reader_one.ddd.json"
+        reader_two = tmp_path / "reader_two.ddd.json"
+        interface = json.loads(reader_two.read_text(encoding="utf-8"))["component"]["interface"]
+        moved = json.dumps(
+            component("R_two", declare("local", "Other", unit="Nm"), *interface), indent=2
+        )
+        refused = self.answer_to(
+            tmp_path,
+            self.rename_request(reader_one, pointer, name),
+            self.opened_holding(reader_two, moved),
+        )
+        assert refused["error"]["code"] == REQUEST_FAILED
+        assert refused["error"]["message"].startswith("reader_two.ddd.json has unsaved changes")
+
+    def test_a_file_whose_buffer_moved_its_declaration_still_leads_to_the_other_image(
+        self, tmp_path: Path
+    ) -> None:
+        """The writer's buffer moved 'Speed', so no edit of it is computed - but the rename
+        touches it all the same, and image two holds it: image two is asked its refusals too,
+        and its reader that does not load is answered, which saving the writer would not
+        clear."""
+        self.two_images(tmp_path)
+        reader_one = tmp_path / "reader_one.ddd.json"
+        write_tree(
+            tmp_path,
+            {"reader_two.ddd.json": component("R_two", declare("input", "Speed", "uint99"))},
+        )
+        moved = json.dumps(
+            component("W", declare("local", "Other"), declare("output", "Speed", unit="rpm")),
+            indent=2,
+        )
+        refused = self.answer_to(
+            tmp_path,
+            self.rename_request(reader_one, *self.RENAMES[0]),
+            self.opened_holding(tmp_path / "writer.ddd.json", moved),
+        )
+        assert refused["error"]["message"].startswith(
+            "in two.elf, which this rename reaches too: reader_two.ddd.json has an error"
+        )
+
+    def descriptions_read(self, monkeypatch: pytest.MonkeyPatch) -> list[Path]:
+        """Every file the server reads a workspace out of from now on, resolved, in order."""
+        seen: list[Path] = []
+
+        def spy(path: Path, bag: DiagnosticBag) -> Any:
+            seen.append(path.resolve())
+            return load_workspace(path, bag)
+
+        monkeypatch.setattr(navigation, "load_workspace", spy)
+        return seen
+
+    @pytest.mark.parametrize("records", [True, False], ids=["records", "searched"])
+    def test_a_rename_reads_each_description_at_most_once(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, records: bool
+    ) -> None:
+        """Which projects hold a file the rename touches is asked of the projects already read,
+        and a description is read only where no read of it is in hand. Asked file by file, the
+        search reads every build's project - and without a record every description above the
+        file - once for each file the rename touches. A project found again, holding another of
+        those files, is not indexed and asked again either."""
+        images = self.two_images(tmp_path, records=records)
+        reader_one = tmp_path / "reader_one.ddd.json"
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(self.handshake(tmp_path))
+        seen = self.descriptions_read(monkeypatch)
+        indexed: list[Path] = []
+
+        def index(workspace: Any) -> Any:
+            indexed.append(workspace.root)
+            return navigation.index(workspace)
+
+        monkeypatch.setattr(server_module, "index", index)
+        assert server._handle(self.rename_request(reader_one, *self.RENAMES[0]))
+        (answer,) = (message for message in sent(writer) if message.get("id") == 11)
+        assert (tmp_path / "reader_two.ddd.json").as_uri() in answer["result"]["changes"]
+        assert seen.count((images / "two.ddd.json").resolve()) == 1
+        again = sorted(path.name for path, count in Counter(seen).items() if count > 1)
+        assert again == [], f"read more than once for one rename: {again}"
+        assert sorted(path.name for path in indexed) == ["one.ddd.json", "two.ddd.json"]
+
+    def test_the_projects_an_earlier_request_read_are_not_read_again(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A jump before the rename read the projects of the document, which are kept until the
+        next refresh; the rename starts from those rather than reading them again. Image two was
+        read by that search too and dropped, not holding the document, so the rename reads it."""
+        images = self.two_images(tmp_path)
+        reader_one = tmp_path / "reader_one.ddd.json"
+        position = Document(reader_one.read_text(encoding="utf-8")).range_of(
+            "component.interface[0].definition.name"
+        )["start"]
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(self.handshake(tmp_path))
+        assert server._handle(
+            self.navigation_request("textDocument/definition", reader_one, position)
+        )
+        seen = self.descriptions_read(monkeypatch)
+        assert server._handle(self.rename_request(reader_one, *self.RENAMES[0]))
+        (answer,) = (message for message in sent(writer) if message.get("id") == 11)
+        assert (tmp_path / "reader_two.ddd.json").as_uri() in answer["result"]["changes"]
+        assert seen == [(images / "two.ddd.json").resolve()]
 
     def test_a_code_action_on_an_unknown_unit_offers_the_vocabulary_fixes(
         self, tmp_path: Path

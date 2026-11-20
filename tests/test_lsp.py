@@ -3045,6 +3045,237 @@ class TestSectionsAndRasters:
         assert rename_problem(built, "10-ms", "raster") is None
 
 
+class TestARasterNameIsWrittenAsJson:
+    """10:I9. A raster's name is any printable ASCII but a space, a quote and a backslash among
+    it, and the rename wrote it raw between the quotes: a quote ended the string, so no file it
+    rewrote parsed, and a backslash began an escape, so the name read back was another. It is
+    written as json spells it now, and read back it is the name typed."""
+
+    @pytest.mark.parametrize(
+        "name", ['a"b', "a\\b", "a\\nb"], ids=["quote", "backslash", "backslash-n"]
+    )
+    def test_a_raster_renamed_onto_a_quote_or_a_backslash_reads_back_as_typed(
+        self, tmp_path: Path, name: str
+    ) -> None:
+        from ddd.lsp.navigation import rename_edits, rename_problem
+
+        built, root = built_of(tmp_path, **TIMED)
+        assert rename_problem(built, name, "raster") is None
+        cache: dict[Path, Document] = {}
+        edits = rename_edits(
+            built, read(root / "r.ddd.json", cache), "rasters[0].raster", name, cache
+        )
+        rewritten = rewritten_by(edits.changes)
+        assert set(rewritten) == {"r.ddd.json", "a.ddd.json"}
+        write_tree(root, rewritten)
+        bag = DiagnosticBag()
+        workspace = load_workspace(root / "p.ddd.json", bag)
+        assert [found.check for found in bag if found.severity is Severity.ERROR] == []
+        assert workspace is not None
+        assert [raster.raster for raster in workspace.rasters] == [name]
+        (loaded,) = workspace.components
+        assert loaded.component.raster == name
+        assert loaded.component.interface[0].definition.raster == name
+
+
+UNDER_A_CONDITION: Final = {
+    "c.ddd.json": {"constants": [{"name": "CELLS", "value": 4}, {"name": "ROWS", "value": 2}]},
+    "w.ddd.json": component(
+        "W", declare("output", "Big", dimensions=["CELLS"], condition="CELLS > 2")
+    ),
+}
+"""10:I10's trigger: ``Big`` sized by ``CELLS`` and declared only where ``CELLS > 2``, beside a
+second constant, ``ROWS``, that a condition may spell as well."""
+
+
+def sized_under(condition: str) -> dict[str, Any]:
+    """:data:`UNDER_A_CONDITION`'s component, ``Big`` declared under ``condition`` instead."""
+    return component("W", declare("output", "Big", dimensions=["CELLS"], condition=condition))
+
+
+class TestAConditionSpellingAConstant:
+    """10:I10. The shipped templates define each constant as a macro in the types header, so a
+    ``condition`` may spell one, and ``#if`` reads a name nothing defines as 0: a rename that left
+    the condition spelling the old name compiled the object out, with every check clean. The index
+    records the word apart from the shapes, and the rename rewrites that word, and no other."""
+
+    def renamed(self, tmp_path: Path, w: Any) -> dict[str, str]:
+        """The files renaming ``CELLS`` to ``SLOT_COUNT`` from its entry rewrites, by name, with the
+        edits applied, ``w`` the component declaring ``Big`` - its json, or its text."""
+        from ddd.lsp.navigation import rename_edits
+
+        built, root = built_of(tmp_path, **{**UNDER_A_CONDITION, "w.ddd.json": w})
+        cache: dict[Path, Document] = {}
+        edits = rename_edits(
+            built, read(root / "c.ddd.json", cache), "constants[0].name", "SLOT_COUNT", cache
+        )
+        assert edits.drifted == ()
+        return rewritten_by(edits.changes)
+
+    @staticmethod
+    def big(text: str) -> dict[str, Any]:
+        """``Big``'s declaration, out of the text of the component declaring it."""
+        declared: dict[str, Any] = json.loads(text)["component"]["interface"][0]
+        return declared
+
+    def test_the_index_records_a_condition_s_word_apart_from_the_shapes(
+        self, tmp_path: Path
+    ) -> None:
+        """A shape's string is the name and nothing else, and a condition is an expression: a
+        reader of the shapes that met a condition among them would write the new name over all of
+        it."""
+        built, _root = built_of(tmp_path, **UNDER_A_CONDITION)
+        assert {
+            name: [(site.path.name, site.pointer) for site in sites]
+            for name, sites in built.condition_uses.items()
+        } == {"CELLS": [("w.ddd.json", "component.interface[0].condition")]}
+        assert [site.pointer for site in built.constant_uses["CELLS"]] == [
+            "component.interface[0].definition.dimensions[0]"
+        ]
+
+    @pytest.mark.parametrize(
+        ("source", "pointer"),
+        [
+            ("c.ddd.json", "constants[0].name"),
+            ("w.ddd.json", "component.interface[0].definition.dimensions[0]"),
+        ],
+        ids=["entry", "dimension"],
+    )
+    def test_a_rename_rewrites_a_condition_spelling_the_constant(
+        self, tmp_path: Path, source: str, pointer: str
+    ) -> None:
+        from ddd.lsp.navigation import rename_edits
+
+        built, root = built_of(tmp_path, **UNDER_A_CONDITION)
+        cache: dict[Path, Document] = {}
+        edits = rename_edits(built, read(root / source, cache), pointer, "SLOTS", cache)
+        rewritten = rewritten_by(edits.changes)
+        assert set(rewritten) == {"c.ddd.json", "w.ddd.json"}
+        big = self.big(rewritten["w.ddd.json"])
+        assert (big["condition"], big["definition"]["dimensions"]) == ("SLOTS > 2", ["SLOTS"])
+
+    @pytest.mark.parametrize(
+        ("condition", "after"),
+        [
+            ("defined(CELLS) && CELLS > ROWS", "defined(SLOT_COUNT) && SLOT_COUNT > ROWS"),
+            ("CELLS>2", "SLOT_COUNT>2"),
+            ("MAX_CELLS > CELLS", "MAX_CELLS > SLOT_COUNT"),
+            ("CELLS_MAX > CELLS", "CELLS_MAX > SLOT_COUNT"),
+            ("CELLS2 > CELLS", "CELLS2 > SLOT_COUNT"),
+            ("cells > CELLS", "cells > SLOT_COUNT"),
+            ("CELLS$1 > CELLS", "CELLS$1 > SLOT_COUNT"),
+            (
+                "\N{LATIN SMALL LETTER E WITH ACUTE}CELLS > CELLS",
+                "\N{LATIN SMALL LETTER E WITH ACUTE}CELLS > SLOT_COUNT",
+            ),
+            ("defined(ROWS) &&\tCELLS > 2", "defined(ROWS) &&\tSLOT_COUNT > 2"),
+            ('__has_include("x.h") && CELLS > 2', '__has_include("x.h") && SLOT_COUNT > 2'),
+        ],
+        ids=[
+            "every-word",
+            "no-space",
+            "underscore-before",
+            "underscore-after",
+            "digit-after",
+            "other-case",
+            "dollar",
+            "other-script",
+            "escaped-tab",
+            "escaped-quotes",
+        ],
+    )
+    def test_the_constant_s_word_is_rewritten_and_no_other(
+        self, tmp_path: Path, condition: str, after: str
+    ) -> None:
+        """Every word of the condition that is the constant, and nothing else: not another
+        constant, not a longer identifier holding it - gcc and clang take a letter of any script
+        and a dollar sign in one - and not the escapes json writes for a tab or a quote before it,
+        which put the word further along in the file than in the condition."""
+        rewritten = self.renamed(tmp_path, sized_under(condition))
+        assert self.big(rewritten["w.ddd.json"])["condition"] == after
+
+    def test_a_word_json_spells_with_an_escape_is_rewritten_whole(self, tmp_path: Path) -> None:
+        """``C\\u0045LLS`` is ``CELLS`` as json reads it, so the condition spells the constant,
+        and the edit covers the escape with the rest of the word."""
+        text = json.dumps(sized_under("CELLS > 2"), indent=2).replace(
+            '"CELLS > 2"', '"C\\u0045LLS > 2"'
+        )
+        assert '"condition": "SLOT_COUNT > 2"' in self.renamed(tmp_path, text)["w.ddd.json"]
+
+    @pytest.mark.parametrize(
+        "since",
+        [
+            sized_under("ROWS > 2"),
+            component("W", declare("output", "Big", dimensions=["CELLS"])),
+        ],
+        ids=["respelled", "taken-away"],
+    )
+    def test_a_condition_that_no_longer_spells_it_is_reported_drifted(
+        self, tmp_path: Path, since: dict[str, Any]
+    ) -> None:
+        """The index read the condition as the analysis did, and the file has changed since - the
+        condition respelled, or taken away: the rename names the file rather than leave the old
+        name, or rewrite another word."""
+        from ddd.lsp.navigation import rename_edits
+
+        built, root = built_of(tmp_path, **UNDER_A_CONDITION)
+        write_tree(root, {"w.ddd.json": since})
+        cache: dict[Path, Document] = {}
+        edits = rename_edits(
+            built, read(root / "c.ddd.json", cache), "constants[0].name", "SLOTS", cache
+        )
+        assert [path.name for path in edits.drifted] == ["w.ddd.json"]
+
+    def test_a_word_no_file_declares_as_a_constant_is_the_build_s(self, tmp_path: Path) -> None:
+        """A word of a condition is a constant only where the project declares one of that name;
+        any other is a macro the build defines, or none. A shape naming a constant nothing
+        declares is ``unknown-constant``, and its rename reaches the shapes alone."""
+        from ddd.lsp.navigation import rename_edits
+
+        ghost = component(
+            "W", declare("output", "Big", dimensions=["GHOST"], condition="GHOST > 2")
+        )
+        built, root = built_of(tmp_path, **{"w.ddd.json": ghost})
+        assert built.condition_uses == {}
+        cache: dict[Path, Document] = {}
+        edits = rename_edits(
+            built,
+            read(root / "w.ddd.json", cache),
+            "component.interface[0].definition.dimensions[0]",
+            "SEEN",
+            cache,
+        )
+        big = self.big(rewritten_by(edits.changes)["w.ddd.json"])
+        assert (big["condition"], big["definition"]["dimensions"]) == ("GHOST > 2", ["SEEN"])
+
+    def test_a_raster_spelled_like_a_constant_leaves_the_condition_alone(
+        self, tmp_path: Path
+    ) -> None:
+        """A raster's name is no macro, so no condition spells one, whatever constant shares its
+        spelling."""
+        from ddd.lsp.navigation import rename_edits
+
+        built, root = built_of(
+            tmp_path,
+            **{
+                **UNDER_A_CONDITION,
+                "r.ddd.json": {"rasters": [{"raster": "CELLS", "event": 1, "cycle": "10ms"}]},
+                "w.ddd.json": component(
+                    "W",
+                    declare(
+                        "output", "Big", dimensions=["CELLS"], condition="CELLS > 2", raster="CELLS"
+                    ),
+                ),
+            },
+        )
+        cache: dict[Path, Document] = {}
+        edits = rename_edits(
+            built, read(root / "r.ddd.json", cache), "rasters[0].raster", "R10", cache
+        )
+        big = self.big(rewritten_by(edits.changes)["w.ddd.json"])
+        assert (big["definition"]["raster"], big["condition"]) == ("R10", "CELLS > 2")
+
+
 class TestAUnitPlanAsTextEdits:
     """A unit's plan as an editor applies it, and the buffers that keep it from being made."""
 
@@ -6163,6 +6394,42 @@ class TestServer:
         assert "reader_three.ddd.json" in rewritten, f"stopped short: {sorted(rewritten)}"
         write_tree(tmp_path, rewritten)
         assert [main(["check", image]) for image in checked] == [EXIT_OK] * 3, "half renamed"
+
+    def test_a_condition_two_images_share_has_its_word_rewritten_once(self, tmp_path: Path) -> None:
+        """10:I10 through F2, from the constants file: the writer guarding ``Big`` with
+        ``CELLS > 2`` is in both images, so each image's edits rewrite the condition's word at the
+        same place, and the answer carries it once - twice, a client writes the longer name over
+        the start of itself. Both images check clean before and after, as they did with the
+        condition left behind: only the condition's own text tells."""
+        images = self.linked(
+            tmp_path,
+            {
+                "one": ["c.ddd.json", "w.ddd.json", "reader_one.ddd.json"],
+                "two": ["c.ddd.json", "w.ddd.json"],
+            },
+            {
+                **UNDER_A_CONDITION,
+                "reader_one.ddd.json": component(
+                    "R", declare("local", "Buf", dimensions=["CELLS"])
+                ),
+            },
+            records=True,
+        )
+        checked = [str(images / image) for image in ("one.ddd.json", "two.ddd.json")]
+        assert [main(["check", image]) for image in checked] == [EXIT_OK, EXIT_OK]
+        constants = tmp_path / "c.ddd.json"
+        answer = self.answer_to(
+            tmp_path, self.rename_request(constants, "constants[0].name", "SLOT_COUNT")
+        )
+        rewritten = rewritten_by(answer["result"]["changes"])
+        assert set(rewritten) == {"c.ddd.json", "w.ddd.json", "reader_one.ddd.json"}
+        big = json.loads(rewritten["w.ddd.json"])["component"]["interface"][0]
+        assert (big["condition"], big["definition"]["dimensions"]) == (
+            "SLOT_COUNT > 2",
+            ["SLOT_COUNT"],
+        )
+        write_tree(tmp_path, rewritten)
+        assert [main(["check", image]) for image in checked] == [EXIT_OK, EXIT_OK]
 
     @pytest.mark.parametrize(("records", "image"), [(True, "two.elf"), (False, "two.ddd.json")])
     def test_a_name_another_image_declares_is_refused_naming_that_image(

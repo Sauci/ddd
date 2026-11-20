@@ -2173,6 +2173,96 @@ class TestWhatAQuickFixTitleSays:
             assert stale not in said, f"{page} still says: {stale!r}"
 
 
+class TestWhatAConstantsRenameRewrites:
+    """10:I10. A constant's rename rewrites every ``condition`` spelling it as a word, that word
+    alone, beside its entry and its shapes: ``#if`` reads a name nothing defines as 0, and a
+    condition left spelling the old name compiled its object out with every check clean. Each page
+    that says what a constant's rename rewrites says so."""
+
+    PHRASES: ClassVar[dict[str, tuple[str, str, str]]] = {
+        "SPEC.md": (
+            SPEC,
+            "the declaration and every reference, `typename`, dimension or axis `size` spelling "
+            "it, and, of every `condition` spelling a constant as a word, that word - refused up "
+            "front",
+            "dimension or axis `size` spelling it - refused up front",
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            "a declared constant from its entry or from any dimension or axis ``size`` spelling "
+            "it, in its entry, in every one of those and in every ``condition`` spelling it as a "
+            "word, where that word alone is rewritten: ``#if`` reads a name nothing defines as 0, "
+            "so a condition left spelling the old name would compile its object out with every "
+            "check clean.",
+            "a declared constant from its entry or from any dimension or axis ``size`` spelling "
+            "it. For those three",
+        ),
+        "README.md": (
+            README,
+            "on a declared constant, in its declaration, in every dimension or axis `size` "
+            "spelling it and in every `condition` spelling it as a word - that word alone, and "
+            "never a longer identifier holding it.",
+            "on a declared constant, in its declaration and in every dimension or axis `size` "
+            "spelling it.",
+        ),
+        "editors/vscode/README.md": (
+            (ROOT / "editors" / "vscode" / "README.md").read_text(encoding="utf-8"),
+            "and a declared type or constant across its declaration and every `typename`, "
+            "dimension or `size` spelling it, and a constant across the word of every `condition` "
+            "spelling it - in every project",
+            "dimension or `size` spelling it - in every project",
+        ),
+    }
+    """Each page, what it says now, and what it said before, of the shapes alone."""
+
+    @pytest.mark.parametrize("page", sorted(PHRASES))
+    def test_the_page_says_a_constant_s_rename_rewrites_its_word_in_a_condition(
+        self, page: str
+    ) -> None:
+        text, now, before = self.PHRASES[page]
+        said = flattened(text)
+        assert now in said, f"{page} no longer says: {now!r}"
+        assert before not in said, f"{page} still says: {before!r}"
+
+    def test_the_editor_page_says_only_the_word_is_replaced_and_how_a_name_is_written(
+        self,
+    ) -> None:
+        """10:I9 beside it: a raster's name may hold a quote or a backslash, which the rename
+        wrote raw between the quotes, so that no file it rewrote parsed, or read back another
+        name. The sentence saying how a rename writes says both."""
+        said = flattened(EDITOR_INTEGRATION)
+        assert (
+            "Only the characters between the quotes are replaced - in a ``condition``, the "
+            "constant's own word, never a longer identifier holding it - and the new name is "
+            "written there as json spells it, escaping the quote or the backslash a raster's name "
+            "may hold, so formatting survives and free text is left alone."
+        ) in said
+        assert (
+            "Only the characters between the quotes are replaced, so formatting survives"
+        ) not in said
+
+
+class TestWhatTheSharedTabCountsAsAUse:
+    """14:M13 and 10:I10 on the page. The Shared files tab renames a constant through the
+    editor's sites, and counts, lists and refuses a removal by a constant's uses: its shapes and
+    the conditions spelling it, a constant only a condition spells having read as used by nothing
+    and gone. The command line page says so."""
+
+    def test_the_page_says_a_rename_rewrites_the_word_of_a_condition(self) -> None:
+        assert (
+            "Renaming one rewrites every place naming it in one edit - for a constant every shape "
+            "spelling it and its word in every ``condition`` spelling it; for a section"
+        ) in flattened(COMMAND_LINE_INTERFACE)
+
+    def test_the_page_says_a_condition_spelling_a_constant_refuses_its_removal(self) -> None:
+        said = flattened(COMMAND_LINE_INTERFACE)
+        assert (
+            "Removing one is refused while anything still names it - a shape or a ``condition`` "
+            "spelling it, for a constant; a definition placing data there, for a section;"
+        ) in said
+        assert "still names it - a shape, for a constant;" not in said
+
+
 class TestWhatThePolicySaysOfAnAdvisory:
     """20:I4. ``SECURITY.md`` said which release is supported and how to report a vulnerability
     privately, and nothing of an advisory: which versions one names, or where one is published.

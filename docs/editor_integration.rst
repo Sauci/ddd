@@ -90,11 +90,14 @@ names it, across as many files as that takes once the server knows the project h
 them - a ``local`` variable needs none. A declared type is renamed the same way, from
 the ``name`` of its entry or from any ``typename`` spelling it, in the file declaring it and
 in every definition and structure member naming it; a declared constant from its entry or from
-any dimension or axis ``size`` spelling it. For those three, a name c reserves, one that is
-not a usable identifier, or one a project it reaches already uses - for another object, an
-enum, an enumerator, a type or a declared constant - is refused with the reason before
-anything is written, because a rename that silently merges two objects compiles, links, and
-shares storage nobody intended to share; a type may not take the spelling of a base datatype
+any dimension or axis ``size`` spelling it, in its entry, in every one of those and in every
+``condition`` spelling it as a word, where that word alone is rewritten: ``#if`` reads a name
+nothing defines as 0, so a condition left spelling the old name would compile its object out
+with every check clean. For those three, a name c reserves, one that is not a usable
+identifier, or one a project it reaches already uses - for another object, an enum, an
+enumerator, a type or a declared constant - is refused with the reason before anything is
+written, because a rename that silently merges two objects compiles, links, and shares
+storage nobody intended to share; a type may not take the spelling of a base datatype
 either, which the loader would refuse. A memory section is renamed from its entry in a
 :doc:`sections file <file_formats/sections>`, or from the ``section`` key of any definition
 placing its data there, and both ends are rewritten together: a rename reaching the entry
@@ -126,7 +129,9 @@ renaming onto a unit that already exists merges the two instead of refusing the 
 a variable's rename would. It is refused, naming the file, only while a file of a project it
 reaches does not load at all - a unit listed twice, reported as ``duplicate-unit``, does not
 stop it, because renaming may be how such a mistake is fixed. Only the characters between the
-quotes are replaced, so formatting survives and free text is left alone.
+quotes are replaced - in a ``condition``, the constant's own word, never a longer identifier
+holding it - and the new name is written there as json spells it, escaping the quote or the
+backslash a raster's name may hold, so formatting survives and free text is left alone.
 
 A variable's, a type's, a constant's or a section's rename, and every quick fix below, is
 also refused - naming the file, and before anything is written - while the project on disk is

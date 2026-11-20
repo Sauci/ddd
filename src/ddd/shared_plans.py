@@ -3,8 +3,9 @@ written.
 
 Transport-neutral, like :mod:`ddd.project_shared` beside it: nothing here knows about http or the
 session. A rename is the editor's rename - :func:`ddd.lsp.navigation.rename_sites` says which
-strings it has to rewrite, :func:`~ddd.lsp.navigation.rename_problem` says why a name may not be
-used - for the reason :mod:`ddd.type_plans` borrows them both: two clients that renamed a constant
+strings it has to rewrite, :func:`~ddd.lsp.navigation.conditions_spelling` which conditions it
+rewrites a word of, :func:`~ddd.lsp.navigation.rename_problem` says why a name may not be used -
+for the reason :mod:`ddd.type_plans` borrows two of them: two clients that renamed a constant
 differently would disagree about what a project means, and the one reaching fewer files would
 leave it broken across several at once.
 
@@ -35,7 +36,15 @@ from typing import Any, Final, Literal
 
 from ddd.editing import Operation
 from ddd.loading import included_files, resolve_path
-from ddd.lsp.navigation import Index, Site, changed_since, drift, rename_sites
+from ddd.lsp.navigation import (
+    Index,
+    Site,
+    changed_since,
+    conditions_spelling,
+    drift,
+    rename_sites,
+    word_spans,
+)
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import PlannedEdit, appended_at, created_beside
 from ddd.pointers import parent_pointer
@@ -98,10 +107,10 @@ class SharedRefusalError(Exception):
 
     code: Literal["unreadable", "invalid", "not-found", "stale"]
     """``unreadable``: a file the change has to see did not load. ``invalid``: the change cannot
-    be made - a key a constant has not, a name that may not be used, a constant a shape still
-    names. ``not-found``: no file of the project declares a constant of that name. ``stale``: a
-    file the change points into no longer holds the entry, or a shape naming it, where the index
-    found it, having changed since the analysis read it."""
+    be made - a key a constant has not, a name that may not be used, a constant a shape or a
+    condition still names. ``not-found``: no file of the project declares a constant of that name.
+    ``stale``: a file the change points into no longer holds the entry, or a shape or a condition
+    naming it, where the index found it, having changed since the analysis read it."""
 
     message: str
     """The sentence the refusal is shown with, naming the file it concerns."""
@@ -220,28 +229,31 @@ def set_entry(
 def rename_entry(
     vocabulary: Vocabulary, built: Index, name: str, to: str, cache: dict[Path, Document]
 ) -> SharedPlan:
-    """What renaming that entry of ``vocabulary`` takes: its own ``name`` and every shape spelling
-    it.
+    """What renaming that entry of ``vocabulary`` takes: its own ``name``, every shape spelling it,
+    and the word of every condition spelling a constant.
 
     The editor's rename, asked for rather than reimplemented. :func:`ddd.lsp.navigation.
-    rename_sites` knows the three places a shape is written and
+    rename_sites` knows the three places a shape is written,
+    :func:`~ddd.lsp.navigation.conditions_spelling` the conditions spelling a constant, and
     :attr:`~ddd.project_shared.Vocabulary.taken` knows why a name may not be used - a
     constant's asks :func:`~ddd.lsp.navigation.rename_problem`, with ``Index.occupied`` already
     holding *the name of the declared constant* - so the tab and the editor cannot disagree about
-    what a rename reaches or which names it refuses.
+    what a rename reaches or which names it refuses. A condition is set with the word rewritten in
+    it (:func:`_reworded`), where a shape is set to the new name whole.
 
     Refused before a file is touched: a rename writes into every file naming the entry, and a
     name that turned out to be unusable would leave the project broken across all of them at once.
-    Refused too while a file no longer names the entry at a place the index recorded - its own, or
-    a shape's (:func:`~ddd.lsp.navigation.drift`): the rename would write the new name over
-    whatever sits there now.
+    Refused too while a file no longer names the entry at a place the index recorded - its own, a
+    shape's, or a condition's (:func:`~ddd.lsp.navigation.drift`): the rename would write the new
+    name over whatever sits there now.
     """
     _entry(vocabulary, built, name)
     problem = vocabulary.taken[vocabulary.name_key](built, name, to, cache)
     if problem is not None:
         raise SharedRefusalError("invalid", problem)
     sites = rename_sites(built, vocabulary.kind, name)
-    moved = drift(sites, name, cache)
+    conditions = conditions_spelling(built, vocabulary.kind, name)
+    moved = drift(sites, name, cache, conditions)
     if moved:
         raise SharedRefusalError(
             "stale", changed_since(moved, f"renaming '{name}' cannot be planned")
@@ -249,6 +261,9 @@ def rename_entry(
     by_file: dict[Path, list[Operation]] = {}
     for site in sites:
         by_file.setdefault(site.path, []).append(Operation("set", site.pointer, _raw(to)))
+    for site in conditions:
+        reworded = _reworded(read(site.path, cache), site.pointer, name, to)
+        by_file.setdefault(site.path, []).append(Operation("set", site.pointer, reworded))
     return _plan(by_file)
 
 
@@ -346,10 +361,12 @@ def remove_entry(
     """That entry of ``vocabulary`` taken out of the list holding it - or, where that list is
     nested and the entry is its last, the key holding the list.
 
-    Refused while any shape names it. Removed, each of those shapes would name nothing, which is
-    an ``unknown-*`` finding apiece in files the reader was not looking at - a worse answer than
-    saying no. What is in use is asked of the index, never of a file's text: reading text to answer
-    a question about meaning is the mistake part 11 filed against ``variable_keys._storage_of``.
+    Refused while anything uses it: a shape, or a condition spelling a constant. Removed, each of
+    those shapes would name nothing, which is an ``unknown-*`` finding apiece in files the reader
+    was not looking at - a worse answer than saying no - and a condition would read a name nothing
+    defines, which ``#if`` takes for 0, compiling its object out with no finding at all. What is in
+    use is asked of the index, never of a file's text: reading text to answer a question about
+    meaning is the mistake part 11 filed against ``variable_keys._storage_of``.
 
     Otherwise the entry goes, and what that leaves depends on which list held it - told from the
     descriptor alone, the list's pointer against the first of
@@ -380,7 +397,10 @@ def remove_entry(
     (:func:`_in_place`): the entry taken out would be another.
     """
     entry = _entry(vocabulary, built, name)
-    used = vocabulary.used(built).get(name, ())
+    used = [
+        *vocabulary.used(built).get(name, ()),
+        *conditions_spelling(built, vocabulary.kind, name),
+    ]
     # Asked before what taking the entry out leaves, and not the other way round: on the last
     # entry of a nested list that answer is a plan taking the whole key away, which would leave
     # every shape naming the entry naming nothing - and this refusal names a place the reader can
@@ -388,8 +408,8 @@ def remove_entry(
     if used:
         raise SharedRefusalError(
             "invalid",
-            f"'{name}' is named by {_plural(len(used), 'shape')}, the first in "
-            f"{used[0].path.name}; nothing may name it before it goes",
+            f"'{name}' has {_plural(len(used), 'use')}, the first in {used[0].path.name}; "
+            "nothing may name it before it goes",
         )
     _in_place(vocabulary, built, name, cache, f"'{name}' cannot be removed")
     holding = parent_pointer(entry.pointer)
@@ -528,7 +548,7 @@ def _names(files: Sequence[Path]) -> str:
 
 
 def _plural(count: int, noun: str) -> str:
-    """ "1 shape", "2 shapes" - the wording `remove_entry` names a blocking use's count with."""
+    """ "1 use", "2 uses" - the wording `remove_entry` names a blocking use's count with."""
     return f"{count} {noun}{'' if count == 1 else 's'}"
 
 
@@ -587,6 +607,24 @@ def _raw(value: Any) -> str:
     holding a degree sign arrives in the file as one, where json's default would write an
     escape."""
     return json.dumps(value, ensure_ascii=False)
+
+
+def _reworded(document: Document, pointer: str, old: str, new: str) -> str:
+    """The json text of the condition at ``pointer``, ``new`` written at each of its words that is
+    ``old`` (:func:`~ddd.lsp.navigation.word_spans`) and every other character as its author wrote
+    it - an escape among them, which a condition parsed and dumped again would write otherwise."""
+    span = document.value_span_of(pointer)
+    # `rename_entry` asked `drift` first, which refuses the plan unless the condition at `pointer`
+    # spells `old`: a string is written there, so its span is known.
+    assert span is not None
+    text = document.text
+    pieces: list[str] = []
+    last = span[0]
+    for start, end in word_spans(document, pointer, old):
+        pieces.extend((text[last:start], _raw(new)[1:-1]))
+        last = end
+    pieces.append(text[last : span[1]])
+    return "".join(pieces)
 
 
 def _created(

@@ -216,9 +216,10 @@ the one that states them, exactly as the checker reads it.
 
 **Rename** (`F2`) on a variable name rewrites it in every component that declares it and in
 every `axis`, `x_axis`, `y_axis` or `input` that names it; on a declared type, in its
-declaration and in every `typename` naming it; on a declared constant, in its declaration and
-in every dimension or axis `size` spelling it.  It reaches every project holding a file it
-rewrites, and in turn every project holding a file those projects' edits rewrite, so a
+declaration and in every `typename` naming it; on a declared constant, in its declaration, in
+every dimension or axis `size` spelling it and in every `condition` spelling it as a word -
+that word alone, and never a longer identifier holding it.  It reaches every project holding a
+file it rewrites, and in turn every project holding a file those projects' edits rewrite, so a
 component linked into two images is renamed with the readers of both, whichever image the
 file you start from is in - as long as the server finds both images for it: through their
 build records, or, without records, through a project description above it.  A name c

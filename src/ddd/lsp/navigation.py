@@ -24,6 +24,7 @@ What can be jumped from, and to:
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
@@ -110,6 +111,16 @@ checks them against."""
 _BASE_DATATYPES: Final = frozenset(member.value for member in Datatype)
 """The keys whose string value names a constant: one dimension entry, or an axis size."""
 
+_WORD: Final = re.compile(r"[\w$]+")
+"""One word of a condition: a run of the characters an identifier holds there, as long as it goes -
+a letter or a digit of any script, the underscore, and the dollar sign gcc and clang take in an
+identifier. ``CELLS`` is a word of ``CELLS > 2`` and of ``defined(CELLS)``, and no word of
+``MAX_CELLS``, ``CELLS2`` or ``CELLS$1``, each of which is a longer identifier holding it."""
+
+_JSON_CHARACTER: Final = re.compile(r"\\u[0-9a-fA-F]{4}|\\.|[^\\]")
+"""One character of a json string as it is written between the quotes: an escape - of four hex
+digits, or of the one character after the backslash - or the character itself."""
+
 LOAD_CHECKS: Final = frozenset({"file-not-found", "json-syntax", "file-kind", "schema"})
 """The checks whose error on a file means that file did not load.
 
@@ -166,6 +177,18 @@ class Index:
 
     constant_uses: dict[str, list[Site]] = field(default_factory=dict)
     """Constant name -> every dimension entry and axis size that spells it."""
+
+    condition_uses: dict[str, list[Site]] = field(default_factory=dict)
+    """Constant name -> every declaration whose ``condition`` spells it as a word (:data:`_WORD`),
+    at that ``condition``, in the order the project lists its components.
+
+    Apart from :attr:`constant_uses` on purpose. A shape's string is the constant's name and
+    nothing else, so a rename writes the new name over the whole of it, and a panel reads the
+    variable it shapes; a condition is an expression, of which a rename rewrites the word alone
+    (:func:`word_spans`). A word is a constant only where the project declares one of that name -
+    the shipped templates define each constant as a macro in the types header, which ``#if``
+    reads - and any other word of a condition is a macro the build defines, or none.
+    """
 
     sections: dict[str, Site] = field(default_factory=dict)
     """Section name -> where the sections file declares it."""
@@ -240,6 +263,7 @@ class Index:
 def index(workspace: Workspace) -> Index:
     """Read the positions out of an already loaded project."""
     built = Index()
+    conditions: list[tuple[Site, str]] = []
     for loaded in workspace.components:
         built.components[loaded.path] = loaded.component.name
         # A plain `None` check: a component need not name a default raster, and the model has
@@ -286,6 +310,9 @@ def index(workspace: Workspace) -> Index:
                 built.raster_uses.setdefault(declaration.definition.raster, []).append(
                     Site(where.path, where.pointer)
                 )
+            if declaration.condition is not None:
+                where = loaded.declaration_location(position, "condition")
+                conditions.append((Site(where.path, where.pointer), declaration.condition))
             _occupy(built, declaration.definition.conversion)
             _unit_stated(
                 built,
@@ -328,6 +355,12 @@ def index(workspace: Workspace) -> Index:
     for constant in workspace.constants:
         built.constants[constant.name] = Site(constant.path, constant.location().pointer)
         built.occupied[constant.name] = f"the name of the declared constant '{constant.name}'"
+    # Once every constant is known, since a word of a condition is a constant's only where one is
+    # declared; each word once a condition, which spelling it twice is still one use of.
+    for site, condition in conditions:
+        for word in dict.fromkeys(_WORD.findall(condition)):
+            if word in built.constants:
+                built.condition_uses.setdefault(word, []).append(site)
     # Neither a section nor a raster joins `occupied`. A constant's name reaches generated code
     # as a c identifier, so a collision there is two objects sharing storage; a section's name
     # is a linker string and a raster's an a2l short name, and neither is ever spelled into the
@@ -976,7 +1009,9 @@ def renameable_at(document: Document, pointer: str) -> tuple[str, str] | None:
 
 
 def rename_sites(built: Index, kind: str, name: str) -> list[Site]:
-    """Every string a rename of this kind has to rewrite, the declaration included.
+    """Every string a rename of this kind writes the new name over whole, the declaration
+    included: a condition, of which a constant's rename rewrites a word alone, is
+    :func:`conditions_spelling`'s.
 
     A variable's mentions are indexed as strings already. A type or a constant is indexed by
     its entry and by the places spelling it, so its own ``name`` is added here; a name nothing
@@ -1005,17 +1040,74 @@ def rename_sites(built: Index, kind: str, name: str) -> list[Site]:
     return [Site(declared.path, f"{declared.pointer}.name"), *uses]
 
 
-def drift(sites: Iterable[Site], name: str, cache: dict[Path, Document]) -> tuple[Path, ...]:
-    """The files whose text no longer holds ``name`` at one of ``sites``, each once, sorted.
+def conditions_spelling(built: Index, kind: str, name: str) -> list[Site]:
+    """Every condition spelling ``name`` as a word, where a name of this kind is one a condition
+    may spell: a constant's, at :attr:`Index.condition_uses`; for any other kind, none.
+
+    A section's name is a linker string and a raster's an a2l short name, neither ever written into
+    the generated c, so no condition spells one, whatever constant shares its spelling; and neither
+    a variable nor a type is a macro ``#if`` could read. What a rename of the name rewrites a word
+    of, beside :func:`rename_sites`, and what the Shared files tab counts beside the shapes, and
+    refuses a removal for.
+    """
+    if kind != "constant":
+        return []
+    return list(built.condition_uses.get(name, ()))
+
+
+def word_spans(document: Document, pointer: str, word: str) -> list[tuple[int, int]]:
+    """Where the string at ``pointer`` spells ``word`` as a word (:data:`_WORD`), as offsets into
+    the document's text: each time it does, in order, and none where no string is written there.
+
+    Found in the string as json reads it and placed in the text as it is written. An escape is one
+    character of the string and several of the text, so ``CELLS`` after a ``\\t`` or a ``\\"`` sits
+    further along in the file than in the condition, and ``C\\u0045LLS`` is the word too, its span
+    taking the escape with it.
+    """
+    span = document.text_span_of(pointer)
+    if span is None:
+        return []
+    written = list(_JSON_CHARACTER.finditer(document.text, *span))
+    read_as = "".join(_character(found.group()) for found in written)
+    return [
+        (written[found.start()].start(), written[found.end() - 1].end())
+        for found in _WORD.finditer(read_as)
+        if found.group() == word
+    ]
+
+
+def _character(written: str) -> str:
+    """The character one :data:`_JSON_CHARACTER` reads as: the escape decoded, as json reads it,
+    or the character itself."""
+    if written.startswith("\\"):
+        decoded: str = json.loads(f'"{written}"')
+        return decoded
+    return written
+
+
+def drift(
+    sites: Iterable[Site],
+    name: str,
+    cache: dict[Path, Document],
+    conditions: Iterable[Site] = (),
+) -> tuple[Path, ...]:
+    """The files whose text no longer holds ``name`` at one of ``sites``, or no longer spells it as
+    a word in the condition at one of ``conditions``, each once, sorted.
 
     The index points into each file as the analysis read it. A declaration or an entry put in
     above the one it recorded - or taken out, or put back by an undo - leaves another, or none, at
     that place, and a plan made at the recorded pointer changes whatever sits there now: what a
     panel's route asks before it reads an entry (:func:`ddd.project_types.type_in_place`,
     :func:`ddd.project_shared.entry_in_place`), and what :func:`rename_edits` asks of a buffer,
-    asked of every place a plan points at.
+    asked of every place a plan points at. A condition is asked whether it still spells the name,
+    which is all a plan rewriting its word needs of it.
     """
     moved = {site.path for site in sites if read(site.path, cache).value_at(site.pointer) != name}
+    moved.update(
+        site.path
+        for site in conditions
+        if not word_spans(read(site.path, cache), site.pointer, name)
+    )
     return tuple(sorted(moved, key=Path.as_posix))
 
 
@@ -1155,31 +1247,50 @@ def rename_edits(
     sites a drifted buffer kept out of them.
 
     Only the characters between the quotes are replaced, so whatever else is on the line -
-    the key, the spacing a project formats its files with - is left exactly as it was. A site
-    whose buffer no longer names the subject at the index's pointer is reported in
-    ``drifted`` instead of silently left out of ``changes``: a rename that rewrites some
-    files and not others leaves the project half renamed, and the caller has to know which
-    file that would have been.
+    the key, the spacing a project formats its files with - is left exactly as it was; and of a
+    condition spelling a constant, only that word (:func:`conditions_spelling`), every other
+    word and every longer identifier holding it left as they were. The new name is written as
+    json spells it between the quotes: a raster's name may hold a quote or a backslash, and
+    written raw, a quote ended the string, so that no file the rename rewrote parsed, and a
+    backslash began an escape, so that the name read back was another.
+
+    A site whose buffer no longer names the subject at the index's pointer - or a condition that
+    no longer spells it - is reported in ``drifted`` instead of silently left out of ``changes``:
+    a rename that rewrites some files and not others leaves the project half renamed, and the
+    caller has to know which file that would have been.
     """
     subject = renameable_at(document, pointer)
+    if subject is None:
+        return RenameEdits(changes={}, drifted=())
+    kind, old = subject
+    written = json.dumps(name, ensure_ascii=False)[1:-1]
     changes: dict[str, list[dict[str, Any]]] = {}
     drifted: list[Path] = []
-    for site in rename_sites(built, *subject) if subject is not None else ():
-        # The loop body only ever runs through the branch above where `subject` is not
-        # `None`. Asserted rather than reshaped into its own guard: a branch that cannot be
-        # taken is a branch no test can cover and no reader can trust.
-        assert subject is not None
+    for site in rename_sites(built, kind, old):
         target = read(site.path, cache)
-        if target.value_at(site.pointer) != subject[1]:
+        if target.value_at(site.pointer) != old:
             # The index describes the disk; an open buffer may have moved the declaration.
             # Editing at the old pointer would rename whatever now sits there.
             drifted.append(site.path)
             continue
         # `text_range_of` and the `value_at` above are read off the same scan of `target`, so
-        # a pointer just confirmed to hold `subject[1]` there always has a text span too.
+        # a pointer just confirmed to hold `old` there always has a text span too.
         span = target.text_range_of(site.pointer)
         assert span is not None
-        changes.setdefault(site.path.as_uri(), []).append({"range": span, "newText": name})
+        changes.setdefault(site.path.as_uri(), []).append({"range": span, "newText": written})
+    for site in conditions_spelling(built, kind, old):
+        target = read(site.path, cache)
+        spans = word_spans(target, site.pointer, old)
+        if not spans:
+            drifted.append(site.path)
+            continue
+        changes.setdefault(site.path.as_uri(), []).extend(
+            {
+                "range": {"start": target.position(start), "end": target.position(end)},
+                "newText": written,
+            }
+            for start, end in spans
+        )
     return RenameEdits(changes=changes, drifted=tuple(sorted(drifted)))
 
 

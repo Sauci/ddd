@@ -181,6 +181,12 @@ class Document:
             return None
         return _range(self.position(span[0]), self.position(span[1]))
 
+    def text_span_of(self, pointer: str) -> tuple[int, int] | None:
+        """Where a string's *contents* sit in the text, inside the quotes, as offsets into it, or
+        nothing if it is not one: :meth:`text_range_of` in the offsets a scan of those characters
+        reads them at."""
+        return self._texts.get(pointer)
+
     def raw_at(self, pointer: str) -> str | None:
         """The source text of a value, exactly as the author wrote it.
 

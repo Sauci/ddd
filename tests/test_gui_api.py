@@ -6949,7 +6949,7 @@ class TestSection:
             ),
             (
                 {"action": "remove", "name": ".calib"},
-                "'.calib' is named by 1 shape, the first in pump.ddd.json",
+                "'.calib' has 1 use, the first in pump.ddd.json",
             ),
         ],
     )
@@ -7551,8 +7551,7 @@ class TestRaster:
             ),
             (
                 {"action": "remove", "name": "10ms"},
-                "'10ms' is named by 1 shape, the first in pump.ddd.json; nothing may name it "
-                "before it goes",
+                "'10ms' has 1 use, the first in pump.ddd.json; nothing may name it before it goes",
             ),
         ],
     )

@@ -14,6 +14,7 @@ from ddd.findings_by_file import FindingsByFile
 from ddd.lsp.navigation import _DIMENSION_KEY, _RASTER_KEY, _SECTION_KEY
 from ddd.lsp.ranges import Document
 from ddd.project_shared import (
+    _CONDITION_SHAPE,
     _DECLARATION_SHAPE,
     _MEMBER_SHAPE,
     _PLACEMENT_SHAPE,
@@ -248,6 +249,20 @@ ONE_OF_EACH = {
 }
 
 
+# 14:M13's trigger: `UNUSED`, which no shape names and one condition spells, beside `CELLS`, which a
+# shape names and a condition spells twice, which is one use - the shapes come first in the uses,
+# then the conditions. The shipped templates define each constant as a macro in the types header,
+# so `#if` reads the word as it.
+_UNDER_CONDITIONS = {
+    "c.ddd.json": {"constants": [{"name": "CELLS", "value": 4}, {"name": "UNUSED", "value": 3}]},
+    "w.ddd.json": component(
+        "W",
+        declare("output", "Big", dimensions=["CELLS"], condition="defined(CELLS) && CELLS > 2"),
+        declare("output", "V", condition="UNUSED > 3"),
+    ),
+}
+
+
 def _at(path: Path, check: str, pointer: str) -> Diagnostic:
     """A finding of ``check`` filed at ``pointer`` of ``path``."""
     return Diagnostic(check, Severity.ERROR, "a finding", Location(path, pointer))
@@ -287,6 +302,28 @@ class TestTheRows:
             "CELLS": 0,
             "TREND_SAMPLES": 1,
         }
+
+    def test_a_row_counts_the_conditions_that_spell_it(self, tmp_path: Path) -> None:
+        """14:M13. Counted by its shapes alone, a constant only a condition spells read as used by
+        nothing, and its removal went through: the condition then reads a name nothing defines,
+        and compiles its object out."""
+        built, _ = built_of(tmp_path, **_UNDER_CONDITIONS)
+        cache: dict[Path, Document] = {}
+        assert {row.name: row.uses for row in shared_rows(built, FindingsByFile(()), cache)} == {
+            "CELLS": 2,
+            "UNUSED": 1,
+        }
+
+    def test_a_finding_filed_at_a_condition_is_not_the_constant_s(self, tmp_path: Path) -> None:
+        """A condition is counted among a constant's uses, and not among the places its findings
+        are filed: ``condition-mismatch`` sits at a condition and is about the declaration, which
+        two components put under different conditions, whatever constant the condition spells."""
+        built, _ = built_of(tmp_path, **_UNDER_CONDITIONS)
+        w = tmp_path / "w.ddd.json"
+        findings = FindingsByFile(
+            [(w, _at(w, "condition-mismatch", "component.interface[1].condition"))]
+        )
+        assert row_of(CONSTANTS, built, "UNUSED", findings, {}).findings == 0
 
     def test_a_row_counts_a_finding_filed_at_a_shape_that_names_it(self, tmp_path: Path) -> None:
         """`dimension-value` is filed at the shape, never at the entry, and is about nothing but
@@ -588,6 +625,34 @@ class TestOneConstantsPanel:
             ("variable", "Trend", "B"),
         ]
 
+    def test_a_condition_spelling_it_is_a_use_of_the_variable_it_guards(
+        self, tmp_path: Path
+    ) -> None:
+        """14:M13. The panel's Used by list read the shapes alone, so a constant only a condition
+        spells listed nothing. A condition's use is the variable's whose declaration it guards,
+        and comes after the shapes."""
+        built, _ = built_of(tmp_path, **_UNDER_CONDITIONS)
+        cache: dict[Path, Document] = {}
+        assert [
+            (use.site.pointer, use.kind, use.name, use.component)
+            for use in uses_of(CONSTANTS, built, "CELLS", cache)
+        ] == [
+            ("component.interface[0].definition.dimensions[0]", "variable", "Big", "W"),
+            ("component.interface[0].condition", "variable", "Big", "W"),
+        ]
+        assert [
+            (use.site.pointer, use.kind, use.name, use.component)
+            for use in uses_of(CONSTANTS, built, "UNUSED", cache)
+        ] == [("component.interface[1].condition", "variable", "V", "W")]
+
+    def test_a_condition_whose_declaration_has_moved_is_left_out(self, tmp_path: Path) -> None:
+        """As a shape's use is: the declaration the index recorded the condition of is no longer
+        at that place, and the next revision lists it where it went."""
+        built, _ = built_of(tmp_path, **_UNDER_CONDITIONS)
+        write_tree(tmp_path, {"w.ddd.json": component("W", declare("output", "Big"))})
+        cache: dict[Path, Document] = {}
+        assert uses_of(CONSTANTS, built, "UNUSED", cache) == ()
+
     def test_a_use_whose_declaration_has_moved_is_left_out(self, tmp_path: Path) -> None:
         """The index recorded where the analysis read it; the file has changed since. The next
         revision lists it where it went, and a panel naming a declaration that is not there is
@@ -648,6 +713,26 @@ def test_the_two_shape_patterns_match_what_the_index_calls_a_shape() -> None:
     for pointer in pointers:
         mine = _DECLARATION_SHAPE.match(pointer) or _MEMBER_SHAPE.match(pointer)
         assert bool(mine) == bool(_DIMENSION_KEY.match(pointer)), pointer
+
+
+def test_the_condition_pattern_matches_what_the_index_records_of_a_condition(
+    tmp_path: Path,
+) -> None:
+    """The index writes a condition's place itself, as every declaration's own ``condition``,
+    and no pattern of :mod:`ddd.lsp.navigation` names it, since nothing in an editor starts from
+    one: what it records is the authority, and ``_constant_uses`` asserts on its own reading of
+    it rather than skip a condition it does not know."""
+    built, _ = built_of(tmp_path, **_UNDER_CONDITIONS)
+    recorded = [site.pointer for sites in built.condition_uses.values() for site in sites]
+    assert recorded == ["component.interface[0].condition", "component.interface[1].condition"]
+    for pointer in recorded:
+        assert _CONDITION_SHAPE.match(pointer), pointer
+    for pointer in (
+        "component.interface[0].definition.condition",
+        "component.interface[0].condition.extra",
+        "component.condition",
+    ):
+        assert not _CONDITION_SHAPE.match(pointer), pointer
 
 
 def test_the_placement_pattern_matches_what_the_index_calls_a_placement() -> None:

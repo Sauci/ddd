@@ -2922,7 +2922,8 @@ cannot answer at all, because the producer of an `input` is in a file the author
 know the name of; a summary of a data object on hover, the physical reading of its
 initial value included; renaming an object, a declared type or a declared constant
 everywhere the projects it reaches write it - the declaration and every reference,
-`typename`, dimension or axis `size` spelling it - refused up front for a name the C language
+`typename`, dimension or axis `size` spelling it, and, of every `condition` spelling a
+constant as a word, that word - refused up front for a name the C language
 does not allow, a type name spelling a base datatype, or one a project it reaches already
 uses, whether for another object, an enum, an enumerator, a type or a constant, because a
 rename that silently merges two objects compiles, links, and shares storage nobody intended

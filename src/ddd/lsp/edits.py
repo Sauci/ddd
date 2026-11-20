@@ -22,8 +22,10 @@ Four rules keep the writing safe:
   removed from the others to match here. Removing takes exactly one comma with it - the one
   after the member, or the one before it when the member is last - which is the fiddly part
   and the reason this came last. A declaration naming a declared type is not silent about a key
-  the type fixes, whatever its file holds: it states what the type states (:func:`_resolved`),
-  as the checks read it.
+  the type fixes, whatever its file holds: every builder below reads another declaration's key
+  through its type (:func:`_resolved`), as the checks read it, and :func:`settled_at` reads each
+  declaration a settlement asks the same way - a type whose entry has moved since the index was
+  built stating what nobody can read (:class:`_Unread`), which is neither a value nor silence.
 * **A fix that would leave a file the project refuses is not offered.** What a definition is,
   once the key is written, is asked of the models and of the rules of the analysis that need no
   more of the project than the declaration and the type it names (:func:`loading_problem`): a
@@ -896,6 +898,11 @@ def _adopt(
 
     Written through :func:`_assign` rather than straight into the text, so that this direction
     is refused for a key the target's own kind does not have on the same terms as every other.
+
+    What the others state is what they resolve to (:func:`_resolved`): a reader naming a declared
+    type states what the type fixes, so a reader stating rpm beside one naming a type that states
+    krpm is two answers, where read from their files alone they looked like one - and taking it
+    left the second meaning krpm under a title saying the others state rpm.
     """
     if key in DEFERRED_KEYS or document.raw_at(f"{here.pointer}.{key}") is not None:
         return None
@@ -910,11 +917,15 @@ def _adopt(
             # readable others is not the unanimity the title would assert; withhold instead.
             return None
         targets.append(target)
-    spelled = [
-        raw
-        for site, target in zip(others, targets, strict=True)
-        if (raw := target.raw_at(f"{site.pointer}.{key}")) is not None
-    ]
+    spelled: list[str] = []
+    for site, target in zip(others, targets, strict=True):
+        raw = _resolved(built, site, target, key, cache)
+        if raw is _Unread.MOVED:
+            # What a type whose entry has moved states is not known, and so neither is the
+            # agreement the title would claim: withheld, as for a declaration drifted above.
+            return None
+        if raw is not None:
+            spelled.append(raw)
     # Counted by what each value means rather than by its json text: two files writing one
     # conversion differently state one value, which is why the checker files nothing between
     # them, and counting their spellings would withhold this action from declarations it calls

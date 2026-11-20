@@ -2138,31 +2138,37 @@ class TestWhichQuickFixIsPreferred:
 
 class TestWhatAQuickFixTitleSays:
     """Every reconcile fix says in its title that the code of the readers is not touched, the
-    editor's as the page's, and the two pages that say what such a title says, say so."""
+    editor's as the page's, and the two pages that say what such a title says, say so - of the
+    reconcile fixes, and not of the identity and vocabulary fixes the editor page goes on to."""
 
-    PHRASES: ClassVar[dict[str, tuple[str, str, str]]] = {
+    PHRASES: ClassVar[dict[str, tuple[str, str, tuple[str, ...]]]] = {
         "README.md": (
             README,
             "They change descriptions only: the code of the readers is not touched, and each fix "
             "says so in its title, in the editor as in `ddd gui`.",
-            "and the fix a finding of `ddd gui` carries says so in its title",
+            ("and the fix a finding of `ddd gui` carries says so in its title",),
         ),
         "docs/editor_integration.rst": (
             EDITOR_INTEGRATION,
             "They change descriptions: the code of the components that read the variable is not "
-            "touched, and the title of each fix says so, as the one a finding of ``ddd gui`` "
-            "carries does.",
-            "the title of the fix a finding of ``ddd gui`` carries says so",
+            "touched, and the title of each fix reconciling a ``definition-mismatch`` says so, as "
+            "the one a finding of ``ddd gui`` carries does.",
+            (
+                "the title of the fix a finding of ``ddd gui`` carries says so",
+                "and the title of each fix says so",
+            ),
         ),
     }
-    """Each page, what it says now, and what it said of the page's fix alone."""
+    """Each page, what it says now, and what it said before: of the page's fix alone, then of
+    every fix the page names."""
 
     @pytest.mark.parametrize("page", sorted(PHRASES))
     def test_the_page_says_each_fix_s_title_says_so(self, page: str) -> None:
         text, now, before = self.PHRASES[page]
         said = flattened(text)
         assert now in said, f"{page} no longer says: {now!r}"
-        assert before not in said, f"{page} still says: {before!r}"
+        for stale in before:
+            assert stale not in said, f"{page} still says: {stale!r}"
 
 
 class TestWhatThePolicySaysOfAnAdvisory:

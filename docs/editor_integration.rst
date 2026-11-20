@@ -168,13 +168,13 @@ looking in the wrong one; unsaved changes are refused naming the file that holds
 wherever it is.
 
 **Quick fixes.** They change descriptions: the code of the components that read the variable is
-not touched, and the title of each fix says so, as the one a finding of ``ddd gui`` carries
-does. On a key the declarations of one object have to agree on - a ``unit``, a
-``conversion``, a ``datatype`` - a ``definition-mismatch`` offers every way of reconciling
-it: take the producing component's value, spread this one to the others, or, when nobody
-else states the key, remove it. ``limits`` are the exception to the last: a declaration that
-leaves them out defers to the one that states them, which the checker counts as agreement, so
-only two stated ranges that differ are offered a fix. A declaration naming a declared type is
+not touched, and the title of each fix reconciling a ``definition-mismatch`` says so, as the one
+a finding of ``ddd gui`` carries does. On a key the declarations of one object have to agree on -
+a ``unit``, a ``conversion``, a ``datatype`` - a ``definition-mismatch`` offers every way of
+reconciling it: take the producing component's value, spread this one to the others, or, when
+nobody else states the key, remove it. ``limits`` are the exception to the last: a declaration
+that leaves them out defers to the one that states them, which the checker counts as agreement,
+so only two stated ranges that differ are offered a fix. A declaration naming a declared type is
 an exception of its own: the type fixes its ``datatype``, ``unit``, ``conversion`` and
 ``limits``, which may not be stated beside the ``typename``, so none of them is offered to it,
 and spreading one of them to the other declarations leaves it out. It states them all the same,

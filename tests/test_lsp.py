@@ -8789,6 +8789,15 @@ READER_NAMES_A_TYPE: Final = {
 }
 """The other way round: the writer states rpm, and the reader means krpm through its type."""
 
+TWO_READERS_ONE_THROUGH_A_TYPE: Final = {
+    "t.ddd.json": types(scalar_type("Krpm_t", "uint8", unit="krpm")),
+    "w.ddd.json": component("W", declare("output", "V", "uint8")),
+    "r1.ddd.json": component("R1", declare("input", "V", "uint8", unit="rpm")),
+    "r2.ddd.json": component("R2", declare("input", "V", typename="Krpm_t")),
+}
+"""A writer stating no unit, a reader stating rpm, and a reader meaning krpm through its type: the
+readers state two units between them, and the writer's silence is neither."""
+
 
 class TestAKeyATypeStates:
     """10:I8. A declaration naming a declared type states, as the checks read it, every key the
@@ -8874,6 +8883,28 @@ class TestAKeyATypeStates:
         moved = types(scalar_type("Other_t", "uint8", unit="Hz"), named)
         buffers = {"t.ddd.json": moved}
         assert offered_at(tmp_path, source, files, MISMATCH_REPORTED, buffers) == []
+
+    def test_a_writer_takes_no_unit_its_readers_disagree_about(self, tmp_path: Path) -> None:
+        """The writer states no unit, one reader states rpm, and the other means krpm through its
+        type. Read from the files alone the readers agreed, and the writer was offered to take the
+        rpm 'the other declarations' state, though one of them means krpm and goes on meaning it."""
+        assert (
+            offered_at(tmp_path, "w.ddd.json", TWO_READERS_ONE_THROUGH_A_TYPE, MISMATCH_REPORTED)
+            == []
+        )
+
+    def test_a_writer_takes_no_unit_while_a_buffer_has_moved_a_reader_s_type(
+        self, tmp_path: Path
+    ) -> None:
+        """What the second reader's type states is not known while its entry has moved, and so
+        neither is the agreement the title would claim: the consensus is withheld, as it is while
+        a buffer has moved one of the declarations it is drawn from."""
+        moved = types(
+            scalar_type("Other_t", "uint8", unit="rpm"), scalar_type("Krpm_t", "uint8", unit="krpm")
+        )
+        buffers = {"t.ddd.json": moved}
+        files = TWO_READERS_ONE_THROUGH_A_TYPE
+        assert offered_at(tmp_path, "w.ddd.json", files, MISMATCH_REPORTED, buffers) == []
 
 
 class TestWhichFixIsPreferred:

@@ -5527,36 +5527,60 @@ class TestServer:
             f"half renamed: {sorted(touched)}"
         )
 
+    def linked(
+        self,
+        tmp_path: Path,
+        images: dict[str, list[str]],
+        files: dict[str, Any],
+        *,
+        records: bool,
+    ) -> Path:
+        """``files``, and a description of each image of ``images`` including the files it names,
+        project ``One`` for image ``one``. Returns the directory holding the descriptions.
+
+        With ``records`` it is one of their own, each image having a record, as a build tree holds
+        a collected description, so that only the records find them; without, it is the
+        workspace, beside the files they include, where the search above a file finds them.
+        """
+        where = "images/" if records else ""
+        up = "../" if records else ""
+        write_tree(
+            tmp_path,
+            {
+                **{
+                    f"{where}{image}.ddd.json": project(
+                        image.title(), *(f"{up}{name}" for name in included)
+                    )
+                    for image, included in images.items()
+                },
+                **files,
+            },
+        )
+        described = tmp_path / where
+        if records:
+            for image in images:
+                build_record(tmp_path, described / f"{image}.ddd.json", image=f"{image}.elf")
+        return described
+
     def two_images(self, tmp_path: Path, *, records: bool = True) -> Path:
         """A writer and the vocabularies shared by two images, and a reader of each image's own:
         SPEC 7.2's component linked into two images. Each reader reads the writer's ``Speed`` in
         ``rpm`` and names the shared type, constant, section and raster. Both images check clean,
         and ``reader_one.ddd.json`` is in image one alone, which reaches image two only through
-        a file the two share.
-
-        Returns the directory holding the two image descriptions. With ``records`` it is one of
-        their own, as a build tree holds a collected description, so that only the records find
-        them; without, it is the workspace, beside the files they include, where the search above
-        a file finds them.
+        a file the two share. Returns the directory holding the descriptions (:meth:`linked`).
         """
-        where = "images/" if records else ""
-        up = "../" if records else ""
         shared = [
-            f"{up}{name}"
-            for name in (
-                "types.ddd.json",
-                "constants.ddd.json",
-                "s.ddd.json",
-                "r.ddd.json",
-                "units.ddd.json",
-                "writer.ddd.json",
-            )
+            "types.ddd.json",
+            "constants.ddd.json",
+            "s.ddd.json",
+            "r.ddd.json",
+            "units.ddd.json",
+            "writer.ddd.json",
         ]
-        write_tree(
+        return self.linked(
             tmp_path,
+            {"one": [*shared, "reader_one.ddd.json"], "two": [*shared, "reader_two.ddd.json"]},
             {
-                f"{where}one.ddd.json": project("One", *shared, f"{up}reader_one.ddd.json"),
-                f"{where}two.ddd.json": project("Two", *shared, f"{up}reader_two.ddd.json"),
                 "types.ddd.json": types(struct_type("Sensor_t", value_member("v", unit="rpm"))),
                 "constants.ddd.json": {"constants": [{"name": "N", "value": 4}]},
                 "s.ddd.json": PLACED["s.ddd.json"],
@@ -5573,12 +5597,35 @@ class TestServer:
                     for image in ("one", "two")
                 },
             },
+            records=records,
         )
-        images = tmp_path / where
-        if records:
-            build_record(tmp_path, images / "one.ddd.json", image="one.elf")
-            build_record(tmp_path, images / "two.ddd.json", image="two.elf")
-        return images
+
+    def three_images(self, tmp_path: Path, *, records: bool = True) -> Path:
+        """Three images in a chain, every one of them checking clean. Image one holds a writer of
+        ``Speed`` in ``rpm`` and its reader; image two the writer and a bridge reading it; image
+        three the bridge, a writer of its own and a reader of that one. Images one and three
+        share no file: a rename started in image one reaches image three only through the bridge,
+        which image two's edits rewrite and image one's do not. Returns the directory holding the
+        descriptions (:meth:`linked`)."""
+        reads = declare("input", "Speed", unit="rpm")
+        return self.linked(
+            tmp_path,
+            {
+                "one": ["writer.ddd.json", "reader_one.ddd.json"],
+                "two": ["writer.ddd.json", "bridge.ddd.json"],
+                "three": ["bridge.ddd.json", "writer_three.ddd.json", "reader_three.ddd.json"],
+            },
+            {
+                "writer.ddd.json": component("W", declare("output", "Speed", unit="rpm")),
+                "reader_one.ddd.json": component("R_one", reads),
+                "bridge.ddd.json": component("Bridge", reads),
+                "writer_three.ddd.json": component(
+                    "W_three", declare("output", "Speed", unit="rpm")
+                ),
+                "reader_three.ddd.json": component("R_three", reads),
+            },
+            records=records,
+        )
 
     def opened_holding(self, path: Path, text: str) -> dict[str, Any]:
         """The client opening ``path`` with ``text`` in its buffer, unsaved."""
@@ -5637,6 +5684,27 @@ class TestServer:
         assert "reader_two.ddd.json" in rewritten, f"half renamed: {sorted(rewritten)}"
         write_tree(tmp_path, rewritten)
         assert [main(["check", image]) for image in checked] == [EXIT_OK, EXIT_OK], "half renamed"
+
+    @pytest.mark.parametrize(
+        ("pointer", "name"), [RENAMES[0], RENAMES[-1]], ids=["variable", "unit"]
+    )
+    @pytest.mark.parametrize("records", [True, False], ids=["records", "searched"])
+    def test_a_rename_goes_on_from_every_project_it_reaches_until_none_is_new(
+        self, tmp_path: Path, pointer: str, name: str, records: bool
+    ) -> None:
+        """Image three shares no file with image one: the rename reaches it through the bridge,
+        which image two's edits rewrite and image one's do not. A closure going on from the
+        document's projects alone stops at image two, and leaves image three's writer and reader
+        apart from the bridge it just rewrote."""
+        images = self.three_images(tmp_path, records=records)
+        checked = [str(images / f"{image}.ddd.json") for image in ("one", "two", "three")]
+        assert [main(["check", image]) for image in checked] == [EXIT_OK] * 3
+        reader_one = tmp_path / "reader_one.ddd.json"
+        answer = self.answer_to(tmp_path, self.rename_request(reader_one, pointer, name))
+        rewritten = rewritten_by(answer["result"]["changes"])
+        assert "reader_three.ddd.json" in rewritten, f"stopped short: {sorted(rewritten)}"
+        write_tree(tmp_path, rewritten)
+        assert [main(["check", image]) for image in checked] == [EXIT_OK] * 3, "half renamed"
 
     @pytest.mark.parametrize(("records", "image"), [(True, "two.elf"), (False, "two.ddd.json")])
     def test_a_name_another_image_declares_is_refused_naming_that_image(

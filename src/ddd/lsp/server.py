@@ -16,9 +16,14 @@ protocol's internal error, a notification with nothing, as ever - and the trace 
 the server's log, where a defect is seen rather than hidden. Only ``Exception`` is caught, so an
 interrupt still ends the run.
 
-Only ``didOpen`` and ``didSave`` refresh. Nothing is analysed per keystroke: the analysis
-reads the files from disk, so the editor and the server agree exactly at the moment of a
-save, and a half-typed document never produces a screenful of findings about a mistake
+Only ``didOpen``, ``didSave`` and a watched change refresh, and what they mark is checked
+together. The stream is read ahead on a thread of its own, which is what tells the messages
+that came together from one not sent yet: once a message marks a document, the messages
+already waiting behind it are handled, and every document marked by then is checked, each
+project once - before a request among them is answered, and without waiting for a message
+that has not arrived (:meth:`Server._serve`). Nothing is analysed per keystroke: the
+analysis reads the files from disk, so the editor and the server agree exactly at the moment
+of a save, and a half-typed document never produces a screenful of findings about a mistake
 nobody has finished making yet. The *text* of every open document is nonetheless kept, and
 kept current through ``didChange``: a position the client sends, and an edit the client
 will apply, are about what is on screen, and an edit computed from a stale file and applied
@@ -28,17 +33,21 @@ to a buffer with one extra line rewrote an unrelated line.
 from __future__ import annotations
 
 import contextlib
+import io
+import queue
 import re
 import sys
+import threading
 import traceback
 from collections.abc import Sequence
 from pathlib import Path
-from typing import IO, Any, Final
+from typing import IO, Any, Final, Protocol
 from urllib.parse import urlparse
 from urllib.request import url2pathname
 
 from ddd import __version__
 from ddd.build_info import BuildInfo
+from ddd.ir import DataDictionary
 from ddd.lsp.diagnostics import collect
 from ddd.lsp.discovery import build_files, load_builds
 from ddd.lsp.edits import QUICK_FIX, UNKNOWN_UNIT, actions
@@ -172,6 +181,24 @@ def _field[T](value: Any, wanted: type[T], named: str) -> T:
     return value
 
 
+type _Read = dict[str, Any] | Exception | None
+"""One thing the reading thread took off the stream (:meth:`Server.run`): a message; a frame
+holding none, a :class:`~ddd.lsp.protocol.MessageError` to answer; what ended the reading, broken
+framing or whatever else the stream raised; or ``None``, the end of the stream."""
+
+
+class _Inbox(Protocol):
+    """Where the server takes what was read from: the queue the reading thread fills."""
+
+    def get(self) -> _Read:
+        """The next thing read, waited for where none is queued."""
+        ...
+
+    def qsize(self) -> int:
+        """How many things read are queued and not taken yet."""
+        ...
+
+
 class Server:
     """One conversation with one language client."""
 
@@ -219,6 +246,17 @@ class Server:
         from disk at open and at save and nowhere else, which is what its ``textDocumentSync``
         tells the client. Between two saves the answer cannot have changed, so the second
         question is entitled to the first one's answer; :meth:`_forget` is where that stops.
+        """
+
+        self._dictionaries: dict[Path, DataDictionary | None] = {}
+        """Project description -> what a hover resolved that project to, kept until
+        :meth:`_forget` for the reason the projects are: every hover resolved the whole project
+        again.
+
+        Resolved for the hover, as :func:`~ddd.lsp.hover.resolve` makes it, rather than taken
+        from a check: a check analyses no project whose read reported an error, and a hover
+        resolves what did load all the same. Kept per description, so that each project a hover
+        answers from is resolved once.
         """
 
         self._open: dict[Path, tuple[str, int | None]] = {}
@@ -271,8 +309,23 @@ class Server:
         anybody knows.
         """
 
+        self._marked: list[tuple[str, Path]] = []
+        """Each document the next check checks, by its resolved path, with the method that
+        marked it, in the order they were marked; a document marked twice is checked once.
+
+        ``didOpen``, ``didSave`` and a watched change mark their documents rather than checking
+        them, and the marked documents are checked together (:meth:`_serve`): with ten documents
+        open, a save and the watch event that follows it were eleven analyses of one project.
+        """
+
     def run(self) -> int:
         """Serve until the client says to stop, or stops talking.
+
+        The stream is read on a thread of its own into a queue, and the messages are handled
+        here, one at a time (:meth:`_serve`). Reading ahead is what tells a message queued
+        behind another from one not sent yet: a blocking read of the stream cannot, and a pipe
+        has no portable way to look ahead. The thread is a daemon, since it is still waiting
+        for the next frame when the run ends.
 
         One bad frame is not the end of the conversation: a body that is not a request gets
         the json-rpc refusal it defines a code for, and the loop reads on, as it does past a
@@ -280,39 +333,106 @@ class Server:
         run, because after it nothing on the stream can be trusted - and that is said once on
         stderr, where the log goes, never on stdout, which is the wire.
         """
+        inbox: queue.SimpleQueue[_Read] = queue.SimpleQueue()
+        threading.Thread(target=self._read, args=(inbox,), daemon=True, name="ddd-lsp-read").start()
+        return self._serve(inbox)
+
+    def _read(self, inbox: queue.SimpleQueue[_Read]) -> None:
+        """Read every frame of the stream into ``inbox``, in order, until the reading ends.
+
+        Run on the reading thread, which only reads: everything the server writes is written
+        on the server's thread, in order. A frame holding no message is handed over to be
+        answered there, and so is what ended the reading - the end of the stream, broken
+        framing, or anything else the stream raised - so that the run ends as it always has.
+        """
         while True:
             try:
                 message = read_message(self.reader)
             except MessageError as fault:
-                write_message(self.writer, error(None, fault.code, str(fault)))
-                continue
-            except ProtocolError as fault:
-                print(f"ddd: {fault}", file=sys.stderr)
-                return 1
-            if message is None:
-                return 0
-            try:
-                keep_going = self._handle(message)
-            except MessageError as fault:
-                # The frame was read and the method understood; what the client sent with it
-                # was not the shape the method takes. A request gets that as its answer and a
-                # notification gets nothing, which is what a notification always gets - a
-                # message with no ``id`` is a notification, and answering one with an error
-                # under ``"id": null`` is a line in the client's output channel that names no
-                # request the reader can go and look at. Either way the next message is still
-                # read.
-                if "id" in message:
-                    write_message(self.writer, error(message["id"], fault.code, str(fault)))
+                inbox.put(fault)
                 continue
             except Exception as fault:
-                # Anything else is a defect of this server's own in answering this one message,
-                # which costs that answer and not the session (the module docstring).
-                self._defect(message, fault)
+                inbox.put(fault)
+                return
+            inbox.put(message)
+            if message is None:
+                return
+
+    def _serve(self, inbox: _Inbox) -> int:
+        """Handle what the reading thread queued, one message at a time, and check the documents
+        the messages mark together.
+
+        The marked documents are checked once every message that was already queued behind the
+        first of them is handled, so a save and the watch event the editor sends for it are one
+        check, and so are the ``didOpen`` an editor sends for each file it opens to apply a
+        rename. Two things come first: a message that is answered, and the end of the run, since
+        an answer may be about what the check finds, and a check due when the run ends is still
+        owed. Nothing waits for a message that has not arrived: a check held until the queue
+        empties would wait for as long as a client sends ``didChange`` at every keystroke.
+        """
+        behind = 0  # the messages queued behind the first marked document, not handled yet
+        while True:
+            read = inbox.get()
+            if not isinstance(read, dict) or "id" in read:
+                self._settle()
+            if read is None:
+                return 0
+            if isinstance(read, ProtocolError):
+                print(f"ddd: {read}", file=sys.stderr)
+                return 1
+            if isinstance(read, MessageError):
+                write_message(self.writer, error(None, read.code, str(read)))
                 continue
-            if not keep_going:
+            if isinstance(read, Exception):
+                raise read
+            batched = bool(self._marked)
+            if not self._take(read):
+                self._settle()
                 # An exit that was prepared for is a clean end and anything else is not, which
                 # is the one thing an exit code can tell a client that is watching the process.
                 return 0 if self._shutting_down else 1
+            if self._marked:
+                behind = behind - 1 if batched else inbox.qsize()
+                if behind <= 0:
+                    self._settle()
+
+    def _take(self, message: dict[str, Any]) -> bool:
+        """Act on one message inside the net; ``False`` means the client asked the server to
+        exit.
+
+        What the message marks is left for :meth:`_serve` to check, which does that inside the
+        net as well (:meth:`_settle`).
+        """
+        try:
+            return self._act(message)
+        except MessageError as fault:
+            # The frame was read and the method understood; what the client sent with it was
+            # not the shape the method takes. A request gets that as its answer and a
+            # notification gets nothing, which is what a notification always gets - a message
+            # with no ``id`` is a notification, and answering one with an error under
+            # ``"id": null`` is a line in the client's output channel that names no request the
+            # reader can go and look at. Either way the next message is still read.
+            if "id" in message:
+                write_message(self.writer, error(message["id"], fault.code, str(fault)))
+        except Exception as fault:
+            # Anything else is a defect of this server's own in answering this one message,
+            # which costs that answer and not the session (the module docstring).
+            self._defect(message, fault)
+        return True
+
+    def _settle(self) -> None:
+        """Check the marked documents inside the net.
+
+        A defect in that check is answered as one in a notification is, since only
+        notifications mark: with nothing, and its trace on stderr naming the methods that marked
+        the documents. They are unmarked before the check runs, so the next message does not
+        meet the same defect again.
+        """
+        marking = ", ".join(dict.fromkeys(method for method, _ in self._marked))
+        try:
+            self._refresh_marked()
+        except Exception as fault:
+            self._defect({"method": marking}, fault)
 
     def _defect(self, message: dict[str, Any], fault: Exception) -> None:
         """Answer a message this server failed on through a defect of its own, and say so.
@@ -363,7 +483,35 @@ class Server:
         return None
 
     def _handle(self, message: dict[str, Any]) -> bool:
-        """Act on one message; ``False`` means the client asked the server to exit."""
+        """Act on one message and check what it marked, outside the net; ``False`` means the
+        client asked the server to exit.
+
+        What :meth:`_serve` does with a message nothing is queued behind, one message at a time:
+        each call that marks a document checks it before returning.
+        """
+        keep_going = self._act(message)
+        self._refresh_marked()
+        return keep_going
+
+    def _refresh_marked(self) -> None:
+        """Check every marked document together, and unmark them first.
+
+        A marked path that is neither on disk nor open is not checked: it is deleted, whether a
+        watch event reported it so or it went after it was marked, and a run started from it is
+        what reports a file that does not exist (:meth:`_withdraw_deleted`).
+        """
+        marked, self._marked = self._marked, []
+        documents = [
+            path
+            for path in dict.fromkeys(path for _, path in marked)
+            if path.exists() or path in self._open
+        ]
+        if documents:
+            self.refresh(*documents)
+
+    def _act(self, message: dict[str, Any]) -> bool:
+        """Act on one message, marking the documents it asks to be checked rather than checking
+        them; ``False`` means the client asked the server to exit."""
         method = message.get("method")
         request_id = message.get("id")
         if method == "exit":
@@ -384,13 +532,13 @@ class Server:
             write_message(self.writer, response(request_id, None))
         elif method == _DID_OPEN:
             self._remember(message)
-            self.refresh(self._opened(message))
+            self._mark(_DID_OPEN, self._opened(message))
         elif method == _DID_CHANGE:
             self._remember(message)
         elif method == _DID_CLOSE:
             self._open.pop(self._document(message).resolve(), None)
         elif method == _DID_SAVE:
-            self.refresh(self._document(message))
+            self._mark(_DID_SAVE, self._document(message))
         elif method == _DID_CHANGE_WATCHED:
             self._watched(message)
         elif method in _NAVIGATING:
@@ -471,13 +619,16 @@ class Server:
             self._open[path] = (text, version if isinstance(version, int) else None)
 
     def _watched(self, message: dict[str, Any]) -> None:
-        """Check again, because what was read from disk is no longer what is on it.
+        """Mark for a check again, because what was read from disk is no longer what is on it.
 
         Every open document, rather than the files that changed: a document is published
         through the project above it, so a change in a file nobody has open is precisely the
         case that moves a finding onto one somebody does. With nothing open there is still a
         Problems list on screen describing the project as it was, and the changed files are
-        the only roots there are to check it from.
+        the only roots there are to check it from, but for one deleted (:meth:`_refresh_marked`).
+
+        Marked, and checked together: checked one at a time, ten open documents of one project
+        were ten analyses of it, at every save the editor's watcher reports.
         """
         params = _field(message.get("params"), dict, "params")
         changes = _field(params.get("changes"), list, "params.changes")
@@ -491,9 +642,15 @@ class Server:
             )
             for change in changes
         ]
-        for document in sorted(self._open) or [path for path in touched if path.exists()]:
-            self.refresh(document)
+        self._mark(_DID_CHANGE_WATCHED, *(sorted(self._open) or touched))
         self._withdraw_deleted()
+
+    def _mark(self, method: str, *documents: Path) -> None:
+        """Mark documents for the next check, which checks them together, and drop at once what
+        was read from disk (:meth:`_forget`): a file saved or watched changing is no longer what
+        was read, and one opened is about to be read again."""
+        self._forget()
+        self._marked.extend((method, document.resolve()) for document in documents)
 
     def _cache(self, path: Path | None = None) -> dict[Path, Document]:
         """A document cache seeded with every open buffer, under both spellings of its path.
@@ -641,18 +798,25 @@ class Server:
     def _forget(self) -> None:
         """Drop what was read from disk, because it is about to be read again.
 
-        Called wherever the files may no longer be what they were: at every refresh, which is
-        a save or an open, and after a rename, which rewrites them from here.
+        Called wherever the files may no longer be what they were: at every message that marks
+        a document for a check - an open, a save, a watched change - and at the check itself,
+        and after a rename, which rewrites them from here.
         """
         self._builds = None
         self._projects.clear()
+        self._dictionaries.clear()
 
-    def refresh(self, document: Path) -> None:
-        """Re-run the checks and publish what they say about every file involved.
+    def refresh(self, *documents: Path) -> None:
+        """Re-run the checks over these documents and publish what they say about every file
+        involved.
 
-        Every configured build is run, not only the one that claims this document. A component
+        Every configured build is run, not only the one that claims a document. A component
         linked into two images is in two projects and they need not agree, and the answer to
         which one the reader cares about is "both": whichever is broken is broken.
+
+        The documents are checked together, each project once however many of them it holds or
+        answers for (:func:`~ddd.lsp.diagnostics.collect`), each searched for above within the
+        workspace folder holding it.
         """
         self._forget()
         builds = self._builds_now()
@@ -662,8 +826,8 @@ class Server:
         # open - and the thing actually wrong is the record, which the log has just said.
         reports = collect(
             [info for info in builds if Path(info.project).is_file()],
-            [document],
-            self._root_for(document),
+            documents,
+            self._root_for,
         )
         # Only files with something to say, plus the ones this run reported on that had
         # something to say last time and no longer do - those need an empty list to withdraw
@@ -807,7 +971,7 @@ class Server:
         if named_type is not None:
             described = describe_external(projects, named_type)
         if described is None and (constant is not None or name is not None):
-            dictionary = resolve(projects)
+            dictionary = self._dictionary(projects)
             if dictionary is not None:
                 if constant is not None:
                     described = describe_constant(dictionary, constant)
@@ -825,6 +989,17 @@ class Server:
             "contents": {"kind": "markdown", "value": described},
             "range": document.range_of(pointer),
         }
+
+    def _dictionary(self, projects: Sequence[Loaded]) -> DataDictionary | None:
+        """What a hover answers from: the first of the projects, resolved as
+        :func:`~ddd.lsp.hover.resolve` resolves it, once per description until :meth:`_forget`;
+        nothing when there is no project."""
+        if not projects:
+            return None
+        description = projects[0].path.resolve()
+        if description not in self._dictionaries:
+            self._dictionaries[description] = resolve(projects[:1])
+        return self._dictionaries[description]
 
     def _prepare_rename(self, message: dict[str, Any]) -> dict[str, Any] | None:
         """Whether a rename may start here, and over which characters.
@@ -1251,7 +1426,19 @@ def serve(build_directories: Sequence[Path] = ()) -> int:
     why nothing in DDD prints there except through :func:`write_message`. A plugin, or a
     library it imports, is under no such discipline, so the wire is taken before anything
     else can write to it and ``sys.stdout`` points at stderr for the rest of the process.
+
+    Stdin is read through a reader of the server's own over its descriptor, never through
+    ``sys.stdin.buffer``. The reading thread is still waiting for a frame when the run ends
+    (:meth:`Server.run`), and on its way out the interpreter closes ``sys.stdin``, which waits
+    for the lock that read holds and then aborts the process, after an ``exit`` the client
+    sent while it kept the pipe open. A reader nothing closes is left to the end of the
+    process instead. A stdin that is no descriptor is read as it is.
     """
     wire = sys.stdout.buffer
+    stdin = sys.stdin.buffer
+    try:
+        reader: IO[bytes] = open(stdin.fileno(), "rb", closefd=False)  # noqa: SIM115 - never closed
+    except io.UnsupportedOperation:
+        reader = stdin
     with contextlib.redirect_stdout(sys.stderr):
-        return Server(sys.stdin.buffer, wire, build_directories=build_directories).run()
+        return Server(reader, wire, build_directories=build_directories).run()

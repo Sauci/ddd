@@ -10,6 +10,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import queue
 import re
 import shutil
 import sys
@@ -9718,12 +9719,13 @@ class TestADefectInAnsweringOneMessage:
     ) -> None:
         """A notification never gets an answer, a failed one included: the trace on stderr is all
         there is of it, and the next message is read. A relative record ended the session on the
-        first ``didOpen``, which is a notification."""
+        first ``didOpen``, which is a notification. The document is open, with the text every
+        client sends, and not on disk yet: a path that is neither is not checked at all."""
         monkeypatch.setattr(Server, "refresh", self.defect)
         opened = {
             "jsonrpc": "2.0",
             "method": "textDocument/didOpen",
-            "params": {"textDocument": {"uri": (tmp_path / "a.ddd.json").as_uri()}},
+            "params": {"textDocument": {"uri": (tmp_path / "a.ddd.json").as_uri(), "text": ""}},
         }
         writer = io.BytesIO()
         assert Server(session(opened, *END), writer, root=tmp_path).run() == 0
@@ -10237,3 +10239,725 @@ class TestAWatchedFileChanging:
         assert server._handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
         assert server._handle(self.changed())
         assert published(writer) == {}
+
+
+class Arrivals:
+    """An inbox handing :meth:`Server._serve` what was read off the stream, arrival by arrival.
+
+    What one arrival holds is queued together, as the reading thread queues what a client sent at
+    once: the server takes the first, and the rest are behind it. The next arrival lands only when
+    the server asks for more with this one all taken, where a queue makes it wait, so what a later
+    arrival holds had not been sent while the server handled the ones before. That is the client's
+    timing, said by the test rather than left to a race between two threads.
+    """
+
+    def __init__(self, writer: io.BytesIO, *arrivals: Sequence[Any]) -> None:
+        self.writer = writer
+        self.coming = [list(arrival) for arrival in arrivals]
+        self.queued: list[Any] = []
+        self.landed: list[list[dict[str, Any]]] = []
+        """What the server had written when each arrival landed."""
+        self.taken = 0
+        """How many things the server has taken so far."""
+
+    def get(self) -> Any:
+        if not self.queued:
+            self.landed.append(sent(self.writer))
+            self.queued = self.coming.pop(0)
+        self.taken += 1
+        return self.queued.pop(0)
+
+    def qsize(self) -> int:
+        return len(self.queued)
+
+
+class Typing(Arrivals):
+    """Arrivals while the reader goes on typing: behind each ``didChange`` the server takes,
+    another lands, ``keystrokes`` more in all, as a client sends one at every key."""
+
+    def __init__(self, writer: io.BytesIO, *arrivals: Sequence[Any], keystrokes: int) -> None:
+        super().__init__(writer, *arrivals)
+        self.keystrokes = keystrokes
+
+    def get(self) -> Any:
+        taken = super().get()
+        if taken.get("method") == "textDocument/didChange" and self.keystrokes:
+            self.keystrokes -= 1
+            self.queued.append(taken)
+        return taken
+
+
+class TestDocumentsMarkedTogetherAreCheckedTogether:
+    """10:I12: the documents that messages queued together mark are checked together, each
+    project once.
+
+    A save reaches the server twice, as a ``didSave`` and as the watch event the extension sends
+    for the file the editor wrote, and the event checked every open document on its own: ten
+    documents open, and the project was analysed once for the save and ten times more for the
+    event that followed it, while every hover and rename waited behind them. Most of these hand
+    the server what was read arrival by arrival (:class:`Arrivals`), so that what came together
+    is the test's to say.
+    """
+
+    def tabs(self, tmp_path: Path) -> list[Path]:
+        """Ten open documents, the components of the one project a build record names, each
+        reading what nobody writes."""
+        names = [f"c{number}.ddd.json" for number in range(10)]
+        write_tree(
+            tmp_path,
+            {"p.ddd.json": project("P", *names)}
+            | {
+                name: component(f"C{number}", declare("input", f"V{number}"))
+                for number, name in enumerate(names)
+            },
+        )
+        build_record(tmp_path, tmp_path / "p.ddd.json", severity=["missing-id=ignore"])
+        return [tmp_path / name for name in names]
+
+    def hello(self, tmp_path: Path) -> dict[str, Any]:
+        return {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {"workspaceFolders": [{"uri": tmp_path.as_uri()}]},
+        }
+
+    def opened(self, path: Path) -> dict[str, Any]:
+        return {
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": {
+                "textDocument": {
+                    "uri": path.as_uri(),
+                    "languageId": "json",
+                    "version": 1,
+                    "text": path.read_text(encoding="utf-8"),
+                }
+            },
+        }
+
+    def saved(self, path: Path) -> dict[str, Any]:
+        return {
+            "jsonrpc": "2.0",
+            "method": "textDocument/didSave",
+            "params": {"textDocument": {"uri": path.as_uri()}},
+        }
+
+    def watched(self, path: Path) -> dict[str, Any]:
+        """The watch event the extension sends for a file the editor saved."""
+        return {
+            "jsonrpc": "2.0",
+            "method": "workspace/didChangeWatchedFiles",
+            "params": {"changes": [{"uri": path.as_uri(), "type": 2}]},
+        }
+
+    def typed(self, path: Path) -> dict[str, Any]:
+        """A keystroke in ``path``, which the server keeps and checks nothing for."""
+        return {
+            "jsonrpc": "2.0",
+            "method": "textDocument/didChange",
+            "params": {
+                "textDocument": {"uri": path.as_uri(), "version": 2},
+                "contentChanges": [{"text": path.read_text(encoding="utf-8")}],
+            },
+        }
+
+    def hover(self, path: Path) -> dict[str, Any]:
+        return {
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "textDocument/hover",
+            "params": {
+                "textDocument": {"uri": path.as_uri()},
+                "position": {"line": 0, "character": 0},
+            },
+        }
+
+    def analyses(self, monkeypatch: pytest.MonkeyPatch, inbox: Arrivals) -> Counter[int]:
+        """Every analysis a check runs, counted by the arrival it ran in, the first being 1."""
+        ran: Counter[int] = Counter()
+        original = service.analyze
+
+        def counted(*args: Any, **kwargs: Any) -> Any:
+            ran[len(inbox.landed)] += 1
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(service, "analyze", counted)
+        return ran
+
+    def test_a_save_and_its_watch_event_queued_together_are_one_analysis(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """So are the ``didOpen`` of ten documents, which an editor sends for the files a rename
+        rewrites; and each check is published before the server waits for what has not arrived."""
+        tabs = self.tabs(tmp_path)
+        writer = io.BytesIO()
+        inbox = Arrivals(
+            writer,
+            [self.hello(tmp_path), *map(self.opened, tabs)],
+            [self.saved(tabs[0]), self.watched(tabs[0])],
+            END,
+        )
+        ran = self.analyses(monkeypatch, inbox)
+        assert Server(io.BytesIO(), writer, root=tmp_path)._serve(inbox) == 0
+        assert ran == Counter({1: 1, 2: 1})
+        checked = inbox.landed[2][len(inbox.landed[1]) :]
+        assert sorted(message["params"]["uri"] for message in checked) == sorted(
+            tab.as_uri() for tab in tabs
+        )
+        assert {
+            entry["code"] for message in checked for entry in message["params"]["diagnostics"]
+        } == {"missing-producer"}
+
+    def test_a_save_and_its_watch_event_apart_are_one_analysis_each(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The watch event lands after the save was checked, so it is a check of its own."""
+        tabs = self.tabs(tmp_path)
+        writer = io.BytesIO()
+        inbox = Arrivals(
+            writer,
+            [self.hello(tmp_path), *map(self.opened, tabs)],
+            [self.saved(tabs[0])],
+            [self.watched(tabs[0])],
+            END,
+        )
+        ran = self.analyses(monkeypatch, inbox)
+        assert Server(io.BytesIO(), writer, root=tmp_path)._serve(inbox) == 0
+        assert ran == Counter({1: 1, 2: 1, 3: 1})
+
+    def test_each_project_is_analysed_once_however_many_of_its_documents_are_open(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Five documents open in each of two projects no record names, each found above its
+        files: their ``didOpen`` are one analysis of each, and so is a watch event. Nothing in
+        them is an error, which would stop an analysis of the project a second time anyway."""
+        names = [f"c{number}.ddd.json" for number in range(5)]
+        tree: dict[str, Any] = {}
+        for folder in ("one", "two"):
+            tree[f"{folder}/p.ddd.json"] = project(folder.title(), *names)
+            for number, name in enumerate(names):
+                tree[f"{folder}/{name}"] = component(f"C{number}", declare("local", f"V{number}"))
+        write_tree(tmp_path, tree)
+        tabs = [tmp_path / folder / name for folder in ("one", "two") for name in names]
+        writer = io.BytesIO()
+        inbox = Arrivals(
+            writer,
+            [self.hello(tmp_path), *map(self.opened, tabs)],
+            [self.watched(tabs[0])],
+            END,
+        )
+        ran = self.analyses(monkeypatch, inbox)
+        assert Server(io.BytesIO(), writer, root=tmp_path)._serve(inbox) == 0
+        assert ran == Counter({1: 2, 2: 2})
+
+    def test_each_document_is_searched_for_within_its_own_workspace_folder(
+        self, tmp_path: Path
+    ) -> None:
+        """Two workspace folders, a document open in each and its project a directory above it:
+        checked together, each search above is bounded by the folder holding its document, as
+        when each was checked by itself."""
+        write_tree(
+            tmp_path,
+            {
+                "one/p.ddd.json": project("One", "sub/a.ddd.json"),
+                "one/sub/a.ddd.json": component("A", declare("input", "X")),
+                "two/p.ddd.json": project("Two", "sub/b.ddd.json"),
+                "two/sub/b.ddd.json": component("B", declare("input", "Y")),
+            },
+        )
+        a, b = tmp_path / "one" / "sub" / "a.ddd.json", tmp_path / "two" / "sub" / "b.ddd.json"
+        hello = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "workspaceFolders": [
+                    {"uri": (tmp_path / "one").as_uri()},
+                    {"uri": (tmp_path / "two").as_uri()},
+                ]
+            },
+        }
+        writer = io.BytesIO()
+        inbox = Arrivals(writer, [hello, self.opened(a), self.opened(b)], END)
+        assert Server(io.BytesIO(), writer, root=tmp_path)._serve(inbox) == 0
+        final = published(writer)
+        assert [entry["code"] for entry in final[a.as_uri()]] == ["missing-producer"]
+        assert [entry["code"] for entry in final[b.as_uri()]] == ["missing-producer"]
+
+    def test_a_request_queued_behind_them_is_answered_once_they_are_checked(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An answer may be about what the check finds, so the check comes first, before the
+        keystroke still queued behind the request."""
+        tabs = self.tabs(tmp_path)
+        writer = io.BytesIO()
+        inbox = Arrivals(
+            writer,
+            [self.hello(tmp_path), *map(self.opened, tabs)],
+            [self.saved(tabs[0]), self.watched(tabs[0]), self.hover(tabs[0]), self.typed(tabs[0])],
+            END,
+        )
+        ran = self.analyses(monkeypatch, inbox)
+        assert Server(io.BytesIO(), writer, root=tmp_path)._serve(inbox) == 0
+        assert ran == Counter({1: 1, 2: 1})
+        during = inbox.landed[2][len(inbox.landed[1]) :]
+        assert [message.get("method", message.get("id")) for message in during] == [
+            "textDocument/publishDiagnostics"
+        ] * 10 + [7]
+
+    def test_the_check_is_not_held_while_keystrokes_keep_coming(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Due once what was queued behind the save is handled: held until the queue empties, it
+        would wait for as long as the reader goes on typing."""
+        tabs = self.tabs(tmp_path)
+        writer = io.BytesIO()
+        opening = [self.hello(tmp_path), *map(self.opened, tabs)]
+        inbox = Typing(
+            writer, opening, [self.saved(tabs[0]), self.typed(tabs[1])], END, keystrokes=50
+        )
+        taken: list[int] = []
+        original = service.analyze
+
+        def counted(*args: Any, **kwargs: Any) -> Any:
+            taken.append(inbox.taken)
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(service, "analyze", counted)
+        assert Server(io.BytesIO(), writer, root=tmp_path)._serve(inbox) == 0
+        assert taken == [len(opening), len(opening) + 2]
+
+    def test_a_check_withdraws_only_the_files_it_reported_on(self, tmp_path: Path) -> None:
+        """10:I1's rule holds for a check of what arrived together: opening a file of another
+        project keeps this one's findings."""
+        write_tree(
+            tmp_path,
+            {
+                "one/p.ddd.json": project("One", "a.ddd.json"),
+                "one/a.ddd.json": component("A", declare("input", "X")),
+                "two/p.ddd.json": project("Two", "b.ddd.json"),
+                "two/b.ddd.json": component("B", declare("input", "Y")),
+            },
+        )
+        a, b = tmp_path / "one" / "a.ddd.json", tmp_path / "two" / "b.ddd.json"
+        writer = io.BytesIO()
+        inbox = Arrivals(writer, [self.hello(tmp_path), self.opened(a)], [self.opened(b)], END)
+        assert Server(io.BytesIO(), writer, root=tmp_path)._serve(inbox) == 0
+        final = published(writer)
+        assert [entry["code"] for entry in final[b.as_uri()]] == ["missing-producer"]
+        assert [entry["code"] for entry in final[a.as_uri()]] == ["missing-producer"], (
+            "a's error was withdrawn"
+        )
+
+    def test_a_defect_in_a_check_costs_that_check_alone(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Answered as a defect in a notification is (10:I13): with nothing, and its trace on
+        stderr, naming the messages that marked the documents. The next message is handled, and
+        the documents are not checked again for it."""
+        tabs = self.tabs(tmp_path)
+        checked: list[tuple[Path, ...]] = []
+        original = Server.refresh
+
+        def refresh(server: Server, *documents: Path) -> None:
+            checked.append(documents)
+            if len(checked) == 1:
+                msg = "a defect of the server's own"
+                raise RuntimeError(msg)
+            original(server, *documents)
+
+        monkeypatch.setattr(Server, "refresh", refresh)
+        writer = io.BytesIO()
+        inbox = Arrivals(
+            writer,
+            [self.hello(tmp_path), self.saved(tabs[0]), self.watched(tabs[0])],
+            [self.saved(tabs[1])],
+            END,
+        )
+        assert Server(io.BytesIO(), writer, root=tmp_path)._serve(inbox) == 0
+        trace = capsys.readouterr().err
+        assert trace.startswith(
+            "ddd: textDocument/didSave, workspace/didChangeWatchedFiles failed on a defect of this "
+            "server, and the session goes on\nTraceback (most recent call last):\n"
+        )
+        assert trace.count("Traceback") == 1
+        assert trace.endswith("RuntimeError: a defect of the server's own\n")
+        assert checked == [(tabs[0].resolve(),), (tabs[1].resolve(),)]
+        assert [message["id"] for message in sent(writer) if "id" in message] == [1, 99]
+        assert [entry["code"] for entry in published(writer)[tabs[1].as_uri()]] == [
+            "missing-producer"
+        ]
+
+    def test_broken_framing_ends_the_run_once_what_came_before_it_is_checked(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The check of a document marked before the break is still owed when the break ends the
+        run with 1, said once on stderr."""
+        tabs = self.tabs(tmp_path)
+        writer = io.BytesIO()
+        broken = ProtocolError("Content-Length is not a count of bytes")
+        inbox = Arrivals(writer, [self.hello(tmp_path), self.opened(tabs[0]), broken])
+        assert Server(io.BytesIO(), writer, root=tmp_path)._serve(inbox) == 1
+        assert capsys.readouterr().err == f"ddd: {broken}\n"
+        assert [entry["code"] for entry in published(writer)[tabs[0].as_uri()]] == [
+            "missing-producer"
+        ]
+
+    def test_broken_framing_seen_by_the_reading_thread_still_ends_the_run(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Read ahead on a thread of its own, a session whose framing breaks still ends with 1,
+        said once, and the document it opened first is checked: whether the break was already
+        queued behind the ``didOpen`` or not."""
+        tabs = self.tabs(tmp_path)
+        writer = io.BytesIO()
+        stream = io.BytesIO(
+            framed(self.hello(tmp_path), self.opened(tabs[0])).getvalue()
+            + b"Content-Length: banana\r\n\r\n{}"
+        )
+        assert Server(stream, writer, root=tmp_path).run() == 1
+        err = capsys.readouterr().err
+        assert err.startswith("ddd: Content-Length is not a count of bytes: 'banana'")
+        assert err.count("\n") == 1
+        assert [entry["code"] for entry in published(writer)[tabs[0].as_uri()]] == [
+            "missing-producer"
+        ]
+
+    @pytest.mark.parametrize(
+        ("end", "code"),
+        [(None, 0), ({"jsonrpc": "2.0", "method": "exit"}, 1)],
+        ids=["the stream ending", "an exit with no shutdown"],
+    )
+    def test_the_check_owed_when_the_run_ends_is_made(
+        self, tmp_path: Path, end: dict[str, Any] | None, code: int
+    ) -> None:
+        """As every message was checked before the next was read, when they were read in turn."""
+        tabs = self.tabs(tmp_path)
+        writer = io.BytesIO()
+        inbox = Arrivals(writer, [self.hello(tmp_path), self.opened(tabs[0]), end])
+        assert Server(io.BytesIO(), writer, root=tmp_path)._serve(inbox) == code
+        assert [entry["code"] for entry in published(writer)[tabs[0].as_uri()]] == [
+            "missing-producer"
+        ]
+
+    def test_a_watch_event_that_checks_nothing_still_drops_what_was_read(
+        self, tmp_path: Path
+    ) -> None:
+        """Nothing open, and the one file it reports deleted: no check runs, and a jump asked
+        afterwards reads the project as the disk now holds it, not as it was read before."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Shared")),
+                "b.ddd.json": component("B", declare("input", "Shared")),
+            },
+        )
+        a, b = tmp_path / "a.ddd.json", tmp_path / "b.ddd.json"
+        position = Document(b.read_text(encoding="utf-8")).range_of(
+            "component.interface[0].definition.name"
+        )["start"]
+        jump = {
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "textDocument/definition",
+            "params": {"textDocument": {"uri": b.as_uri()}, "position": position},
+        }
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(self.hello(tmp_path))
+        assert server._handle(jump)
+        assert [found["uri"] for found in sent(writer)[-1]["result"]] == [a.as_uri()]
+        a.unlink()
+        assert server._handle(
+            {
+                "jsonrpc": "2.0",
+                "method": "workspace/didChangeWatchedFiles",
+                "params": {"changes": [{"uri": a.as_uri(), "type": 3}]},
+            }
+        )
+        assert server._handle(jump)
+        assert sent(writer)[-1] == response(7, [])
+
+    def test_a_document_another_project_reported_on_is_searched_for_all_the_same(
+        self, tmp_path: Path
+    ) -> None:
+        """Three descriptions side by side, ``q2`` holding both documents: ``q3`` holds the second
+        too, and is analysed for it, though ``q2``'s run reported on it already."""
+        write_tree(
+            tmp_path,
+            {
+                "q1.ddd.json": project("Q1", "d1.ddd.json", "x.ddd.json"),
+                "q2.ddd.json": project("Q2", "d1.ddd.json", "d2.ddd.json"),
+                "q3.ddd.json": project("Q3", "d2.ddd.json", "y.ddd.json"),
+                "d1.ddd.json": component("D1", declare("local", "One")),
+                "d2.ddd.json": component("D2", declare("local", "Two")),
+                "x.ddd.json": component("X", declare("local", "Three")),
+                "y.ddd.json": component("Y", declare("input", "Nobody")),
+            },
+        )
+        documents = [tmp_path / "d1.ddd.json", tmp_path / "d2.ddd.json"]
+        reports = service.collect([], documents, tmp_path)
+        assert [entry["code"] for entry in reports[tmp_path / "y.ddd.json"]] == ["missing-producer"]
+
+    def test_each_description_above_the_documents_is_read_once(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Ten documents of one project above them, each searched for: the search for the first
+        reads the description, and the nine after it find it read."""
+        names = [f"c{number}.ddd.json" for number in range(10)]
+        write_tree(
+            tmp_path,
+            {"p.ddd.json": project("P", *names)}
+            | {
+                name: component(f"C{number}", declare("local", "V"))
+                for number, name in enumerate(names)
+            },
+        )
+        seen: list[Path] = []
+        original = navigation.load_workspace
+
+        def counted(path: Path, bag: DiagnosticBag) -> Any:
+            seen.append(path)
+            return original(path, bag)
+
+        monkeypatch.setattr(navigation, "load_workspace", counted)
+        reports = service.collect([], [tmp_path / name for name in names], tmp_path)
+        assert set(reports) >= {tmp_path / name for name in names}
+        assert seen.count(tmp_path / "p.ddd.json") == 1, seen
+
+    def test_a_document_no_project_answers_for_is_read_alone_only_where_none_reported_on_it(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``d2`` lies outside the directory of the description that includes it, so no search
+        above it finds one. Checked with ``d1``, that description's run reports on it, and
+        whichever of the two came first ``d2`` is not analysed on its own as well."""
+        write_tree(
+            tmp_path,
+            {
+                "images/q.ddd.json": project("Q", "d1.ddd.json", "../shared/d2.ddd.json"),
+                "images/d1.ddd.json": component("D1", declare("output", "Speed")),
+                "shared/d2.ddd.json": component("D2", declare("input", "Speed")),
+            },
+        )
+        d1, d2 = tmp_path / "images" / "d1.ddd.json", tmp_path / "shared" / "d2.ddd.json"
+        analysed: list[Path] = []
+        original = service.analyze
+
+        def counted(workspace: Any, bag: DiagnosticBag) -> Any:
+            analysed.append(workspace.root.resolve())
+            return original(workspace, bag)
+
+        monkeypatch.setattr(service, "analyze", counted)
+        service.collect([], [d2], tmp_path)
+        assert analysed == [d2.resolve()], "checked by itself, it is read on its own"
+        for order in ([d2, d1], [d1, d2]):
+            analysed.clear()
+            assert d2 in service.collect([], order, tmp_path)
+            assert analysed == [(tmp_path / "images" / "q.ddd.json").resolve()], order
+
+    def test_the_reading_thread_hands_over_what_it_cannot_follow(self, tmp_path: Path) -> None:
+        """A frame holding no message is answered on the server's thread, which alone writes, and
+        broken framing ends the reading there; both are handed over, after what came before."""
+        hello = self.hello(tmp_path)
+        stream = io.BytesIO(
+            framed(hello).getvalue() + raw_frame(b"{ not json") + b"Content-Length: banana\r\n\r\n"
+        )
+        inbox: queue.SimpleQueue[Any] = queue.SimpleQueue()
+        Server(stream, io.BytesIO(), root=tmp_path)._read(inbox)
+        message, unparsed, broken = inbox.get_nowait(), inbox.get_nowait(), inbox.get_nowait()
+        assert message == hello
+        assert isinstance(unparsed, MessageError)
+        assert unparsed.code == PARSE_ERROR
+        assert isinstance(broken, ProtocolError)
+        assert inbox.empty()
+
+    def test_anything_else_the_stream_raises_reaches_the_caller(self, tmp_path: Path) -> None:
+        """As it did when the stream was read in turn: the reading thread hands it over, and the
+        server raises it."""
+
+        class Broken(io.BytesIO):
+            def readline(self, size: int | None = -1) -> bytes:
+                msg = "the pipe broke"
+                raise OSError(msg)
+
+        inbox: queue.SimpleQueue[Any] = queue.SimpleQueue()
+        server = Server(Broken(), io.BytesIO(), root=tmp_path)
+        server._read(inbox)
+        fault = inbox.get_nowait()
+        assert inbox.empty()
+        with pytest.raises(OSError, match="the pipe broke"):
+            server._serve(Arrivals(io.BytesIO(), [fault]))
+
+    def test_the_command_ends_cleanly_while_the_client_holds_its_stdin_open(
+        self, tmp_path: Path
+    ) -> None:
+        """The reading thread is still waiting for a frame after ``exit``, and the interpreter
+        closes ``sys.stdin`` on its way out: waiting for the lock that read holds, it aborts the
+        process, so a stop the client prepared for would end in a core dump. Run from the
+        sources this suite imports, whatever else is installed."""
+        import subprocess
+
+        frames = framed(self.hello(tmp_path), *END).getvalue()
+        sources = Path(server_module.__file__).parents[2]
+        path = os.pathsep.join(filter(None, [str(sources), os.environ.get("PYTHONPATH")]))
+        with subprocess.Popen(
+            [sys.executable, "-m", "ddd", "lsp"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            cwd=tmp_path,
+            env={**os.environ, "PYTHONPATH": path},
+        ) as process:
+            assert process.stdin is not None
+            assert process.stdout is not None
+            process.stdin.write(frames)
+            process.stdin.flush()
+            ended = process.wait(timeout=120)
+            wire = process.stdout.read()
+        assert ended == 0
+        assert [message["id"] for message in sent(io.BytesIO(wire))] == [1, 99]
+
+    def test_the_command_reads_a_stdin_descriptor_through_a_reader_of_its_own(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Over the same descriptor, so that what the interpreter closes on its way out is not
+        what the reading thread waits in. The file is closed once that thread has read it to its
+        end, so that no later file given the same descriptor is read in its place."""
+        import threading
+
+        class Stream:
+            def __init__(self, buffer: Any) -> None:
+                self.buffer = buffer
+
+        readers: list[Any] = []
+        reading: list[threading.Thread] = []
+
+        class Recorded(Server):
+            def __init__(self, reader: Any, *args: Any, **kwargs: Any) -> None:
+                readers.append(reader)
+                super().__init__(reader, *args, **kwargs)
+
+            def _read(self, inbox: Any) -> None:
+                reading.append(threading.current_thread())
+                super()._read(inbox)
+
+        frames = tmp_path / "frames"
+        frames.write_bytes(framed(self.hello(tmp_path), *END).getvalue())
+        wire = io.BytesIO()
+        monkeypatch.setattr(server_module, "Server", Recorded)
+        with frames.open("rb") as stdin:
+            monkeypatch.setattr("sys.stdin", Stream(stdin))
+            monkeypatch.setattr("sys.stdout", Stream(wire))
+            assert server_module.serve() == 0
+            (reader,) = readers
+            assert reader is not stdin
+            assert reader.fileno() == stdin.fileno()
+            (thread,) = reading
+            thread.join()
+        assert [message["id"] for message in sent(wire)] == [1, 99]
+
+
+class TestAHoverResolvesOncePerCheck:
+    """10:I12: the dictionary a hover answers from is kept per description until what was read
+    from disk is dropped, where every hover resolved the whole project again."""
+
+    def workspace(self, tmp_path: Path, *extra: str) -> Path:
+        """``b`` reading what ``a`` writes, in a project a build record names, which also includes
+        each of ``extra``."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json", *extra),
+                "a.ddd.json": component("A", declare("output", "Speed")),
+                "b.ddd.json": component("B", declare("input", "Speed")),
+            },
+        )
+        build_record(tmp_path, tmp_path / "p.ddd.json")
+        return tmp_path / "b.ddd.json"
+
+    def hover(self, path: Path) -> dict[str, Any]:
+        position = Document(path.read_text(encoding="utf-8")).range_of(
+            "component.interface[0].definition.name"
+        )["start"]
+        return {
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "textDocument/hover",
+            "params": {"textDocument": {"uri": path.as_uri()}, "position": position},
+        }
+
+    def test_hovers_between_two_checks_resolve_the_project_once(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from ddd.lsp import hover
+
+        consumer = self.workspace(tmp_path)
+        resolved: list[Any] = []
+        original = hover.analyze
+
+        def counted(workspace: Any, bag: DiagnosticBag) -> Any:
+            resolved.append(workspace)
+            return original(workspace, bag)
+
+        monkeypatch.setattr(hover, "analyze", counted)
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+        assert server._handle(self.hover(consumer))
+        assert server._handle(self.hover(consumer))
+        assert len(resolved) == 1
+        saving = {"textDocument": {"uri": consumer.as_uri()}}
+        assert server._handle(
+            {"jsonrpc": "2.0", "method": "textDocument/didSave", "params": saving}
+        )
+        assert server._handle(self.hover(consumer))
+        assert len(resolved) == 2, "a check drops the dictionary with the rest of what was read"
+        answers = [message["result"] for message in sent(writer) if message.get("id") == 7]
+        assert len(answers) == 3
+        assert answers[0] == answers[1] == answers[2]
+        assert "Written by **A**, read by **B**." in answers[0]["contents"]["value"]
+
+    def test_a_hover_in_a_project_whose_read_reported_an_error_answers_all_the_same(
+        self, tmp_path: Path
+    ) -> None:
+        """A check analyses no such project, so the hover's dictionary is not the check's: the
+        hover resolves what did load, as it always has."""
+        consumer = self.workspace(tmp_path, "c.ddd.json")
+        write_tree(tmp_path, {"c.ddd.json": component("C", declare("nonsense", "X"))})
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+        opened = {"textDocument": {"uri": consumer.as_uri()}}
+        assert server._handle(
+            {"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": opened}
+        )
+        assert "schema" in {
+            entry["code"] for entry in published(writer)[(tmp_path / "c.ddd.json").as_uri()]
+        }
+        assert server._handle(self.hover(consumer))
+        (answer,) = [message["result"] for message in sent(writer) if message.get("id") == 7]
+        assert "Written by **A**, read by **B**." in answer["contents"]["value"]
+
+    def test_a_hover_in_a_document_no_project_can_be_read_for_says_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        """A new document, open and not saved yet: the cursor is on a name it declares, and there
+        is no project to resolve, not even the document read on its own."""
+        draft = tmp_path / "draft.ddd.json"
+        text = json.dumps(component("D", declare("output", "Speed")))
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+        opened = {"textDocument": {"uri": draft.as_uri(), "version": 1, "text": text}}
+        assert server._handle(
+            {"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": opened}
+        )
+        position = Document(text).range_of("component.interface[0].definition.name")["start"]
+        asked = {"textDocument": {"uri": draft.as_uri()}, "position": position}
+        assert server._handle(
+            {"jsonrpc": "2.0", "id": 7, "method": "textDocument/hover", "params": asked}
+        )
+        assert not draft.exists()
+        assert sent(writer)[-1] == response(7, None)

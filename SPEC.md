@@ -3034,7 +3034,12 @@ finished making. The findings are therefore the disk's. The text of every open d
 nonetheless kept current as it is typed, and every position the client sends and every edit
 the server answers - a rename, a quick fix - is read from and written for that text, so that
 an edit lands where the editor shows it; a client that takes versioned edits is told which
-version of each document an edit was computed for. Each finding is also published at the
+version of each document an edit was computed for. Opens, saves and watched changes that arrive
+together are checked together, each project once for all of them: the server checks the
+documents they name once it has handled every message already waiting behind the first of them,
+and before it answers a request that came after them, never waiting for a message not yet sent.
+A save and the change the client's watcher reports for it, arriving together, are one analysis
+of the project however many of its documents are open. Each finding is also published at the
 locations of its notes - a note stating no place of its own being published at the first line
 of the file its finding is on, the protocol having no way to say "here". The build records a
 search discovers are announced as log messages, and a record written by a newer DDD - its

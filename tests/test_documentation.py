@@ -10476,3 +10476,43 @@ class TestAMultiFileEditIsPreviewed:
             in said
         )
         assert "a client shows a multi-file code action in a preview first" not in said
+
+
+class TestWhatArrivesTogetherIsCheckedTogether:
+    """10:I12. Opens, saves and watched changes that arrive together are checked together, each
+    project once, before the next request is answered and never waiting for what has not been
+    sent."""
+
+    SAID: ClassVar[dict[str, tuple[str, tuple[str, ...]]]] = {
+        "SPEC.md": (
+            SPEC,
+            (
+                "Opens, saves and watched changes that arrive together are checked together, "
+                "each project once for all of them: the server checks the documents they name "
+                "once it has handled every message already waiting behind the first of them, and "
+                "before it answers a request that came after them, never waiting for a message "
+                "not yet sent. A save and the change the client's watcher reports for it, "
+                "arriving together, are one analysis of the project however many of its "
+                "documents are open.",
+            ),
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            (
+                "Opens, saves and watched changes that arrive together are checked together, "
+                "each project once for all of them: the server checks the documents they name "
+                "once it has handled every message already waiting behind the first of them, and "
+                "before it answers a request that came after them, never waiting for a message "
+                "not yet sent. A save and the change the editor's watcher reports for it, "
+                "arriving together, are one analysis of the project however many of its "
+                "documents are open.",
+            ),
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(SAID))
+    def test_the_page_says_what_arrives_together_is_checked_together(self, page: str) -> None:
+        text, phrases = self.SAID[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"

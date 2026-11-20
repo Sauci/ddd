@@ -48,7 +48,12 @@ What the server offers
 on open, on save, and when the editor reports that a description file it watches changed on
 disk - a build writes them and a branch switch rewrites them all, and neither is something
 a document event would report. Each is drawn over the key it is about rather than over the
-whole file. The
+whole file. Opens, saves and watched changes that arrive together are checked together, each
+project once for all of them: the server checks the documents they name once it has handled
+every message already waiting behind the first of them, and before it answers a request that
+came after them, never waiting for a message not yet sent. A save and the change the editor's
+watcher reports for it, arriving together, are one analysis of the project however many of its
+documents are open. The
 server publishes for **every** file of the project rather than only the one on screen,
 because half of a disagreement is always in the other component, and each finding is also
 published at the locations of its notes - of two components declaring the same output,

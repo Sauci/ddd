@@ -428,17 +428,19 @@ def _joined(
     One way is offered once however many projects offer it, in the order the first of them does.
     Two projects offering one under one title and writing different edits - two producers'
     values, two consensuses, two values a type states in two images - offer neither, nor two
-    sending out different values for one key. The first is preferred where it leads in every
-    project that offers a way at all, which a project offering none - the declaration alone in it
-    - has no say in.
+    sending out different values for one key. The first is preferred where it is the first way
+    offered of every project that offers one, and leads there; a project offering none - the
+    declaration alone in it - has no say. A way withheld once every project is settled
+    (:func:`_spread`) is not offered, and has no say either: asked before, a removal withheld
+    because a type keeps its key took the slot from the next key's fix, which leads.
     """
     offered: dict[_Fix, Reconciliation] = {}
     differing: set[_Fix] = set()
-    firsts: list[_Fix | None] = []
+    ways: list[list[Reconciliation]] = []
+    """Each project's ways, in its own order."""
     for each in asked:
         decisions = reconciliations(each.built, path, document, pointer, cache)
-        if decisions:
-            firsts.append(_fix(decisions[0]) if decisions[0].leads else None)
+        ways.append(decisions)
         for decision in decisions:
             if _differs(offered.setdefault(_fix(decision), decision), decision):
                 differing.add(_fix(decision))
@@ -457,6 +459,12 @@ def _joined(
         spread = _spread(decision, name, reached[fix]) if decision.spreads else decision
         if spread is not None:
             joined.append(spread)
+    kept = {_fix(decision) for decision in joined}
+    firsts: list[_Fix | None] = []
+    for decisions in ways:
+        first = next((decision for decision in decisions if _fix(decision) in kept), None)
+        if first is not None:
+            firsts.append(_fix(first) if first.leads else None)
     preferred = bool(joined) and all(first == _fix(joined[0]) for first in firsts)
     return joined, preferred
 
@@ -612,6 +620,12 @@ def reconciliations(
     project's ways together (:func:`_joined`), settles such a way again over every project it
     reaches, and withholds it there for a declaration whose buffer moved or whose type keeps the
     key it takes out (:func:`_spread`).
+
+    The declaration asked at is the one the index found at ``path`` resolved, which is how every
+    site of the index is spelled. An editor sends the path it opened the document under, through a
+    junction or a link as readily as not, and taken as it came it equalled no site of the index:
+    the producer was a consumer of its own variable, offered its own value to take and its
+    removal lost, and its fixes ordered as a reader's.
     """
     within = WITHIN_DEFINITION.match(pointer)
     if within is None:
@@ -620,14 +634,14 @@ def reconciliations(
     name = document.value_at(f"{definition}.name")
     if not isinstance(name, str):
         return []
+    here = Site(path.resolve(), definition)
     key = pointer.rsplit(".", 1)[-1]
     if pointer == f"{definition}.{key}" and key in PROPAGATED_KEYS:
         wanted = [key]
     else:
         wanted = _keys_stated(built, document, definition, cache) + _missing(
-            built, path, document, name, definition, cache
+            built, here.path, document, name, definition, cache
         )
-    here = Site(path, definition)
     produces = here in built.producers.get(name, ())
     owner = len(built.producers.get(name, ())) == 1
     if owned and not owner:

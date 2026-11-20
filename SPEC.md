@@ -3040,7 +3040,10 @@ keys what it draws on the uri *string*, and a workspace opened through a junctio
 substituted or mapped drive, a symlinked directory or with a different case spells every path
 in it differently from the way the loader resolves it - so the resolved spelling sent the
 findings to a resource the editor was not showing and handed a rename to a document that was
-not on screen. A document whose uri names a scheme other than `file:` is refused with the
+not on screen. A file's findings are published under one spelling at a time: a file whose
+findings went out under its resolved path before the client opened it has them withdrawn there
+once they go out under the client's spelling, since nothing publishes under the first again. A
+document whose uri names a scheme other than `file:` is refused with the
 protocol's invalid-parameters error rather than read for whatever path-like text it holds:
 there is nothing on disk to check.
 

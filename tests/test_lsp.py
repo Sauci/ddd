@@ -9641,6 +9641,39 @@ class TestAFixInTwoImages:
         assert reconciled(writer_s_fixes) == ["Apply this unit to 1 other declaration of 'V'"]
         assert preferred(writer_s_fixes) == ["Apply this unit to 1 other declaration of 'V'"]
 
+    def test_a_withheld_first_fix_leaves_the_slot_to_the_next_that_leads(
+        self, tmp_path: Path
+    ) -> None:
+        """The writer states neither a unit nor dimensions. Image one's reader states a unit, and
+        image two's names a type stating another, and dimensions: taking the unit out of the
+        readers, image one's first fix, is withheld, since the type keeps it, and taking the
+        dimensions out of image two's reader leads there, the writer's own answer sent out. It is
+        the first fix offered, and it was not preferred, image one's first having taken the slot
+        before it was withheld - where image two alone preferred it."""
+        imaged(
+            tmp_path,
+            {
+                "one": ["w.ddd.json", "r1.ddd.json"],
+                "two": ["t.ddd.json", "w.ddd.json", "r2.ddd.json"],
+            },
+            {
+                "t.ddd.json": types(scalar_type("Speed_t", "uint16", unit="rpm")),
+                "w.ddd.json": component("W", declare("output", "V", "uint16")),
+                "r1.ddd.json": component("R1", declare("input", "V", "uint16", unit="krpm")),
+                "r2.ddd.json": component(
+                    "R2", declare("input", "V", typename="Speed_t", dimensions=[4])
+                ),
+            },
+        )
+        offered, _ = fixes_asked(tmp_path, tmp_path / "w.ddd.json")
+        assert (reconciled(offered), preferred(offered)) == (
+            [
+                "Remove the dimensions from 1 other declaration of 'V'",
+                "Take the dimensions the other declarations of 'V' state",
+            ],
+            ["Remove the dimensions from 1 other declaration of 'V'"],
+        )
+
     def test_a_value_sent_out_reaches_the_reader_of_each_image(self, tmp_path: Path) -> None:
         """From a writer two images share, each with a reader of its own: one fix reaching both
         readers, where each image offered one reaching its own under the same title."""
@@ -12348,3 +12381,110 @@ class TestAHoverSpeaksForEveryProjectHoldingTheDocument:
             build_record(tmp_path, tmp_path / "images" / f"{image}.ddd.json", image=f"{image}.elf")
         said = self.hovered(tmp_path, tmp_path / "w.ddd.json")
         assert "Written by **Writer**, read by **ReaderTwo**." in said
+
+
+class TestOneSpellingPerFile:
+    """10:M5. A file the client opens through a junction or a link has two spellings: the one the
+    client opened it under, and the one the loader resolves it to, under which the server publishes
+    it until the client opens it. Its findings go out under one of them at a time, the other's
+    withdrawn when they move, and an open document is the declaration the index found there
+    whichever way the client spelled it."""
+
+    def linked(self, tmp_path: Path) -> tuple[Path, Path]:
+        """``r`` reading ``V``, which ``w`` writes, and ``Y``, which nothing writes, in ``real``;
+        and ``link``, a second spelling of ``real``."""
+        real = tmp_path / "real"
+        write_tree(
+            real,
+            {
+                "p.ddd.json": project("P", "w.ddd.json", "r.ddd.json"),
+                "w.ddd.json": component("W", declare("output", "V", id="k7m2q9xr4t8w")),
+                "r.ddd.json": component("R", declare("input", "V"), declare("input", "Y")),
+            },
+        )
+        link = tmp_path / "link"
+        directory_link(link, real)
+        return real, link
+
+    def notified(self, method: str, path: Path) -> dict[str, Any]:
+        return {
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": {"textDocument": {"uri": path.as_uri()}},
+        }
+
+    def test_findings_published_under_another_spelling_are_withdrawn_under_it(
+        self, tmp_path: Path
+    ) -> None:
+        """``r`` goes out under its resolved spelling while only ``w`` is open, then under the
+        link once it is opened there: what went out under the first spelling stayed there after
+        ``r`` was mended and saved, since nothing published under it again."""
+        real, link = self.linked(tmp_path)
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+        assert server._handle(self.notified("textDocument/didOpen", link / "w.ddd.json"))
+        resolved = (real / "r.ddd.json").resolve().as_uri()
+        assert [entry["code"] for entry in published(writer)[resolved]] == ["missing-producer"]
+        writer = server.writer = io.BytesIO()
+        assert server._handle(self.notified("textDocument/didOpen", link / "r.ddd.json"))
+        assert published(writer).get(resolved) == [], (
+            "withdrawn under the spelling it went out under"
+        )
+        assert [entry["code"] for entry in published(writer)[(link / "r.ddd.json").as_uri()]] == [
+            "missing-producer"
+        ]
+        write_tree(real, {"r.ddd.json": component("R", declare("input", "V"))})
+        writer = server.writer = io.BytesIO()
+        assert server._handle(self.notified("textDocument/didSave", link / "r.ddd.json"))
+        assert published(writer) == {(link / "r.ddd.json").as_uri(): []}
+
+    def test_a_file_published_once_under_one_spelling_is_withdrawn_once(
+        self, tmp_path: Path
+    ) -> None:
+        """Nothing is withdrawn under a spelling that holds nothing on screen: a file whose last
+        publication was empty, or one that goes out under the spelling it went out under."""
+        real, link = self.linked(tmp_path)
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+        assert server._handle(self.notified("textDocument/didOpen", link / "w.ddd.json"))
+        assert server._handle(self.notified("textDocument/didOpen", link / "r.ddd.json"))
+        assert server._handle(self.notified("textDocument/didSave", link / "r.ddd.json"))
+        resolved = (real / "r.ddd.json").resolve().as_uri()
+        under = [
+            message["params"]["diagnostics"]
+            for message in sent(writer)
+            if message.get("method") == "textDocument/publishDiagnostics"
+            and message["params"]["uri"] == resolved
+        ]
+        assert [[entry["code"] for entry in each] for each in under] == [["missing-producer"], []]
+
+    def test_the_producer_opened_through_a_link_is_offered_a_producer_s_fixes(
+        self, tmp_path: Path
+    ) -> None:
+        """The declaration asked at kept the client's spelling, which no index site equals: the
+        producer was a consumer of its own variable, its removal lost, its fixes ordered as a
+        reader's and none preferred."""
+        real = tmp_path / "real"
+        write_tree(
+            real,
+            {
+                "p.ddd.json": project("P", "w.ddd.json", "r.ddd.json"),
+                "w.ddd.json": component("W", declare("output", "V", unit="rpm")),
+                "r.ddd.json": component("R", declare("input", "V")),
+            },
+        )
+        link = tmp_path / "link"
+        directory_link(link, real)
+        w = link / "w.ddd.json"
+        offered, _ = fixes_asked(tmp_path, w, holding(w, w.read_text(encoding="utf-8")))
+        assert (reconciled(offered), preferred(offered)) == (
+            [
+                "Apply this unit to 1 other declaration of 'V'",
+                "Remove this unit, which no other declaration of 'V' has",
+            ],
+            ["Apply this unit to 1 other declaration of 'V'"],
+        )
+        assert [touched(action) for action in offered] == [{"r.ddd.json"}, {"w.ddd.json"}]
+        assert list(offered[1]["edit"]["changes"]) == [(link / "w.ddd.json").as_uri()]

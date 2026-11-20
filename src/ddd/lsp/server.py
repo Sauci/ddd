@@ -309,7 +309,11 @@ class Server:
         self.roots: list[Path] = [root or Path.cwd()]
         """The workspace folders, first one first; a multi-root workspace has several."""
         self.build_directories = list(build_directories)
-        self._published: set[Path] = set()
+        self._published: dict[Path, str] = {}
+        """Each file whose findings are on screen, by its resolved path, with the uri they went out
+        under: a file goes out under its resolved spelling until the client opens it under another,
+        and what went out under the first and was never withdrawn there was never withdrawn at all
+        (:meth:`_publish`)."""
         self._announced: tuple[str, ...] | None = None
         """What was last said about the configured projects, so it is not said every save."""
 
@@ -955,9 +959,8 @@ class Server:
         # covering it, a run looks at the document and the project above it, and says nothing
         # of another project, which is not the same as saying it is fine.
         current = {path for path, findings in reports.items() if findings}
-        for path in sorted(current | (self._published & set(reports))):
+        for path in sorted(current | (self._published.keys() & set(reports))):
             self._publish(path, reports.get(path, []))
-        self._published = (self._published - set(reports)) | current
         self._withdraw_deleted()
         self._mended()
 
@@ -991,7 +994,6 @@ class Server:
             if not path.exists() and path.resolve() not in self._open
         ):
             self._publish(path, [])
-            self._published.discard(path)
 
     def _announce(self, builds: Sequence[BuildInfo]) -> None:
         """Say which projects were found, once, and again whenever that changes.
@@ -1646,17 +1648,31 @@ class Server:
         }
 
     def _publish(self, path: Path, findings: list[dict[str, Any]]) -> None:
+        """Send one file's findings, under the spelling the client knows it by, and note what is on
+        screen for it (:attr:`_published`).
+
+        Where what is on screen went out under another spelling - the resolved one, before the
+        client opened the file through a junction or a link - it is withdrawn there first: a
+        client keys what it draws on the uri string, so the old set stayed on screen beside the
+        new one, and stayed there once the file was fixed, under a uri nothing published again.
+        """
+        uri = self._uri(path)
+        shown = self._published.pop(path, None)
+        if shown is not None and shown != uri:
+            self._diagnostics(shown, [])
         for finding in findings:
             for related in finding.get("relatedInformation", ()):
                 # The other side of a conflict is somewhere the reader clicks, so it needs the
                 # client's spelling as much as the finding itself does.
                 related["location"]["uri"] = self._respell(related["location"]["uri"])
+        self._diagnostics(uri, findings)
+        if findings:
+            self._published[path] = uri
+
+    def _diagnostics(self, uri: str, findings: list[dict[str, Any]]) -> None:
         write_message(
             self.writer,
-            notification(
-                "textDocument/publishDiagnostics",
-                {"uri": self._uri(path), "diagnostics": findings},
-            ),
+            notification("textDocument/publishDiagnostics", {"uri": uri, "diagnostics": findings}),
         )
 
 

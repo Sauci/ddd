@@ -66,7 +66,9 @@ Everything the server publishes, answers and edits is spelled the way the client
 document it opened, and resolved for every file it never opened. An editor matches a
 publication to what is on screen by comparing the uri *string*, and a workspace opened
 through a junction, a substituted or mapped drive, a symlinked directory or with a different
-case spells every path in it differently from the way the loader resolves it.
+case spells every path in it differently from the way the loader resolves it. A file's findings
+are on screen under one spelling at a time: published under its resolved path before it was
+opened, they are withdrawn there once they go out under the spelling it was opened with.
 
 **Hover.** A summary of the data object under the cursor, resolved against the whole
 project rather than read off the file: the shape a curve took from its axis, the limits

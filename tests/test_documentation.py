@@ -10701,3 +10701,35 @@ class TestWhatAHoverSaysOfWhoWritesAndReadsIt:
             assert phrase in said, f"{page} no longer says: {phrase!r}"
         for phrase in stale:
             assert phrase not in said, f"{page} still says: {phrase!r}"
+
+
+class TestWhichSpellingAFilesFindingsGoOutUnder:
+    """10:M5. A file's findings are on screen under one spelling at a time: published under its
+    resolved path before the client opened it under another, they are withdrawn there when they go
+    out under the client's, where they stayed on screen for good."""
+
+    SAID: ClassVar[dict[str, tuple[str, str]]] = {
+        "SPEC.md": (
+            SPEC,
+            "A file's findings are published under one spelling at a time: a file whose findings "
+            "went out under its resolved path before the client opened it has them withdrawn "
+            "there once they go out under the client's spelling, since nothing publishes under "
+            "the first again.",
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            "A file's findings are on screen under one spelling at a time: published under its "
+            "resolved path before it was opened, they are withdrawn there once they go out under "
+            "the spelling it was opened with.",
+        ),
+        "README.md": (
+            README,
+            "gets its squiggles on the document you actually have open, and none left behind "
+            "under the spelling a file went out under before you opened it.",
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(SAID))
+    def test_the_page_says_a_file_s_findings_go_out_under_one_spelling(self, page: str) -> None:
+        text, phrase = self.SAID[page]
+        assert phrase in flattened(text), f"{page} no longer says: {phrase!r}"

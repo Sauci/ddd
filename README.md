@@ -254,7 +254,8 @@ looks, in silence, exactly like a workspace nobody configured a build in.
 
 Everything published or edited is spelled the way your editor spelled it, so a workspace
 opened through a junction, a `subst` drive, a symlink or with a different case gets its
-squiggles on the document you actually have open.
+squiggles on the document you actually have open, and none left behind under the spelling a
+file went out under before you opened it.
 
 A file no build claims is looked for in a project instead: the server walks up from it to the
 workspace folder and checks it through the outermost project description that includes it

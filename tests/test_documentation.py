@@ -11,6 +11,7 @@ import argparse
 import ast
 import contextlib
 import dataclasses
+import inspect
 import io
 import itertools
 import json
@@ -49,6 +50,8 @@ from ddd.backends.c.model import (
 )
 from ddd.cli import EXIT_OK, EXIT_USAGE, _build_parser, cmake_module_directory, main, schema_models
 from ddd.diagnostics import CHECKS, Severity
+from ddd.gui.compare import Compared, _own_errors
+from ddd.gui.contract import CompareReply
 from ddd.loading import FILE_KINDS
 from ddd.models import MAX_ELEMENTS, Component, DataObject, Datatype, ObjectKind, ScalarType
 from ddd.toolbox.findings import FINDINGS
@@ -11564,3 +11567,38 @@ class TestAPluginChangedUnderDddGui:
             "plugin-invalid",
             "plugin-changed",
         ]
+
+    def test_the_compare_rule_s_docstrings_say_the_tab_counts_it_where_no_command_files_it(
+        self,
+    ) -> None:
+        """The tab's verdict counts the project's own errors as ``ddd compare`` does, and ``ddd
+        gui`` alone files ``plugin-changed``: what SPEC 4.1 and the ``ddd gui`` row say of it, the
+        docstrings saying that verdict is the commands' say too."""
+        said = {
+            "Compared.own_errors": flattened(inspect.getsource(Compared)),
+            "_own_errors": flattened(_own_errors.__doc__ or ""),
+            "CompareReply.verdict": flattened(
+                CompareReply.model_fields["verdict"].description or ""
+            ),
+        }
+        phrases = {
+            "Compared.own_errors": (
+                "is told why. ``plugin-changed`` is among them while it stands as an error, which "
+                "no command files: the verdict then refuses where ``ddd compare`` may not, until "
+                "the server is restarted or the plugin's file holds the bytes it was imported "
+                "from again."
+            ),
+            "_own_errors": (
+                "and so what ``ddd check`` exits 1 on, save ``plugin-changed`` while it stands as "
+                "an error, which ``ddd gui`` alone files."
+            ),
+            "CompareReply.verdict": (
+                "as the exit code of ``ddd compare`` and ``ddd check --baseline`` answers, save "
+                "while ``plugin-changed`` stands as an error among the project's own, which "
+                "neither command files: the verdict then refuses where they may not, until the "
+                "server is restarted or the plugin's file holds the bytes it was imported from "
+                "again."
+            ),
+        }
+        missing = [name for name, phrase in phrases.items() if phrase not in said[name]]
+        assert not missing, f"no longer said of plugin-changed by {missing}"

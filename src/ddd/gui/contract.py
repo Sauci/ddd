@@ -1522,7 +1522,10 @@ class CompareReply(_Frozen):
     """Whether the candidate can replace the baseline: no finding of severity error survived
     the session's own severity policy, whichever list it is in - the project's own errors
     (:attr:`own_errors`), those the baseline carries over, and the comparison's, as the exit
-    code of ``ddd compare`` and ``ddd check --baseline`` answers."""
+    code of ``ddd compare`` and ``ddd check --baseline`` answers, save while ``plugin-changed``
+    stands as an error among the project's own, which neither command files: the verdict then
+    refuses where they may not, until the server is restarted or the plugin's file holds the bytes
+    it was imported from again."""
 
     own_errors: int
     """How many errors the open project has of its own, which the verdict counts: the number the

@@ -206,7 +206,10 @@ class Compared:
     own_errors: int
     """How many errors the open project has of its own, which the verdict counts as ``ddd compare``
     exit code does: what the state's count of errors is, so that a reader told "cannot replace"
-    of a project whose comparison found nothing is told why."""
+    of a project whose comparison found nothing is told why. ``plugin-changed`` is among them while
+    it stands as an error, which no command files: the verdict then refuses where ``ddd compare``
+    may not, until the server is restarted or the plugin's file holds the bytes it was imported
+    from again."""
 
 
 def compared(revision: Revision, baseline: Path, root: Path, cache: BaselineCache) -> Compared:
@@ -307,7 +310,8 @@ def compared(revision: Revision, baseline: Path, root: Path, cache: BaselineCach
 
 def _own_errors(revision: Revision) -> int:
     """How many findings of severity error the open project has of its own: what the state counts
-    of it, whichever build graded them, and so what ``ddd check`` exits 1 on.
+    of it, whichever build graded them, and so what ``ddd check`` exits 1 on, save
+    ``plugin-changed`` while it stands as an error, which ``ddd gui`` alone files.
 
     Counted from the revision's findings rather than computed again under :func:`_policy_of`,
     which grades ``compare``'s own checks and no other: the project's own are graded by each

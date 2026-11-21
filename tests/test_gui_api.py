@@ -732,6 +732,99 @@ class TestEveryPlanIsAnsweredOneWay:
         assert len(made) == 1, f"a plan's reply is made at lines {made}"
 
 
+class TestAPlanChangingNoLineIsAnsweredWithItsFile:
+    """A plan of the unit, type, shared and declaration routes keeps, in its reply, a file its edit
+    leaves as it was, where the value and description routes leave it out (15:M4, 2:I10). Which
+    way each route answers is the route's own, and a route moved to the other way answers a page
+    something different: the Types tab plans a row's current value at each keystroke."""
+
+    @pytest.mark.parametrize(
+        ("example", "project_file", "route", "query", "file"),
+        [
+            (
+                "vocabulary",
+                "project.ddd.json",
+                "/api/unit-plan",
+                {
+                    "action": "describe",
+                    "unit": "rpm",
+                    "description": "rotational speed, revolutions per minute",
+                },
+                "units.ddd.json",
+            ),
+            (
+                "structures",
+                "project.ddd.json",
+                "/api/type-plan",
+                {
+                    "action": "set",
+                    "name": "Temperature_t",
+                    "key": "description",
+                    "raw": '"A temperature as every component of this project agrees to see it"',
+                },
+                "types.ddd.json",
+            ),
+            (
+                "vocabulary",
+                "project.ddd.json",
+                "/api/constant-plan",
+                {
+                    "action": "set",
+                    "name": "TREND_SAMPLES",
+                    "key": "description",
+                    "raw": '"sample slots of a pressure trend buffer, '
+                    'a device wide size no single component owns"',
+                },
+                "constants.ddd.json",
+            ),
+            (
+                "vocabulary",
+                "project.ddd.json",
+                "/api/section-plan",
+                {
+                    "action": "set",
+                    "name": ".calib",
+                    "key": "description",
+                    "raw": '"calibration flash, tool writable through the emulation overlay"',
+                },
+                "sections.ddd.json",
+            ),
+            (
+                "vocabulary",
+                "project.ddd.json",
+                "/api/raster-plan",
+                {
+                    "action": "set",
+                    "name": "10ms",
+                    "key": "description",
+                    "raw": '"control task"',
+                },
+                "rasters.ddd.json",
+            ),
+        ],
+        ids=["unit", "type", "constant", "section", "raster"],
+    )
+    def test_the_route_answers_the_file_with_one_operation_and_no_hunk(
+        self,
+        tmp_path: Path,
+        example: str,
+        project_file: str,
+        route: str,
+        query: dict[str, str],
+        file: str,
+    ) -> None:
+        """A description set to the text it already has: the route answers 200 with that file,
+        its one operation and ``hunks: []``, where the value and description routes answer a
+        plan of no change."""
+        api, root = copied(tmp_path, example, project_file)
+        reply = get(api, route, **query)
+        assert reply.status == 200
+        [change] = reply.body["changes"]
+        assert Path(change["file"]).name == file
+        assert len(change["operations"]) == 1
+        assert change["hunks"] == []
+
+
 class TestTheQueryIsReadOnce:
     """Every request's query read once, one value a key, through the route's own model, before
     the route is asked anything: a key given twice and a key the route does not take are

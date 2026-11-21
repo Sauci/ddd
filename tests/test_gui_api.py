@@ -816,7 +816,7 @@ class TestAPlanChangingNoLineIsAnsweredWithItsFile:
         """A description set to the text it already has: the route answers 200 with that file,
         its one operation and ``hunks: []``, where the value and description routes answer a
         plan of no change."""
-        api, root = copied(tmp_path, example, project_file)
+        api, _ = copied(tmp_path, example, project_file)
         reply = get(api, route, **query)
         assert reply.status == 200
         [change] = reply.body["changes"]

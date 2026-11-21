@@ -153,6 +153,7 @@ from ddd.gui.session import (
     findings_with,
     generated_refusal,
     kind_of,
+    walk_finds,
 )
 from ddd.gui.session import KINDS as DESCRIPTION_KINDS
 from ddd.ir import DataDictionary
@@ -351,6 +352,9 @@ class Api:
         # The state's answer and the version it was made at: what `GET /api/state` answers again
         # until the version moves, every request of a page's long poll asking for it.
         self._state_kept: tuple[int, Reply] | None = None
+        # The projects the last walk for them found (`find_projects`), which an open asks of a
+        # path before it walks again (`_openable`).
+        self._found: frozenset[Path] = frozenset()
 
     def handle(
         self,
@@ -426,6 +430,7 @@ class Api:
 
     def _projects(self, query: NoQuery, body: None) -> Reply:
         found = find_projects(self.session.root, self.session.build_directories)
+        self._found = frozenset(listed.path for listed in found.projects)
         return Reply(
             200,
             written(
@@ -445,9 +450,7 @@ class Api:
 
     def _open(self, query: NoQuery, body: contract.OpenRequest) -> Reply:
         wanted = resolve_path(Path(body.path))
-        found = find_projects(self.session.root, self.session.build_directories)
-        allowed = {p.path for p in found.projects} | ({self.project} if self.project else set())
-        if wanted not in allowed:
+        if not self._openable(wanted):
             return _error(404, "not-found", f"{body.path} is not a project found here")
         try:
             self.session.open(wanted)
@@ -456,6 +459,30 @@ class Api:
         # Answered at once, the project named: the page follows its first analysis from the
         # state, which says it is being analysed until it lands.
         return Reply(200, self._session_body())
+
+    def _openable(self, wanted: Path) -> bool:
+        """Whether ``wanted``, resolved, may be opened: the project named on the command line, or
+        one the walk for the projects under the start directory finds (:func:`find_projects`).
+
+        Asked without the walk where it can be, the walk parsing every description under that
+        directory to tell the projects among them: over a generated project of 100,000
+        declarations, the walk alone took 135 to 259 ms, and ``POST /api/open`` of the project
+        named on the command line 179 to 260 ms with it and 28 to 126 ms without it, four opens
+        each (Linux development PC). The project named on the command line needs no walk at all,
+        as it never did: it is opened from wherever it lies. The open project, and one the last
+        walk found, are asked the walk's own question alone (:func:`walk_finds`) and opened where
+        the walk would find them now; any other path is walked for, and so is one of those the
+        walk would not find now as a description - deleted, replaced, or offered by a build
+        record alone - so that a path held is never answered from the listing alone. Each walk
+        is kept as the listing the next open asks."""
+        if wanted == self.project:
+            return True
+        held = wanted == self.session.project or wanted in self._found
+        if held and walk_finds(self.session.root, wanted):
+            return True
+        found = find_projects(self.session.root, self.session.build_directories)
+        self._found = frozenset(listed.path for listed in found.projects)
+        return wanted in self._found
 
     def _state(self, query: StateQuery, body: None) -> Reply:
         """What the session says: at once, or as soon as its version is past ``?after=``, or

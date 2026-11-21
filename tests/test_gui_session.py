@@ -13,7 +13,7 @@ import threading
 from collections.abc import Callable, Sequence
 from dataclasses import replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import pytest
 
@@ -26,6 +26,7 @@ from conftest import (
     collected_project,
     component,
     declare,
+    directory_link,
     first_revision,
     landed,
     lying_under,
@@ -60,6 +61,7 @@ from ddd.gui.session import (
     Snapshot,
     find_projects,
     findings_with,
+    walk_finds,
 )
 from ddd.lsp.diagnostics import Run, run_build
 
@@ -266,6 +268,68 @@ class TestFindingProjects:
             SeverityPolicy.from_strings(["no-such-check=error"], strict=False)
         found = find_projects(shared.parent)
         assert [reason for _, reason in found.refused] == [str(expected.value)]
+
+
+class TestWhatTheWalkFindsAskedOfOnePath:
+    """``walk_finds``, which ``POST /api/open`` asks of a path it holds before it walks (14:M14):
+    held to the walk's own answer over every path of a tree holding each kind of place the walk
+    leaves out, and each one's reason asked of it alone."""
+
+    TREE: Final = {
+        "p.ddd.json": project("Top"),
+        ".hidden.ddd.json": project("Hidden file"),
+        "a.ddd.json": component("A"),
+        "notes.json": project("Not a description's name"),
+        "cut.ddd.json": '{"project": {"name": "Cut"',
+        "1/2/3/4/deep.ddd.json": project("Four deep"),
+        "1/2/3/4/5/deeper.ddd.json": project("Five deep"),
+        "src/s.ddd.json": project("Source"),
+        ".git/g.ddd.json": project("Hidden"),
+        "node_modules/m.ddd.json": project("Modules"),
+        "build/b.ddd.json": project("Build"),
+        "cmake-build-debug/c.ddd.json": project("CMake build"),
+        "out/o.ddd.json": project("Out"),
+        "elsewhere/e.ddd.json": project("Linked to"),
+    }
+    """A project description at each kind of place, and a file at each kind the walk passes."""
+
+    def linked(self, tmp_path: Path) -> Path:
+        """:attr:`TREE` under ``tmp_path / "root"``, its ``linked`` directory a link to its
+        ``elsewhere``; returns the root."""
+        root = tmp_path / "root"
+        write_tree(root, self.TREE)
+        directory_link(root / "linked", root / "elsewhere")
+        return root
+
+    def test_it_finds_what_the_walk_finds_and_nothing_else(self, tmp_path: Path) -> None:
+        """The description reached through the link included, whichever way the platform's
+        walk takes the link: a symbolic link is passed over, and Windows' junction, which
+        ``directory_link`` makes there, is a directory to it."""
+        root = self.linked(tmp_path)
+        walked = {found.path for found in find_projects(root).projects}
+        paths = {path for path in root.rglob("*") if path.is_file()}
+        paths |= {root / "linked" / "e.ddd.json", root, root.parent / "p.ddd.json"}
+        asked = {path for path in paths if walk_finds(root, path)}
+        assert asked == walked
+        assert sorted(
+            path.relative_to(root).as_posix() for path in asked if "linked" not in path.parts
+        ) == [
+            ".hidden.ddd.json",
+            "1/2/3/4/deep.ddd.json",
+            "elsewhere/e.ddd.json",
+            "p.ddd.json",
+            "src/s.ddd.json",
+        ]
+
+    def test_a_project_only_a_record_offers_is_not_one_it_finds(self, tmp_path: Path) -> None:
+        """The walk offers it by the record, which this does not read."""
+        root = tmp_path / "root"
+        write_tree(tmp_path, {"far/f.ddd.json": project("Far"), "root/p.ddd.json": project("P")})
+        build_record(root, tmp_path / "far" / "f.ddd.json")
+        assert (tmp_path / "far" / "f.ddd.json").resolve() in {
+            found.path for found in find_projects(root).projects
+        }
+        assert not walk_finds(root, (tmp_path / "far" / "f.ddd.json").resolve())
 
 
 class TestOpening:

@@ -1392,6 +1392,111 @@ class TestProjects:
         assert (reply.status, reply.body["error"]) == (400, "bad-request")
 
 
+@pytest.fixture
+def walks(monkeypatch: pytest.MonkeyPatch) -> list[Path]:
+    """Every walk the api makes from now on for the projects under the directory ``ddd gui`` was
+    started in (``find_projects``), by the directory walked: each parses every description the
+    walk reaches."""
+    walked: list[Path] = []
+    real = api_module.find_projects
+
+    def walking(root: Path, build_directories: Iterable[Path] = ()) -> Any:
+        walked.append(root)
+        return real(root, tuple(build_directories))
+
+    monkeypatch.setattr(api_module, "find_projects", walking)
+    return walked
+
+
+class TestOpeningWithoutTheWalk:
+    """14:M14. ``POST /api/open`` answers the project named on the command line, the open
+    project, or one the last listing found, without walking for the projects under the start
+    directory, which parses every description there. It walks for a path none of those holds,
+    and one held is answered only where the walk would find it now: a description deleted or
+    replaced since is walked for, and refused where the walk does not find it."""
+
+    def test_the_project_named_on_the_command_line_is_opened_without_the_walk(
+        self, api: Api, root: Path, walks: list[Path]
+    ) -> None:
+        reply = post(api, "/api/open", {"path": (root / "p.ddd.json").as_posix()})
+        assert (reply.status, reply.body["project"]["name"], walks) == (200, "P", [])
+
+    def test_a_project_the_listing_found_is_opened_without_walking_again(
+        self, api: Api, root: Path, walks: list[Path]
+    ) -> None:
+        get(api, "/api/projects")
+        reply = post(api, "/api/open", {"path": (root / "other" / "q.ddd.json").as_posix()})
+        assert (reply.status, reply.body["project"]["name"], len(walks)) == (200, "Q", 1)
+
+    def test_the_open_project_is_opened_again_without_the_walk(
+        self, root: Path, walks: list[Path]
+    ) -> None:
+        """Opened once by a walk, no project having been named on the command line: opened
+        again, as the page asks when it is loaded again, it is not walked for."""
+        api = Api(Session(root))
+        wanted = {"path": (root / "other" / "q.ddd.json").as_posix()}
+        assert post(api, "/api/open", wanted).status == 200
+        assert post(api, "/api/open", wanted).status == 200
+        assert len(walks) == 1
+
+    def test_a_project_no_listing_found_is_walked_for(
+        self, api: Api, root: Path, walks: list[Path]
+    ) -> None:
+        get(api, "/api/projects")
+        write_tree(root, {"new/r.ddd.json": project("R")})
+        reply = post(api, "/api/open", {"path": (root / "new" / "r.ddd.json").as_posix()})
+        assert (reply.status, reply.body["project"]["name"], len(walks)) == (200, "R", 2)
+
+    @pytest.mark.parametrize(
+        "change",
+        [
+            lambda q: q.unlink(),
+            lambda q: write_tree(q.parent, {q.name: component("Q")}),
+            lambda q: write_tree(q.parent, {q.name: '{"project": {"name": "Q"'}),
+        ],
+        ids=["deleted", "replaced-by-a-component", "cut-short"],
+    )
+    def test_a_description_deleted_or_replaced_since_the_listing_is_walked_for_and_refused(
+        self, api: Api, root: Path, walks: list[Path], change: Callable[[Path], object]
+    ) -> None:
+        get(api, "/api/projects")
+        listed = root / "other" / "q.ddd.json"
+        change(listed)
+        reply = post(api, "/api/open", {"path": listed.as_posix()})
+        assert (reply.status, reply.body["error"], len(walks)) == (404, "not-found", 2)
+
+    def test_a_listed_description_moved_out_from_under_the_start_directory_is_refused(
+        self, api: Api, root: Path, walks: list[Path], tmp_path_factory: pytest.TempPathFactory
+    ) -> None:
+        """Listed, its directory is then a link to a directory outside the one ``ddd gui`` was
+        started in, holding the same description: the path asked resolves outside, which no walk
+        finds, and is not answered from the listing."""
+        get(api, "/api/projects")
+        elsewhere = tmp_path_factory.mktemp("elsewhere")
+        shutil.move(root / "other", elsewhere / "other")
+        directory_link(root / "other", elsewhere / "other")
+        reply = post(api, "/api/open", {"path": (root / "other" / "q.ddd.json").as_posix()})
+        assert (reply.status, reply.body["error"], len(walks)) == (404, "not-found", 2)
+
+    def test_the_open_project_a_record_named_is_walked_for_and_refused_once_the_record_is_gone(
+        self, root: Path, walks: list[Path], tmp_path_factory: pytest.TempPathFactory
+    ) -> None:
+        """A build record under the start directory names a project outside it, which only the
+        record offers. Listed and opened, its record then taken away, the open project asked
+        again lies where no walk of the start directory finds a description, so it is walked for
+        and refused: the record no longer offers it."""
+        elsewhere = tmp_path_factory.mktemp("far")
+        write_tree(elsewhere, {"far.ddd.json": project("Far")})
+        record = build_record(root, elsewhere / "far.ddd.json")
+        api = Api(Session(root))
+        wanted = {"path": (elsewhere / "far.ddd.json").as_posix()}
+        get(api, "/api/projects")
+        assert post(api, "/api/open", wanted).status == 200
+        record.unlink()
+        reply = post(api, "/api/open", wanted)
+        assert (reply.status, reply.body["error"], len(walks)) == (404, "not-found", 3)
+
+
 class TestState:
     def test_the_state_lists_every_file_and_counts_every_finding(
         self, api: Api, root: Path

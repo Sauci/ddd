@@ -427,6 +427,31 @@ def find_projects(root: Path, build_directories: Sequence[Path] = ()) -> Found:
     return Found(base, projects, tuple(sorted(refused.items())))
 
 
+def walk_finds(root: Path, path: Path) -> bool:
+    """Whether the walk :func:`find_projects` makes finds ``path``, resolved, among the project
+    descriptions under ``root``, asked of that one path rather than walked for: it lies under
+    ``root`` by directories the walk goes into - real ones, none of them left out, no deeper than
+    :data:`SEARCH_DEPTH` - it is named ``*.ddd.json``, and it is a project description as it
+    stands now. A project a build record offers is not asked about: the walk finds it by reading
+    the records, and one outside ``root`` only a record offers.
+
+    What ``POST /api/open`` asks of a path it holds already - the open project, or one the last
+    listing found - before it walks (:meth:`ddd.gui.api.Api._open`), the walk parsing every
+    description under ``root`` to tell the projects among them."""
+    base = root.resolve()
+    if not path.is_relative_to(base):
+        return False
+    *directories, name = path.relative_to(base).parts or ("",)
+    if not name.endswith(DESCRIPTION_SUFFIX) or len(directories) > SEARCH_DEPTH:
+        return False
+    reached = base
+    for directory in directories:
+        reached = reached / directory
+        if _skipped(directory) or reached.is_symlink() or not reached.is_dir():
+            return False
+    return _is_project(path)
+
+
 @dataclass(frozen=True, slots=True)
 class _Begun:
     """An analysis begun: the project it reads, the stamps its revision is published with -

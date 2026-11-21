@@ -303,13 +303,17 @@ export function driftMaxUnseen(
  * `text` must be exactly as many bytes as the file, since a size of its own would show the
  * watcher the write: refused here, before anything is written, rather than left to race.
  *
- * The new bytes are written beside the file, given the file's own times through python's
- * `os.utime(path, ns=(...))` - exact to the nanosecond, where `fs.utimesSync` takes a JS `number`
- * a handful of nanoseconds off for an epoch this large - and renamed over it in one step, so no
- * moment shows the watcher a stamp of their own. Written in place and its stamp put back after,
- * by a python started for it, the write stood visible for that start-up, and a poll landing then
- * re-analysed the project and left nothing stale to refuse (CI, PR #77, on ubuntu and windows).
- * The rename is tried again while windows refuses it access, as `ddd.editing` does. */
+ * The new bytes are written in the directory above the file's, given the file's own times through
+ * python's `os.utime(path, ns=(...))` - exact to the nanosecond, where `fs.utimesSync` takes a JS
+ * `number` a handful of nanoseconds off for an epoch this large - and renamed over it in one step,
+ * so no moment shows the watcher a stamp of their own. The watcher stamps the directory a pattern
+ * expands in too (`Revision.watched`, session.py), as the demo's `components/*.ddd.json` makes of
+ * `components`, and a rename into a directory moves its time: put back at once after the rename,
+ * with nothing between the two but the calls themselves, the write being staged elsewhere. Written
+ * in place and its stamp put back after, by a python started for it, the write stood visible for
+ * that start-up, and a poll landing then re-analysed the project and left nothing stale to refuse
+ * (CI, PR #77, on ubuntu and windows). The rename is tried again while windows refuses it access,
+ * as `ddd.editing` does. */
 export function writeUnseen(directory: string, file: string, text: string): void {
   const path = join(directory, file);
   const bytes = Buffer.from(text, "utf8");
@@ -331,16 +335,18 @@ export function writeUnseen(directory: string, file: string, text: string): void
   }
 }
 
-/** `writeUnseen`'s python: stdin's bytes beside `argv[1]`, under its times, then renamed over
- * it. */
+/** `writeUnseen`'s python: stdin's bytes in the directory above `argv[1]`'s, under its times, then
+ * renamed over it, and its directory's times put back. */
 const UNSEEN = [
   "import os, sys, time",
   "path = sys.argv[1]",
-  "staged = path + '.unseen'",
+  "directory = os.path.dirname(path)",
+  "staged = os.path.join(os.path.dirname(directory), os.path.basename(path) + '.unseen')",
   "status = os.stat(path)",
   "with open(staged, 'wb') as file:",
   "    file.write(sys.stdin.buffer.read())",
   "os.utime(staged, ns=(status.st_atime_ns, status.st_mtime_ns))",
+  "kept = os.stat(directory)",
   "for attempt in range(49):",
   "    try:",
   "        os.replace(staged, path)",
@@ -349,6 +355,7 @@ const UNSEEN = [
   "        time.sleep(0.02)",
   "else:",
   "    os.replace(staged, path)",
+  "os.utime(directory, ns=(kept.st_atime_ns, kept.st_mtime_ns))",
 ].join("\n");
 
 /** A producing declaration's id taken away from outside, the way a description written before
@@ -634,7 +641,7 @@ export async function held(
  * file's `(st_mtime_ns, st_size)` alone (`stamped` and `poll`, session.py), so its next poll
  * reads a new revision, and the server's long poll, which would otherwise wait out its
  * `WAIT_SECONDS`, answers at once (P19b-9). For a journey that needs the next revision now: one
- * whose reads it fails, the state read after it failed, or a pattern expanded again.
+ * whose reads it fails, or the state read after it failed.
  */
 export function restamp(directory: string, file: string): void {
   const now = new Date();

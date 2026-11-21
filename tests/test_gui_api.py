@@ -6542,6 +6542,90 @@ class TestShared:
         assert get(Api(Session(root)), "/api/shared").status == 409
 
 
+def reading(monkeypatch: pytest.MonkeyPatch) -> list[Path]:
+    """Every file read from now on through ``Path.read_bytes`` or ``Path.read_text``, in order."""
+    read: list[Path] = []
+    as_bytes, as_text = Path.read_bytes, Path.read_text
+
+    def reading_bytes(path: Path) -> bytes:
+        read.append(path)
+        return as_bytes(path)
+
+    def reading_text(path: Path, *arguments: Any, **keywords: Any) -> str:
+        read.append(path)
+        return as_text(path, *arguments, **keywords)
+
+    monkeypatch.setattr(Path, "read_bytes", reading_bytes)
+    monkeypatch.setattr(Path, "read_text", reading_text)
+    return read
+
+
+class TestASharedPlanReadsTheProjectOnlyToAdd:
+    """2:I9. Of the four verbs a vocabulary of the Shared files tab plans, only ``add`` needs to
+    know where the vocabulary's own files are, which reads every file the project description
+    includes - and a panel asks for a plan at each keystroke. The other three read only what they
+    plan: over a generated project of 100,000 declarations given one constants file, setting its
+    one constant's value read the description and the 1,683 files it includes first, in 1.30 to
+    1.38 s, and takes under 5 ms without them (Linux development PC)."""
+
+    @pytest.mark.parametrize(
+        ("route", "query", "status", "files"),
+        [
+            (
+                "/api/constant-plan",
+                {"action": "set", "name": "TREND_SAMPLES", "key": "value", "raw": "32"},
+                200,
+                ["constants.ddd.json"],
+            ),
+            (
+                "/api/constant-plan",
+                {"action": "rename", "name": "TREND_SAMPLES", "to": "SAMPLE_SLOTS"},
+                200,
+                ["constants.ddd.json", "pump.ddd.json"],
+            ),
+            ("/api/constant-plan", {"action": "remove", "name": "TREND_SAMPLES"}, 409, []),
+            (
+                "/api/section-plan",
+                {"action": "set", "name": ".calib", "key": "description", "raw": '"flash"'},
+                200,
+                ["sections.ddd.json"],
+            ),
+            (
+                "/api/raster-plan",
+                {"action": "set", "name": "10ms", "key": "description", "raw": '"control"'},
+                200,
+                ["rasters.ddd.json"],
+            ),
+        ],
+        ids=["a-constant-set", "renamed", "removed", "a-section-set", "a-raster-set"],
+    )
+    def test_a_plan_but_add_reads_no_file_but_those_it_plans(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        route: str,
+        query: dict[str, str],
+        status: int,
+        files: list[str],
+    ) -> None:
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        read = reading(monkeypatch)
+        reply = get(api, route, **query)
+        assert reply.status == status, reply.body
+        assert sorted({path.name for path in read}) == files
+
+    def test_add_still_finds_where_the_vocabulary_is_kept(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        api, root = copied(tmp_path, "vocabulary", "project.ddd.json")
+        read = reading(monkeypatch)
+        preview = get(api, "/api/constant-plan", action="add", name="SPARE_CELLS", raw="4").body
+        assert [change["file"] for change in preview["changes"]] == [
+            posix(root, "constants.ddd.json")
+        ]
+        assert "project.ddd.json" in {path.name for path in read}
+
+
 class TestConstant:
     """``GET /api/constant`` and ``GET /api/constant-plan``, over examples/vocabulary and a
     handful of small trees it cannot exercise on its own: an absent key, a constants file that

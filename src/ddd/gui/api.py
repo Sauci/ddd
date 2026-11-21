@@ -316,10 +316,12 @@ class _OfAnEntry(Protocol):
     def name(self) -> str: ...
 
 
-type SharedPlanner[A] = Callable[[A, Index, SharedProject, dict[Path, Document]], SharedPlan]
+type SharedPlanner[A] = Callable[
+    [A, Index, Callable[[], SharedProject], dict[Path, Document]], SharedPlan
+]
 """What :meth:`Api._shared_plan` asks for the plan itself: the action asked for, read as its own
-model (``A``), the index, the project's own files and the read cache the route shares. One per
-vocabulary, since ``add`` is spelled differently for each."""
+model (``A``), the index, what makes the project's own files - called by ``add`` alone - and the
+read cache the route shares. One per vocabulary, since ``add`` is spelled differently for each."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -1387,6 +1389,10 @@ class Api:
         load (:func:`_unseen_refusal`), before the files are read to plan it; and a refusal that
         no file declares the entry is the panel's own answer where a file did not load
         (:func:`_refusal`).
+
+        Where the vocabulary's own files are (:func:`~ddd.shared_plans.project_of`) is found only
+        for ``add``, the one verb writing where they are: finding them reads the project
+        description and every file it includes, and a panel asks for a plan at each keystroke.
         """
         revision = self._opened()
         built = revision.index
@@ -1402,12 +1408,11 @@ class Api:
         if unseen is not None:
             return unseen
         cache: dict[Path, Document] = {}
-        project = project_of(
-            vocabulary,
-            revision.project,
-            [file.path for file in revision.files if not file.loaded],
-            cache,
-        )
+
+        def project() -> SharedProject:
+            unread = [file.path for file in revision.files if not file.loaded]
+            return project_of(vocabulary, revision.project, unread, cache)
+
         try:
             plan = plan_of(asked, built, project, cache)
         except SharedRefusalError as refused:
@@ -2350,13 +2355,13 @@ def _type_plan_of(
 def _constant_plan_of(
     asked: SetConstantKey | RenameConstant | AddConstant | RemoveConstant,
     built: Index,
-    project: SharedProject,
+    project: Callable[[], SharedProject],
     cache: dict[Path, Document],
 ) -> SharedPlan:
     """The plan ``asked`` names, over the parts its model read.
 
-    ``project`` is unused by three of the four: only ``add`` may have to create a constants
-    file, which is the one verb that needs to know where the project's constants files are.
+    ``project`` is called by ``add`` alone: it may have to create a constants file, the one verb
+    that needs to know where the project's constants files are (2:I9).
     """
     if isinstance(asked, SetConstantKey):
         return set_entry(CONSTANTS, built, asked.name, asked.key, asked.raw, cache)
@@ -2370,7 +2375,7 @@ def _constant_plan_of(
     return add_entry(
         CONSTANTS,
         built,
-        project,
+        project(),
         asked.name,
         {"value": asked.raw, "description": '""'},
         cache,
@@ -2380,7 +2385,7 @@ def _constant_plan_of(
 def _section_plan_of(
     asked: SetSectionKey | RenameSection | AddSection | RemoveSection,
     built: Index,
-    project: SharedProject,
+    project: Callable[[], SharedProject],
     cache: dict[Path, Document],
 ) -> SharedPlan:
     """The plan ``asked`` names, over the parts its model read.
@@ -2399,13 +2404,13 @@ def _section_plan_of(
     if isinstance(asked, RemoveSection):
         return remove_entry(SECTIONS, built, asked.name, cache)
     declared = _declared(SECTIONS, asked.model_dump())
-    return add_entry(SECTIONS, built, project, asked.name, declared, cache)
+    return add_entry(SECTIONS, built, project(), asked.name, declared, cache)
 
 
 def _raster_plan_of(
     asked: SetRasterKey | RenameRaster | AddRaster | RemoveRaster,
     built: Index,
-    project: SharedProject,
+    project: Callable[[], SharedProject],
     cache: dict[Path, Document],
 ) -> SharedPlan:
     """The plan ``asked`` names, over the parts its model read.
@@ -2421,7 +2426,7 @@ def _raster_plan_of(
     if isinstance(asked, RemoveRaster):
         return remove_entry(RASTERS, built, asked.name, cache)
     declared = _declared(RASTERS, asked.model_dump())
-    return add_entry(RASTERS, built, project, asked.name, declared, cache)
+    return add_entry(RASTERS, built, project(), asked.name, declared, cache)
 
 
 def _required_keys(vocabulary: Vocabulary) -> list[str]:

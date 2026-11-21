@@ -833,12 +833,13 @@ description's own directory, the record lies beside a hand-written project and n
 browser interface edits a project whose record says `given` and refuses to write into any other
 named by its record, the next configure writing a collected description again; a record beside a
 description that does not read as one, a write of it cut short among them, cannot say whether the
-build writes it, and the interface refuses that description too, naming the record, until it
-reads. A record without the key is read as `collected`, which is what it was taken for before the
-key existed: reading it as `given` would open every build made before to edits the next configure
-undoes, and a project given with such a record beside it stays refused until the build is
-configured again. The key is named `origin` and not `description`, which is a declaration's free
-text in the description files ([section 3.2](#32-software-component-description)).
+build writes it, and the interface refuses that description too, naming the record, until the
+record reads. A record without the key is read as `collected`, which is what it was taken for
+before the key existed: reading it as `given` would open every build made before to edits the
+next configure undoes, and a project given with such a record beside it stays refused until the
+build is configured again. The key is named `origin` and not `description`, which is a
+declaration's free text in the description files
+([section 3.2](#32-software-component-description)).
 
 The key is written for a given description alone, and that record is stamped `2`: the record is
 a closed object, so a reader that does not know the key fails the record. A DDD from 0.11.0 on

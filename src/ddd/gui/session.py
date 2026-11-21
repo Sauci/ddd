@@ -945,9 +945,9 @@ class Session:
         the project was just opened, or a file the analysis found newly included - is stamped
         :data:`UNKNOWN`, and the revision is published asking for the next analysis: one analysis
         more, which catches a save made to that file while this one ran. Asked here rather than
-        left to the next poll, which asked for it up to
-        ``poll_interval`` later, so that the session says it is analysing until that analysis
-        lands, rather than that it is done and then, a poll later, that it is analysing again.
+        left to the next poll, which asked for it up to ``poll_interval`` later, so that the
+        session says it is analysing until that analysis lands, rather than that it is done and
+        then, a poll later, that it is analysing again.
 
         A revision published lets go of the files every edit it includes wrote: none of them is
         waiting for an analysis any more. Whatever it leaves, the version moves, since what the
@@ -1131,10 +1131,10 @@ def generated_refusal(
     both are about - and otherwise the first file it writes under the tree, which the reader asked
     to change. Where it creates one, it offers the file in the source tree instead
     (:func:`_instead`); where it brings an existing one in, the line that registers it, in the
-    CMakeLists.txt beside it (:func:`_registered`) - one under the tree being passed over, as
-    :func:`_instead` passes over a description there, the line in the source tree reading it by
-    another path. Only the Files tab's add knows the file it brings in: an edit posted with an
-    entry written by hand is told the build's membership alone.
+    CMakeLists.txt beside it (:func:`_registered`) - one under the tree passed over, as
+    :func:`_instead` passes over a description there, since it goes with the tree. Only the Files
+    tab's add knows the file it brings in: an edit posted with an entry written by hand is told
+    the build's membership alone.
 
     Where the record beside the description does not read as one (:attr:`Generated.unread`),
     whether the build writes it is not known: every such change is refused in one sentence naming
@@ -1593,8 +1593,9 @@ def _expanded_in(source: Path, entry: str) -> set[Path]:
     an editor's swap file - is no change of that project. Nothing for an entry naming a file,
     wildcard characters and all, which the loader reads before it reads the entry as a pattern
     and the revision stamps as one of its files; nothing either for a pattern pathlib refuses,
-    which the analysis reports as ``include-empty``. Each directory is spelled under the
-    description's own, as the loader's walk finds it, so that two analyses stamp one spelling."""
+    which the analysis reports as ``include-empty``. Each directory is spelled as the loader's
+    walk finds it, under the directory the walk starts in, so that two analyses stamp one
+    spelling."""
     if not any(character in entry for character in _WILDCARDS):
         return set()
     raw = Path(entry)

@@ -439,6 +439,16 @@ class TestDiscovery:
         elsewhere.mkdir()
         assert build_files(tmp_path, [elsewhere]) == []
 
+    def test_a_relative_configured_directory_is_read_against_the_root(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """10:M10. Read against the directory the process runs in, it named the build of none of
+        the workspace folders but the one an editor started the server in."""
+        record = build_record(tmp_path / "folder", tmp_path / "folder" / "p.ddd.json")
+        (tmp_path / "elsewhere").mkdir()
+        monkeypatch.chdir(tmp_path / "elsewhere")
+        assert build_files(tmp_path / "folder", [Path("build")]) == [record]
+
     def test_a_workspace_with_no_build_yields_nothing(self, tmp_path: Path) -> None:
         assert build_files(tmp_path) == []
         assert discover(tmp_path) == []
@@ -12936,6 +12946,34 @@ def closing(path: Path) -> dict[str, Any]:
     }
 
 
+def folders_changed(added: Sequence[Path] = (), removed: Sequence[Path] = ()) -> dict[str, Any]:
+    """The client adding ``added`` to its workspace folders and taking ``removed`` out."""
+    return {
+        "jsonrpc": "2.0",
+        "method": "workspace/didChangeWorkspaceFolders",
+        "params": {
+            "event": {
+                "added": [{"uri": folder.as_uri(), "name": folder.name} for folder in added],
+                "removed": [{"uri": folder.as_uri(), "name": folder.name} for folder in removed],
+            }
+        },
+    }
+
+
+def logged(writer: io.BytesIO) -> list[str]:
+    """Every line the server put in the client's log."""
+    return [
+        message["params"]["message"]
+        for message in sent(writer)
+        if message.get("method") == "window/logMessage"
+    ]
+
+
+def codes(writer: io.BytesIO, path: Path) -> list[str]:
+    """The checks of the findings last published for ``path``, sorted."""
+    return sorted(entry["code"] for entry in published(writer)[path.as_uri()])
+
+
 class TestTheServerRegistersTheWatcher:
     """10:M8, decision 10.6. The watcher was the extension's, so a client launching the server
     itself - Neovim, Helix, Emacs - heard of no file changed behind the editor, and the extension's
@@ -13148,3 +13186,275 @@ class TestABuildRecordChangingOnDisk:
         server, writer = self.started(tmp_path)
         assert server._handle(changed_on_disk(changed))
         assert published(writer) == {}
+
+
+class TestFoldersAddedAndRemovedLater:
+    """10:M10. The workspace folders are the client's, and it adds and removes them while the
+    session runs. A folder added was not followed: a document in it was checked as one outside
+    every folder, on its own, where named at ``initialize`` its project was found above it. A
+    folder removed is answered as if it had never been named: what was published under it alone is
+    withdrawn, and an open document under it is checked as one outside every folder."""
+
+    def tree(self, tmp_path: Path) -> tuple[Path, Path, Path]:
+        """Folder ``a``, and folder ``b`` holding the project of ``parts/c.ddd.json`` and
+        ``parts/d.ddd.json``. ``c`` reads what nobody writes and writes what nobody reads, which
+        only its project can say: read on its own it shows the ``missing-id`` of its output alone.
+        ``d`` reads what nobody writes too. Returns ``a``, ``b`` and ``c``."""
+        a, b = tmp_path / "a", tmp_path / "b"
+        write_tree(a, {"q.ddd.json": project("Q")})
+        write_tree(
+            b,
+            {
+                "p.ddd.json": project("P", "parts/c.ddd.json", "parts/d.ddd.json"),
+                "parts/c.ddd.json": component(
+                    "C", declare("input", "In"), declare("output", "Out")
+                ),
+                "parts/d.ddd.json": component("D", declare("input", "Other")),
+            },
+        )
+        return a, b, b / "parts" / "c.ddd.json"
+
+    def checked(self, tmp_path: Path, *folders: Path) -> dict[str, list[dict[str, Any]]]:
+        """What a session initialised with ``folders`` publishes once ``c`` is open."""
+        c = tmp_path / "b" / "parts" / "c.ddd.json"
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(opening(*folders))
+        assert server._handle(holding(c, c.read_text(encoding="utf-8")))
+        return published(writer)
+
+    def test_the_server_says_it_follows_the_folders(self, tmp_path: Path) -> None:
+        """Without it, a client sends no change of its folders at all."""
+        writer = io.BytesIO()
+        assert Server(framed(opening(tmp_path), *END), writer, root=tmp_path).run() == 0
+        assert sent(writer)[0]["result"]["capabilities"]["workspace"] == {
+            "workspaceFolders": {"supported": True, "changeNotifications": True}
+        }
+
+    def test_a_folder_added_later_is_searched_as_one_named_from_the_start(
+        self, tmp_path: Path
+    ) -> None:
+        a, b, c = self.tree(tmp_path)
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(opening(a))
+        assert server._handle(holding(c, c.read_text(encoding="utf-8")))
+        assert codes(writer, c) == ["missing-id"]
+        writer = server.writer = io.BytesIO()
+        assert server._handle(folders_changed(added=[b]))
+        assert codes(writer, c) == ["missing-id", "missing-producer", "unused-output"]
+        assert published(writer) == self.checked(tmp_path, a, b)
+
+    def test_a_folder_removed_is_answered_as_if_it_had_never_been_named(
+        self, tmp_path: Path
+    ) -> None:
+        a, b, c = self.tree(tmp_path)
+        d = b / "parts" / "d.ddd.json"
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(opening(a, b))
+        assert server._handle(holding(c, c.read_text(encoding="utf-8")))
+        assert codes(writer, d) == ["missing-producer"]
+        writer = server.writer = io.BytesIO()
+        assert server._handle(folders_changed(removed=[b]))
+        assert published(writer) == {
+            d.as_uri(): [],
+            c.as_uri(): self.checked(tmp_path, a)[c.as_uri()],
+        }
+        assert self.publications(writer, c) == 1, "an open document is checked, not withdrawn first"
+        assert server.roots == [a]
+
+    def publications(self, writer: io.BytesIO, path: Path) -> int:
+        """How many times the findings of ``path`` were published."""
+        return sum(
+            message.get("method") == "textDocument/publishDiagnostics"
+            and message["params"]["uri"] == path.as_uri()
+            for message in sent(writer)
+        )
+
+    def test_with_nothing_open_what_is_on_screen_is_checked_in_a_folder_added_later(
+        self, tmp_path: Path
+    ) -> None:
+        """``c`` closed, and its findings on screen: they are checked again once the folder holding
+        its project is added, as a build record's change checks them again."""
+        a, b, c = self.tree(tmp_path)
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(opening(a))
+        assert server._handle(holding(c, c.read_text(encoding="utf-8")))
+        assert server._handle(closing(c))
+        writer = server.writer = io.BytesIO()
+        assert server._handle(folders_changed(added=[b]))
+        assert codes(writer, c) == ["missing-id", "missing-producer", "unused-output"]
+
+    def test_a_file_under_a_folder_that_stays_is_not_withdrawn(self, tmp_path: Path) -> None:
+        """Under the folder removed and under ``parts``, a folder of its own that stays, ``d`` is
+        not under the removed one alone: ``parts`` answers for it, its own project ``q`` saying
+        what ``p`` did, and the findings are not withdrawn to be published again."""
+        a, b, c = self.tree(tmp_path)
+        d = b / "parts" / "d.ddd.json"
+        write_tree(b / "parts", {"q.ddd.json": project("Q", "c.ddd.json", "d.ddd.json")})
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(opening(a, b, b / "parts"))
+        assert server._handle(holding(c, c.read_text(encoding="utf-8")))
+        assert codes(writer, d) == ["missing-producer"]
+        writer = server.writer = io.BytesIO()
+        assert server._handle(folders_changed(removed=[b]))
+        assert codes(writer, d) == ["missing-producer"]
+        assert self.publications(writer, d) == 1
+        assert server.roots == [a, b / "parts"]
+
+    def test_with_every_folder_removed_the_server_answers_where_it_was_started(
+        self, tmp_path: Path
+    ) -> None:
+        """As a session initialised with no folder does."""
+        _, b, _ = self.tree(tmp_path)
+        started = tmp_path / "started"
+        server = Server(io.BytesIO(), io.BytesIO(), root=started)
+        assert server._handle(opening(b))
+        assert server.roots == [b]
+        assert server._handle(folders_changed(removed=[b]))
+        assert server.roots == [started]
+        assert server._handle(folders_changed(added=[b]))
+        assert server.roots == [b]
+
+    @staticmethod
+    def malformed(case: str, good: dict[str, str]) -> dict[str, Any]:
+        """The folder change ``case`` names, ``good`` - a folder named right - among the folders it
+        adds wherever those are a list."""
+        params = {
+            "no-event": {},
+            "event-null": {"event": None},
+            "added-null": {"event": {"added": None, "removed": []}},
+            "removed-a-number": {"event": {"added": [good], "removed": 3}},
+            "a-folder-a-number": {"event": {"added": [good, 3], "removed": []}},
+            "a-folder-uri-null": {"event": {"added": [good, {"uri": None}], "removed": []}},
+            "a-folder-not-on-disk": {
+                "event": {"added": [good, {"uri": "untitled:x"}], "removed": []}
+            },
+            "a-folder-no-file-system-takes": {
+                "event": {"added": [good], "removed": [{"uri": "file:///a%00b"}]}
+            },
+        }
+        changed: dict[str, Any] = {
+            "jsonrpc": "2.0",
+            "method": "workspace/didChangeWorkspaceFolders",
+        }
+        if case in params:
+            changed["params"] = params[case]
+        return changed
+
+    @pytest.mark.parametrize(
+        "case",
+        [
+            "no-params",
+            "no-event",
+            "event-null",
+            "added-null",
+            "removed-a-number",
+            "a-folder-a-number",
+            "a-folder-uri-null",
+            "a-folder-not-on-disk",
+            "a-folder-no-file-system-takes",
+        ],
+    )
+    def test_a_change_the_server_cannot_read_changes_nothing(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], case: str
+    ) -> None:
+        """Answered with nothing, as a notification always is, with nothing on stderr: the
+        client's mistake, not a defect of the server's. Every field is read before any is kept, so
+        a folder named right beside one named wrong is not taken either."""
+        a, b, _ = self.tree(tmp_path)
+        changed = self.malformed(case, {"uri": b.as_uri(), "name": "b"})
+        writer = io.BytesIO()
+        server = Server(framed(opening(a), changed, *END), writer, root=tmp_path)
+        assert server.run() == 0
+        assert answered(writer) == [response(99, None)]
+        assert capsys.readouterr().err == ""
+        assert server.roots == [a]
+
+
+class TestARelativeBuildDirectoryIsReadInEachFolder:
+    """10:M10, B9-33. A relative ``-b`` was read against the server's working directory, which
+    VS Code makes its first workspace folder: the build of every other folder, and of a folder
+    added later, went unfound, and an editor started elsewhere found none. It is read against each
+    workspace folder, and a record two folders reach is counted once."""
+
+    def folder(self, base: Path, name: str) -> Path:
+        """A folder holding a project and the record of its build, ``build/ddd/<name>.elf``."""
+        folder = base / name
+        write_tree(
+            folder,
+            {
+                "p.ddd.json": project(name.upper(), "c.ddd.json"),
+                "c.ddd.json": component(name.upper(), declare("input", "X")),
+            },
+        )
+        build_record(folder, folder / "p.ddd.json", image=f"{name}.elf")
+        return folder
+
+    def started(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *build_directories: Path
+    ) -> tuple[Server, io.BytesIO]:
+        """A server started in a directory that is none of its folders, with ``build_directories``
+        as its ``-b``."""
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        monkeypatch.chdir(elsewhere)
+        writer = io.BytesIO()
+        return Server(io.BytesIO(), writer, build_directories=build_directories), writer
+
+    def test_each_folder_s_build_is_found(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        a, b = self.folder(tmp_path, "a"), self.folder(tmp_path, "b")
+        server, writer = self.started(tmp_path, monkeypatch, Path("build"))
+        assert server._handle(opening(a, b))
+        assert server._handle(holding(a / "c.ddd.json", "{}"))
+        assert logged(writer) == [
+            f"a.elf: {(a / 'p.ddd.json').as_posix()}",
+            f"b.elf: {(b / 'p.ddd.json').as_posix()}",
+        ]
+
+    def test_a_folder_added_later_has_its_build_found_too(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        a, b = self.folder(tmp_path, "a"), self.folder(tmp_path, "b")
+        server, writer = self.started(tmp_path, monkeypatch, Path("build"))
+        assert server._handle(opening(a))
+        assert server._handle(holding(a / "c.ddd.json", "{}"))
+        writer = server.writer = io.BytesIO()
+        assert server._handle(folders_changed(added=[b]))
+        assert logged(writer) == [
+            f"a.elf: {(a / 'p.ddd.json').as_posix()}",
+            f"b.elf: {(b / 'p.ddd.json').as_posix()}",
+        ]
+        assert codes(writer, b / "c.ddd.json") == ["missing-producer"]
+
+    def test_a_record_two_folders_reach_is_counted_once(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A ``-b`` naming one directory from both, as an absolute one does: its record was found
+        once per folder, announced twice and its project analysed twice at every check."""
+        shared = self.folder(tmp_path, "shared")
+        a, b = tmp_path / "a", tmp_path / "b"
+        a.mkdir()
+        b.mkdir()
+        server, writer = self.started(tmp_path, monkeypatch, shared / "build")
+        assert server._handle(opening(a, b))
+        assert server._handle(holding(shared / "c.ddd.json", "{}"))
+        assert logged(writer) == [f"shared.elf: {(shared / 'p.ddd.json').as_posix()}"]
+
+    def test_with_no_folder_named_it_is_read_where_the_server_was_started(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The control: a client naming no folder, the server answers in the directory it was
+        started in, and reads a relative ``-b`` there, as it always did."""
+        here = self.folder(tmp_path, "here")
+        monkeypatch.chdir(here)
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, build_directories=[Path("build")])
+        assert server._handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+        assert server._handle(holding(here / "c.ddd.json", "{}"))
+        assert logged(writer) == [f"here.elf: {(here / 'p.ddd.json').as_posix()}"]

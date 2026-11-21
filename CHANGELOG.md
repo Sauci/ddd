@@ -223,6 +223,9 @@ A script or a client reading what the tool prints:
     change with the package.
   - "Six small edges of the edit engine are settled": a pointer's element is spelled with its
     brackets: `at` without them is refused, where `1` planned a key of its own.
+  - "A relative `ddd lsp -b` is read against each workspace folder": an editor that starts `ddd
+    lsp -b <dir>` from a directory that is none of its workspace folders, meaning that directory,
+    names it absolute.
 
 A user of `ddd tool from-elf`:
 
@@ -1390,6 +1393,18 @@ A build of DDD from its sources, and a release of it:
   `pydantic` and `jinja2` as the only runtime dependencies, and so as the only two an offline
   install has to reach; `pyelftools` has been a third since the toolbox, and the page now says so.
   Nothing to migrate.
+
+* **A relative `ddd lsp -b` is read against each workspace folder.**  It was read against the
+  directory the server was started in, which VS Code makes the first workspace folder: in a
+  workspace of several folders the builds beside the others went unfound, as did the build of a
+  folder added later, and a server an editor started elsewhere searched beside that directory
+  rather than beside its folders.  The server now reads a relative `-b` against each folder the
+  client names, those it adds while the session runs among them, and against the directory it
+  was started in only while the client names none; a record two folders reach is counted once.
+  An editor that starts `ddd lsp -b <dir>` from a directory that is none of its workspace folders,
+  meaning that directory, names it absolute.  A relative entry of the extension's
+  `ddd.buildDirectories` means what it did in a workspace of one folder, and in one of several
+  finds the build beside each.
 
 * **A file that cannot be written is refused before anything is, on every system, and what is
   written is synced.**  On Windows a read-only file was staged, refused at the rename after

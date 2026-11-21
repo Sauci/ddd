@@ -10889,3 +10889,107 @@ class TestTheServerWatchesWhatItReads:
             "The command is **DDD: Restart Language Server**, for picking up a newly installed "
             "tool, or a change of the settings, without reloading the window."
         ) in flattened(EDITOR_INTEGRATION)
+
+
+class TestTheFoldersAreFollowed:
+    """10:M10, B9-33. A folder added after the start was not followed, a relative ``-b`` was read
+    against the directory the server was started in, which VS Code makes its first folder, and the
+    pages said a relative one was read against "the workspace folder". It is read against each, a
+    folder added later included."""
+
+    SAID: ClassVar[dict[str, tuple[str, tuple[str, ...], tuple[str, ...]]]] = {
+        "SPEC.md": (
+            SPEC,
+            (
+                "or, unconfigured, the conventional directories `build`, `out` and `cmake-build-*` "
+                "under each workspace folder,",
+                "Each record found is counted under the path it resolves to, and once however many "
+                "folders reach it,",
+                "the server walks from the file's directory up to the workspace folder holding it",
+                "takes the build directories as repeatable `-b` arguments, a relative one read "
+                "against each workspace folder, or against the server's working directory while "
+                "the client names none;",
+                "The workspace folders are those the client names at `initialize`, and those it "
+                "adds and removes while the session runs, which the server says it follows: a "
+                "folder added is searched as one named from the start, its build records found and "
+                "the open documents checked again, and a folder removed is answered as if it had "
+                "never been named - what was published under it alone is withdrawn, and an open "
+                "document under it is checked as one outside every folder.",
+            ),
+            ("a relative one read against the server's working directory;",),
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            (
+                "``cmake-build-*`` under each workspace folder are. A relative ``-b`` path is read "
+                "against each workspace folder, which is what makes a bare ``build`` mean the one "
+                "beside the sources of each, a folder added later included, and against the "
+                "directory the server was started in only while the editor names no folder.",
+                "Each record is counted under the path it resolves to, and once however many "
+                "folders reach it,",
+                "the server walks from the file's directory up to the workspace folder holding it",
+                "The workspace folders are those the editor names when it starts the server, and "
+                "those it adds and removes afterwards, which the server says it follows: a folder "
+                "added is searched as one named from the start, its build records found and the "
+                "open documents checked again; a folder removed is answered as if it had never "
+                "been named - what was published under it alone is withdrawn, and an open "
+                "document under it is checked as one outside every folder.",
+                "a relative entry is read against each workspace folder. Left empty, the "
+                "conventional build directory names in each workspace folder are searched. A "
+                "change takes effect once the server is restarted.",
+            ),
+            (
+                "relative to the directory the server was started in",
+                "which is where the extension starts the server",
+            ),
+        ),
+        "editors/vscode/README.md": (
+            (EXTENSION / "README.md").read_text(encoding="utf-8"),
+            (
+                "a relative entry is read against each workspace folder. Empty searches the usual "
+                "names in each workspace folder. A change takes a restart: **DDD: Restart Language "
+                "Server**",
+            ),
+            ("a relative entry is relative to the workspace folder",),
+        ),
+        "editors/vscode/package.json": (
+            extension_setting("ddd.buildDirectories"),
+            (
+                "A relative path is read against each workspace folder. Leave empty to search the "
+                "usual build directory names in each workspace folder.",
+            ),
+            ("where the server is started",),
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(SAID))
+    def test_the_page_says_the_folders_are_followed(self, page: str) -> None:
+        text, phrases, stale = self.SAID[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"
+        for phrase in stale:
+            assert phrase not in said, f"{page} still says: {phrase!r}"
+
+    def test_the_changelog_says_what_a_relative_build_directory_means_now(self) -> None:
+        """The meaning of an option is the public interface the changelog's preamble names: the
+        entry, and the opening's item naming it, say what an editor started elsewhere migrates."""
+        said = flattened(UNRELEASED)
+        claims = {
+            "the entry": "* **A relative `ddd lsp -b` is read against each workspace folder.** It "
+            "was read against the directory the server was started in,",
+            "the entry, what it reads": "The server now reads a relative `-b` against each folder "
+            "the client names, those it adds while the session runs among them, and against the "
+            "directory it was started in only while the client names none; a record two folders "
+            "reach is counted once.",
+            "the entry, its migration": "An editor that starts `ddd lsp -b <dir>` from a directory "
+            "that is none of its workspace folders, meaning that directory, names it absolute.",
+            "the entry, the extension": "A relative entry of the extension's "
+            "`ddd.buildDirectories` means what it did in a workspace of one folder, and in one of "
+            "several finds the build beside each.",
+            "the opening's item": '- "A relative `ddd lsp -b` is read against each workspace '
+            'folder": an editor that starts `ddd lsp -b <dir>` from a directory that is none of '
+            "its workspace folders, meaning that directory, names it absolute.",
+        }
+        missing = [what for what, claim in claims.items() if claim not in said]
+        assert not missing, f"the changelog no longer says {missing}"

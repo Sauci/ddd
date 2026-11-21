@@ -16,19 +16,19 @@ protocol's internal error, a notification with nothing, as ever - and the trace 
 the server's log, where a defect is seen rather than hidden. Only ``Exception`` is caught, so an
 interrupt still ends the run.
 
-Only ``didOpen``, ``didSave`` and a watched change refresh, and what they mark is checked
-together. The stream is read ahead on a thread of its own, which is what tells the messages
-that came together from one not sent yet: once a message marks a document, the messages
-already waiting behind it are handled, and every document marked by then is checked, each
-project once - before a request among them is answered, and without waiting for a message
-that has not arrived (:meth:`Server._serve`). Nothing is analysed per keystroke: the
-analysis reads the files from disk, so the editor and the server agree exactly at the moment
-of a save, and a half-typed document never produces a screenful of findings about a mistake
-nobody has finished making yet. The *text* of every open document is nonetheless kept, and
-kept current through ``didChange``: a position the client sends, an edit the client will
-apply and the place a finding is drawn are about what is on screen. An edit computed from a
-stale file and applied to a buffer with one extra line rewrote an unrelated line, and a
-finding drawn at the file's line in such a buffer underlined another key.
+Only ``didOpen``, ``didSave``, a watched change and a change of the workspace folders refresh,
+and what they mark is checked together. The stream is read ahead on a thread of its own, which
+is what tells the messages that came together from one not sent yet: once a message marks a
+document, the messages already waiting behind it are handled, and every document marked by
+then is checked, each project once - before a request among them is answered, and without
+waiting for a message that has not arrived (:meth:`Server._serve`). Nothing is analysed per
+keystroke: the analysis reads the files from disk, so the editor and the server agree exactly
+at the moment of a save, and a half-typed document never produces a screenful of findings
+about a mistake nobody has finished making yet. The *text* of every open document is
+nonetheless kept, and kept current through ``didChange``: a position the client sends, an edit
+the client will apply and the place a finding is drawn are about what is on screen. An edit
+computed from a stale file and applied to a buffer with one extra line rewrote an unrelated
+line, and a finding drawn at the file's line in such a buffer underlined another key.
 """
 
 from __future__ import annotations
@@ -128,6 +128,9 @@ _WATCHED: Final = ("**/*.ddd.json", f"**/{BUILD_INFO_FILENAME}")
 
 _DESCRIPTION: Final = ".ddd.json"
 """How the name of a description ends."""
+
+_DID_CHANGE_FOLDERS: Final = "workspace/didChangeWorkspaceFolders"
+"""The client added workspace folders, or removed some, while the session runs."""
 
 _DEFINITION: Final = "textDocument/definition"
 _NAVIGATING: Final = frozenset({_DEFINITION, "textDocument/references"})
@@ -267,6 +270,15 @@ def _reported(context: dict[str, Any]) -> list[dict[str, Any]]:
     return reported
 
 
+def _named_folders(value: Any, named: str) -> list[Path]:
+    """The workspace folders a list of the client's names, each by its uri: what ``initialize``
+    names, and what a change of the folders adds or removes."""
+    return [
+        uri_to_path(_field(_field(folder, dict, f"{named}[]").get("uri"), str, f"{named}[].uri"))
+        for folder in _field(value, list, named)
+    ]
+
+
 def _answered(message: dict[str, Any]) -> bool:
     """Whether the server answers a message: a request carries an ``id`` and a ``method``. One
     carrying an ``id`` and no ``method`` is the client's answer to a request of the server's, and
@@ -330,8 +342,10 @@ class Server:
     ) -> None:
         self.reader = reader
         self.writer = writer
-        self.roots: list[Path] = [root or Path.cwd()]
-        """The workspace folders, first one first; a multi-root workspace has several."""
+        self._started_in = root or Path.cwd()
+        """The folder the server answers in while the client names none (:attr:`roots`)."""
+        self._folders: list[Path] = []
+        """The workspace folders the client names, first one first, as it adds and removes them."""
         self.build_directories = list(build_directories)
         self._published: dict[Path, str] = {}
         """Each file whose findings are on screen, by its resolved path, with the uri they went out
@@ -678,6 +692,8 @@ class Server:
             write_message(self.writer, response(request_id, self._capabilities()))
         elif method == _INITIALIZED:
             self._watch()
+        elif method == _DID_CHANGE_FOLDERS:
+            self._folders_changed(message)
         elif method == "shutdown":
             self._shutting_down = True
             write_message(self.writer, response(request_id, None))
@@ -827,6 +843,41 @@ class Server:
         }
         write_message(self.writer, request(_WATCHER, _REGISTER, {"registrations": [registration]}))
 
+    def _folders_changed(self, message: dict[str, Any]) -> None:
+        """Follow the workspace folders the client adds and removes while the session runs, and
+        mark for a check again what the change moves.
+
+        A folder added is walked by the search for build records and by the search above a
+        document as if the client had named it at ``initialize``, and a folder removed as if it
+        had never been named: a document of a folder added later was checked as one outside every
+        folder, on its own, though its project was there to be found. What was published under a
+        removed folder alone is withdrawn, since no check need report on it again and its findings
+        would then stay on screen for good - but for an open document, which is checked again with
+        the others, as one outside every folder where no folder that stays holds it. With nothing
+        open, what is on screen is checked again.
+
+        Every field is read before any is kept, as at ``initialize``: a change refused for one
+        folder takes none of the others.
+        """
+        params = _field(message.get("params"), dict, "params")
+        event = _field(params.get("event"), dict, "params.event")
+        added = _named_folders(event.get("added"), "params.event.added")
+        gone = {
+            folder.resolve()
+            for folder in _named_folders(event.get("removed"), "params.event.removed")
+        }
+        kept = [folder for folder in self._folders if folder.resolve() not in gone]
+        self._folders = kept + added
+        roots = [root.resolve() for root in self.roots]
+        for path in sorted(self._published):
+            if (
+                path not in self._open
+                and not gone.isdisjoint(path.parents)
+                and all(root not in path.parents for root in roots)
+            ):
+                self._publish(path, [])
+        self._mark(_DID_CHANGE_FOLDERS, *(sorted(self._open) or sorted(self._published)))
+
     def _mark(self, method: str, *documents: Path) -> None:
         """Mark documents for the next check, which checks them together, and drop at once what
         was read from disk (:meth:`_forget`): a file saved or watched changing is no longer what
@@ -882,18 +933,32 @@ class Server:
         if self._builds is None:
             self._refused = {}
             self._builds = []
-            for root in self.roots:
-                for record in build_files(root, self.build_directories):
-                    for info in load_builds([record], self._refused):
-                        if Path(info.project).root:
-                            self._builds.append(info)
-                        else:
-                            self._refused[record] = (
-                                f"its project '{info.project}' is a relative path, which a build "
-                                "never writes: it names a different file from each directory the "
-                                "record is read in"
-                            )
+            # Each record once, however many folders reach it: a ``-b`` naming one directory from
+            # every folder, as an absolute one does, found its record once per folder, and the
+            # project was announced and analysed as often.
+            records = dict.fromkeys(
+                record
+                for root in self.roots
+                for record in build_files(root, self.build_directories)
+            )
+            for record in records:
+                for info in load_builds([record], self._refused):
+                    if Path(info.project).root:
+                        self._builds.append(info)
+                    else:
+                        self._refused[record] = (
+                            f"its project '{info.project}' is a relative path, which a build "
+                            "never writes: it names a different file from each directory the "
+                            "record is read in"
+                        )
         return self._builds
+
+    @property
+    def roots(self) -> list[Path]:
+        """The workspace folders, first one first - a multi-root workspace has several - as the
+        client names them and as it adds and removes them; while it names none, the folder the
+        server was started in, where a relative ``-b`` is read too (:meth:`_builds_now`)."""
+        return self._folders or [self._started_in]
 
     @property
     def root(self) -> Path:
@@ -1699,18 +1764,7 @@ class Server:
         nothing (:func:`_field`).
         """
         folders = params.get("workspaceFolders")
-        if folders is None:
-            folders = []
-        roots = [
-            uri_to_path(
-                _field(
-                    _field(folder, dict, "params.workspaceFolders[]").get("uri"),
-                    str,
-                    "params.workspaceFolders[].uri",
-                )
-            )
-            for folder in _field(folders, list, "params.workspaceFolders")
-        ]
+        roots = _named_folders([] if folders is None else folders, "params.workspaceFolders")
         root = params.get("rootUri")
         if not roots and root is not None and _field(root, str, "params.rootUri"):
             roots = [uri_to_path(root)]
@@ -1728,8 +1782,7 @@ class Server:
         registers = _field(
             watched.get("dynamicRegistration", False), bool, f"{watching}.dynamicRegistration"
         )
-        if roots:
-            self.roots = roots
+        self._folders = roots
         self._versioned_edits = versioned
         self._annotated_edits = annotated
         self._registers = registers
@@ -1747,6 +1800,10 @@ class Server:
                 "hoverProvider": True,
                 "renameProvider": {"prepareProvider": True},
                 "codeActionProvider": {"codeActionKinds": [QUICK_FIX]},
+                # Without it a client sends no change of its folders, and a document of a folder
+                # added after the start was checked as one outside every folder
+                # (:meth:`_folders_changed`).
+                "workspace": {"workspaceFolders": {"supported": True, "changeNotifications": True}},
             },
             "serverInfo": {"name": "ddd", "version": __version__},
         }

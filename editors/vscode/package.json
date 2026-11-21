@@ -63,7 +63,7 @@
             "type": "string"
           },
           "default": [],
-          "markdownDescription": "Directories holding a build of this project, each searched for the `ddd-build.json` that `ddd_generate()` writes. A relative path is relative to the workspace folder, where the server is started. Leave empty to search the usual build directory names next to the workspace. A change takes effect once the server is restarted: **DDD: Restart Language Server**."
+          "markdownDescription": "Directories holding a build of this project, each searched for the `ddd-build.json` that `ddd_generate()` writes. A relative path is read against each workspace folder. Leave empty to search the usual build directory names in each workspace folder. A change takes effect once the server is restarted: **DDD: Restart Language Server**."
         }
       }
     }

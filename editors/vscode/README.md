@@ -112,7 +112,7 @@ meaning.
 | setting | what it does |
 | --- | --- |
 | `ddd.executable` | the `ddd` command; a bare name is looked up on the PATH |
-| `ddd.buildDirectories` | directories holding a build, each searched for the `ddd-build.json` that `ddd_generate()` writes; a relative entry is relative to the workspace folder. Empty searches the usual names next to the workspace. A change takes a restart: **DDD: Restart Language Server** |
+| `ddd.buildDirectories` | directories holding a build, each searched for the `ddd-build.json` that `ddd_generate()` writes; a relative entry is read against each workspace folder. Empty searches the usual names in each workspace folder. A change takes a restart: **DDD: Restart Language Server** |
 
 Which project a file belongs to is not something the file can say - without `PROJECT`, CMake
 collects the project out of the link graph - so the server reads that build record and applies

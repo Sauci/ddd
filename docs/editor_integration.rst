@@ -285,14 +285,14 @@ three stages:
 
 * **Build records.** The directories named with ``-b`` are searched recursively for
   ``ddd-build.json``; unconfigured, the conventional directories ``build``, ``out`` and
-  ``cmake-build-*`` under the workspace are. A ``-b`` path is taken as written, so a relative
-  one is relative to the directory the server was started in - the workspace folder, where
-  the VS Code extension starts it, which is what makes a bare ``build`` mean the one beside
-  the sources. A file claimed by several builds is checked under each of them and the
-  findings are published together - a component linked into two images is in two projects,
-  and the answer to which one the reader cares about is both. Each record is counted under
-  the path it resolves to, so a link inside a build tree does not turn one record into a
-  record per way of spelling it.
+  ``cmake-build-*`` under each workspace folder are. A relative ``-b`` path is read against
+  each workspace folder, which is what makes a bare ``build`` mean the one beside the sources
+  of each, a folder added later included, and against the directory the server was started in
+  only while the editor names no folder. A file claimed by several builds is checked under
+  each of them and the findings are published together - a component linked into two images is
+  in two projects, and the answer to which one the reader cares about is both. Each record is
+  counted under the path it resolves to, and once however many folders reach it, so a link
+  inside a build tree does not turn one record into a record per way of spelling it.
   The records a search discovers are announced as log messages, and a record written by a
   newer DDD, that names a check this version of DDD has not got, or that names its project by
   a relative path, which a build never writes, is skipped and the reason announced with it -
@@ -303,8 +303,9 @@ three stages:
   ``plugin-invalid`` finding on the project file, which is what ``ddd check`` refuses the
   same ``-W`` for.
 * **A containing project.** A file no build record claims is looked for in a containing
-  project instead: the server walks from the file's directory up to the workspace root and
-  checks the file under the project descriptions of the outermost directory that include it.
+  project instead: the server walks from the file's directory up to the workspace folder
+  holding it and checks the file under the project descriptions of the outermost directory
+  that include it.
   A description nearer the file that includes it as well is a sub-project of the outer one
   and is dropped: it does not know what the rest of the outer project produces, so the file
   shows what ``ddd check`` of the outer project shows.
@@ -329,6 +330,12 @@ three stages:
   the dictionary is a variable short, and the file that declares the constant, the raster or
   the type is simply one this server was not shown. Each check declares whether it needs the
   whole project, so the two modes cannot drift apart.
+
+The workspace folders are those the editor names when it starts the server, and those it adds
+and removes afterwards, which the server says it follows: a folder added is searched as one
+named from the start, its build records found and the open documents checked again; a folder
+removed is answered as if it had never been named - what was published under it alone is
+withdrawn, and an open document under it is checked as one outside every folder.
 
 What the server runs
 --------------------
@@ -366,10 +373,9 @@ editor. It contributes two settings and one command:
        environment.
    * - ``ddd.buildDirectories``
      - the directories handed to the server as ``-b``, each searched for a
-       ``ddd-build.json``; a relative entry is relative to the workspace folder, which is
-       where the extension starts the server. Left empty, the conventional build directory
-       names next to the workspace are searched. A change takes effect once the server is
-       restarted.
+       ``ddd-build.json``; a relative entry is read against each workspace folder. Left
+       empty, the conventional build directory names in each workspace folder are searched.
+       A change takes effect once the server is restarted.
 
 The command is **DDD: Restart Language Server**, for picking up a newly installed tool, or a
 change of the settings, without reloading the window.

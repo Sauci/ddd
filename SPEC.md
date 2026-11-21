@@ -3006,29 +3006,29 @@ should be told nothing about it.
 
 Which project a file belongs to comes from the build records of
 [section 3.6](#36-build-record), found by searching the build directories the client names,
-or, unconfigured, the conventional directories `build`, `out` and `cmake-build-*` under the
-workspace, recursively for `ddd-build.json`. Each record found is counted under the path it
-resolves to, so a link inside a build tree does not turn one record into a record per way of
-spelling it. A file claimed by several builds is checked
-under each of them and the findings published together: a component linked into two images
-is in two projects, and the answer to which one the reader cares about is both. A finding
-equal in check, message, place and severity to one already published for that file is
-published once, because two images reporting the same mistake in the same words are not two
-mistakes; where their severities differ they really are saying two different things and both
-are published. A file no
-build record claims is looked for in a containing project instead: the server walks from
-the file's directory up to the workspace root, and the file is checked under the project
-descriptions of the outermost directory that include it - the candidates of a directory being
-its `*.ddd.json` files in sorted order, the opened file itself excluded - under the default
-severities of [section 4](#4-consistency-checks), since the `-W` and `--strict` of a build
-are properties of a build and no record named this file. A description nearer the file that
-includes it as well is a sub-project of the outer one and is dropped: it does not know what
-the rest of the outer project produces, and `ddd check` of the outer project is what the file
-shows. A file that is itself a project description is searched for above like any file, and is
-checked as the project it is, under those same default severities, where no description
-above includes it: it lists its components, so every check has what it needs, and the checks
-that need the whole project are exactly the ones somebody opening a project file is asking
-about. A file
+or, unconfigured, the conventional directories `build`, `out` and `cmake-build-*` under each
+workspace folder, recursively for `ddd-build.json`. Each record found is counted under the
+path it resolves to, and once however many folders reach it, so a link inside a build tree
+does not turn one record into a record per way of spelling it. A file claimed by several
+builds is checked under each of them and the findings published together: a component linked
+into two images is in two projects, and the answer to which one the reader cares about is
+both. A finding equal in check, message, place and severity to one already published for that
+file is published once, because two images reporting the same mistake in the same words are
+not two mistakes; where their severities differ they really are saying two different things
+and both are published. A file no
+build record claims is looked for in a containing project instead: the server walks from the
+file's directory up to the workspace folder holding it, and the file is checked under the
+project descriptions of the outermost directory that include it - the candidates of a
+directory being its `*.ddd.json` files in sorted order, the opened file itself excluded -
+under the default severities of [section 4](#4-consistency-checks), since the `-W` and
+`--strict` of a build are properties of a build and no record named this file. A description
+nearer the file that includes it as well is a sub-project of the outer one and is dropped: it
+does not know what the rest of the outer project produces, and `ddd check` of the outer
+project is what the file shows. A file that is itself a project description is searched for
+above like any file, and is checked as the project it is, under those same default severities,
+where no description above includes it: it lists its components, so every check has what it
+needs, and the checks that need the whole project are exactly the ones somebody opening a
+project file is asking about. A file
 belonging to no build, to no such project and declaring no project of its own is still
 checked, on its own, with the nine checks that
 need every component of a project ([section 4](#4-consistency-checks)) held back: a
@@ -3126,9 +3126,15 @@ that a client watching the process can tell a stop that was prepared for from on
 not.
 
 The server speaks the protocol on stdin and stdout, and takes the build directories as
-repeatable `-b` arguments, a relative one read against the server's working directory; the
-shipped VS Code extension exposes them as the setting `ddd.buildDirectories`, and the
-executable to launch as `ddd.executable`.
+repeatable `-b` arguments, a relative one read against each workspace folder, or against the
+server's working directory while the client names none; the shipped VS Code extension exposes
+them as the setting `ddd.buildDirectories`, and the executable to launch as `ddd.executable`.
+
+The workspace folders are those the client names at `initialize`, and those it adds and
+removes while the session runs, which the server says it follows: a folder added is searched
+as one named from the start, its build records found and the open documents checked again,
+and a folder removed is answered as if it had never been named - what was published under it
+alone is withdrawn, and an open document under it is checked as one outside every folder.
 
 An editor extension **shall** do no more than launch the server, point it at the build
 directories and offer to restart it: everything a reader sees is the tool's answer, and the

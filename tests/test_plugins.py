@@ -447,6 +447,20 @@ class TestWhatAProcessImported:
         assert load_plugin("rewrites.py", tmp_path).name == "rewrites"
         assert changed_since_imported(path.resolve()) is True
 
+    def test_a_plugin_under_a_directory_named_in_no_utf_8_loads_and_is_told(
+        self, tmp_path: Path
+    ) -> None:
+        """``caf\\xe9``, a directory named in Latin-1 as an old archive leaves one, which python
+        spells with a lone surrogate: the module is named, and what it was run from kept, by its
+        path all the same."""
+        directory = tmp_path / "caf\udce9"
+        directory.mkdir()
+        path = write_plugin(directory, "plug.py", saying("OLD WORDS"))
+        assert load_plugin(str(path), tmp_path).name == "plug"
+        assert changed_since_imported(path.resolve()) is False
+        path.write_text(saying("NEW WORDS"), encoding="utf-8")
+        assert changed_since_imported(path.resolve()) is True
+
     def test_ddd_check_never_files_it(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:

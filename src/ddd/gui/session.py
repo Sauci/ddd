@@ -799,9 +799,9 @@ class Session:
         descriptions = [path for path, file in read.items() if file.kind == "project"]
         # The record beside the description too, there or not, wherever the search looked: it
         # says whether a build generates the project.
-        watched = _watched(descriptions, (*found, project.parent / BUILD_INFO_FILENAME))
+        watched, plugins = _watched(descriptions, (*found, project.parent / BUILD_INFO_FILENAME))
         # Before the findings are sorted onto their files, so that a plugin's file counts its own.
-        _tell_changed_plugins(runs, watched)
+        _tell_changed_plugins(runs, plugins)
         grouped, covered = _grouped(runs, project)
         registered = {info.identifier: info for run in runs for info in run.bag.registered.values()}
         files = tuple(
@@ -1555,11 +1555,14 @@ def _named_by(project: Path) -> set[Path]:
     return named
 
 
-def _watched(descriptions: Iterable[Path], records: Iterable[Path]) -> tuple[Path, ...]:
-    """What a revision watches (:attr:`Revision.watched`): every build record of ``records``, and
-    for each project description of ``descriptions`` - each one its analysis read, the project's
-    own among them - where its wildcard includes expand (:func:`_expanded_by`) and every file its
-    ``plugins`` list names by its path, loaded or not (:func:`ddd.plugins.plugin_files`).
+def _watched(
+    descriptions: Iterable[Path], records: Iterable[Path]
+) -> tuple[tuple[Path, ...], tuple[Path, ...]]:
+    """What a revision watches (:attr:`Revision.watched`), and the plugin files among it, each
+    sorted: every build record of ``records``, and for each project description of
+    ``descriptions`` - each one its analysis read, the project's own among them - where its
+    wildcard includes expand (:func:`_expanded_by`) and every file its ``plugins`` list names by
+    its path, loaded or not (:func:`ddd.plugins.plugin_files`), which are the plugin files.
 
     Each description is read again for its lists, by the loader's reading of json: a run keeps no
     list it read, and a description saved since its run read it is a file the revision stamps
@@ -1567,30 +1570,33 @@ def _watched(descriptions: Iterable[Path], records: Iterable[Path]) -> tuple[Pat
     passed over: finding its file can import its parents, running code no analysis ran - a
     description that does not validate loads none of the plugins it names."""
     watched = set(records)
+    plugins: set[Path] = set()
     for described in descriptions:
         data = _read_json(described)
         watched |= _expanded_by(described, data)
         for spelling in _plugins_named(data):
             if spelling.endswith(".py"):
-                watched.update(plugin_files(spelling, described.parent))
-    return tuple(sorted(watched))
+                plugins.update(plugin_files(spelling, described.parent))
+    return tuple(sorted(watched | plugins)), tuple(sorted(plugins))
 
 
-def _tell_changed_plugins(runs: Sequence[Run], watched: Iterable[Path]) -> None:
-    """File ``plugin-changed`` on each plugin of ``watched`` whose file changed since this process
-    imported it (:func:`ddd.plugins.changed_since_imported`), into each of ``runs``, which grades it
-    under its build's severities as it grades every other finding: a module is imported once per
+def _tell_changed_plugins(runs: Sequence[Run], plugins: Iterable[Path]) -> None:
+    """File ``plugin-changed`` on each of ``plugins`` whose file changed since this process imported
+    it (:func:`ddd.plugins.changed_since_imported`), into each of ``runs``, which grades it under
+    its build's severities as it grades every other finding: a module is imported once per
     process, so ``ddd gui`` runs the old code until it is restarted, and every finding of the
     analysis is that code's. Several builds grading it alike file it once, as they file any
     finding (:func:`~ddd.lsp.diagnostics.group_findings`).
 
-    Asked of every path the revision watches, which holds every file a ``plugins`` list names by
-    its path, loaded or not, rather than of the files the runs covered: a run its plugin's model
-    ended covers the project description alone, and that plugin is the one most in need of
-    telling, its mended model never having run. Only a file a module was run from can answer yes,
-    so a directory and a build record answer no, and so does the file of a plugin named as a
-    module, which the environment imports as it imports any other."""
-    changed = [path for path in watched if changed_since_imported(path)]
+    ``plugins`` are the plugin files the revision watches (:func:`_watched`), every file a
+    ``plugins`` list names by its path, loaded or not, rather than the files the runs covered: a
+    run its plugin's model ended covers the project description alone, and that plugin is the one
+    most in need of telling, its mended model never having run. Nothing else the revision watches
+    is asked: no module is run from a directory a pattern walks or from a build record, and their
+    names need not even be text - a directory named in Latin-1, as an old archive leaves one, is
+    spelled with a lone surrogate. A plugin named as a module is passed over with them, the
+    environment importing it as it imports any other."""
+    changed = [path for path in plugins if changed_since_imported(path)]
     for run in runs:
         for path in changed:
             run.bag.add(

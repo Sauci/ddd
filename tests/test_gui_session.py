@@ -2180,6 +2180,50 @@ class TestAPluginChangedSinceItWasImported:
             (plugin.resolve(), Severity.ERROR, changed_words("plug.py")),
         }
 
+    def test_a_project_walking_a_directory_named_in_no_utf_8_is_analysed(
+        self, tmp_path: Path
+    ) -> None:
+        """``comps/**/*.ddd.json`` walks ``comps/caf\\xe9``, a directory named in Latin-1 as an old
+        archive leaves one, which python spells with a lone surrogate: the revision watches it, as
+        it watches every directory such a pattern walks, and asks nothing of it."""
+        project_file = a_pattern_of_writers(tmp_path, "comps/**/*.ddd.json", "comps/w.ddd.json")
+        unnamed = tmp_path / "comps" / "caf\udce9"
+        unnamed.mkdir()
+        revision = first_revision(tmp_path, project_file)
+        assert revision.number == 1
+        assert unnamed.resolve() in revision.watched
+        assert {filed.diagnostic.check for filed in revision.findings} == {
+            "missing-id",
+            "unused-output",
+        }
+
+    def test_of_what_a_revision_watches_its_plugin_files_alone_are_asked(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A directory a pattern expands in, a build record found, the record beside the project
+        description and a plugin file are each watched; only the plugin is asked whether it changed
+        since it was imported, which no directory or record could be."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "comps/*.ddd.json", plugins=["named.py"]),
+                "comps/w.ddd.json": component("W", declare("output", "Speed", unit="rpm")),
+                "named.py": NAMED_PLUGIN,
+            },
+        )
+        build_record(tmp_path, tmp_path / "p.ddd.json")
+        asked: list[Path] = []
+        real = module.changed_since_imported
+
+        def recorded(path: Path) -> bool:
+            asked.append(path)
+            return real(path)
+
+        monkeypatch.setattr(module, "changed_since_imported", recorded)
+        revision = first_revision(tmp_path, tmp_path / "p.ddd.json")
+        assert len(revision.watched) == 4
+        assert asked and set(asked) == {(tmp_path / "named.py").resolve()}
+
 
 class TestEachPathResolvedOnce:
     def test_a_revision_names_each_of_its_paths_resolved_by_the_loaders_rule(

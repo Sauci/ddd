@@ -245,8 +245,13 @@ def _exit_text(error: SystemExit) -> str:
 
 def _module_name(path: Path) -> str:
     """The name ``sys.modules`` holds the module of the plugin file ``path`` under, ``path``
-    resolved (:func:`_load_from_path` says why it is this one)."""
-    digest = hashlib.sha256(path.as_posix().encode("utf-8")).hexdigest()[:16]
+    resolved (:func:`_load_from_path` says why it is this one).
+
+    Digested as UTF-8 with lone surrogates passed through, so that a path naming a directory or a
+    file in no UTF-8 - one named in Latin-1, as an old archive leaves one, which python spells with
+    a lone surrogate on a POSIX system, and NTFS can hold - names a module as any other does, where
+    a strict encode raised; the name of every other path is what that encode gave."""
+    digest = hashlib.sha256(path.as_posix().encode("utf-8", "surrogatepass")).hexdigest()[:16]
     return f"ddd_plugin_{re.sub(r'\W', '_', path.stem)}_{digest}"
 
 

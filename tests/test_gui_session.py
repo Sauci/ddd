@@ -1707,6 +1707,23 @@ class TestWhatThePollWatches:
         assert session.poll() is True
         assert "multiple-producers" in checks_of(session)
 
+    def test_the_directory_a_recursive_pattern_starts_in_made_makes_a_new_revision(
+        self, tmp_path: Path
+    ) -> None:
+        """``extra/**/*.ddd.json`` walks nothing while ``extra`` is not there, so ``extra`` is
+        watched itself, stamped as not there: made with a writer below it, it is noticed."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "extra/**/*.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        session = opened_and_settled(tmp_path / "p.ddd.json")
+        a_second_writer(tmp_path / "extra" / "a" / "x.ddd.json")
+        assert session.poll() is True
+        assert "multiple-producers" in checks_of(session)
+
     def test_a_file_saved_where_no_pattern_expands_asks_for_nothing(self, tmp_path: Path) -> None:
         """An editor's swap file beside the description: ``comps/*.ddd.json`` looks ``comps`` up
         there and lists nothing else, so that directory's time is no stamp of the project."""
@@ -1715,6 +1732,44 @@ class TestWhatThePollWatches:
         (tmp_path / ".p.ddd.json.swp").write_bytes(b"")
         moved(tmp_path)
         assert session.poll() is False
+
+    def test_a_file_saved_in_a_directory_a_pattern_only_passes_through_asks_for_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        """``src/components/*.ddd.json`` looks ``src`` up on its way to ``components`` and lists
+        only that: a swap file of a C source saved in ``src`` is no change of the project. The
+        path ``src/components`` is stamped there or not, so its being made is noticed all the
+        same."""
+        project_file = a_pattern_of_writers(
+            tmp_path, "src/components/*.ddd.json", "src/components/w.ddd.json"
+        )
+        session = opened_and_settled(project_file)
+        (tmp_path / "src" / ".main.c.swp").write_bytes(b"")
+        moved(tmp_path / "src")
+        assert session.poll() is False
+        assert session.revision is not None and session.revision.number == 1
+
+    def test_a_file_saved_beside_the_checkout_a_pattern_climbs_out_of_asks_for_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        """``../shared/*.ddd.json`` climbs out of the project's directory to ``shared``: the
+        directory holding the checkout, where a sibling clone lies, is only passed through."""
+        checkout = tmp_path / "project"
+        write_tree(
+            tmp_path,
+            {
+                "project/p.ddd.json": project("P", "../shared/*.ddd.json"),
+                "shared/w.ddd.json": component("W", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        session = opened_and_settled(checkout / "p.ddd.json")
+        (tmp_path / "sibling").mkdir()
+        moved(tmp_path)
+        assert session.poll() is False
+        a_second_writer(tmp_path / "shared" / "x.ddd.json")
+        moved(tmp_path / "shared")
+        assert session.poll() is True
+        assert "multiple-producers" in checks_of(session)
 
     @pytest.mark.parametrize(
         ("pattern", "other"),

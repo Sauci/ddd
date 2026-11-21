@@ -1586,11 +1586,15 @@ def _expanded_in(source: Path, entry: str) -> set[Path]:
     would walk it.
 
     For a pattern, each directory a wildcard of it is matched in, every directory a ``**`` walks
-    among them, hidden ones too, as the loader's walk goes into them; and each path a name of it
-    that is no wildcard is looked up at, there or not, so that the directory it names being made
-    is noticed too. A directory a name is only looked up in is not listed, and is not watched:
-    ``comps/*.ddd.json`` lists ``comps``, and a file saved beside the description including it -
-    an editor's swap file - is no change of that project. Nothing for an entry naming a file,
+    among them, hidden ones too, as the loader's walk goes into them - where a name that is no
+    wildcard leads to one, the path it names there or not, so that its being made is noticed too -
+    and, where its last name is no wildcard, each path that name is looked up at. A directory a
+    name is only passed through on the way to another is not listed, and is not watched:
+    ``src/components/*.ddd.json`` lists ``src/components``, and a file saved in ``src``, or beside
+    the description including it - an editor's swap file - is no change of that project, while
+    ``src/components`` itself, stamped there or not, notices its being made all the same; and
+    ``../shared/*.ddd.json`` leaves the directory holding the project's checkout unwatched, a
+    sibling clone made there no change either. Nothing for an entry naming a file,
     wildcard characters and all, which the loader reads before it reads the entry as a pattern
     and the revision stamps as one of its files; nothing either for a pattern pathlib refuses,
     which the analysis reports as ``include-empty``. Each directory is spelled as the loader's
@@ -1625,7 +1629,12 @@ def _expanded_in(source: Path, entry: str) -> set[Path]:
                     level = [found for found in base.glob(prefix) if found.is_dir()]
             else:
                 level = [directory / part for directory in level]
-                expanded.update(level)
+                # Watched where a wildcard is matched in it next - a ``**`` among them, whose walk
+                # yields nothing while it is not there - or where it is the path a match ends at:
+                # a directory a name is only passed through on the way to another is no listing.
+                last = depth == len(parts) - 1
+                if last or any(character in parts[depth + 1] for character in _WILDCARDS):
+                    expanded.update(level)
     except (OSError, ValueError, NotImplementedError):
         return set()
     return expanded

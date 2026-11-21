@@ -1439,6 +1439,17 @@ class TestOpeningWithoutTheWalk:
         assert post(api, "/api/open", wanted).status == 200
         assert len(walks) == 1
 
+    def test_the_project_the_session_opened_itself_is_opened_again_without_the_walk(
+        self, root: Path, walks: list[Path]
+    ) -> None:
+        """Opened on the session itself, through no route, and named on no command line: no walk
+        of this api's found it, and it is the open project, held as such."""
+        session = Session(root)
+        session.open(root / "other" / "q.ddd.json")
+        api = Api(session)
+        reply = post(api, "/api/open", {"path": (root / "other" / "q.ddd.json").as_posix()})
+        assert (reply.status, reply.body["project"]["name"], walks) == (200, "Q", [])
+
     def test_a_project_an_open_s_own_walk_found_is_opened_without_walking_again(
         self, root: Path, walks: list[Path]
     ) -> None:

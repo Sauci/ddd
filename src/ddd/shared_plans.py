@@ -49,6 +49,7 @@ from ddd.lsp.navigation import (
     conditions_spelling,
     drift,
     rename_sites,
+    told_apart,
     word_spans,
 )
 from ddd.lsp.ranges import Document, read
@@ -448,10 +449,11 @@ def _plan(operations: Mapping[Path, Sequence[Operation]]) -> Plan:
 
 
 def _names(files: Sequence[Path]) -> str:
-    """The files a refusal is about, by name, as :func:`ddd.lsp.units._names` spells them: a
-    refusal names the file it concerns, and a project can include more than one nobody could
-    read."""
-    return ", ".join(file.name for file in files)
+    """The files a refusal is about, as :func:`ddd.lsp.units._names` spells them: a refusal
+    names the file it concerns, and a project can include more than one nobody could read - by
+    name, and two of one name in different folders by as much of their paths as tells them
+    apart (:func:`~ddd.lsp.navigation.told_apart`)."""
+    return ", ".join(told_apart(files))
 
 
 def _plural(count: int, noun: str) -> str:

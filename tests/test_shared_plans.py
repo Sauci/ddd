@@ -1060,6 +1060,39 @@ class TestDeclaringOne:
         assert "sizes.ddd.json did not parse" in raised.value.message
         assert not (tmp_path / CONSTANTS_FILE).exists()
 
+    def test_two_files_of_one_name_nobody_could_read_are_named_apart(self, tmp_path: Path) -> None:
+        """Each ``sizes.ddd.json`` cut short in a folder of its own: named by their names alone,
+        the two read alike, and a reader sent to repair one opened whichever came first. Told
+        apart by as much of their paths as it takes, as a unit's plans name theirs."""
+        files = {"a.ddd.json": component("A", declare("output", "Speed", unit="rpm"))}
+        built = _index(tmp_path, files)
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "x/sizes.ddd.json", "y/sizes.ddd.json", "a.ddd.json"),
+                "x/sizes.ddd.json": '{"constants": [{"name": "',
+                "y/sizes.ddd.json": '{"constants": [{"name": "',
+            },
+        )
+        cache: dict[Path, Document] = {}
+        found = vocabulary_project(
+            tmp_path / "p.ddd.json", project_shared.CONSTANTS.containers[0], (), cache, skims=False
+        )
+        with pytest.raises(PlanRefusalError) as raised:
+            add_entry(
+                project_shared.CONSTANTS,
+                built,
+                found,
+                "NEW_ONE",
+                {"value": "8", "description": '""'},
+                cache,
+            )
+        assert (raised.value.code, raised.value.message) == (
+            "unreadable",
+            "x/sizes.ddd.json, y/sizes.ddd.json did not parse, so whether this project already "
+            "keeps its constants there is unknown and 'NEW_ONE' cannot be declared into a new file",
+        )
+
     def test_a_file_nobody_could_read_does_not_stop_an_append_to_one_that_loaded(
         self, tmp_path: Path
     ) -> None:

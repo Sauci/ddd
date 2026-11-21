@@ -774,8 +774,9 @@ The commands
        renames a type, a constant, a section, a raster or a unit, takes out a constant,
        a section, a raster, a unit or a declaration, or settles a key on every
        declaration of a variable, is refused ``unreadable``, naming each file that did
-       not - ``b.ddd.json did not load, so renaming 'Speed_t' could not reach every place
-       that names it`` - rather than made over the files that did, which would leave the
+       not, two of one name by as much of their paths as tells them apart - ``b.ddd.json
+       did not load, so renaming 'Speed_t' could not reach every place that names it`` -
+       rather than made over the files that did, which would leave the
        old name in the one that did not, or take out what it still names. So is a plan that
        declares an object, or reads a variable, as an output or a local, which a file that
        did not load may produce or declare already; and one that writes into the file that

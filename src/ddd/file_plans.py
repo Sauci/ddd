@@ -45,7 +45,7 @@ from ddd.file_names import uncreatable
 from ddd.findings_by_file import Pair
 from ddd.loading import included_files, resolve_path
 from ddd.lsp.diagnostics import finding_identity
-from ddd.lsp.navigation import Index
+from ddd.lsp.navigation import Index, told_apart
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import VocabularyProject, created_beside, entry_appended
 from ddd.models.common import Identifier
@@ -494,7 +494,7 @@ def _stated_units(described: Path, units: VocabularyProject, built: Index | None
     if units.unread:
         raise PlanRefusalError(
             "unreadable",
-            f"{', '.join(file.name for file in units.unread)} did not load, so a first units "
+            f"{', '.join(told_apart(units.unread))} did not load, so a first units "
             "file could not list every unit in use",
         )
     if built is None:

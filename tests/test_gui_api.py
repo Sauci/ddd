@@ -6464,7 +6464,27 @@ class TestUnitPlan:
     def test_a_project_the_analysis_could_not_read_plans_nothing(self, tmp_path: Path) -> None:
         reply = get(unloaded(tmp_path), "/api/unit-plan", action="adopt")
         assert (reply.status, reply.body["error"]) == (409, "unreadable")
-        assert reply.body["message"].startswith("p.ddd.json did not load")
+        assert reply.body["message"] == (
+            "p.ddd.json did not load, so no unit of the project can be changed"
+        )
+
+    def test_a_project_not_read_though_every_file_read_loaded_names_its_description(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """With no index and no file that did not load to name, the refusal names the project's
+        description, which the analysis read no further than, rather than naming nothing."""
+        api = unloaded(tmp_path)
+        revision = api.session.revision
+        assert revision is not None
+        loaded = tuple(dataclasses.replace(file, loaded=True) for file in revision.files)
+        monkeypatch.setattr(api.session, "_revision", dataclasses.replace(revision, files=loaded))
+        assert get(api, "/api/unit-plan", action="adopt") == Reply(
+            409,
+            {
+                "error": "unreadable",
+                "message": "p.ddd.json did not load, so no unit of the project can be changed",
+            },
+        )
 
     def test_a_preview_the_engine_refuses_is_a_refusal_the_page_can_act_on(
         self, api: Api, monkeypatch: pytest.MonkeyPatch
@@ -6713,7 +6733,9 @@ class TestTheTypesTab:
             unloaded(tmp_path), "/api/type-plan", action="rename", name="Temperature_t", to="X_t"
         )
         assert (reply.status, reply.body["error"]) == (409, "unreadable")
-        assert reply.body["message"].startswith("p.ddd.json did not load")
+        assert reply.body["message"] == (
+            "p.ddd.json did not load, so no type of the project can be changed"
+        )
 
     def test_a_type_the_project_neither_declares_cannot_be_changed(self, structures) -> None:
         api, _ = structures
@@ -7210,7 +7232,9 @@ class TestConstant:
     ) -> None:
         reply = get(unloaded(tmp_path), "/api/constant-plan", action="remove", name="X")
         assert (reply.status, reply.body["error"]) == (409, "unreadable")
-        assert reply.body["message"].startswith("p.ddd.json did not load")
+        assert reply.body["message"] == (
+            "p.ddd.json did not load, so no constant of the project can be changed"
+        )
 
     def test_a_constant_preview_the_engine_refuses_is_a_refusal_the_page_can_act_on(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -9433,6 +9457,52 @@ class TestAPlanWhileAFileDidNotLoad:
             )
 
 
+class TestTwoFilesOfOneNameThatDidNotLoad:
+    """Two components saved half way, each ``b.ddd.json`` in a folder of its own: every refusal
+    naming the files that did not load tells the two apart by as much of their paths as it takes,
+    as the editor's does (:func:`ddd.lsp.navigation.told_apart`). By their names alone they read
+    ``b.ddd.json, b.ddd.json``, and a reader sent to repair it opened whichever came first."""
+
+    @staticmethod
+    def opened(base: Path) -> Api:
+        return opened(
+            base,
+            {
+                "p.ddd.json": project(
+                    "P", "t.ddd.json", "a.ddd.json", "x/b.ddd.json", "y/b.ddd.json"
+                ),
+                "t.ddd.json": types(scalar_type("Speed_t", unit="rpm")),
+                "a.ddd.json": component("A", declare("output", "Pace", typename="Speed_t")),
+                "x/b.ddd.json": '{"component": {"name": "B1"',
+                "y/b.ddd.json": '{"component": {"name": "B2"',
+            },
+        )
+
+    def test_a_plan_that_has_to_see_every_file_names_each_apart(self, tmp_path: Path) -> None:
+        reply = get(
+            self.opened(tmp_path), "/api/type-plan", action="rename", name="Speed_t", to="Rate_t"
+        )
+        assert reply == Reply(
+            409,
+            {
+                "error": "unreadable",
+                "message": "x/b.ddd.json, y/b.ddd.json did not load, so renaming 'Speed_t' could "
+                "not reach every place that names it",
+            },
+        )
+
+    def test_a_name_no_file_that_loaded_declares_names_each_apart(self, tmp_path: Path) -> None:
+        reply = get(self.opened(tmp_path), "/api/variable", name="Torque")
+        assert reply == Reply(
+            409,
+            {
+                "error": "unreadable",
+                "message": "'Torque' is not declared in any file that loaded, and x/b.ddd.json, "
+                "y/b.ddd.json did not load",
+            },
+        )
+
+
 class TestAPlanOfWhatNoFileThatLoadedDeclares:
     """A name only a file that did not load declares is in no index, and a plan asked about it
     has to say why: that a file did not load, naming it, in the words its panel's route answers
@@ -10348,7 +10418,7 @@ class TestWhatAComponentMayAdd:
         reply = get(api, "/api/declarable", file=(tmp_path / "p.ddd.json").as_posix())
         assert (reply.status, reply.body["error"]) == (409, "unreadable")
         assert reply.body["message"] == (
-            "the open project did not load, so no interface of it can be changed"
+            "p.ddd.json did not load, so no interface of the project can be changed"
         )
 
 
@@ -10508,6 +10578,9 @@ class TestPlanningAChangeOfAnInterface:
             name="ValueA",
         )
         assert (reply.status, reply.body["error"]) == (409, "unreadable")
+        assert reply.body["message"] == (
+            "p.ddd.json did not load, so no interface of the project can be changed"
+        )
 
     def test_a_preview_the_engine_refuses_is_a_refusal_the_page_can_act_on(
         self, demo, monkeypatch: pytest.MonkeyPatch
@@ -10825,6 +10898,9 @@ class TestDescribingADeclarationOverHttp:
             description="x",
         )
         assert (reply.status, reply.body["error"]) == (409, "unreadable")
+        assert reply.body["message"] == (
+            "p.ddd.json did not load, so no interface of the project can be changed"
+        )
 
     def test_a_file_outside_the_project_is_not_found(self, demo, tmp_path: Path) -> None:
         api, _ = demo

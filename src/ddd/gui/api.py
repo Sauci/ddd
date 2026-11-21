@@ -157,7 +157,7 @@ from ddd.gui.session import KINDS as DESCRIPTION_KINDS
 from ddd.ir import DataDictionary
 from ddd.loading import fingerprint, resolve_path
 from ddd.lsp.edits import settle, type_conversions
-from ddd.lsp.navigation import Index
+from ddd.lsp.navigation import Index, told_apart
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import (
     VocabularyProject,
@@ -279,8 +279,6 @@ by the scope - the end of the sentence ``b.ddd.json did not load, so ...`` - for
 :data:`ddd.declaration_plans.PRODUCING_SCOPES`: that file may produce the name already, which is a
 ``multiple-producers`` once it loads, or declare it beside a local, which is a ``local-conflict``.
 A declaration that only reads is not here: it adds no second producer, and is answered."""
-
-_NOTHING_LOADED: Final = "the open project did not load, so no interface of it can be changed"
 
 _NOTHING_RESOLVED: Final = "the open project did not resolve, so no object's values can be read"
 
@@ -927,13 +925,7 @@ class Api:
         revision = self._opened()
         built = revision.index
         if built is None:
-            unread = [file.path.name for file in revision.files if not file.loaded]
-            return _error(
-                409,
-                UNREADABLE,
-                f"{', '.join(unread) or revision.project.name} did not load, "
-                "so no unit of the project can be changed",
-            )
+            return _nothing_loaded(revision, "unit")
         cache: dict[Path, Document] = {}
         project = vocabulary_project(
             revision.project,
@@ -1043,13 +1035,7 @@ class Api:
         revision = self._opened()
         built = revision.index
         if built is None:
-            unread = [file.path.name for file in revision.files if not file.loaded]
-            return _error(
-                409,
-                UNREADABLE,
-                f"{', '.join(unread) or revision.project.name} did not load, "
-                "so no type of the project can be changed",
-            )
+            return _nothing_loaded(revision, "type")
         asked = query.root
         unseen = _unseen_refusal(revision, asked)
         if unseen is not None:
@@ -1350,13 +1336,7 @@ class Api:
         revision = self._opened()
         built = revision.index
         if built is None:
-            unread = [file.path.name for file in revision.files if not file.loaded]
-            return _error(
-                409,
-                UNREADABLE,
-                f"{', '.join(unread) or revision.project.name} did not load, "
-                f"so no {vocabulary.kind} of the project can be changed",
-            )
+            return _nothing_loaded(revision, vocabulary.kind)
         unseen = _unseen_refusal(revision, asked)
         if unseen is not None:
             return unseen
@@ -1474,16 +1454,12 @@ class Api:
             return _error(404, "not-found", str(outside))
         built = revision.index
         if built is None:
-            return _error(409, UNREADABLE, _NOTHING_LOADED)
+            return _nothing_loaded(revision, "interface")
         described = _file_of(revision, file)
         if described.kind != "component":
             if not described.loaded:
                 # Cut short, a file reads as no kind at all, and which kind it is is not known.
-                return _error(
-                    409,
-                    UNREADABLE,
-                    f"{file.name} did not load, so it cannot be told whether it is a component",
-                )
+                return _did_not_load([file.name], "it cannot be told whether it is a component")
             return _error(409, "invalid", f"{file.name} is not a component of the open project")
         return Reply(
             200,
@@ -1525,7 +1501,7 @@ class Api:
             return _error(404, "not-found", str(outside))
         built = revision.index
         if built is None:
-            return _error(409, UNREADABLE, _NOTHING_LOADED)
+            return _nothing_loaded(revision, "interface")
         unseen = _declaring_refusal(revision, asked, file)
         if unseen is not None:
             return unseen
@@ -1551,15 +1527,12 @@ class Api:
             return _error(404, "not-found", str(outside))
         built = revision.index
         if built is None:
-            return _error(409, UNREADABLE, _NOTHING_LOADED)
+            return _nothing_loaded(revision, "interface")
         # Written into one file, as a declaration is: refused, naming that file alone, where it is
         # the one that did not load, what it declares being unknown.
         if not _file_of(revision, file).loaded:
-            return _error(
-                409,
-                UNREADABLE,
-                f"{file.name} did not load, so what it declares is unknown and nothing can be "
-                "described in it",
+            return _did_not_load(
+                [file.name], "what it declares is unknown and nothing can be described in it"
             )
         # A refusal that nothing is found is about the name only where the index lacks it, as
         # `_declaration_plan` asks: where it holds the name, the refusal is about this file, and
@@ -2078,7 +2051,7 @@ def _undeclared(revision: Revision, name: str) -> Reply:
     gone missing, which reads the same as changed - are two different statements: this answers
     each file the one that is true of it, never the other.
     """
-    unread = [file.path.name for file in revision.files if not file.loaded]
+    unread = _unread(revision)
     if unread:
         return _error(
             409,
@@ -2108,10 +2081,36 @@ def _while_unread(revision: Revision, consequence: str) -> Reply | None:
     said it had rewritten, and a removal finds nothing naming what that file may still name -
     ``ddd check`` fails the project once the file loads. Refused whole rather than done in part,
     as the language server refuses (:meth:`ddd.lsp.server.Server._unreadable`), until it does."""
-    unread = [file.path.name for file in revision.files if not file.loaded]
+    unread = _unread(revision)
     if not unread:
         return None
-    return _error(409, UNREADABLE, f"{', '.join(unread)} did not load, so {consequence}")
+    return _did_not_load(unread, consequence)
+
+
+def _nothing_loaded(revision: Revision, noun: str) -> Reply:
+    """The refusal of a change of the project's ``noun`` - a unit, a type, a constant, a section, a
+    raster, an interface - while ``revision`` has no index, the analysis having read too little of
+    the project to say where anything is: ``unreadable``, naming each file that did not load - the
+    project description, where its own read stopped the analysis - or the description itself
+    where every file read loaded, there being no other file to name."""
+    named = _unread(revision) or [revision.project.name]
+    return _did_not_load(named, f"no {noun} of the project can be changed")
+
+
+def _did_not_load(named: Sequence[str], consequence: str) -> Reply:
+    """``named did not load, so consequence``: the sentence each refusal of a change for files
+    that did not load is answered in, written once - ``unreadable``, naming the files and what
+    could not be done for them. :func:`_undeclared` says it of a name instead, one no file that
+    loaded declares."""
+    return _error(409, UNREADABLE, f"{', '.join(named)} did not load, so {consequence}")
+
+
+def _unread(revision: Revision) -> list[str]:
+    """Each file of ``revision`` that did not load, as a refusal names it: by its name, and two of
+    one name in different folders by as much of their paths as tells them apart
+    (:func:`~ddd.lsp.navigation.told_apart`), so that a reader sent to repair one is not sent to
+    whichever came first."""
+    return told_apart([file.path for file in revision.files if not file.loaded])
 
 
 def _declaring_refusal(
@@ -2128,11 +2127,8 @@ def _declaring_refusal(
     if isinstance(asked, RemoveDeclaration):
         return _unseen_refusal(revision, asked)
     if not _file_of(revision, file).loaded:
-        return _error(
-            409,
-            UNREADABLE,
-            f"{file.name} did not load, so what it declares is unknown and nothing can be "
-            "declared in it",
+        return _did_not_load(
+            [file.name], "what it declares is unknown and nothing can be declared in it"
         )
     if asked.scope in PRODUCING_SCOPES:
         return _while_unread(revision, _PRODUCING[asked.scope])

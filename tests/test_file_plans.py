@@ -1374,6 +1374,12 @@ class TestCreate:
                 "unit in use",
                 id="two files",
             ),
+            pytest.param(
+                ("y/b.ddd.json", "x/b.ddd.json"),
+                "x/b.ddd.json, y/b.ddd.json did not load, so a first units file could not list "
+                "every unit in use",
+                id="two files of one name",
+            ),
         ],
     )
     def test_a_first_units_file_is_refused_while_a_file_did_not_load(
@@ -1382,13 +1388,16 @@ class TestCreate:
         """What did not load may state a unit, and a first units file leaving it out would have
         it reported ``unknown-unit`` - the project failing in one click, which listing every
         unit is there to prevent. Refused as :func:`ddd.lsp.units.adoption` refuses, naming
-        every file that did not load, in the order of their paths."""
+        every file that did not load, in the order of their paths, two of one name told apart
+        by as much of their paths as it takes."""
         built, root = built_of(
             tmp_path,
             **{
                 "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
                 "b.ddd.json": '{"component": ',
                 "c.ddd.json": '{"component": ',
+                "x/b.ddd.json": '{"component": ',
+                "y/b.ddd.json": '{"component": ',
             },
         )
         units = vocabulary_project(

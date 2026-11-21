@@ -651,6 +651,44 @@ class TestDeclaringSomethingNew:
                 )
             assert (refused.value.code, refused.value.message) == ("invalid", why)
 
+    @pytest.mark.parametrize("scope", SCOPES)
+    def test_a_name_another_component_keeps_local_is_refused_naming_it_in_every_scope(
+        self, tmp_path: Path, cache: dict[Path, Document], scope: str
+    ) -> None:
+        """A local the chooser offers no other component (:func:`declarable`), typed as a new
+        object's name: told that the project declares it already, the reader was not told
+        where, nor that no scope would do. Refused in the sentence a read of it is, naming the
+        component that keeps it."""
+        built, root = built_of(tmp_path, **LOCAL_BESIDE_OUTPUT)
+        with pytest.raises(PlanRefusalError) as refused:
+            declare_object(
+                built,
+                root / "r.ddd.json",
+                scope,
+                {"name": "Loc", "kind": "measurement", "volatile": False},
+                cache,
+            )
+        assert (refused.value.code, refused.value.message) == (
+            "invalid",
+            "'Loc' is local to component 'W', so no other component may declare it",
+        )
+
+    def test_a_local_this_component_keeps_is_one_the_project_declares_already(
+        self, demo, cache
+    ) -> None:
+        """A local of this file's own is not another component's: declared in it again, it is
+        refused as a name the project declares already, and not as one kept by the component
+        that asks."""
+        with pytest.raises(PlanRefusalError) as refused:
+            declare_object(
+                demo,
+                CONTROLLER,
+                "output",
+                {"name": "ParameterA", "kind": "measurement", "volatile": False},
+                cache,
+            )
+        assert refused.value.message == "'ParameterA' is already declared by this project"
+
     def test_a_kind_that_is_not_one_of_the_six_is_refused(self, demo, cache) -> None:
         with pytest.raises(PlanRefusalError) as refused:
             declare_object(

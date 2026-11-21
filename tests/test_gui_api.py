@@ -10350,6 +10350,33 @@ class TestWhatAComponentMayAdd:
         )
         assert contents(tmp_path) == before
 
+    def test_a_name_another_component_keeps_local_typed_as_a_new_object_names_it(
+        self, tmp_path: Path
+    ) -> None:
+        """``Loc`` typed into the add panel's name as a new object, which no chooser offers: the
+        refusal names whose local it is, in the words a read of it is refused in, rather than
+        that the project declares it already."""
+        api = opened(
+            tmp_path,
+            {"p.ddd.json": project("P", *LOCAL_BESIDE_OUTPUT), **LOCAL_BESIDE_OUTPUT},
+        )
+        before = contents(tmp_path)
+        assert get(
+            api,
+            "/api/declaration-plan",
+            action="declare",
+            file=posix(tmp_path, "r.ddd.json"),
+            scope="input",
+            definition=json.dumps({"name": "Loc", "kind": "measurement", "volatile": False}),
+        ) == Reply(
+            409,
+            {
+                "error": "invalid",
+                "message": "'Loc' is local to component 'W', so no other component may declare it",
+            },
+        )
+        assert contents(tmp_path) == before
+
     def test_the_kinds_carry_the_form_each_one_asks_for(self, demo) -> None:
         api, root = demo
         body = get(api, "/api/declarable", file=self.controller(root)).body

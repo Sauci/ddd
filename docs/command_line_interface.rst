@@ -349,8 +349,9 @@ The commands
        project's own where there is not, or a new object of one of six kinds - and
        takes one away. A variable another component declares ``local`` is not offered: no
        other component may declare it in any scope, and writing the declaration would be a
-       ``local-conflict``. A component's page also holds the description of that
-       component's own declaration of the variable, in the variable's panel, as a text
+       ``local-conflict``; its name typed in as a new object's all the same is refused,
+       naming the component that keeps it. A component's page also holds the description
+       of that component's own declaration of the variable, in the variable's panel, as a text
        field: a description is the declaration's and not a key the declarations share,
        two components describing one variable in their own words. It is planned,
        previewed, applied and undone as any key the panel writes is - one ``set`` at the

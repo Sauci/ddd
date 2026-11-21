@@ -150,6 +150,19 @@ def _kept_by(built: Index, name: str) -> str | None:
     return None
 
 
+def _refuse_kept(built: Index, name: str) -> None:
+    """Refuse declaring ``name`` in a component other than the one that keeps it ``local``
+    (:func:`_kept_by`), naming that one: a declaration of it anywhere else, in any scope, is a
+    ``local-conflict``. One sentence for a read of it and for a new object of its name alike:
+    the chooser offers it to no other component, so it is said only to a name asked for all the
+    same."""
+    if (keeper := _kept_by(built, name)) is not None:
+        raise PlanRefusalError(
+            "invalid",
+            f"'{name}' is local to component '{keeper}', so no other component may declare it",
+        )
+
+
 def form_for(built: Index, kind: str, file: Path) -> tuple[KeyOffer, ...]:
     """What a new declaration of that kind asks for: one offer per key of ``KEY_ORDER`` the
     kind accepts, each with no value in play and ``required`` as the models have it.
@@ -204,11 +217,7 @@ def read_object(
         raise PlanRefusalError("not-found", f"the project declares no '{name}'")
     if any(site.path == here for site in sites):
         raise PlanRefusalError("invalid", f"this component already declares '{name}'")
-    if (keeper := _kept_by(built, name)) is not None:
-        raise PlanRefusalError(
-            "invalid",
-            f"'{name}' is local to component '{keeper}', so no other component may declare it",
-        )
+    _refuse_kept(built, name)
     if scope not in scopes_for(built, name):
         raise PlanRefusalError("invalid", f"'{name}' may not be declared '{scope}' here")
     owner = (built.producers.get(name) or sites)[0]
@@ -238,8 +247,12 @@ def declare_object(
     Refused before a file is touched for a name the project may not use, in
     :func:`~ddd.lsp.navigation.rename_problem`'s own sentence - a new declaration lands in the
     namespace a rename guards, so it gets the same answers rather than a second set derived
-    here. A declaration whose scope is one of :data:`PRODUCING_SCOPES` is stamped with a fresh
-    id, after its ``name``, where every stamped declaration of the examples carries one.
+    here - but a name another component keeps ``local`` first, naming that component as a read
+    of it is refused (:func:`_refuse_kept`): no chooser offers it, and that the project declares
+    it already does not say where, nor that no scope would do. A local of this file's own is
+    the project's name like any other. A declaration whose scope is one of
+    :data:`PRODUCING_SCOPES` is stamped with a fresh id, after its ``name``, where every stamped
+    declaration of the examples carries one.
 
     Stamped, the definition is asked of the models (:func:`~ddd.models.definition_problem`) - a
     rule crossing two keys, a ``datatype`` wanting a ``conversion`` among them, is not something
@@ -257,6 +270,8 @@ def declare_object(
         raise PlanRefusalError("invalid", f"'{kind}' is not a kind: {', '.join(KINDS)}")
     if scope not in SCOPES:
         raise PlanRefusalError("invalid", f"'{scope}' is not a scope: {', '.join(SCOPES)}")
+    if all(site.path != here for site in built.declarations.get(name, ())):
+        _refuse_kept(built, name)
     problem = rename_problem(built, name)
     if problem is not None:
         raise PlanRefusalError("invalid", problem)

@@ -10,6 +10,10 @@ text edits of Rename Symbol and of its quick fixes, and ``ddd gui`` previews it 
 its edit endpoint. Where a unit is stated is the navigation index's to say; nothing here decides
 it again.
 
+Two things here serve every vocabulary, the Shared files tab's as much as the units': the one
+recipe a file is created by (:func:`created_beside`), and the one reader of where a vocabulary's
+files are in a project (:func:`vocabulary_project`).
+
 A plan refuses before it reads a file it would not write. A file that did not load may state the
 unit, and a rename that cannot see it leaves the old spelling there, in a project the rename
 said it had rewritten; so does a removal, which takes out a spelling that file may still state.

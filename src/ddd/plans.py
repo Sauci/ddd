@@ -6,8 +6,8 @@ change is planned by :mod:`ddd.lsp.units`, a type's by :mod:`ddd.type_plans`, an
 Shared files tab by :mod:`ddd.shared_plans`, a declaration's by :mod:`ddd.declaration_plans` and
 a value's by :mod:`ddd.object_values`: each answers a :class:`Plan` or raises a
 :class:`PlanRefusalError`, and which code it refuses with, and when, its own module says.
-:mod:`ddd.file_plans` writes a change of the project's own ``includes`` in the same edits, and
-answers more beside them.
+:mod:`ddd.file_plans` plans a change of the project's own ``includes`` in the same edits, refused
+the same way, and answers more beside them.
 
 One plan and one refusal for every family of plans, rather than a plan and a refusal of one shape
 apiece in each module: ``ddd gui`` previews and answers each family alike, and a new family copied
@@ -37,7 +37,7 @@ class PlannedEdit:
 class Plan:
     """Everything one change takes: one edit per file, sorted by path - so that one function
     previews every family's plan (:func:`ddd.project_units.previewed`), and the language server
-    renders a unit's as the text edits of a rename (:func:`ddd.lsp.units.text_edits`)."""
+    renders a unit's as text edits (:func:`ddd.lsp.units.text_edits`)."""
 
     edits: tuple[PlannedEdit, ...]
 

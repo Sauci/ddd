@@ -247,7 +247,7 @@ its next analysis."""
 ANALYSING: Final = "analysing"
 """The refusal of a request the analysis has not caught up with: asked of the open project before
 its first analysis has landed, or a plan changing a file an edit wrote that no analysis has read
-yet - or refused for a place such a file it read no longer holds. Answered 409, and answered
+yet, or pointing at a place such a file it reads no longer holds. Answered 409, and answered
 differently once the analysis lands."""
 
 REFUSALS: Final = frozenset(
@@ -1709,9 +1709,10 @@ class Api:
 
         A plan refused ``stale`` - a file no longer holding, at a place the plan points at, what
         the analysis found there - is refused ``analysing`` first where an edit wrote a file the
-        plan read and no analysis has read it yet: that edit is what moved the place, the page's
-        own, and the plan asked once its analysis lands is made where the place now is. ``stale``
-        says the file was saved from elsewhere, and stands where it was.
+        plan read and no analysis has read it since: such an edit, made through ddd gui, moves
+        every place below what it puts in or takes out, and the plan asked once its analysis
+        lands is judged against what that analysis read. ``stale`` is answered where no such
+        edit waits, a file having been saved from elsewhere.
 
         The one answer of every plan route but two: the Files tab's, which judges a plan between
         its refusals and its preview, and the variable panel's settlement, which answers more

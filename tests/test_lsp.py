@@ -1957,6 +1957,27 @@ class TestHover:
         assert "| limits | 0 .. 1" in described
         assert "the full range of the datatype" not in described
 
+    def test_an_enumeration_spanning_its_datatype_is_said_to(self, tmp_path: Path) -> None:
+        """A table from the datatype's lowest value to its highest is the datatype's range
+        itself, said as any whole range is: only an enumeration narrower than it is not."""
+        from ddd.lsp.hover import describe
+
+        dictionary = self.resolved(
+            tmp_path,
+            declare(
+                "output",
+                "Level",
+                conversion={
+                    "kind": "enum",
+                    "name": "LevelA",
+                    "enumerators": {"LOW": 0, "HIGH": 255},
+                },
+            ),
+        )
+        assert "| limits | 0 .. 255 — the full range of the datatype |" in describe(
+            dictionary, "Level"
+        )
+
     @pytest.mark.parametrize(
         ("scope", "expected"),
         [("output", "read by *nobody*"), ("local", "Local to **A**")],

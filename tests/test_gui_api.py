@@ -3548,6 +3548,46 @@ class TestACreatedFileIsADescription:
         )
         assert contents(root) == before
 
+    def test_a_created_file_is_judged_by_its_name_before_the_plugins_it_names(
+        self, api: Api, root: Path
+    ) -> None:
+        """What a created file is comes before what it names: a project naming a plugin, written
+        under a name no description takes, is refused for its name."""
+        before = contents(root)
+        doc = json.dumps({"project": {"name": "F", "plugins": ["x.py"]}})
+        reply = post(api, "/api/edit", creating_doc(root, "fresh.json", doc, at=2))
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert contents(root) == before
+
+    @pytest.mark.parametrize(
+        ("first", "answered"), [("described", "plugins"), ("created", "invalid")]
+    )
+    def test_each_change_is_judged_in_the_order_the_edit_lists_it(
+        self, api: Api, root: Path, first: str, answered: str
+    ) -> None:
+        """A change of an edit is judged whole before the next: the description's change naming a
+        plugin, listed first, is refused for that before the file the edit creates is judged no
+        description, and listed after it, after it."""
+        described = root / "p.ddd.json"
+        created = {
+            "file": (root / "notes.ddd.json").as_posix(),
+            "fingerprint": None,
+            "operations": [{"op": "set", "pointer": "", "raw": json.dumps({"foo": 1})}],
+        }
+        changed = {
+            "file": described.as_posix(),
+            "fingerprint": fingerprint(described.read_bytes()),
+            "operations": [
+                {"op": "insert", "pointer": "project.includes[2]", "raw": '"notes.ddd.json"'},
+                {"op": "set", "pointer": "project.plugins", "raw": json.dumps(["x.py"])},
+            ],
+        }
+        changes = [changed, created] if first == "described" else [created, changed]
+        before = contents(root)
+        reply = post(api, "/api/edit", {"changes": changes, "label": "both at once"})
+        assert (reply.status, reply.body["error"]) == (409, answered)
+        assert contents(root) == before
+
 
 class TestAFilesPlanAsksThePluginsRefusal:
     """``GET /api/files-plan`` asks the edit's own plugins refusal, so an add or a creation the

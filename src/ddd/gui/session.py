@@ -284,7 +284,8 @@ class Revision:
     which may quote what the file holds - answers what it states. What bounds an edit is
     elsewhere: it cannot change which plugins the project's descriptions name
     (:func:`refuse_plugins`); a file it creates is a description named ``*.ddd.json``, beside
-    the project description and included by the same edit (:func:`_confined`); and a build
+    the project description and included by the same edit (:func:`_confined`,
+    :func:`_refuse_created_kind`); and a build
     record's ``project`` is read only under the rule a request's path meets
     (:func:`_readable_project`).
     """
@@ -692,7 +693,8 @@ class Session:
         A change without a fingerprint creates its file, and only a project description file
         ``ddd gui`` creates (:func:`kind_of`): one beside the project description, in an edit
         whose change of that description includes it, and no plugin and no file of another kind.
-        Any other is refused before a file is touched.
+        Any other is refused before a file is touched (:func:`_creatable`, :func:`_confined`,
+        :func:`_refuse_created_kind`).
 
         ``ddd gui`` does not change which plugins the project's descriptions name
         (:func:`refuse_plugins`): an edit that would change a ``plugins`` list, create a file
@@ -700,7 +702,9 @@ class Session:
         change of ``includes`` is refused before a file is touched, so the reader makes such a
         change in a text editor, never through the page. ``ddd gui`` runs what a project names,
         as ``make`` runs what a Makefile names (decision M7), and a description that does not
-        load runs none of the plugins it names, whichever way an edit leaves it.
+        load runs none of the plugins it names, whichever way an edit leaves it. Each change is
+        judged whole before the next, read once as it would leave its file: a file it creates for
+        what it is, then for the plugins it names.
 
         Nothing is written under the build tree a description a build generates is in
         (:attr:`Revision.generated`): an edit changing that description, creating a file beside
@@ -724,7 +728,10 @@ class Session:
             _creatable(changes)
             _refuse_generated(revision, changes)
             confined = [_confined(revision, pending, changes) for pending in changes]
-            refuse_plugins(revision, confined)
+            for change in confined:
+                before, after = _as_edited(change)
+                _refuse_created_kind(change, after)
+                _refuse_plugin_change(change, before, after)
             written = apply_changes(confined)
             self._edits += 1
             self._stack.append(Undoable(self._edits, label, written))
@@ -1301,59 +1308,52 @@ def _refuse_generated(revision: Revision, changes: Sequence[FileChange]) -> None
 def refuse_plugins(revision: Revision, changes: Sequence[FileChange]) -> None:
     """Refuse an edit after which the open project would name plugins other than it names now,
     before any file is touched (decision M7): a change of a description's ``plugins`` list, the
-    project's or a sub-project's; a created file whose document names plugins, or one that is no
-    description ``ddd gui`` creates - its content no kind of description, or its name not a
-    description's - ; or a change of ``includes`` that brings in or drops a description naming
-    plugins. So the token names no code the descriptions do not name already - ``ddd gui`` runs
-    what a project names, as ``make`` runs what a Makefile names.
+    project's or a sub-project's; a created file whose document names plugins; or a change of
+    ``includes`` that brings in or drops a description naming plugins. So the token names no code
+    the descriptions do not name already - ``ddd gui`` runs what a project names, as ``make`` runs
+    what a Makefile names.
 
-    Each change is read as it would leave its file (:func:`ddd.editing.edited`), in memory, from
-    the confined changes so a file beyond what the session serves was refused already. Every
+    The rule an edit is held to change by change (:meth:`Session.edit`), each file it creates
+    judged a description first (:func:`_refuse_created_kind`); asked here of a plan's edits whole,
+    by ``GET /api/files-plan``, for the refusal its Apply would meet.
+
+    Each change is read as it would leave its file (:func:`_as_edited`), in memory, from the
+    confined changes so a file beyond what the session serves was refused already. Every
     existing description the edit changes is compared before and after, whatever kind it is now:
     a document rewritten from any other kind into a project naming plugins, or into one that
     includes a description naming plugins, names other plugins the next analysis would load, and
     its kind before the edit is not what the next analysis reads it as. :func:`_listed` answers
     ``()`` for a document that is no project, so a change touching neither list is passed over
-    all the same. A description brought in or dropped is read for the
-    plugins it names and those its own includes bring, by the loader's reading of json alone and
-    never by importing one (:func:`_subtree_names_plugins`): the files the next analysis would
-    read, and no other."""
+    all the same. A description brought in or dropped is read for the plugins it names and those
+    its own includes bring, by the loader's reading of json alone and never by importing one
+    (:func:`_subtree_names_plugins`): each file as the next analysis would read it, the walk
+    going further than that analysis goes."""
     for change in changes:
-        if change.fingerprint is None:
-            after = _parsed(edited(change)[1])
-            if kind_of(change.path, after) not in KINDS:
-                raise EditError(
-                    INVALID,
-                    f"{change.path.as_posix()} cannot be created: ddd gui creates a project's "
-                    "description files, and this is not one",
-                )
-            # Besides its content: a description is named *.ddd.json, the one name every create
-            # flow writes (:data:`ddd.loading.DDD_SUFFIX`). kind_of reads a name that is not a
-            # plugin's by its content alone, so this is what keeps a valid description from being
-            # written under any other name.
-            if not change.path.name.lower().endswith(DDD_SUFFIX):
-                raise EditError(
-                    INVALID,
-                    f"{change.path.as_posix()} cannot be created: ddd gui names a description it "
-                    f"creates '*{DDD_SUFFIX}'",
-                )
-            _refuse_plugin_change(change.path, None, after, created=True)
-        else:
-            original, new = edited(change)
-            # `original` is never None here: a change with a fingerprint edits a file that is
-            # there, where `edited` returns its bytes; None is a file the edit creates, above.
-            assert original is not None
-            _refuse_plugin_change(change.path, _parsed(original), _parsed(new), created=False)
+        _refuse_plugin_change(change, *_as_edited(change))
 
 
-def _refuse_plugin_change(described: Path, before: Any, after: Any, *, created: bool) -> None:
-    """Refuse where a description would name plugins other than it names now: its ``plugins`` list
-    changed, in order so a reorder of the hooks counts; a file the edit creates whose document
-    names plugins; or a change of its ``includes`` bringing in or dropping a description that
-    names plugins (:data:`PLUGINS`). ``before`` is ``None`` for a file the edit creates, which
-    named none before, and ``created`` says which the refusal is, so each says what the reader
-    changes by hand."""
+def _as_edited(change: FileChange) -> tuple[Any, Any]:
+    """The document ``change``'s file holds, and the one the change would leave it holding, each
+    read as the loader reads json and made in memory by the edit engine
+    (:func:`ddd.editing.edited`), refused as it refuses the change: ``None`` before for a file the
+    change creates, which held nothing, as for a document that does not parse."""
+    original, new = edited(change)
+    if original is None:
+        return None, _parsed(new)
+    return _parsed(original), _parsed(new)
+
+
+def _refuse_plugin_change(change: FileChange, before: Any, after: Any) -> None:
+    """Refuse where the description ``change`` edits would name plugins other than it names now,
+    its document ``before`` the change and ``after`` it: its ``plugins`` list changed, in order
+    so a reorder of the hooks counts; a file the change creates whose document names plugins; or
+    a change of its ``includes`` bringing in or dropping a description that names plugins
+    (:data:`PLUGINS`). ``before`` is ``None`` for a file the change creates, which named none
+    before, and the refusal says which of the two it is, so each says what the reader changes by
+    hand."""
+    described = change.path
     if _listed(before, "plugins") != _listed(after, "plugins"):
+        created = change.fingerprint is None
         raise EditError(PLUGINS, _PLUGINS_CREATED if created else _PLUGINS_LIST)
     # Seeded with the edited description, so a tree that leads back to it is not read for the
     # plugins it already names, which this edit of its includes does not change.
@@ -1440,6 +1440,37 @@ def _confined(revision: Revision, pending: FileChange, changes: Sequence[FileCha
             "by an edit that adds it to the includes there",
         )
     return FileChange(target, None, pending.operations, like=project)
+
+
+def _refuse_created_kind(change: FileChange, after: Any) -> None:
+    """Refuse a file an edit creates that is no description ``ddd gui`` creates: ``after``, its
+    document as the edit would leave it, no kind of description (:func:`kind_of`), or its name
+    not a description's. A file that is there is passed over.
+
+    The third rule a created file is held to, after its name is judged one a file can be created
+    under (:func:`_creatable`) and its place beside the project description (:func:`_confined`):
+    asked of each change in turn as the edit judges it, before the plugins that change would
+    name (:func:`_refuse_plugin_change`), so that an edit is refused for the first fault of its
+    first change at fault. Nothing a plan creates is refused here, every one of them a
+    description named as one."""
+    if change.fingerprint is not None:
+        return
+    if kind_of(change.path, after) not in KINDS:
+        raise EditError(
+            INVALID,
+            f"{change.path.as_posix()} cannot be created: ddd gui creates a project's "
+            "description files, and this is not one",
+        )
+    # Besides its content: a description is named *.ddd.json, the one name every create flow
+    # writes (:data:`ddd.loading.DDD_SUFFIX`). kind_of reads a name that is not a plugin's by its
+    # content alone, so this is what keeps a valid description from being written under any other
+    # name.
+    if not change.path.name.lower().endswith(DDD_SUFFIX):
+        raise EditError(
+            INVALID,
+            f"{change.path.as_posix()} cannot be created: ddd gui names a description it "
+            f"creates '*{DDD_SUFFIX}'",
+        )
 
 
 def _included(project: Path, change: FileChange) -> frozenset[Path]:

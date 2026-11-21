@@ -2921,26 +2921,91 @@ file; go to definition and find references across files, which is the question a
 cannot answer at all, because the producer of an `input` is in a file the author might not
 know the name of; a summary of a data object on hover, the physical reading of its
 initial value included; renaming an object, a declared type or a declared constant
-everywhere the project writes it - the declaration and every reference, `typename`,
-dimension or axis `size` spelling it - refused up front for a name the C language does not
-allow, a type name spelling a base datatype, or one the project already uses, whether for
-another object, an enum, an enumerator, a type or a constant, because a rename that silently
-merges two objects compiles, links, and shares storage nobody intended to share; and quick
-fixes that reconcile one key across the declarations of one object, in either direction,
-including removing a key the others do not have, which change descriptions and never the code
-of the components that read the variable, and none of which is offered where writing it
-would leave a file the loader refuses; and, on a `missing-id`, a fix that gives the
-declaration an identity, writing what `ddd id --assign` would write and offered only where
-that finding is reported.
+everywhere the projects it reaches write it - the declaration and every reference,
+`typename`, dimension or axis `size` spelling it, and, of every `condition` spelling a
+constant as a word, that word - refused up front for a name the C language
+does not allow, a type name spelling a base datatype, or one a project it reaches already
+uses, whether for another object, an enum, an enumerator, a type or a constant, because a
+rename that silently merges two objects compiles, links, and shares storage nobody intended
+to share, and refused for an external type that a project it reaches declares, since its name is
+the one the header defining it spells and a rename of the descriptions would leave that header
+defining the old one; and quick fixes that reconcile one key across the declarations of one
+object, in either direction, including removing a key the others do not have - a declaration
+naming a declared type having every key the type fixes, as the checks read it - which change
+descriptions and never the code of the components that read the variable, and none of which is
+offered where writing it would leave a file the loader refuses; and, on a `missing-id`, a fix
+that gives the declaration an identity, writing what `ddd id --assign` would write and offered
+only where that finding is reported.
 
-A rename and the quick fixes are also refused, naming the file, in two states where the
-project the edit would be computed from is not the project on disk: while an open document
-has unsaved changes that moved a declaration the edit would touch, and while a file of the
-project reported an error that stopped it being read. Both are refused whole rather than
-performed in part. A project is indexed from what loaded, so a file a `schema` error dropped
-mid edit declares nothing as far as the index knows: the rename would rewrite every other
-file and leave that one holding the old name, and a fix would offer to remove a key "no
-other declaration has" while the unloaded producer states exactly that key.
+A rename is also refused, naming the file, and a quick fix is not offered, in two states where
+the project the edit would be computed from is not the project on disk: while an open document
+has unsaved changes that moved a declaration the edit would touch, or a closed file changed on
+disk since the project was read has moved one, and while a file of the project did not load, or
+loaded with an error that stops the project being analysed. Neither is performed in part. In the
+first state a quick fix is not offered rather than offered for the declarations a buffer, or a
+closed file changed on disk, left in place, and nothing is said: a buffer is the reader's own, and
+saving it brings the fix back, as the server's reading the file again does for the other. A rename
+refused for a closed file changed on disk says so, and goes through once the server has read the
+project again: at the next open or save of a document, or when the editor reports the change. In the
+second state a request for the quick fixes, which a client makes at every move of the caret, is
+answered with none rather than with an error: the reason is in the finding of the file that did
+not load, or loaded with an error, and the server's log says it once, and again only once the
+project has been read whole and is found broken anew. A project is indexed from what loaded, so
+a file a `schema` error dropped mid edit declares nothing as far as the index knows: the rename
+would rewrite every other file and leave that one holding the old name, and a fix would offer
+to remove a key "no other declaration has" while the unloaded producer states exactly that key.
+A rename is refused as well, naming the document, while an open document of a project it
+reaches holds what its file on disk does not, since the rename is planned from
+the files and a mention typed and not saved is one it cannot see; and it is refused when it
+would rewrite nothing, which an editor applies without a word.
+A rename of anything but a local variable is refused as well, saying that no project is known,
+while none is: a component that no build record claims, that no description above it includes
+and that declares no project itself is read on its own, and renaming what it shares would
+rewrite that one file and leave every other file spelling the name holding it. And a rename of
+anything but a local variable is refused, naming the description and why, where a description it
+needs could not be read - one a plugin stops, whether a build record names it or the search above
+a file found it: the files it holds would be rewritten for no image, and the others left reading a
+name nothing declares, where a local variable's rewrites the one file that spells it, whichever
+image holds that file.
+
+A rename reaches every project that holds a file it rewrites: the projects the file it starts from
+belongs to, then every project holding a file their edits rewrite, until none is new. A component
+linked into two images is in two projects where both are found for it as below - by their build
+records, or, where no record claims it, by the search above it - and a rename that rewrites it then
+rewrites the readers of both images, whichever of the two the file it starts from is in; reaching
+only the projects of that file would leave the other image reading a name nothing declares. Every
+project the rename reaches is asked each refusal above before anything is written. Where a project
+the file it starts from does not belong to already uses the name, declares the type an external one,
+or holds a file that did not load, or loaded with an error that stops the project being analysed,
+the refusal names that project's image, or its description where no build record names it; unsaved
+changes are refused naming the file that holds them, wherever it is. A unit's rename is refused as
+well, naming both, where two projects it reaches would rewrite a units file they share two ways: the
+one listing the unit renamed onto merges the old spelling into it, and the other respells it.
+
+A quick fix is offered once however many projects holding the document offer it, and a fix
+sending the declaration's own answer out - its value applied to the other declarations of the
+object, or a key taken out of them - reaches the declarations of each of those projects, and of
+every project holding a file it writes, until none is new, as a rename does. Where two of them
+offer one fix under one title with different edits, it is not offered; and every fix is withheld
+where one reaches a project holding a file that did not load, or loaded with an error that stops the
+project being analysed, or a description, beyond the document's own projects, that cannot be read. A
+fix renaming a unit is the rename of that unit (`F2`), over every project it reaches, and is not
+offered where that rename is refused.
+
+An edit reaching two files or more, a rename's or a quick fix's, is sent marked `needsConfirmation`
+to a client that announced both `documentChanges` and `changeAnnotationSupport`, so that the client
+shows it before applying and saving it. The reader can then leave a file out of the edit, which
+applies it in part, by the reader's choice; a client that announced only one of the two is sent the
+edit unmarked, and applies it at once.
+
+A hover on a data object says who writes it and who reads it in every project holding the file,
+each component named once: an object a component linked into two images writes is read by the
+readers of both, and one two components write is written by both. Where it says that no
+component produces the object, or that none reads it, it names under that sentence every file of
+those projects that did not load, since what such a file declares is in no project's answer. Where
+a plugin stops the analysis of a project holding the file, the hover names that project under who
+writes the object and who reads it - by the image its build record names, or by its description in
+the workspace folder where none does - since what that project says of either is in no answer.
 
 A hover on a name naming a declared type describes the data object that names it where
 there is one, and otherwise the type itself: a structure and its members, a scalar type's
@@ -2950,25 +3015,29 @@ should be told nothing about it.
 
 Which project a file belongs to comes from the build records of
 [section 3.6](#36-build-record), found by searching the build directories the client names,
-or, unconfigured, the conventional directories `build`, `out` and `cmake-build-*` under the
-workspace, recursively for `ddd-build.json`. Each record found is counted under the path it
-resolves to, so a link inside a build tree does not turn one record into a record per way of
-spelling it. A file claimed by several builds is checked
-under each of them and the findings published together: a component linked into two images
-is in two projects, and the answer to which one the reader cares about is both. A finding
-equal in check, message, place and severity to one already published for that file is
-published once, because two images reporting the same mistake in the same words are not two
-mistakes; where their severities differ they really are saying two different things and both
-are published. A file no
-build record claims is looked for in a containing project instead: the server walks from
-the file's directory up to the workspace root, and the file is checked under the project
-descriptions of the nearest directory that include it - the candidates of a directory being
-its `*.ddd.json` files in sorted order, the opened file itself excluded - under the default
-severities of [section 4](#4-consistency-checks), since the `-W` and `--strict` of a build
-are properties of a build and no record named this file. A file that is itself a project
-description is checked as the project it is, under those same default severities: it lists
-its components, so every check has what it needs, and the checks that need the whole project
-are exactly the ones somebody opening a project file is asking about. A file
+or, unconfigured, the conventional directories `build`, `out` and `cmake-build-*` under each
+workspace folder, recursively for `ddd-build.json`. Each record found is counted under the
+path it resolves to, and once however many folders reach it, so a link inside a build tree
+does not turn one record into a record per way of spelling it. A file claimed by several
+builds is checked under each of them and the findings published together: a component linked
+into two images is in two projects, and the answer to which one the reader cares about is
+both. A finding equal in check, message, place and severity to one already published for that
+file is published once, because two images reporting the same mistake in the same words are
+not two mistakes; where their severities differ they really are saying two different things
+and both are published. A file no
+build record claims is looked for in a containing project instead: the server walks from the
+file's directory up to the workspace folder holding it, and the file is checked under the
+project descriptions of the outermost directory that include it - the candidates of a
+directory being its `*.ddd.json` files in sorted order, the opened file itself excluded -
+under the default severities of [section 4](#4-consistency-checks), since the `-W` and
+`--strict` of a build are properties of a build and no record named this file. A description
+nearer the file that includes it as well is a sub-project of the outer one and is dropped: it
+does not know what the rest of the outer project produces, and `ddd check` of the outer
+project is what the file shows. A file that is itself a project description is searched for
+above like any file, and is checked as the project it is, under those same default severities,
+where no description above includes it: it lists its components, so every check has what it
+needs, and the checks that need the whole project are exactly the ones somebody opening a
+project file is asking about. A file
 belonging to no build, to no such project and declaring no project of its own is still
 checked, on its own, with the nine checks that
 need every component of a project ([section 4](#4-consistency-checks)) held back: a
@@ -2983,9 +3052,12 @@ keys what it draws on the uri *string*, and a workspace opened through a junctio
 substituted or mapped drive, a symlinked directory or with a different case spells every path
 in it differently from the way the loader resolves it - so the resolved spelling sent the
 findings to a resource the editor was not showing and handed a rename to a document that was
-not on screen. A document whose uri names a scheme other than `file:` is refused with the
-protocol's invalid-parameters error rather than read for whatever path-like text it holds:
-there is nothing on disk to check.
+not on screen. A file's findings are published under one spelling at a time: a file whose
+findings went out under its resolved path before the client opened it has them withdrawn there
+once they go out under the client's spelling, since nothing publishes under the first again. A
+document whose uri names a scheme other than `file:` is refused with the protocol's
+invalid-parameters error rather than read for whatever path-like text it holds: there is nothing
+on disk to check.
 
 The server re-reads a file from disk when it is opened, when it is saved, and when the client
 reports that a file it watches changed - a build writes description files and a branch switch
@@ -2996,15 +3068,34 @@ finished making. The findings are therefore the disk's. The text of every open d
 nonetheless kept current as it is typed, and every position the client sends and every edit
 the server answers - a rename, a quick fix - is read from and written for that text, so that
 an edit lands where the editor shows it; a client that takes versioned edits is told which
-version of each document an edit was computed for. Each finding is also published at the
+version of each document an edit was computed for. An open document's findings are drawn
+in that text as well: over the key a finding is about where the text holds it, over the
+nearest key around it that the text holds where it does not, and at the top of a text that
+is not json - the place read from that text, and never from the file on disk. A finding
+names its key by its place in the file, so where unsaved changes put another item at that
+place of a list - a declaration typed above the one it is about - the finding is drawn
+over that item until the file is saved. A document closed without saving, its findings drawn
+in a text whose lines are not its file's, is checked again, and they are drawn where the file
+holds their keys. Opens, saves and watched changes that arrive
+together are checked together, each project once for all of them: the server checks the
+documents they name once it has handled every message already waiting behind the first of them,
+and before it answers a request that came after them, never waiting for a message not yet sent.
+A save and the change the client's watcher reports for it, arriving together, are one analysis
+of the project however many of its documents are open. A check withdraws the findings of every
+file a run of it reports on and finds nothing wrong with, and of every file that a run from the
+same place - a build's project, a description above a document, a document read alone - reported
+on the last time and that no run reports on now: a component taken out of its project's
+`includes` is no longer the project's, and `ddd check` no longer reports on it. Any other file
+keeps its findings: a check from a file of another project says nothing of it, which is not
+saying it is fine. Each finding is also published at the
 locations of its notes - a note stating no place of its own being published at the first line
 of the file its finding is on, the protocol having no way to say "here". The build records a
 search discovers are announced as log messages, and a record written by a newer DDD - its
 `format` higher than this version reads, whether or not its keys are ones this version knows -
-or naming a check this version has not got is skipped and the reason announced with them. A
-record that is not a build record at all is skipped without one: a build wrote it, and nobody
-fixes it in an editor. A record whose severities name a plugin's check that no plugin of the
-project registers is
+or naming a check this version has not got or its project by a relative path, which a build
+never writes, is skipped and the reason announced with them. A record that is not a build
+record at all is skipped without one: a build wrote it, and nobody fixes it in an editor. A
+record whose severities name a plugin's check that no plugin of the project registers is
 reported as a `plugin-invalid` finding at the project file, which is the editor's answer to
 what `ddd check` refuses a `-W` for: silently accepted, a build silencing a check by a name
 nothing registers looks exactly like a build silencing one that exists.
@@ -3018,13 +3109,32 @@ given the thinner answer. Each file is published with the findings of one run of
 that a plugin defect stopped has already reported on every file it read, and those files are
 not read a second time on their own.
 
+The server asks the client to watch every description file and every build record of the workspace,
+`**/*.ddd.json` and `**/ddd-build.json`, once the client has said it is initialized, wherever the
+client announced that it takes such a registration while the session runs; a client that did not is
+asked for nothing, and a file changed behind the editor's back is read again at the next open or
+save. A description the client reports changed is checked again where its findings are on screen,
+whatever is open, and while no document is open whether they are or not: with a document of another
+project open, a pull that mended a project nobody had open left its findings on screen as they were.
+A change of a build record is a change of which projects there are and of their severities: the
+records are searched for again, and the open documents and every file whose findings are on screen
+are checked again under them. A record is never checked as a description, nor is any other file the
+client reports that is not one.
+
 A message body the server cannot parse is answered with the protocol's parse or
 invalid-request error and does not stop the server, and a request whose parameters are not
-the shape its method takes is answered with the invalid-parameters error, while a
-notification is answered with nothing, which is what a notification always gets. A frame
-header whose `Content-Length` is not a count of bytes written in decimal digits - after which
-no message boundary can be trusted - ends the session with a message rather than a failure
-trace, and a header block without a length is read as the end of the conversation.
+the shape its method takes - a field of another type than the protocol gives it, a position
+before the start of the document, a uri whose path holds a null character - is answered with
+the invalid-parameters error naming what is wrong, while a notification is answered with
+nothing, which is what a notification always gets. A message the
+server fails to answer through a defect of its own does not stop it either: a request is
+answered with the protocol's internal error, a notification with nothing, and the trace is
+written to the server's standard error, which is its log. A frame header whose
+`Content-Length` is not a count of bytes written in decimal digits - after which no message
+boundary can be trusted - ends the session with a message rather than a failure trace, and a
+header block without a length is read as the end of the conversation. The client's answer to a
+request of the server's - a message carrying an `id` and no `method` - is answered with
+nothing.
 
 The session has a beginning and an end. A request arriving before `initialize` is answered
 with the protocol's server-not-initialized error and a notification is dropped, because until
@@ -3035,17 +3145,25 @@ that a client watching the process can tell a stop that was prepared for from on
 not.
 
 The server speaks the protocol on stdin and stdout, and takes the build directories as
-repeatable `-b` arguments, a relative one read against the server's working directory; the
-shipped VS Code extension exposes them as the setting `ddd.buildDirectories`, and the
-executable to launch as `ddd.executable`.
+repeatable `-b` arguments, a relative one read against each workspace folder, or against the
+server's working directory while the client names none; the shipped VS Code extension exposes
+them as the setting `ddd.buildDirectories`, and the executable to launch as `ddd.executable`.
+It starts the server once a description file is open or the workspace holds one, so that a
+json file of another name starts nothing.
+
+The workspace folders are those the client names at `initialize`, and those it adds and
+removes while the session runs, which the server says it follows: a folder added is searched
+as one named from the start, its build records found and the open documents checked again,
+and a folder removed is answered as if it had never been named - what was published under it
+alone is withdrawn, and an open document under it is checked as one outside every folder.
 
 An editor extension **shall** do no more than launch the server, point it at the build
-directories and offer to restart it: everything a reader sees is the tool's answer, so that
-an editor DDD ships nothing for is not at a disadvantage. It **shall** launch the server
-only in a workspace the reader has trusted, where the editor has such a notion: the server
-runs the plugins of every project it analyses ([section 3.11](#311-plugins)), so opening a
-repository is running its python, and that is a decision the reader makes, not the
-extension.
+directories and offer to restart it: everything a reader sees is the tool's answer, and the
+server asks the client itself for what it needs to hear of the files, so that an editor DDD
+ships nothing for is not at a disadvantage. It **shall** launch the server only in a workspace
+the reader has trusted, where the editor has such a notion: the server runs the plugins of
+every project it analyses ([section 3.11](#311-plugins)), so opening a repository is running
+its python, and that is a decision the reader makes, not the extension.
 
 ### 7.3 Toolbox
 

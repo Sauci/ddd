@@ -143,10 +143,11 @@ jobs:
 
       # A release's tag has to be `v` and the version its commit states in pyproject.toml, as
       # Publish insists before it uploads anything. A release Publish published has passed that
-      # already, and passes it again here; a tag named on a dispatch has been through no
-      # Publish, and this is what refuses one naming a version its commit does not state, whose
-      # documentation would be published under another version's name. Whether pypi.org holds
-      # the version is the next step's to ask.
+      # already, and passes it again here; a tag named on a dispatch is for a release pypi.org
+      # holds, which passed it in Publish before its upload, so this is what refuses one naming
+      # a version its commit does not state, whose documentation would be published under
+      # another version's name: a tag typed wrong. Whether pypi.org holds the version is the
+      # next step's to ask.
       - name: Check the tag names the version its commit states
         if: >-
           github.event_name == 'workflow_run'

@@ -24,15 +24,16 @@ What can be jumped from, and to:
 
 from __future__ import annotations
 
+import json
 import re
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Final, Literal
 
 from ddd.build_info import BuildInfo
 from ddd.diagnostics import DiagnosticBag, Location, Severity
-from ddd.loading import Workspace, load_workspace
+from ddd.loading import Workspace, included_files, load_workspace
 from ddd.lsp.ranges import Document, read
 from ddd.models import (
     C_IDENTIFIER_PATTERN,
@@ -110,12 +111,36 @@ checks them against."""
 _BASE_DATATYPES: Final = frozenset(member.value for member in Datatype)
 """The keys whose string value names a constant: one dimension entry, or an axis size."""
 
+_WORD: Final = re.compile(r"[\w$\u0300-\u036f\u1dc0-\u1dff\u20d0-\u20ff\ufe20-\ufe2f]+")
+"""One word of a condition: a run of the characters an identifier holds there, as long as it goes -
+a letter or a digit of any script, the underscore, the dollar sign gcc and clang take in an
+identifier, and the combining marks C11's Annex D allows in one after its first character, from
+U+0300 to U+036F, U+1DC0 to U+1DFF, U+20D0 to U+20FF and U+FE20 to U+FE2F. ``CELLS`` is a word of
+``CELLS > 2`` and of ``defined(CELLS)``, and no word of ``MAX_CELLS``, ``CELLS2``, ``CELLS$1`` or
+``CELLS`` and a combining accent, each of which is a longer identifier holding it."""
+
+_JSON_CHARACTER: Final = re.compile(
+    r"\\u[dD][89abAB][0-9a-fA-F]{2}\\u[dD][c-fC-F][0-9a-fA-F]{2}|\\u[0-9a-fA-F]{4}|\\.|[^\\]"
+)
+"""One character of a json string as it is written between the quotes: an escape - the two of a
+surrogate pair, which json writes for a character beyond the basic plane, four hex digits, or the
+one character after the backslash - or the character itself. The pair is tried first: read half
+by half, a letter beyond the basic plane was two characters no identifier holds, and ``CELLS``
+after one read as a word."""
+
 LOAD_CHECKS: Final = frozenset({"file-not-found", "json-syntax", "file-kind", "schema"})
 """The checks whose error on a file means that file did not load.
 
 One notion for both clients: ``ddd gui`` shows such a file as not loaded, and a plan of
 :mod:`ddd.lsp.units` made in the language server refuses to reach round one.
 """
+
+_UNREAD_AT_THE_ENTRY: Final = frozenset({"file-not-found", "json-syntax"})
+"""The checks the loader reports at the include entry naming a file it could not read - one that
+is not there, or holds no text - rather than in the file, which has no place to point into."""
+
+_INCLUDE_ENTRY: Final = re.compile(r"project\.includes\[\d+\]")
+"""Where it reports them: one entry of a project description's ``includes``."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,6 +176,11 @@ class Index:
     types: dict[str, Site] = field(default_factory=dict)
     """Type name -> where it is declared: a structure, a scalar type or an external type."""
 
+    externals: dict[str, str] = field(default_factory=dict)
+    """External type name -> the header that defines it, spelled as its entry spells it: the types
+    whose name is that header's rather than the project's, which no rename of a description may
+    change (:func:`named_by_a_header`)."""
+
     type_uses: dict[str, list[Site]] = field(default_factory=dict)
     """Structure name -> every member that nests it."""
 
@@ -159,6 +189,18 @@ class Index:
 
     constant_uses: dict[str, list[Site]] = field(default_factory=dict)
     """Constant name -> every dimension entry and axis size that spells it."""
+
+    condition_uses: dict[str, list[Site]] = field(default_factory=dict)
+    """Constant name -> every declaration whose ``condition`` spells it as a word (:data:`_WORD`),
+    at that ``condition``, in the order the project lists its components.
+
+    Apart from :attr:`constant_uses` on purpose. A shape's string is the constant's name and
+    nothing else, so a rename writes the new name over the whole of it, and a panel reads the
+    variable it shapes; a condition is an expression, of which a rename rewrites the word alone
+    (:func:`word_spans`). A word is a constant only where the project declares one of that name -
+    the shipped templates define each constant as a macro in the types header, which ``#if``
+    reads - and any other word of a condition is a macro the build defines, or none.
+    """
 
     sections: dict[str, Site] = field(default_factory=dict)
     """Section name -> where the sections file declares it."""
@@ -233,6 +275,7 @@ class Index:
 def index(workspace: Workspace) -> Index:
     """Read the positions out of an already loaded project."""
     built = Index()
+    conditions: list[tuple[Site, str]] = []
     for loaded in workspace.components:
         built.components[loaded.path] = loaded.component.name
         # A plain `None` check: a component need not name a default raster, and the model has
@@ -279,6 +322,9 @@ def index(workspace: Workspace) -> Index:
                 built.raster_uses.setdefault(declaration.definition.raster, []).append(
                     Site(where.path, where.pointer)
                 )
+            if declaration.condition is not None:
+                where = loaded.declaration_location(position, "condition")
+                conditions.append((Site(where.path, where.pointer), declaration.condition))
             _occupy(built, declaration.definition.conversion)
             _unit_stated(
                 built,
@@ -290,6 +336,8 @@ def index(workspace: Workspace) -> Index:
     for entry in workspace.types:
         built.types[entry.name] = Site(entry.path, entry.location().pointer)
         built.occupied[entry.name] = f"the name of the type '{entry.name}'"
+        if entry.external is not None:
+            built.externals[entry.name] = entry.external.header
         declared = entry.declared
         if isinstance(declared, ScalarType):
             _occupy(built, declared.conversion)
@@ -321,6 +369,12 @@ def index(workspace: Workspace) -> Index:
     for constant in workspace.constants:
         built.constants[constant.name] = Site(constant.path, constant.location().pointer)
         built.occupied[constant.name] = f"the name of the declared constant '{constant.name}'"
+    # Once every constant is known, since a word of a condition is a constant's only where one is
+    # declared; each word once a condition, which spelling it twice is still one use of.
+    for site, condition in conditions:
+        for word in dict.fromkeys(_WORD.findall(condition)):
+            if word in built.constants:
+                built.condition_uses.setdefault(word, []).append(site)
     # Neither a section nor a raster joins `occupied`. A constant's name reaches generated code
     # as a c identifier, so a collision there is two objects sharing storage; a section's name
     # is a linker string and a raster's an a2l short name, and neither is ever spelled into the
@@ -390,7 +444,9 @@ class Loaded:
     """What the read reported, for a caller that publishes those findings as well."""
 
     unreadable: tuple[Path, ...]
-    """The files the read reported an error on, sorted; empty when it reported none.
+    """The files the read reported an error on, sorted; empty when it reported none. A file an
+    include names that could not be read is among them, rather than the description reporting it
+    (:func:`_unread`).
 
     Settled when the read finished rather than derived on demand: a caller that goes on to
     analyse this workspace reports into the same bag, and what an edit may not rewrite is a
@@ -413,7 +469,7 @@ class Containing:
     """What the search for a document's project found, including what it could not read."""
 
     projects: tuple[Loaded, ...] = ()
-    """The descriptions that turned out to include the document, nearest first, as read."""
+    """The descriptions of the outermost directory that include the document, as read."""
 
     failed: dict[Path, str] = field(default_factory=dict)
     """Candidate -> why reading it stopped, for the candidates a plugin defect stopped.
@@ -426,8 +482,22 @@ class Containing:
     """
 
 
+class Descriptions(dict[Path, Loaded | None]):
+    """Every description one question has read, by the path it resolves to: what it read as, or
+    ``None`` where it could not be read."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.failed: dict[Path, str] = {}
+        """Why each description a plugin defect stopped could not be read, by the path it
+        resolves to: what a rename that depends on a description it cannot read says."""
+
+
 def workspaces(
-    builds: Sequence[BuildInfo], document: Path, root: Path | None = None
+    builds: Sequence[BuildInfo],
+    document: Path,
+    root: Path | None = None,
+    descriptions: Descriptions | None = None,
 ) -> list[Loaded]:
     """The projects that contain a document, or the document read on its own.
 
@@ -441,26 +511,53 @@ def workspaces(
     neither exists is the file read on its own, which is a real answer but a thin one: a
     component alone has no producers for its inputs, no readers for its outputs, and no types
     or constants beyond the ones it declares inline.
+
+    ``descriptions`` is what the question asking has read already, and takes what this reads of
+    the builds and of the descriptions above the document: a rename asks this of the document it
+    starts from, and goes on to the projects holding the files it rewrites without reading any
+    description twice (:class:`Reach`).
     """
+    if descriptions is None:
+        descriptions = Descriptions()
     # What stopped a read is collected and then dropped: a hover or a jump is a question a
     # person asked and wants an answer to, and the squiggles are where a broken plugin is
     # named. Reporting it twice, once as a finding and once instead of a jump, helps nobody.
     unreadable: dict[Path, str] = {}
     found = []
     for info in builds:
-        loaded = _loaded(Path(info.project), unreadable)
+        loaded = _read_once(Path(info.project), unreadable, descriptions)
         if loaded is not None and document.resolve() in loaded.workspace.sources():
             found.append(loaded)
     if not found:
         # Already read, by the search that found them: asking for them again is the second of
         # the two reads per project this used to cost, and the pair is what made the first
         # hover after a save take three times what checking the whole project takes.
-        found.extend(resolve_projects(document, root).projects)
+        found.extend(resolve_projects(document, root, descriptions).projects)
     if not found:
         alone = _loaded(document, unreadable)
         if alone is not None:
             found.append(alone)
     return found
+
+
+def _read_once(path: Path, failed: dict[Path, str], descriptions: Descriptions) -> Loaded | None:
+    """:func:`_loaded`, unless the question has read ``path`` already: ``descriptions`` holds what
+    it has read, by resolved path, ``None`` standing for a description that could not be read -
+    whose reason is in the ``failed`` of the search that met it first, and in
+    ``descriptions.failed`` for whoever asks later."""
+    key = path.resolve()
+    if key not in descriptions:
+        descriptions[key] = _loaded(path, failed)
+        if path in failed:
+            descriptions.failed[key] = failed[path]
+    return descriptions[key]
+
+
+def read_project(path: Path) -> Loaded | None:
+    """One project description read afresh, as the search reads each candidate, or nothing where
+    it cannot be read: for a caller that keeps what it learnt of a project between two questions,
+    and settles it again whenever the files may have changed."""
+    return _loaded(path, {})
 
 
 def _loaded(path: Path, failed: dict[Path, str]) -> Loaded | None:
@@ -484,23 +581,76 @@ def _loaded(path: Path, failed: dict[Path, str]) -> Loaded | None:
         return None
     if workspace is None:
         return None
-    return Loaded(path, workspace, bag, _unreadable(bag), _unreadable(bag, LOAD_CHECKS))
+    return Loaded(path, workspace, bag, *_unread(bag))
 
 
-def _unreadable(bag: DiagnosticBag, checks: frozenset[str] | None = None) -> tuple[Path, ...]:
-    """Every file the read reported an error on - an error of one of ``checks``, when they are
-    given - sorted and each named once."""
-    found = {
-        finding.location.path
-        for finding in bag.sorted
-        if finding.severity is Severity.ERROR
-        and finding.location is not None
-        and (checks is None or finding.check in checks)
-    }
-    return tuple(sorted(found))
+def _unread(bag: DiagnosticBag) -> tuple[tuple[Path, ...], tuple[Path, ...]]:
+    """What :class:`Loaded` holds of the read's errors: every file one is about, and of those the
+    files that did not load, an error of one of :data:`LOAD_CHECKS` - each sorted, each file once.
+
+    An error is about the file it sits in, but for one the loader reports at the include entry
+    naming a file it could not read, which is about that file: the description holding the entry
+    read, and naming it sent the reader to a file that loaded, while the one an include names
+    and is not there went unnamed. An entry naming several files does not say which of them could
+    not be read, and the error stays the description's, as one it has and not one that stopped it
+    loading.
+    """
+    about: set[Path] = set()
+    unloaded: set[Path] = set()
+    for finding in bag.sorted:
+        location = finding.location
+        if finding.severity is not Severity.ERROR or location is None:
+            continue
+        path, unread = location.path, finding.check in LOAD_CHECKS
+        named = _named_at(finding.check, location)
+        if named is not None and len(named) == 1:
+            path = named[0]
+        elif named is not None:
+            unread = False
+        about.add(path)
+        if unread:
+            unloaded.add(path)
+    return tuple(sorted(about)), tuple(sorted(unloaded))
 
 
-def resolve_projects(document: Path, root: Path | None = None) -> Containing:
+def _named_at(check: str, location: Location) -> list[Path] | None:
+    """The files the include entry at ``location`` names, by the loader's own reading of it,
+    where ``check`` is one it reports there for a file it could not read; ``None`` for any other
+    error, which is about the file it sits in."""
+    if check not in _UNREAD_AT_THE_ENTRY or not _INCLUDE_ENTRY.fullmatch(location.pointer):
+        return None
+    return included_files(location.path, read(location.path, {}).value_at(location.pointer))
+
+
+def told_apart(files: Iterable[Path]) -> list[str]:
+    """Each file as a sentence names it, in order: by its name alone, as a refusal always named a
+    file, unless another of ``files`` has that name too - then by its path from the first directory
+    up that the two do not share, and in full where nothing short of the root tells them apart.
+
+    Named by their names alone, a units file in each of two images' folders was
+    ``units.ddd.json`` twice, and a reader sent to fix it opened whichever one came first.
+
+    Walked over the segments of each path's posix spelling, so that its anchor - nothing before
+    the first slash for a root, a drive, a share's double slash - is one segment like any other,
+    and all of them together spell the path in full.
+    """
+    listed = [(file, file.as_posix().split("/")) for file in files]
+    named = []
+    for file, segments in listed:
+        # The last segment is the name, so a file of another name stops the walk at once.
+        others = [theirs for other, theirs in listed if other != file]
+        depth = 1
+        while depth < len(segments) and any(
+            theirs[-depth:] == segments[-depth:] for theirs in others
+        ):
+            depth += 1
+        named.append("/".join(segments[-depth:]))
+    return named
+
+
+def resolve_projects(
+    document: Path, root: Path | None = None, descriptions: Descriptions | None = None
+) -> Containing:
     """Descriptions lying at or above the document that turn out to include it, as they read.
 
     A search rather than a guess: every candidate is loaded and asked whether this file is one
@@ -509,12 +659,19 @@ def resolve_projects(document: Path, root: Path | None = None) -> Containing:
     where no build has been configured - in which the alternative is a component cut off from
     the shared vocabularies, whose declarations of shared types resolve to nothing at all.
 
+    The outermost directory holding a description that includes the document answers, so a
+    component of a sub-project is checked under the project that holds the sub-project, as
+    ``ddd check`` of that project checks it. The walk therefore goes to the root even after a
+    hit, and a description nearer the document is dropped.
+
     The read itself is handed back, which is what makes this the one place a project above a
     document is loaded: the findings go to the diagnostics, the workspace answers the hovers
     and the jumps, and neither has to read the file a second time to have it.
 
     A candidate that could not be read answers neither way: the walk carries on past it, and
-    it is named in ``failed`` so that the caller can say so.
+    it is named in ``failed`` so that the caller can say so - where this search is the first of
+    its question to meet it: a candidate ``descriptions`` holds already is not read again, as
+    :func:`workspaces` says.
 
     The document is resolved once, above the walk, because that is what the candidates are:
     they come from a resolved directory and every ``sources()`` is resolved too. Compared with
@@ -524,30 +681,207 @@ def resolve_projects(document: Path, root: Path | None = None) -> Containing:
 
     Bounded by the editor's own root, so the walk cannot wander up into a home directory.
     """
+    if descriptions is None:
+        descriptions = Descriptions()
     resolved = document.resolve()
+    failed: dict[Path, str] = {}
+    outermost: list[Loaded] = []
+    for directory in _walked(document, root):
+        found = []
+        for candidate in sorted(directory.glob("*.ddd.json")):
+            if candidate == resolved:
+                continue
+            loaded = _read_once(candidate, failed, descriptions)
+            if loaded is not None and resolved in loaded.workspace.sources():
+                found.append(loaded)
+        if found:
+            # Every level is walked, and the last one that included the document answers: a
+            # description nearer the document is a sub-project of the one further up, and the
+            # sub-project alone does not know what its siblings produce. Answering from both
+            # would say everything twice, so the nearer one is dropped.
+            outermost = found
+    return Containing(tuple(outermost), failed)
+
+
+def _walked(document: Path, root: Path | None) -> list[Path]:
+    """The directories the search above ``document`` walks, resolved, the nearest first: from the
+    one holding it up to ``root``, the editor's own, or the one holding it alone without one."""
     stop = root.resolve() if root is not None else document.parent.resolve()
     directories = []
     current = document.parent.resolve()
     while True:
         directories.append(current)
         if current == stop or current.parent == current or stop not in current.parents:
-            break
+            return directories
         current = current.parent
 
+
+def _held_above(
+    files: Iterable[Path], root_for: Callable[[Path], Path], descriptions: Descriptions
+) -> list[Loaded]:
+    """The descriptions of the outermost directory above each of ``files`` that include it, as
+    :func:`resolve_projects` answers for each file alone, file after file, in the order given.
+
+    The same candidates are read as each file's own search reads - every description of a
+    directory one of the files' walks reaches, but for the file itself - and each directory is
+    listed, and each candidate asked which of the files it holds, once for them all. Asked file by
+    file, a fix sent from a writer to two hundred readers of one flat directory listed it two
+    hundred times, and resolved and sorted every candidate's sources as often, at every move of
+    the caret.
+    """
+    walks: dict[Path, list[Path]] = {}
+    asking: dict[Path, set[Path]] = {}
+    for file in files:
+        resolved = file.resolve()
+        walks[resolved] = _walked(file, root_for(file))
+        for directory in walks[resolved]:
+            asking.setdefault(directory, set()).add(resolved)
     failed: dict[Path, str] = {}
-    for directory in directories:
-        found = []
+    holding: dict[tuple[Path, Path], list[Loaded]] = {}
+    for directory, asked in asking.items():
         for candidate in sorted(directory.glob("*.ddd.json")):
-            if candidate == resolved:
+            if asked == {candidate}:
+                # The one file whose walk reaches here is this candidate, which is not asked
+                # whether it holds itself.
                 continue
-            loaded = _loaded(candidate, failed)
-            if loaded is not None and resolved in loaded.workspace.sources():
-                found.append(loaded)
-        if found:
-            # The nearest wins; one further up as well is a sub-project of it, and answering
-            # from both would say everything twice.
-            return Containing(tuple(found), failed)
-    return Containing((), failed)
+            loaded = _read_once(candidate, failed, descriptions)
+            if loaded is None:
+                continue
+            for held in asked.intersection(loaded.workspace.sources()) - {candidate}:
+                holding.setdefault((directory, held), []).append(loaded)
+    found: list[Loaded] = []
+    for resolved, walk in walks.items():
+        outermost: list[Loaded] = []
+        for directory in walk:
+            # Every level is walked, and the last one holding a description that includes the
+            # file answers, as :func:`resolve_projects` answers.
+            outermost = holding.get((directory, resolved), outermost)
+        found.extend(outermost)
+    return found
+
+
+class Reach:
+    """Every project a rename reaches: the ones holding the document it starts from, then every
+    project holding a file a reached project's edits touch, until none is new.
+
+    The projects of the document alone made a rename's reach depend on where it started. A
+    writer linked into two images, read by a reader in each: started from the writer, the
+    rename rewrote all three; started from image one's reader, it rewrote that reader and the
+    writer, and left image two's reader naming an object that is gone. Reaching every project
+    that holds a file the rename rewrites, and every project holding a file those rewrite in
+    turn, makes it the same rename from either reader as from the writer.
+
+    The projects holding a file are the ones :func:`workspaces` answers for it - the builds
+    holding it, and, for a file no build holds, the descriptions of the outermost directory above
+    it that include it - found without reading any description twice: the projects read already
+    are asked which of the new files they hold, and a description is read only where nothing has
+    read it for this rename yet. Asked of :func:`workspaces` file by file, the search would read
+    every build's project once for each file the rename touches. A file no project holds is not
+    read on its own: a project reached already holds it, since its edits touch it. A description
+    that cannot be read reaches nothing, as :func:`workspaces` answers.
+
+    Iterated while it grows: :meth:`touch` adds the projects holding what a reached project's
+    edits touch, and the iteration goes on to them.
+    """
+
+    def __init__(
+        self,
+        builds: Sequence[BuildInfo],
+        start: Sequence[Loaded],
+        root_for: Callable[[Path], Path],
+        descriptions: Descriptions,
+    ) -> None:
+        self.projects: list[Loaded] = []
+        """The projects reached so far, in the order they were reached, the document's first."""
+        self._builds = builds
+        self._root_for = root_for
+        """The workspace folder bounding the search above a file, as the server answers it."""
+        self._descriptions = descriptions
+        self._reached: set[Path] = set()
+        self._touched: set[Path] = set()
+        for loaded in start:
+            # The document's projects may have been read for an earlier request, and kept: the
+            # rename goes on from that read rather than reading them again.
+            descriptions.setdefault(loaded.path.resolve(), loaded)
+            self._add(loaded)
+        self._own = frozenset(self._reached)
+        """The descriptions holding the document the rename started from: the reader's own."""
+
+    def __iter__(self) -> Iterator[Loaded]:
+        """Every project reached, those :meth:`touch` adds while this runs included."""
+        position = 0
+        while position < len(self.projects):
+            yield self.projects[position]
+            position += 1
+
+    def touch(self, files: Iterable[Path]) -> None:
+        """Reach every project holding one of ``files``, which a reached project's edits touch.
+
+        Nothing is asked where no file is new: a build's project the rename has not needed yet
+        would be read for nothing, to say which of no files it holds."""
+        new = set(files) - self._touched
+        if not new:
+            return
+        self._touched |= new
+        held: set[Path] = set()
+        for info in self._builds:
+            # Why a build's project could not be read is not this question's to report, as in
+            # :func:`workspaces`: the findings of the same refresh name it.
+            loaded = _read_once(Path(info.project), {}, self._descriptions)
+            if loaded is not None and (holds := new.intersection(loaded.workspace.sources())):
+                held |= holds
+                self._add(loaded)
+        for loaded in _held_above(sorted(new - held), self._root_for, self._descriptions):
+            self._add(loaded)
+
+    @property
+    def unread(self) -> dict[Path, str]:
+        """Every description the search has met and could not read, with why, by the path it
+        resolves to: the ones a plugin defect stopped, whether a build record names them or the
+        search above a file found them. What a rename must not go on without, since the files
+        such a description holds are rewritten for no image."""
+        return self._descriptions.failed
+
+    def image(self, loaded: Loaded) -> str | None:
+        """What a refusal from ``loaded`` names it by: the image of the build naming its
+        description; where no build names one, the description, by its path in its workspace
+        folder - two images' descriptions often share a file name, and in a folder each - or in
+        full where it lies in none; and nothing for a project holding the document the rename
+        started from, which is the reader's own."""
+        if loaded.path.resolve() in self._own:
+            return None
+        return self.described(loaded)
+
+    def described(self, loaded: Loaded) -> str:
+        """What a sentence calls ``loaded`` where it names two projects, the reader's own among
+        them as readily as another: as :meth:`image` names one that is not the reader's."""
+        key = loaded.path.resolve()
+        return self._record_image(key) or self._in_folder(key)
+
+    def named(self, description: Path) -> str:
+        """What a refusal about a description that could not be read calls it: its path in its
+        workspace folder, and the image of the build naming it where one does."""
+        key = description.resolve()
+        image = self._record_image(key)
+        return self._in_folder(key) + (f" of the image {image}" if image else "")
+
+    def _record_image(self, key: Path) -> str | None:
+        for info in self._builds:
+            if info.image and Path(info.project).resolve() == key:
+                return info.image
+        return None
+
+    def _in_folder(self, key: Path) -> str:
+        folder = self._root_for(key).resolve()
+        if key.is_relative_to(folder):
+            return key.relative_to(folder).as_posix()
+        return key.as_posix()
+
+    def _add(self, loaded: Loaded) -> None:
+        key = loaded.path.resolve()
+        if key not in self._reached:
+            self._reached.add(key)
+            self.projects.append(loaded)
 
 
 def variable_at(document: Document, pointer: str) -> str | None:
@@ -682,6 +1016,28 @@ def references(built: Index, document: Document, pointer: str) -> list[Site]:
     return []
 
 
+def is_alone(document: Path, projects: Sequence[Loaded], builds: Sequence[BuildInfo]) -> bool:
+    """Whether ``projects``, which :func:`workspaces` answered for ``document``, are no project
+    at all: the document read on its own, a component that no record claims, that no description
+    above includes, and that declares no project itself.
+
+    The third answer of :func:`workspaces` is also the whole project of a project file opened
+    alone, which is a project known; and a component whose description above could not be read
+    is read alone too, which is not what is wrong with it (:attr:`Reach.unread`). A build record
+    naming the component as its description is a claim, so a project of its own, however thin.
+    """
+    if len(projects) != 1 or projects[0].workspace.projects:
+        return False
+    return all(Path(info.project).resolve() != document.resolve() for info in builds)
+
+
+def is_local(built: Index, name: str) -> bool:
+    """Whether every declaration of ``name`` states it ``local``: spelled in the file declaring
+    it and nowhere else, which is why its rename is the one that needs no project."""
+    sites = built.declarations.get(name, ())
+    return bool(sites) and all(built.scopes[site] == "local" for site in sites)
+
+
 def renameable_at(document: Document, pointer: str) -> tuple[str, str] | None:
     """What a rename may start from at this position: its kind and its name, or nothing.
 
@@ -719,7 +1075,9 @@ def renameable_at(document: Document, pointer: str) -> tuple[str, str] | None:
 
 
 def rename_sites(built: Index, kind: str, name: str) -> list[Site]:
-    """Every string a rename of this kind has to rewrite, the declaration included.
+    """Every string a rename of this kind writes the new name over whole, the declaration
+    included: a condition, of which a constant's rename rewrites a word alone, is
+    :func:`conditions_spelling`'s.
 
     A variable's mentions are indexed as strings already. A type or a constant is indexed by
     its entry and by the places spelling it, so its own ``name`` is added here; a name nothing
@@ -748,17 +1106,74 @@ def rename_sites(built: Index, kind: str, name: str) -> list[Site]:
     return [Site(declared.path, f"{declared.pointer}.name"), *uses]
 
 
-def drift(sites: Iterable[Site], name: str, cache: dict[Path, Document]) -> tuple[Path, ...]:
-    """The files whose text no longer holds ``name`` at one of ``sites``, each once, sorted.
+def conditions_spelling(built: Index, kind: str, name: str) -> list[Site]:
+    """Every condition spelling ``name`` as a word, where a name of this kind is one a condition
+    may spell: a constant's, at :attr:`Index.condition_uses`; for any other kind, none.
+
+    A section's name is a linker string and a raster's an a2l short name, neither ever written into
+    the generated c, so no condition spells one, whatever constant shares its spelling; and neither
+    a variable nor a type is a macro ``#if`` could read. What a rename of the name rewrites a word
+    of, beside :func:`rename_sites`, and what the Shared files tab counts beside the shapes, and
+    refuses a removal for.
+    """
+    if kind != "constant":
+        return []
+    return list(built.condition_uses.get(name, ()))
+
+
+def word_spans(document: Document, pointer: str, word: str) -> list[tuple[int, int]]:
+    """Where the string at ``pointer`` spells ``word`` as a word (:data:`_WORD`), as offsets into
+    the document's text: each time it does, in order, and none where no string is written there.
+
+    Found in the string as json reads it and placed in the text as it is written. An escape is one
+    character of the string and several of the text, so ``CELLS`` after a ``\\t`` or a ``\\"`` sits
+    further along in the file than in the condition, and ``C\\u0045LLS`` is the word too, its span
+    taking the escape with it.
+    """
+    span = document.text_span_of(pointer)
+    if span is None:
+        return []
+    written = list(_JSON_CHARACTER.finditer(document.text, *span))
+    read_as = "".join(_character(found.group()) for found in written)
+    return [
+        (written[found.start()].start(), written[found.end() - 1].end())
+        for found in _WORD.finditer(read_as)
+        if found.group() == word
+    ]
+
+
+def _character(written: str) -> str:
+    """The character one :data:`_JSON_CHARACTER` reads as: the escape decoded, as json reads it,
+    or the character itself."""
+    if written.startswith("\\"):
+        decoded: str = json.loads(f'"{written}"')
+        return decoded
+    return written
+
+
+def drift(
+    sites: Iterable[Site],
+    name: str,
+    cache: dict[Path, Document],
+    conditions: Iterable[Site] = (),
+) -> tuple[Path, ...]:
+    """The files whose text no longer holds ``name`` at one of ``sites``, or no longer spells it as
+    a word in the condition at one of ``conditions``, each once, sorted.
 
     The index points into each file as the analysis read it. A declaration or an entry put in
     above the one it recorded - or taken out, or put back by an undo - leaves another, or none, at
     that place, and a plan made at the recorded pointer changes whatever sits there now: what a
     panel's route asks before it reads an entry (:func:`ddd.project_types.type_in_place`,
     :func:`ddd.project_shared.entry_in_place`), and what :func:`rename_edits` asks of a buffer,
-    asked of every place a plan points at.
+    asked of every place a plan points at. A condition is asked whether it still spells the name,
+    which is all a plan rewriting its word needs of it.
     """
     moved = {site.path for site in sites if read(site.path, cache).value_at(site.pointer) != name}
+    moved.update(
+        site.path
+        for site in conditions
+        if not word_spans(read(site.path, cache), site.pointer, name)
+    )
     return tuple(sorted(moved, key=Path.as_posix))
 
 
@@ -770,6 +1185,34 @@ def changed_since(files: Iterable[Path], consequence: str) -> str:
     return (
         f"{names} changed since the project was analysed, so {consequence} until the project is "
         "analysed again"
+    )
+
+
+def named_by_a_header(built: Index, kind: str, name: str) -> str | None:
+    """Why what is of this ``kind`` and called ``name`` may not be renamed at all, whatever it
+    would be renamed onto: an external type's name is the one the header beside it defines. Nothing
+    for anything else.
+
+    DDD generates no typedef for an external type, only the include of its header, so the name
+    its entry spells is the vendor's: a rename of the descriptions left the header defining the
+    old name and the generated types header spelling the new one, ``ddd check`` said nothing, and
+    the build stopped at the first compile. The one check both clients ask, the editor's ``F2`` of
+    every project it reaches (:meth:`ddd.lsp.server.Server._name_rename`) and the page's Types tab
+    (:func:`ddd.type_plans.rename_type`), so that the two cannot disagree about it; asked before
+    :func:`rename_problem`, which judges the new name, since no new name would do.
+
+    A variable, a constant or anything else spelled as an external type is the project's own, and
+    renaming it is how the collision of the two is mended. Two early returns rather than one
+    ``or``, which coverage.py counts as a single branch whichever operand decided it.
+    """
+    if kind != "type":
+        return None
+    header = built.externals.get(name)
+    if header is None:
+        return None
+    return (
+        f"'{name}' is an external type whose name {header} defines, so a rename here would leave "
+        "that header defining the old one"
     )
 
 
@@ -898,31 +1341,50 @@ def rename_edits(
     sites a drifted buffer kept out of them.
 
     Only the characters between the quotes are replaced, so whatever else is on the line -
-    the key, the spacing a project formats its files with - is left exactly as it was. A site
-    whose buffer no longer names the subject at the index's pointer is reported in
-    ``drifted`` instead of silently left out of ``changes``: a rename that rewrites some
-    files and not others leaves the project half renamed, and the caller has to know which
-    file that would have been.
+    the key, the spacing a project formats its files with - is left exactly as it was; and of a
+    condition spelling a constant, only that word (:func:`conditions_spelling`), every other
+    word and every longer identifier holding it left as they were. The new name is written as
+    json spells it between the quotes: a raster's name may hold a quote or a backslash, and
+    written raw, a quote ended the string, so that no file the rename rewrote parsed, and a
+    backslash began an escape, so that the name read back was another.
+
+    A site whose buffer no longer names the subject at the index's pointer - or a condition that
+    no longer spells it - is reported in ``drifted`` instead of silently left out of ``changes``:
+    a rename that rewrites some files and not others leaves the project half renamed, and the
+    caller has to know which file that would have been.
     """
     subject = renameable_at(document, pointer)
+    if subject is None:
+        return RenameEdits(changes={}, drifted=())
+    kind, old = subject
+    written = json.dumps(name, ensure_ascii=False)[1:-1]
     changes: dict[str, list[dict[str, Any]]] = {}
     drifted: list[Path] = []
-    for site in rename_sites(built, *subject) if subject is not None else ():
-        # The loop body only ever runs through the branch above where `subject` is not
-        # `None`. Asserted rather than reshaped into its own guard: a branch that cannot be
-        # taken is a branch no test can cover and no reader can trust.
-        assert subject is not None
+    for site in rename_sites(built, kind, old):
         target = read(site.path, cache)
-        if target.value_at(site.pointer) != subject[1]:
+        if target.value_at(site.pointer) != old:
             # The index describes the disk; an open buffer may have moved the declaration.
             # Editing at the old pointer would rename whatever now sits there.
             drifted.append(site.path)
             continue
         # `text_range_of` and the `value_at` above are read off the same scan of `target`, so
-        # a pointer just confirmed to hold `subject[1]` there always has a text span too.
+        # a pointer just confirmed to hold `old` there always has a text span too.
         span = target.text_range_of(site.pointer)
         assert span is not None
-        changes.setdefault(site.path.as_uri(), []).append({"range": span, "newText": name})
+        changes.setdefault(site.path.as_uri(), []).append({"range": span, "newText": written})
+    for site in conditions_spelling(built, kind, old):
+        target = read(site.path, cache)
+        spans = word_spans(target, site.pointer, old)
+        if not spans:
+            drifted.append(site.path)
+            continue
+        changes.setdefault(site.path.as_uri(), []).extend(
+            {
+                "range": {"start": target.position(start), "end": target.position(end)},
+                "newText": written,
+            }
+            for start, end in spans
+        )
     return RenameEdits(changes=changes, drifted=tuple(sorted(drifted)))
 
 

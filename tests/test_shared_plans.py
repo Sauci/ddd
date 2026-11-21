@@ -255,6 +255,20 @@ _TWO_USES = {
 }
 
 
+# 10:I10 and 14:M13 on the page: `Big` sized by `CELLS` and declared only where
+# `defined(CELLS) && CELLS > 2`, which spells it twice, and `UNUSED`, which no shape names and one
+# condition spells. The shipped templates define each constant as a macro in the types header,
+# and `#if` reads a name nothing defines as 0.
+_UNDER_CONDITIONS = {
+    "c.ddd.json": {"constants": [{"name": "CELLS", "value": 4}, {"name": "UNUSED", "value": 3}]},
+    "w.ddd.json": component(
+        "W",
+        declare("output", "Big", dimensions=["CELLS"], condition="defined(CELLS) && CELLS > 2"),
+        declare("output", "V", condition="UNUSED > 3"),
+    ),
+}
+
+
 # A third tree, for removals that leave something behind: a constants file and a component's own
 # list, each holding two constants, and no shape naming any of them. `TWO_HOMES` holds exactly one
 # entry in each list, which is the other case: the last entry of a file's own list leaves it
@@ -478,10 +492,21 @@ class TestRemoving:
             remove_entry(project_shared.CONSTANTS, built, "TREND_SAMPLES", cache)
         assert raised.value.code == "invalid"
         assert "a.ddd.json" in raised.value.message
-        # Not `"1 shape" in message`: that substring is also true of the wrong wording
-        # "1 shapes", so it would survive `_plural` always adding the "s". The comma pins the
-        # word's own end.
-        assert "is named by 1 shape," in raised.value.message
+        # Not `"1 use" in message`: that substring is also true of the wrong wording "1 uses", so
+        # it would survive `_plural` always adding the "s". The comma pins the word's own end.
+        assert "has 1 use," in raised.value.message
+
+    def test_a_constant_only_a_condition_spells_is_refused_too(self, tmp_path: Path) -> None:
+        """14:M13. Asked of the shapes alone, nothing named `UNUSED`, and its removal was planned
+        and applied with `ddd check` clean: the condition then read a name nothing defines, which
+        `#if` takes for 0, and compiled its object out from that build on."""
+        built = _index(tmp_path, _UNDER_CONDITIONS)
+        with pytest.raises(SharedRefusalError) as raised:
+            remove_entry(project_shared.CONSTANTS, built, "UNUSED", {})
+        assert (raised.value.code, raised.value.message) == (
+            "invalid",
+            "'UNUSED' has 1 use, the first in w.ddd.json; nothing may name it before it goes",
+        )
 
     def test_a_constant_two_shapes_name_reads_the_plural(self, tmp_path: Path) -> None:
         """The other arm of `_plural`'s conditional expression: invisible to coverage.py, which
@@ -491,7 +516,7 @@ class TestRemoving:
         cache: dict[Path, Document] = {}
         with pytest.raises(SharedRefusalError) as raised:
             remove_entry(project_shared.CONSTANTS, built, "TREND_SAMPLES", cache)
-        assert "is named by 2 shapes," in raised.value.message
+        assert "has 2 uses," in raised.value.message
         # The message names *the first* blocking shape. `a.ddd.json` comes before `b.ddd.json`
         # in `built.constant_uses["TREND_SAMPLES"]` here, so `used[0]` and `used[-1]` disagree -
         # the one place the single-use tests above cannot tell the two apart.
@@ -540,6 +565,48 @@ class TestRenaming:
         cache: dict[Path, Document] = {}
         plan = rename_entry(project_shared.CONSTANTS, built, "TREND_SAMPLES", "TREND_SLOTS", cache)
         assert [edit.path.name for edit in plan.edits] == ["a.ddd.json", "c.ddd.json"]
+
+    def test_a_condition_spelling_the_constant_has_that_word_rewritten(
+        self, tmp_path: Path
+    ) -> None:
+        """10:I10 on the page, which renames through the editor's sites: the condition is set
+        with the constant's word rewritten in it, each of the two times it spells it, and once
+        applied, it reads the new name."""
+        built = _index(tmp_path, _UNDER_CONDITIONS)
+        plan = rename_entry(project_shared.CONSTANTS, built, "CELLS", "SLOTS", {})
+        assert {edit.path.name: edit.operations for edit in plan.edits} == {
+            "c.ddd.json": (Operation("set", "constants[0].name", '"SLOTS"'),),
+            "w.ddd.json": (
+                Operation("set", "component.interface[0].definition.dimensions[0]", '"SLOTS"'),
+                Operation(
+                    "set", "component.interface[0].condition", '"defined(SLOTS) && SLOTS > 2"'
+                ),
+            ),
+        }
+        _made(plan)
+        workspace = load_workspace(tmp_path / "p.ddd.json", DiagnosticBag())
+        assert workspace is not None
+        (loaded,) = workspace.components
+        assert [declared.condition for declared in loaded.component.interface] == [
+            "defined(SLOTS) && SLOTS > 2",
+            "UNUSED > 3",
+        ]
+
+    def test_the_rest_of_a_condition_is_kept_as_written(self, tmp_path: Path) -> None:
+        """Only the word is rewritten: an escape the author wrote stays the escape, as a value
+        travels as the json text its author wrote."""
+        text = json.dumps(_UNDER_CONDITIONS["w.ddd.json"], indent=2).replace(
+            '"defined(CELLS) && CELLS > 2"', '"defined(CELLS) && CELLS \\u003e 2"'
+        )
+        built = _index(tmp_path, {**_UNDER_CONDITIONS, "w.ddd.json": text})
+        plan = rename_entry(project_shared.CONSTANTS, built, "CELLS", "SLOTS", {})
+        (condition,) = [
+            operation
+            for edit in plan.edits
+            for operation in edit.operations
+            if operation.pointer == "component.interface[0].condition"
+        ]
+        assert condition.raw == '"defined(SLOTS) && SLOTS \\u003e 2"'
 
     @pytest.mark.parametrize(
         ("to", "because"),
@@ -685,6 +752,36 @@ class TestAnEntryMovedSinceTheIndex:
             "stale",
             "a.ddd.json changed since the project was analysed, so renaming 'TREND_SAMPLES' "
             "cannot be planned until the project is analysed again",
+        )
+
+    def test_a_rename_reaching_a_condition_that_no_longer_spells_it_is_refused_too(
+        self, tmp_path: Path
+    ) -> None:
+        """The condition the index read spells the constant, and the file holds another since:
+        written, the plan would rewrite nothing there and leave the project half renamed, or
+        rewrite a word the reader did not ask for."""
+        built = _index(tmp_path, _UNDER_CONDITIONS)
+        write_tree(
+            tmp_path,
+            {
+                "w.ddd.json": component(
+                    "W",
+                    declare(
+                        "output",
+                        "Big",
+                        dimensions=["CELLS"],
+                        condition="defined(CELLS) && CELLS > 2",
+                    ),
+                    declare("output", "V", condition="defined(FEATURE_X)"),
+                )
+            },
+        )
+        with pytest.raises(SharedRefusalError) as raised:
+            rename_entry(project_shared.CONSTANTS, built, "UNUSED", "SPARE", {})
+        assert (raised.value.code, raised.value.message) == (
+            "stale",
+            "w.ddd.json changed since the project was analysed, so renaming 'UNUSED' cannot be "
+            "planned until the project is analysed again",
         )
 
 
@@ -1152,7 +1249,7 @@ class TestTheDescriptorsVerbs:
         with pytest.raises(SharedRefusalError) as raised:
             remove_entry(project_shared.CONSTANTS, built, "CELLS", cache)
         assert raised.value.code == "invalid"
-        assert "'CELLS' is named by 1 shape, the first in a.ddd.json" in raised.value.message
+        assert "'CELLS' has 1 use, the first in a.ddd.json" in raised.value.message
 
     def test_add_refuses_a_raw_key_the_vocabulary_does_not_have(self, tmp_path: Path) -> None:
         # `raws` is this task's own surface - the old `add_constant` took a single `raw` - so a

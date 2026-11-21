@@ -21,26 +21,18 @@ That import is deferred into :func:`assign` rather than made at the top, for two
 point the same way. Importing ``ddd.lsp.ranges`` runs the package's ``__init__``, which brings
 up the whole language server - a cost ``ddd id`` has no use for and a dependency a command
 line tool should not have on an editor service. And the server's own quick fix reads
-:func:`insertions` from here, so a module level import would close a cycle. Only :func:`assign`
-touches the filesystem; everything above it works on a document it is handed.
+:func:`unstamped` and :func:`stamp` from here, so a module level import would close a cycle.
+Only :func:`assign` touches the filesystem; everything above it works on a document it is handed.
 """
 
 from __future__ import annotations
 
 import json
 import secrets
-from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ddd.editing import (
-    EditError,
-    FileChange,
-    Operation,
-    apply_changes,
-    indent_of_line_at,
-    newline_at,
-)
+from ddd.editing import EditError, FileChange, Operation, apply_changes
 from ddd.loading import fingerprint, parse_json_text, resolve_path
 from ddd.models.common import OBJECT_ID_ALPHABET, OBJECT_ID_LENGTH
 from ddd.models.component import Scope
@@ -118,67 +110,15 @@ def unstamped(document: Document) -> list[tuple[str, bool]]:
     return wanted
 
 
-@dataclass(frozen=True, slots=True)
-class Insertion:
-    """Where an id belongs in a description's text, and what to write there: the language
-    server's quick fix, which offers the edit on one declaration as a text edit with a range.
-
-    The command and the page's fix state the same edit as an operation for the edit engine
-    (:func:`stamp`), which writes the key in the same place, right after the name, and in the
-    same layout where the object is written one member to a line; a test holds the two to one
-    text.
-    """
-
-    pointer: str
-    """The ``...definition.name`` pointer the new key follows, or the ``...definition.id``
-    pointer of the ``null`` the new value replaces."""
-
-    offset: int
-    """Where it goes in the document's text, for a caller rewriting the whole file."""
-
-    text: str
-    """The key itself, with the comma and the indent of the line it joins - or, replacing a
-    ``null``, the quoted id alone."""
-
-    length: int = 0
-    """How many characters at ``offset`` the text replaces: the ``null``, or nothing."""
-
-
-def insertions(document: Document) -> list[Insertion]:
-    """Every identity this document is missing, in the order its declarations are written.
-
-    Each carries a freshly generated id, so asking twice proposes two different sets - which
-    is why a caller applies the answer it was given rather than asking again.
-    """
-    found = []
-    for definition, stated_null in unstamped(document):
-        target = f"{definition}.id" if stated_null else f"{definition}.name"
-        # The walk above reads the parsed document and the spans come from a scan of the same
-        # text, under pointers built from the same decoded keys - and every segment of this
-        # one is a fixed identifier, so no spelling can split differently. A document that
-        # parsed therefore has a span here. Asserted rather than guarded, the way the quick
-        # fix that reads this list asserts the same span: a declaration skipped in silence is
-        # what this used to do, and it did it whenever a key carried a json escape.
-        span = document.value_span_of(target)
-        assert span is not None
-        if stated_null:
-            found.append(Insertion(target, span[0], f'"{new_id()}"', span[1] - span[0]))
-        else:
-            indent = indent_of_line_at(document.text, span[1])
-            newline = newline_at(document.text, span[1])
-            found.append(Insertion(target, span[1], f',{newline}{indent}"id": "{new_id()}"'))
-    return found
-
-
 def stamp(definition: str) -> Operation:
     """The operation giving the declaration at the pointer ``definition`` a fresh identity.
 
-    What the command and the page's fix for ``missing-id`` each hand the edit engine, which
-    writes the ``id`` right after the declaration's ``name`` - or, where the declaration states
-    one as ``null``, in place of that ``null`` - in the layout of the file around it
-    (:func:`ddd.editing.member_addition`). Spelled once, here, so that the two cannot ask for
-    one edit in two ways; a fresh id per call, so a caller applies the answer it was given
-    rather than asking again.
+    What the command, the page's fix for ``missing-id`` and the editor's each hand the edit
+    engine, which writes the ``id`` right after the declaration's ``name`` - or, where the
+    declaration states one as ``null``, in place of that ``null`` - in the layout of the file
+    around it (:func:`ddd.editing.member_addition`). Spelled once, here, so that the three cannot
+    ask for one edit in two ways; a fresh id per call, so a caller applies the answer it was
+    given rather than asking again.
     """
     return Operation("set", f"{definition}.id", json.dumps(new_id()))
 

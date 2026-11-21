@@ -138,6 +138,14 @@ reads the log: this one is the client's message being wrong, and ``REQUEST_FAILE
 server declining a message it understood perfectly well.
 """
 
+INTERNAL_ERROR = -32603
+"""The json-rpc code for a request the server failed on through a defect of its own.
+
+Its own code rather than a request failure: ``REQUEST_FAILED`` is the server declining, for a
+reason it states, a request it understood, where this one is the server going wrong while it
+answered - something a reader reports rather than mends in their files.
+"""
+
 REQUEST_FAILED = -32803
 """A request the server understood and could not carry out; the message says why."""
 
@@ -150,3 +158,8 @@ def error(request_id: Any, code: int, message: str) -> dict[str, Any]:
 def notification(method: str, params: Any) -> dict[str, Any]:
     """A message the server sends without being asked and expects no answer to."""
     return {"jsonrpc": "2.0", "method": method, "params": params}
+
+
+def request(request_id: Any, method: str, params: Any) -> dict[str, Any]:
+    """A message the server sends the client and that the client answers, under ``request_id``."""
+    return {"jsonrpc": "2.0", "id": request_id, "method": method, "params": params}

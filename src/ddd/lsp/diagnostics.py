@@ -18,7 +18,7 @@ Two choices shape the rest:
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Final
@@ -37,7 +37,7 @@ from ddd.diagnostics import (
 )
 from ddd.ir import DataDictionary
 from ddd.loading import FileRead, load_workspace
-from ddd.lsp.navigation import Index, Loaded, resolve_projects
+from ddd.lsp.navigation import Descriptions, Index, Loaded, resolve_projects
 from ddd.lsp.navigation import index as index_of
 from ddd.lsp.ranges import Document, read
 from ddd.plugins import PluginError
@@ -233,17 +233,31 @@ def _run(root: Path, bag: DiagnosticBag, *, includes: Sequence[str] | None = Non
 def collect(
     builds: Sequence[BuildInfo],
     documents: Iterable[Path] = (),
-    root: Path | None = None,
+    root: Path | Callable[[Path], Path] | None = None,
+    buffers: Mapping[Path, Document] | None = None,
+    reported: dict[Path, set[Path]] | None = None,
 ) -> dict[Path, list[dict[str, Any]]]:
     """Findings for every file the given builds cover, plus any document they do not.
 
     The result has an entry for every file that was looked at, whether or not anything is
     wrong with it, because an empty entry is what withdraws a finding that has been fixed.
 
-    A document no build claims is checked through the project that includes it, if one lies
-    above it, and only on its own when none does. That is the same order the hover and the
-    jumps follow, and they have to agree: a squiggle saying a datatype names nothing, next to a
-    hover that describes it in full, is worse than either answer on its own.
+    A document no build claims is checked through the projects that include it, if one lies
+    above it, and only on its own when none does and no run here reported on it. That is the
+    same order the hover and the jumps follow, and they have to agree: a squiggle saying a
+    datatype names nothing, next to a hover that describes it in full, is worse than either
+    answer on its own. ``root`` bounds the search above a document: one directory for every
+    document, or what answers it for each, as the server answers it with the workspace folder
+    holding the document.
+
+    Each project is analysed once, however many of the documents it holds or answers for, and
+    each description above them is read once: the server checks together every document that
+    messages arriving together mark, and with ten documents open a watch event marks all ten.
+    A document a build reported on is the build's alone; any other is searched for above even
+    where a run reported on it already, since a project above it that the run was not may
+    include it too. The documents no project answers for are read on their own last, once
+    every project has reported, so that which of them a project reported on does not depend on
+    the order they came in.
 
     A file is counted as covered by what a run *reported on*, not only by what the run managed
     to load. The two differ exactly when a run stopped early - a plugin defect ends the read
@@ -254,37 +268,74 @@ def collect(
     loader hands back and two spellings of one file would be published as two files. Which
     words each one goes out in is the server's to decide, one layer up, where what the client
     called each document is known.
+
+    The findings are the disk's, and so is what a file declares itself to be
+    (:func:`_declares_a_project`), which decides how it is checked. Where each is drawn is the
+    client's text, though: ``buffers`` holds the text of every document the client has open, by
+    its resolved path, and a finding about one is drawn where that text holds its key - over the
+    nearest key around it that the text holds where it does not, and at the top of a text that is
+    not json (:meth:`~ddd.lsp.ranges.Document.range_of`). Drawn at the disk's place, a squiggle
+    landed on whatever the text held there once lines were typed above it, unsaved.
+
+    ``reported``, where given, takes which files each run reported on, by the resolved path of
+    what it ran from: a build's project description, a description found above a document, or a
+    document - what its search named that could not be read, and its run on its own where it had
+    one; a document searched for is there whatever its search found. What a caller needs to tell
+    a file no run reported on this time from one that a run from the same place no longer
+    reports on, as the server does between two checks (:meth:`~ddd.lsp.server.Server.refresh`).
     """
     cache: dict[Path, Document] = {}
+    """The files as the disk holds them, for what each declares itself."""
+    drawn: dict[Path, Document] = dict(buffers or {})
+    """The text each finding is drawn in: an open document's buffer, and any other file's disk."""
     grouped: dict[Path, list[Diagnostic]] = {}
     covered: set[Path] = set()
+    ran: dict[Path, set[Path]] = {} if reported is None else reported
+
+    def spoken(origin: Path, files: Iterable[Path]) -> None:
+        """What one run reported on, from ``origin``: covered, and kept under it in ``ran``."""
+        said = set(files)
+        covered.update(said)
+        ran.setdefault(origin.resolve(), set()).update(said)
+
     for info in builds:
         bag, sources = analyse(info)
-        covered |= sources | group_findings(bag, Path(info.project), grouped)
+        spoken(Path(info.project), sources | group_findings(bag, Path(info.project), grouped))
+    claimed = frozenset(covered)
+    descriptions = Descriptions()
+    analysed: set[Path] = set()
+    alone: list[Path] = []
     for document in documents:
         resolved = document.resolve()
-        if resolved in covered:
+        if resolved in claimed:
             continue
-        containing = resolve_projects(resolved, root)
+        bound = root(resolved) if callable(root) else root
+        containing = resolve_projects(resolved, bound, descriptions)
         # A candidate that could not be read is named at its own file. Without this the reader
         # gets the thin standalone analysis below and nothing at all saying why: the project
         # that would have given the full answer is broken, and only the plugin can fix it.
-        # Once per file: a candidate an earlier document of this call already named, or
-        # that was itself a document, is not named again by a later search that meets it.
+        # Once per file: a candidate an earlier search of this call read is not read again, nor
+        # named again by a later search that meets it, and one a run here reported on already
+        # is not named at all.
         unreadable = DiagnosticBag()
         for path in sorted(set(containing.failed) - covered):
             unreadable.add("plugin-invalid", containing.failed[path], Location(path))
-        covered |= group_findings(unreadable, resolved, grouped)
-        if containing.projects:
-            for loaded in containing.projects:
+        spoken(resolved, group_findings(unreadable, resolved, grouped))
+        if not containing.projects:
+            alone.append(resolved)
+        for loaded in containing.projects:
+            description = loaded.path.resolve()
+            if description not in analysed:
+                analysed.add(description)
                 bag, sources = _analysed(loaded)
-                covered |= sources | group_findings(bag, loaded.path, grouped)
-            continue
-        bag, sources = _analyse_root(resolved, cache)
-        covered |= sources | group_findings(bag, resolved, grouped)
+                spoken(description, sources | group_findings(bag, loaded.path, grouped))
+    for resolved in alone:
+        if resolved not in covered:
+            bag, sources = _analyse_root(resolved, cache)
+            spoken(resolved, sources | group_findings(bag, resolved, grouped))
 
     return {
-        path: [_as_lsp(finding, cache, path) for finding in grouped.get(path, ())]
+        path: [_as_lsp(finding, drawn, path) for finding in grouped.get(path, ())]
         for path in sorted(covered | set(grouped))
     }
 

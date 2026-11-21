@@ -998,7 +998,7 @@ class SharedEntry(_Frozen):
     out or put back since - until the analysis reads its file again."""
 
     uses: int
-    """How many shapes name it."""
+    """How many places name it: its shapes, and the conditions spelling a constant."""
 
     findings: int
     """How many findings are filed inside its entry or at a shape naming it."""
@@ -1015,17 +1015,18 @@ class SharedReply(_Frozen):
 
 
 class ConstantUse(_Frozen):
-    """One shape that names a constant."""
+    """One place that names a constant: a shape, or a condition spelling it."""
 
     path: str
     """Absolute, posix-separated path of the file naming it."""
 
     pointer: str
-    """Dotted path of the constant's own string inside that file: a declaration's ``dimensions``
-    entry or its axis ``size``, or a structure member's ``dimensions`` entry."""
+    """Dotted path of the string spelling it inside that file: a declaration's ``dimensions``
+    entry, its axis ``size`` or its ``condition``, or a structure member's ``dimensions``
+    entry."""
 
     kind: Literal["variable", "member"]
-    """A declaration's dimension or axis size, or a structure member's dimension."""
+    """A declaration's dimension, axis size or condition, or a structure member's dimension."""
 
     name: str
     """The variable's name, or ``Sample_t.history`` for a structure member."""
@@ -1061,7 +1062,8 @@ class ConstantReply(_Frozen):
     ``component.constants[i]`` in a component that declares it inline."""
 
     uses: tuple[ConstantUse, ...]
-    """Every shape naming it, in the order the navigation index recorded them."""
+    """Every shape naming it, then every condition spelling it, in the order the navigation index
+    recorded them."""
 
     findings: tuple[Finding, ...]
     """Every finding filed inside its entry or at a shape naming it."""

@@ -155,16 +155,17 @@ ddd lsp                      # speaks the Language Server Protocol on stdin and 
 Editors that launch a server themselves - Neovim, Helix, Emacs - need only that command.
 VS Code cannot start one without an extension, so there is one in
 [editors/vscode](https://github.com/Sauci/ddd/tree/master/editors/vscode); it is a launcher and nothing more, which is why everything
-below works the same either way.  Every release attaches a `ddd-<version>.vsix` to its
+below works the same either way, in any editor that watches the files the server asks it to.
+Every release attaches a `ddd-<version>.vsix` to its
 [GitHub release](https://github.com/Sauci/ddd/releases), which is a permanent link needing no
 account and no network policy exception: that installs with
 `code --install-extension ddd-<version>.vsix` or through **Install from VSIX…** in the
 Extensions view.  It updates no more automatically than any other file, so reinstall it when
 the python package is upgraded - the two share a version number.
 
-The server reports on open, on save, and when the editor tells it a description file changed
-on disk behind your back - a build writes them, a branch switch rewrites them all - and it
-publishes for
+The server reports on open, on save, and when a description file or a build record changes on
+disk behind your back - a build writes them, a branch switch rewrites them all - which it asks
+the editor to watch, and it publishes for
 **every** file of the project rather than only the one in front of you, because half of a
 disagreement is always in the other component.  A component linked into two images is checked
 under both and one mistake in it is drawn once, unless the two images disagree about how
@@ -172,8 +173,10 @@ loudly to report it, in which case both are shown.
 
 Hovering anywhere in a declaration shows what the **project** made of that variable, which
 the file under the cursor does not say: the shape a curve got from its axis, limits derived
-from a datatype and a conversion nobody wrote down, who writes it and who reads it, what an
-enum's numbers mean, and the initial values as a sparkline.
+from a datatype and a conversion nobody wrote down, who writes it and who reads it in every
+image holding the file, what an enum's numbers mean, and the initial values as a sparkline.
+Where a plugin stops the analysis of one of those images, the hover names the image, since who
+writes and reads the variable there is not counted.
 
 ```text
 CurveA — curve, uint16          |  unit        ms
@@ -202,50 +205,75 @@ It also navigates, which is where a data dictionary stops being a pile of files:
 | an `includes` entry | the file - wildcards land on every match | |
 
 **Quick fixes** reconcile a `definition-mismatch`. They change descriptions only: the code
-of the readers is not touched, and the fix a finding of `ddd gui` carries says so in its title.  Put the cursor on a `unit`, a
-`conversion`, a `datatype` or any other key the declarations have to agree on, and the editor
-offers every way of reconciling it, ordered by which component owns the variable: a consumer
-is shown the producer's value first, the producer its own.  A key nobody else states can be
-**removed** instead of spread - two declarations disagree just as much when one says nothing,
-and which way to settle it is yours.  The value is copied as you wrote it rather than
-re-serialised, so `{ "kind": "linear", "factor": 0.25 }` arrives looking like itself; a
-declaration that never mentioned the key gets it inserted, on one line or its own depending on
-how that file is written.  Nothing is offered when everybody already agrees - and `limits`
-nobody else states are agreement, since a declaration that leaves them out defers to the one
-that states them, exactly as the checker reads it.
+of the readers is not touched, and each fix says so in its title, in the editor as in `ddd gui`.
+Put the cursor on a `unit`, a `conversion`, a `datatype` or any other key the declarations have
+to agree on, and the editor offers every way of reconciling it, ordered by which component owns
+the variable: a consumer is shown the producer's value first, the producer its own.  A key
+nobody else states can be **removed** instead of spread - two declarations disagree just as much
+when one says nothing, and which way to settle it is yours.  The value is copied as you wrote it
+rather than re-serialised, so `{ "kind": "linear", "factor": 0.25 }` arrives looking like
+itself; a declaration that never mentioned the key gets it inserted, on one line or its own
+depending on how that file is written.  Nothing is offered when everybody already agrees - and
+`limits` nobody else states are agreement, since a declaration that leaves them out defers to
+the one that states them, exactly as the checker reads it.  A component linked into two images
+is offered each fix once, and a value sent out from it reaches the declarations of every image
+holding a file the fix writes.
 
 **Rename** (`F2`) on a variable name rewrites it in every component that declares it and in
 every `axis`, `x_axis`, `y_axis` or `input` that names it; on a declared type, in its
-declaration and in every `typename` naming it; on a declared constant, in its declaration and
-in every dimension or axis `size` spelling it.  A name c reserves, one that is
-not a usable identifier, or one the project already declares is refused with the reason
-before a single file is touched - a rename writes into several at once, and an unusable
-name is otherwise noticed a build later.  Free text is left alone: a `description` that
-mentions the old name still mentions it, because rewriting prose by substring is how a
-rename tool starts corrupting files.  A rename and the quick fixes are refused outright,
-naming the file, while a document has unsaved changes that moved a declaration they would
-touch or while a file of the project did not load: the project the edit would be computed
-from is not the project on disk, and rewriting the rest of it around the gap is exactly the
-half-done rename the refusal exists to prevent.
+declaration and in every `typename` naming it; on a declared constant, in its declaration, in
+every dimension or axis `size` spelling it and in every `condition` spelling it as a word -
+that word alone, and never a longer identifier holding it.  It reaches every project holding a
+file it rewrites, and in turn every project holding a file those projects' edits rewrite, so a
+component linked into two images is renamed with the readers of both, whichever image the
+file you start from is in - as long as the server finds both images for it: through their
+build records, or, without records, through a project description above it.  A name c
+reserves, one that is not a usable identifier, or one a project it reaches already declares
+is refused with the reason before a single file is touched - a rename writes into several at
+once, and an unusable name is otherwise noticed a build later.  An external type is not renamed
+at all: its name is the one the header defining it spells, which no rename of a description
+reaches.  Free text is left alone: a
+`description` that mentions the old name still mentions it, because rewriting prose by
+substring is how a rename tool starts corrupting files.  A rename is refused outright, naming
+the file, while a document has unsaved changes that moved a declaration it would touch, or a file
+changed on disk since the project was read has moved one, and a quick fix that would touch one is
+not offered; while a file of the project did not load, or loaded with an error that stops the
+project being analysed, a rename is refused the same way and the quick fixes offer nothing, the
+server's log saying why once: the
+project the edit would be computed from is not the project on disk, and rewriting the rest of it
+around the gap is exactly the half-done rename the refusal exists to prevent.  A rename is refused
+too while an open document of a project it reaches holds what its file on disk does not,
+naming it, and when it would rewrite nothing.  It is refused, saying that no project is known,
+for anything but a local variable while none is: a component no record claims, that no
+description above it includes and that declares no project itself is read on its own.  And it
+is refused for anything but a local variable, naming the description and why, where a
+description it needs could not be read: a plugin stops it.  Where an image the file you started
+from is not in already declares the name, declares the type an external one, or holds a file
+that did not load, or loaded with an error that stops the project being analysed, the refusal names
+that image, or its project description where no build record names one.
 
 Which project a file belongs to is not something the file can say, so the server reads the
 `ddd-build.json` that `ddd_generate` leaves in the build tree, and applies the same severities
-the build applies.  Point it at an out-of-tree build with `-b DIR`; without it the usual build
-directory names next to the workspace are searched.  The records it finds are listed in the
-editor's log, and so is a record it declines - one written by a newer DDD, or naming a check
-this one has not got - because a record nothing can use looks, in silence, exactly like a
-workspace nobody configured a build in.
+the build applies.  Point it at an out-of-tree build with `-b DIR`, a relative one read against
+each workspace folder; without it the usual build directory names are searched in each workspace
+folder.  The records it finds are listed in the editor's log, and so is a record it declines - one
+written by a newer DDD, naming a check this one has not got, or naming its project by a relative
+path - because a record nothing can use looks, in silence, exactly like a workspace nobody
+configured a build in.
 
 Everything published or edited is spelled the way your editor spelled it, so a workspace
 opened through a junction, a `subst` drive, a symlink or with a different case gets its
-squiggles on the document you actually have open.
+squiggles on the document you actually have open, and none left behind under the spelling a
+file went out under before you opened it.
 
 A file no build claims is looked for in a project instead: the server walks up from it to the
-workspace folder and checks it through the nearest project description that includes it,
-under the **default** severities - a `-W` or a `--strict` belongs to a build, and no build
-record named this file.  A project description opened directly is checked as the project it
-is, which is what makes opening `project.ddd.json` in a tree nobody has built yet show the
-missing producers and the unused outputs rather than hide them.
+workspace folder and checks it through the outermost project description that includes it
+(a sub-project nearer the file is dropped, so the file shows what `ddd check` of the outer
+project shows), under the **default** severities - a `-W` or a `--strict` belongs to a build,
+and no build record named this file.  A project description no description above includes is
+checked as the project it is, which is what makes opening `project.ddd.json` in a tree
+nobody has built yet show the missing producers and the unused outputs rather than hide
+them.
 
 A file that no build and no project above it claims is still checked, on its own, but only
 for what one file can decide.

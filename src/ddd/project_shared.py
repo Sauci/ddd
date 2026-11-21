@@ -7,7 +7,9 @@ index's own record, one pair of dictionaries per vocabulary
 (:attr:`ddd.lsp.navigation.Index.constants` and :attr:`~ddd.lsp.navigation.Index.constant_uses`,
 :attr:`~ddd.lsp.navigation.Index.sections` and :attr:`~ddd.lsp.navigation.Index.section_uses`,
 :attr:`~ddd.lsp.navigation.Index.rasters` and :attr:`~ddd.lsp.navigation.Index.raster_uses`),
-and what an entry *says* is read from the document at that entry, the way a type's keys are.
+and a third for a constant, the conditions spelling one
+(:attr:`~ddd.lsp.navigation.Index.condition_uses`); what an entry *says* is read from the
+document at that entry, the way a type's keys are.
 
 Nothing is parsed into the models: a value travels as the json text it is written as, so ``2.0``
 reaches the page - and comes back to an edit - as the three characters its author typed. The format
@@ -32,7 +34,7 @@ from pydantic import BeforeValidator, TypeAdapter
 from ddd.diagnostics import Diagnostic
 from ddd.finding_routes import ABOUT_THE_DECLARATION
 from ddd.findings_by_file import FindingsByFile, Pair
-from ddd.lsp.navigation import Index, Site, rename_problem
+from ddd.lsp.navigation import Index, Site, conditions_spelling, rename_problem
 from ddd.lsp.ranges import Document, read
 from ddd.models.constants import ConstantValue
 from ddd.models.rasters import CYCLE_COUNT_MAX, EVENT_MAX, RasterDeclaration
@@ -114,7 +116,10 @@ class Vocabulary:
     """Where this vocabulary's own entries are recorded in the index."""
 
     used: Callable[[Index], dict[str, list[Site]]]
-    """Where the places naming one are recorded."""
+    """Where the shapes naming one are recorded - and not the conditions spelling a constant, which
+    the index records apart (:attr:`~ddd.lsp.navigation.Index.condition_uses`): a finding filed at
+    a condition is not the entry's, and its row's count and a removal's refusal read the conditions
+    beside these (:func:`~ddd.lsp.navigation.conditions_spelling`)."""
 
     states: Callable[[Mapping[str, str]], str]
     """The row's ``States`` cell, from the display texts of its keys. A constant states its value; a
@@ -122,11 +127,12 @@ class Vocabulary:
     header while constants were alone in the tab and fits nothing else."""
 
     uses: Callable[[Index, str, dict[Path, Document]], tuple[Use, ...]]
-    """Every shape naming one entry, resolved rather than merely located: :attr:`used` only says
+    """Every place naming one entry, resolved rather than merely located: :attr:`used` only says
     where the index recorded a naming shape, and this reads what each site there actually says. A
-    constant's own shapes are a dimension entry, an axis size, a structure member's dimension; a
-    section's and a raster's are different shapes entirely - so unlike :attr:`entries`, :attr:`used`
-    and :attr:`states`, each a one-line lambda, this is bound to a named function per vocabulary."""
+    constant's own shapes are a dimension entry, an axis size, a structure member's dimension, and a
+    condition spelling it names it too; a section's and a raster's are different shapes entirely -
+    so unlike :attr:`entries`, :attr:`used` and :attr:`states`, each a one-line lambda, this is
+    bound to a named function per vocabulary."""
 
     required: frozenset[str]
     """Of ``keys``, the ones the model gives no default, so a reader may not take them away: a
@@ -267,7 +273,8 @@ class SharedRow:
     longer names the entry (:func:`entry_in_place`), until the analysis reads its file again."""
 
     uses: int
-    """How many shapes name it."""
+    """How many places name it: its shapes, and the conditions spelling a constant
+    (:func:`~ddd.lsp.navigation.conditions_spelling`)."""
 
     findings: int
     """How many findings are filed inside its entry or at a shape naming it."""
@@ -275,7 +282,8 @@ class SharedRow:
 
 @dataclass(frozen=True, slots=True)
 class Use:
-    """One shape that names an entry of a vocabulary."""
+    """One place that names an entry of a vocabulary: a shape, or a condition spelling a
+    constant."""
 
     site: Site
 
@@ -283,7 +291,8 @@ class Use:
     """Whose use this is: a variable's declaration, a structure member's, or a **component's own**
     - the last being a raster named at ``component.raster`` as the default for everything that
     component produces, which sits inside no definition. A constant is never named that way and a
-    section is named only by a definition, so this third word arrives with rasters."""
+    section is named only by a definition, so this third word arrives with rasters. A condition
+    spelling a constant is the variable's whose declaration it guards."""
 
     name: str
     """The variable's name, ``Sample_t.history`` for a structure member, or - for a component's
@@ -343,7 +352,10 @@ def _places(vocabulary: Vocabulary, built: Index, name: str) -> list[Site]:
     """Everywhere a finding of that entry can be filed: its own record where a file declares it,
     then every shape naming it. What :func:`located_on` compares a finding against, and so the
     files :func:`entry_findings` asks the findings of - one list, so that the files asked and the
-    places compared cannot come to name different places."""
+    places compared cannot come to name different places.
+
+    A condition spelling a constant is a use of it and no place of its findings: what is filed at a
+    condition - a ``condition-mismatch`` - is about the declaration it guards."""
     entry = vocabulary.entries(built).get(name)
     places: list[Site] = []
     if entry is not None:
@@ -390,7 +402,8 @@ def row_of(
         kind=vocabulary.kind,
         name=name,
         states=_states(vocabulary, built, name, cache),
-        uses=len(vocabulary.used(built).get(name, ())),
+        uses=len(vocabulary.used(built).get(name, ()))
+        + len(conditions_spelling(built, vocabulary.kind, name)),
         findings=len(entry_findings(vocabulary, built, name, findings)),
     )
 
@@ -493,15 +506,23 @@ def string_of(
 def uses_of(
     vocabulary: Vocabulary, built: Index, name: str, cache: dict[Path, Document]
 ) -> tuple[Use, ...]:
-    """Every shape the index recorded naming ``name``, in the order it recorded them: whatever
-    :attr:`Vocabulary.uses` ``vocabulary`` binds - a constant's own shapes for :data:`CONSTANTS`,
-    a different reading entirely for a vocabulary shaped differently."""
+    """Every place the index recorded naming ``name``, in the order it recorded them: whatever
+    :attr:`Vocabulary.uses` ``vocabulary`` binds - a constant's own shapes, then the conditions
+    spelling it, for :data:`CONSTANTS`, a different reading entirely for a vocabulary shaped
+    differently."""
     return vocabulary.uses(built, name, cache)
+
+
+_CONDITION_SHAPE: Final = re.compile(r"^(component\.interface\[\d+\])\.condition$")
+"""A declaration's own ``condition``, and the declaration it guards, whose definition's ``name``
+names the variable: where :func:`ddd.lsp.navigation.index` records a condition spelling a
+constant."""
 
 
 def _constant_uses(built: Index, name: str, cache: dict[Path, Document]) -> tuple[Use, ...]:
     """:data:`CONSTANTS`'s :attr:`~Vocabulary.uses`: a dimension entry, an axis size, or a
-    structure member's dimension, in the order the index recorded them.
+    structure member's dimension, in the order the index recorded them, then every condition
+    spelling it as a word, which is a use of the variable whose declaration it guards.
 
     A declaration comes with the component declaring it, as :func:`ddd.variables.declarations_of`
     reads it, and one its file no longer declares where the index recorded it is left out, as that
@@ -531,21 +552,33 @@ def _constant_uses(built: Index, name: str, cache: dict[Path, Document]) -> tupl
         # that the file holds anything unexpected - and undercounting a constant's uses
         # silently is worse than failing loudly the moment the two fall out of step.
         assert shape is not None
-        definition = shape.group(1)
-        variable = document.value_at(f"{definition}.name")
-        if not isinstance(variable, str):
-            continue
-        declared = next(
-            (
-                entry
-                for entry in declarations_of(built, variable, cache)
-                if entry.site == Site(site.path, definition)
-            ),
-            None,
-        )
-        if declared is not None:
-            found.append(Use(site, "variable", variable, declared.component))
+        use = _declared_use(built, site, shape.group(1), cache)
+        if use is not None:
+            found.append(use)
+    for site in built.condition_uses.get(name, ()):
+        guarded = _CONDITION_SHAPE.match(site.pointer)
+        # As above: navigation.index() records each declaration's own `condition` here, and
+        # `test_the_condition_pattern_matches_what_the_index_records_of_a_condition` pins this
+        # pattern to what it records.
+        assert guarded is not None
+        use = _declared_use(built, site, f"{guarded.group(1)}.definition", cache)
+        if use is not None:
+            found.append(use)
     return tuple(found)
+
+
+def _declared_use(
+    built: Index, site: Site, definition: str, cache: dict[Path, Document]
+) -> Use | None:
+    """The use ``site`` is of the variable whose definition sits at ``definition`` of its file, with
+    the component declaring it - or nothing, where that file no longer declares one there."""
+    variable = read(site.path, cache).value_at(f"{definition}.name")
+    if not isinstance(variable, str):
+        return None
+    for entry in declarations_of(built, variable, cache):
+        if entry.site == Site(site.path, definition):
+            return Use(site, "variable", variable, entry.component)
+    return None
 
 
 _PLACEMENT_SHAPE: Final = re.compile(r"^(component\.interface\[\d+\]\.definition)\.section$")

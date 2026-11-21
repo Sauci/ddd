@@ -1,10 +1,54 @@
 /**
- * How the settings become a command line.
+ * How the settings become a command line, and when the server is wanted.
  *
- * Deliberately free of any import of `vscode`: this is the only part of the extension with a
- * decision in it, and keeping it out of the editor api is what lets it be tested by running
- * it rather than by starting an editor around it. Everything in `extension.ts` is wiring.
+ * Deliberately free of any import of `vscode`: these are the only parts of the extension with a
+ * decision in them, and keeping them out of the editor api is what lets them be tested by
+ * running them rather than by starting an editor around them. Everything in `extension.ts` is
+ * wiring.
  */
+
+/** How the name of a description ends. */
+const SUFFIX = ".ddd.json";
+
+/** The documents the server is handed: a `*.ddd.json` on disk, read as json. */
+export const DESCRIPTIONS = { scheme: "file", language: "json", pattern: `**/*${SUFFIX}` } as const;
+
+/** The smallest part of a vscode document the decision needs, so a test can stand in. */
+export interface Opened {
+  readonly languageId: string;
+  readonly uri: { readonly scheme: string; readonly path: string };
+}
+
+/** Whether a document is one the server is handed (`DESCRIPTIONS`). */
+export function describes(document: Opened): boolean {
+  return (
+    document.uri.scheme === DESCRIPTIONS.scheme &&
+    document.languageId === DESCRIPTIONS.language &&
+    document.uri.path.endsWith(SUFFIX)
+  );
+}
+
+/**
+ * Whether the server is wanted yet: once a description is open, or the workspace holds one.
+ *
+ * The manifest activates the extension on any json document as well as on a workspace holding a
+ * description, since a description opened outside a folder, or created after the window opened,
+ * is announced by nothing else. Started on activation, the server ran for any json file of any
+ * trusted workspace, and where `ddd` is not installed its error was shown there; so a json file
+ * of another name, in a workspace holding no description, starts nothing. The workspace is
+ * searched only where no open document settles it.
+ */
+export async function wanted(
+  open: Iterable<Opened>,
+  holdsADescription: () => PromiseLike<boolean>,
+): Promise<boolean> {
+  for (const document of open) {
+    if (describes(document)) {
+      return true;
+    }
+  }
+  return holdsADescription();
+}
 
 /** What the extension needs to know to start a server. */
 export interface Settings {

@@ -55,7 +55,7 @@
         "ddd.executable": {
           "type": "string",
           "default": "ddd",
-          "markdownDescription": "The `ddd` command to run the language server with. Left as the bare name, it is looked up on the PATH; set it to an absolute path to use the interpreter a virtual environment installed it into."
+          "markdownDescription": "The `ddd` command to run the language server with. Left as the bare name, it is looked up on the PATH; set it to an absolute path to use the interpreter a virtual environment installed it into. A change takes effect once the server is restarted: **DDD: Restart Language Server**."
         },
         "ddd.buildDirectories": {
           "type": "array",
@@ -63,7 +63,7 @@
             "type": "string"
           },
           "default": [],
-          "markdownDescription": "Directories holding a build of this project, each searched for the `ddd-build.json` that `ddd_generate()` writes. A relative path is relative to the workspace folder, where the server is started. Leave empty to search the usual build directory names next to the workspace."
+          "markdownDescription": "Directories holding a build of this project, each searched for the `ddd-build.json` that `ddd_generate()` writes. A relative path is read against each workspace folder. Leave empty to search the usual build directory names in each workspace folder. A change takes effect once the server is restarted: **DDD: Restart Language Server**."
         }
       }
     }

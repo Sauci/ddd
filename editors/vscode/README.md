@@ -7,11 +7,14 @@ the components that share a variable.
 
 This extension is a **launcher**. Everything you see comes from `ddd lsp`, the language server
 that ships with the DDD python package, and works the same in any editor that can start a
-language server - Neovim, Helix and Emacs need no extension at all. VS Code has no way to start
-one without an extension, which is the only reason this exists.
+language server and watch the files it asks for - Neovim, Helix and Emacs need no extension at
+all. VS Code has no way to start one without an extension, which is the only reason this exists.
 
 So nothing here adds a feature, and nothing here should grow one that could be served from the
-server instead.
+server instead. It starts the server once a `*.ddd.json` is open or the workspace holds one, so
+a json file of another name starts nothing, and it watches nothing itself: the server asks VS
+Code to watch the descriptions and the build records, as it asks any editor that announced it
+takes such a registration while the session runs.
 
 ## Installing it
 
@@ -57,20 +60,23 @@ trust (*Restricted Mode*): trust the workspace when you would run its build, and
 
 ## What it gives you
 
-Findings appear on open and on save, for **every** file of the project rather than only the one
-on screen: half of a disagreement is always in the other component. What a json schema cannot
-see is exactly what this reports - that an `axis` names an axis nobody declares, that two
-components disagree about a unit, that nobody produces an input.
+Findings appear on open, on save, and when a description or a build record changes on disk, for
+**every** file of the project rather than only the one on screen: half of a disagreement is
+always in the other component. What a json schema cannot see is exactly what this reports -
+that an `axis` names an axis nobody declares, that two components disagree about a unit, that
+nobody produces an input.
 
 Both sides of a conflict are marked. Two components declaring the same output are equally part
 of it, and a file with no finding on it would otherwise read as the correct one.
 
 Hovering anywhere in a declaration shows what the project made of that variable - on the name,
 on the datatype, on the scope, the same answer from all of them. That is the shape a curve took
-from its axis, limits derived from a datatype and a conversion, who writes it and who reads it,
-what an enum's numbers mean, and the initial values as a sparkline. Those are the values
-compiled in at startup, not calibration data, which lives in the calibration tool rather than
-here.
+from its axis, limits derived from a datatype and a conversion, who writes it and who reads it
+in every image holding the file, what an enum's numbers mean, and the initial values as a
+sparkline. Those are the values compiled in at startup, not calibration data, which lives in the
+calibration tool rather than here. Where a plugin stops the analysis of one of the images
+holding the file, the hover names that image, since who writes and reads the variable there is
+not counted.
 
 The `$schema` binding keeps documenting the keys themselves at the same time, from VS Code's
 own json support: an editor shows every hover it is offered, so the schema explains what
@@ -90,9 +96,17 @@ than re-serialised, and a declaration that never mentioned the key gets it inser
 
 `F2` renames a variable across every component that declares it and every `axis`, `x_axis`,
 `y_axis` or `input` that names it - and a declared type or constant across its declaration and
-every `typename`, dimension or `size` spelling it. A name c reserves, one that is not a usable identifier, or
-one the project already declares is refused with the reason rather than half applied. Free text
-is left alone, so a `description` mentioning the old name still mentions it.
+every `typename`, dimension or `size` spelling it, and a constant across the word of every
+`condition` spelling it - in every project holding a file the rename rewrites, so a component
+linked into two images is renamed with the readers of both, whichever image the file you start
+from is in, as long as the server finds both images for it: through their build records, or,
+without records, through a project description above it. A name c reserves, one that is not a
+usable identifier, or one a project it reaches already declares is refused with the reason
+rather than half applied, naming the image it comes from - or its project description, without
+a build record - when that is not yours. An external type is not renamed at all, its name
+being the one the header defining it spells, and that refusal names the image too where a project
+the rename reaches declares the type so. Free text is left alone, so a `description`
+mentioning the old name still mentions it.
 
 The published json schemas keep working alongside this: they do structure, the server does
 meaning.
@@ -101,14 +115,14 @@ meaning.
 
 | setting | what it does |
 | --- | --- |
-| `ddd.executable` | the `ddd` command; a bare name is looked up on the PATH |
-| `ddd.buildDirectories` | directories holding a build, each searched for the `ddd-build.json` that `ddd_generate()` writes; a relative entry is relative to the workspace folder. Empty searches the usual names next to the workspace |
+| `ddd.executable` | the `ddd` command; a bare name is looked up on the PATH. A change takes a restart: **DDD: Restart Language Server** |
+| `ddd.buildDirectories` | directories holding a build, each searched for the `ddd-build.json` that `ddd_generate()` writes; a relative entry is read against each workspace folder. Empty searches the usual names in each workspace folder. A change takes a restart: **DDD: Restart Language Server** |
 
 Which project a file belongs to is not something the file can say - without `PROJECT`, CMake
 collects the project out of the link graph - so the server reads that build record and applies
-the same severities the build applies. A file no build claims is checked through the nearest
+the same severities the build applies. A file no build claims is checked through the outermost
 project description above it that includes it, under the default severities; a project
-description is checked as the project it is; and a file neither of those reaches is checked
+description no description above includes is checked as the project it is; and a file neither of those reaches is checked
 on its own, for what one file can decide.
 
 ## Building it

@@ -76,6 +76,9 @@ _AFTER_ELEMENT: Final = _matcher(f"{_SPACE}(?:(,){_SPACE}|\\])")
 """Consumes what follows an element of an array: whitespace, then either a comma, group 1, and
 the whitespace before the next element, or the closing bracket, with no group."""
 
+_LINE_ENDING: Final = re.compile(r"\r\n|\r|\n")
+"""One line ending, of any of the three spellings: what universal newlines make a line feed of."""
+
 _LINE_FEED: Final = re.compile("\n")
 """Consumes one line feed: a line ends at each, and the next starts just past it."""
 
@@ -89,7 +92,17 @@ class Document:
     """
 
     def __init__(self, text: str) -> None:
+        # The text alone, as ``tests/test_lsp.py``'s copy of the walk is built: how deep a
+        # document the scan below reads depends on how this is called too, and on python 3.13 a
+        # class whose ``__init__`` has a parameter the call leaves out is entered another way,
+        # one frame of the recursion limit cheaper, which read one level deeper than the copy.
         self.text = text
+        ending = _LINE_ENDING.search(text)
+        self.newline = "\n" if ending is None else ending.group()
+        """How the file this document stands for ends its lines, which a client applies an edit to
+        as it stands, so an edit's line endings are spelled so (:meth:`spelled`). A buffer a client
+        sent holds its own, the first its text uses; a closed file is read as python reads a file,
+        every ending a line feed, and :func:`read` gives it the one it was read with."""
         self._line_starts = _line_starts(text)
         try:
             self.data: Any = json.loads(text)
@@ -117,6 +130,14 @@ class Document:
             self._spans = scanner.spans
             self._texts = scanner.texts
             self._values = scanner.values
+
+    def spelled(self, text: str) -> str:
+        """``text``, an edit's, with every line ending the one this document ends its lines with.
+        The engine wrote line feeds over a closed file's text, and a value copied from a buffer
+        holds that buffer's endings, so each of the three is rewritten: one rewritten only where
+        it was a line feed made ``\\r\\r\\n`` of ``\\r\\n``. Nothing else in a json text is a line
+        ending - a string spells a line feed ``\\n`` - so nothing else is changed."""
+        return _LINE_ENDING.sub(lambda _: self.newline, text)
 
     def range_of(self, pointer: str) -> dict[str, Any]:
         """The range to underline for a finding located at ``pointer``."""
@@ -180,6 +201,12 @@ class Document:
         if span is None:
             return None
         return _range(self.position(span[0]), self.position(span[1]))
+
+    def text_span_of(self, pointer: str) -> tuple[int, int] | None:
+        """Where a string's *contents* sit in the text, inside the quotes, as offsets into it, or
+        nothing if it is not one: :meth:`text_range_of` in the offsets a scan of those characters
+        reads them at."""
+        return self._texts.get(pointer)
 
     def raw_at(self, pointer: str) -> str | None:
         """The source text of a value, exactly as the author wrote it.
@@ -273,12 +300,63 @@ def read(path: Path, cache: dict[Path, Document]) -> Document:
     found = cache.get(path)
     if found is None:
         try:
-            text = path.read_text(encoding="utf-8-sig")
+            raw = path.read_bytes().decode("utf-8-sig")
         except (OSError, UnicodeDecodeError):
-            text = ""
-        found = Document(text)
+            raw = ""
+        # Through universal newlines, as ``read_text`` reads: a client counts a line at each
+        # of the three endings, so positions are of the text with each one a line feed. The
+        # file's own spelling, the first it uses, goes with the document for the edits made in
+        # it, set once the document is built from its text alone (``Document.__init__``).
+        found = Document(_LINE_ENDING.sub("\n", raw))
+        ending = _LINE_ENDING.search(raw)
+        if ending is not None:
+            found.newline = ending.group()
         cache[path] = found
     return found
+
+
+def _parsed(text: str) -> str | None:
+    """What a json text says, as one canonical string, or nothing when it does not parse.
+
+    Dumped again rather than compared as loaded: python's ``True == 1`` and ``1 == 1.0``
+    would call a document that swapped them unchanged, and a dumped object keeps its members'
+    order, which is the order an index reads them in.
+    """
+    try:
+        return json.dumps(json.loads(text))
+    except (ValueError, RecursionError):
+        return None
+
+
+def differs_from_disk(path: Path, text: str) -> bool:
+    """Whether a buffer holds what the file it is open on does not.
+
+    The file is read from the disk apart from any buffer cache, and the two are compared by
+    what they parse to, never as text: a file with CRLF line ends reads back through universal
+    newlines as LF, and an editor that sent the buffer as the file holds it would differ from
+    its own file at every line. A buffer that does not parse differs, and so does a file that
+    is not there or cannot be read: what the buffer holds is then on no disk.
+    """
+    typed = _parsed(text)
+    if typed is None:
+        return True
+    try:
+        saved = _parsed(path.read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeDecodeError):
+        return True
+    return typed != saved
+
+
+def lines_differ(path: Path, text: str) -> bool:
+    """Whether a buffer open on ``path`` holds other lines than the file on disk, each line ending
+    read as a line feed, as a client counts lines: where it does, a finding drawn over its key in
+    the buffer may sit at another line, or column, than the key has in the file.
+
+    Compared as text, where :func:`differs_from_disk` compares what the two parse to: blank lines
+    typed above a key parse to the document the file holds, and move the key down all the same.
+    A file that cannot be read holds no lines, so any buffer differs from it but an empty one.
+    """
+    return _LINE_ENDING.sub("\n", text) != read(path, {}).text
 
 
 def _decoded(key: str) -> str:

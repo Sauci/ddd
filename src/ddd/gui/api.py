@@ -2445,8 +2445,9 @@ def _entry_uses(
     name: str,
     cache: dict[Path, Document],
 ) -> list[dict[str, Any]]:
-    """Every shape naming that entry of ``vocabulary``, as the page reads one: a constant's
-    dimensions and axis sizes, a section's placements, whichever the descriptor reads."""
+    """Every place naming that entry of ``vocabulary``, as the page reads one: a constant's
+    dimensions, axis sizes and conditions, a section's placements, whichever the descriptor
+    reads."""
     return [
         {
             "path": derived.resolve(use.site.path).as_posix(),

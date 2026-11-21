@@ -10,13 +10,15 @@ from __future__ import annotations
 import io
 import json
 import os
+import queue
 import re
 import shutil
 import sys
-from collections.abc import Callable
+from collections import Counter
+from collections.abc import Callable, Sequence
 from functools import partial
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, ClassVar, Final
 
 import pytest
 from generate_project import generate
@@ -30,6 +32,7 @@ from conftest import (
     STRING_TYPE_BESIDE_GRID,
     STRING_TYPE_BESIDE_SCALAR,
     TEXT,
+    TEXT_TYPE,
     UNIT_BESIDE_TEXT,
     answered,
     build_record,
@@ -53,6 +56,7 @@ from ddd.build_info import BUILD_INFO_FILENAME, BUILD_INFO_FORMAT, BuildInfo
 from ddd.cli import EXIT_OK, main
 from ddd.diagnostics import Diagnostic, DiagnosticBag, Location, Severity
 from ddd.editing import INVALID, EditError, Operation, edit_text
+from ddd.finding_fixes import CODE_NOT_TOUCHED
 from ddd.loading import load_workspace
 from ddd.lsp import diagnostics as service
 from ddd.lsp import navigation
@@ -72,7 +76,7 @@ from ddd.lsp.protocol import (
     read_message,
     response,
 )
-from ddd.lsp.ranges import Document, read
+from ddd.lsp.ranges import Document, differs_from_disk, read
 from ddd.lsp.server import Server, uri_to_path
 from ddd.lsp.units import (
     PlannedEdit,
@@ -106,6 +110,37 @@ def published(stream: io.BytesIO) -> dict[str, list[dict[str, Any]]]:
         for message in sent(stream)
         if message.get("method") == "textDocument/publishDiagnostics"
     }
+
+
+END: Final = (
+    {"jsonrpc": "2.0", "id": 99, "method": "shutdown"},
+    {"jsonrpc": "2.0", "method": "exit"},
+)
+"""How a client ends a session it means to end, which ``run`` answers with 0."""
+
+INITIALIZED: Final = {"jsonrpc": "2.0", "method": "initialized", "params": {}}
+"""What a client says once it has the server's answer to ``initialize``."""
+
+UNSEEN_RENAME: Final = (
+    "reader_two.ddd.json has unsaved changes this rename would not see; save it and rename again"
+)
+"""What a rename is refused with while one document of the reach differs from its file."""
+
+EMPTY_RENAME: Final = "nothing on disk spells that name, so this rename would change nothing"
+"""What a rename that rewrites nothing is refused with."""
+
+WITHHELD: Final = (
+    "no quick fix is offered: a.ddd.json did not load, so the rest of the project cannot be "
+    "edited around it; fix it and try again"
+)
+"""What the log says, once, while ``a.ddd.json`` did not load and the quick fixes are withheld."""
+
+DROPPED: Final = component("D", declare("output", "Speed", "uint99"))
+"""A component a ``schema`` error drops as it is read: ``uint99`` is no datatype."""
+
+ERRING: Final = component("E", declare("local", "Kept", extensions={"layout": {"key": 1}}))
+"""A component that loads with an error, ``unknown-extension``: its block is for a plugin the
+project does not load, as a project's is while that plugin does not import."""
 
 
 class TestFraming:
@@ -170,6 +205,67 @@ class TestFraming:
             "error": {"code": METHOD_NOT_FOUND, "message": "no"},
         }
         assert notification("m", {"a": 1}) == {"jsonrpc": "2.0", "method": "m", "params": {"a": 1}}
+
+
+class TestADocumentThatDiffersFromItsFile:
+    """What a buffer parses to against what its file parses to, never the text of either."""
+
+    @staticmethod
+    def on_disk(tmp_path: Path, content: bytes) -> Path:
+        path = tmp_path / "a.ddd.json"
+        path.write_bytes(content)
+        return path
+
+    @pytest.mark.parametrize(
+        ("disk", "buffer"),
+        [
+            (b'{"a": [1, 2]}', '{"a": [1, 2]}'),
+            (b'{\r\n  "a": [1, 2]\r\n}', '{\n  "a": [1, 2]\n}'),
+            (b'{"a": [1, 2]}', '{\n    "a": [ 1,\n 2 ]\n}'),
+            (b'\xef\xbb\xbf{"a": 1}', '{"a": 1}'),
+        ],
+        ids=["same", "crlf-against-lf", "reformatted", "byte-order-mark"],
+    )
+    def test_the_same_document_does_not_differ(
+        self, tmp_path: Path, disk: bytes, buffer: str
+    ) -> None:
+        assert not differs_from_disk(self.on_disk(tmp_path, disk), buffer)
+
+    @pytest.mark.parametrize(
+        ("disk", "buffer"),
+        [
+            (b'{"a": 1}', '{"a": 2}'),
+            (b'{"a": 1}', '{"a": 1, "b": 1}'),
+            (b'{"a": 1, "b": 2}', '{"b": 2, "a": 1}'),
+            (b'{"a": 1}', '{"a": true}'),
+            (b'{"a": 1}', '{"a": 1.0}'),
+            (b'{"a": 1}', '{"a": 1'),
+            (b'{"a": 1', '{"a": 1'),
+            (b'{"a": 1}', ""),
+        ],
+        ids=[
+            "value",
+            "member",
+            "order",
+            "true-for-one",
+            "float-for-int",
+            "buffer-unparsed",
+            "both-unparsed",
+            "empty-buffer",
+        ],
+    )
+    def test_a_document_that_says_something_else_differs(
+        self, tmp_path: Path, disk: bytes, buffer: str
+    ) -> None:
+        assert differs_from_disk(self.on_disk(tmp_path, disk), buffer)
+
+    def test_a_buffer_nested_too_deeply_to_parse_differs(self, tmp_path: Path) -> None:
+        path = self.on_disk(tmp_path, b"[]")
+        assert differs_from_disk(path, "[" * 100_000 + "]" * 100_000)
+
+    def test_a_file_that_is_not_there_or_not_text_differs(self, tmp_path: Path) -> None:
+        assert differs_from_disk(tmp_path / "gone.ddd.json", "{}")
+        assert differs_from_disk(self.on_disk(tmp_path, b"\xff\xfe{}"), "{}")
 
 
 class TestRanges:
@@ -343,6 +439,16 @@ class TestDiscovery:
         elsewhere.mkdir()
         assert build_files(tmp_path, [elsewhere]) == []
 
+    def test_a_relative_configured_directory_is_read_against_the_root(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """10:M10. Read against the directory the process runs in, it named the build of none of
+        the workspace folders but the one an editor started the server in."""
+        record = build_record(tmp_path / "folder", tmp_path / "folder" / "p.ddd.json")
+        (tmp_path / "elsewhere").mkdir()
+        monkeypatch.chdir(tmp_path / "elsewhere")
+        assert build_files(tmp_path / "folder", [Path("build")]) == [record]
+
     def test_a_workspace_with_no_build_yields_nothing(self, tmp_path: Path) -> None:
         assert build_files(tmp_path) == []
         assert discover(tmp_path) == []
@@ -448,6 +554,53 @@ class TestDiscovery:
             f"{record}: {NEWER_RECORD}; this record is ignored, so the project it names is not "
             "analysed"
         ]
+
+    def test_a_record_naming_its_project_by_a_relative_path_is_said_out_loud(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``ddd build-info`` writes the path absolute, because whoever reads the record is not
+        in the directory the build ran in. A hand-made record naming it relative was taken and
+        analysed from the server's working directory, and with a check no plugin registers, the
+        finding filed at that path had no uri: the first open ended the session. Opened from
+        the directory the path is relative to, as it was, so that the path names a file."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("input", "X")),
+            },
+        )
+        record = build_record(
+            tmp_path,
+            tmp_path / "p.ddd.json",
+            severity=["nosuch/check=ignore"],
+            project="p.ddd.json",
+        )
+        monkeypatch.chdir(tmp_path)
+        opened = tmp_path / "a.ddd.json"
+        writer = io.BytesIO()
+        stream = session(
+            {
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {"textDocument": {"uri": opened.as_uri()}},
+            },
+            *END,
+        )
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        said = [
+            message["params"]["message"]
+            for message in sent(writer)
+            if message.get("method") == "window/logMessage"
+        ]
+        assert said == [
+            f"{record}: its project 'p.ddd.json' is a relative path, which a build never writes: "
+            "it names a different file from each directory the record is read in; this record is "
+            "ignored, so the project it names is not analysed"
+        ]
+        # Checked as any file no usable record claims is, through the project above it.
+        drawn = published(writer)[opened.as_uri()]
+        assert [entry["code"] for entry in drawn] == ["missing-producer"]
 
 
 NEWER_RECORD = (
@@ -1480,6 +1633,31 @@ class TestNavigation:
         (found,) = workspaces(builds, tmp_path / "a.ddd.json")
         assert found.workspace.name == "P"
 
+    def test_files_of_one_name_are_told_apart_by_as_much_of_their_paths_as_it_takes(
+        self,
+    ) -> None:
+        """A file is named by its name, as a refusal always named it, unless another of the list
+        shares that name: then by its path from the first directory up that the two do not share,
+        and in full where nothing short of that does, as for a file at the root."""
+        named = navigation.told_apart(
+            [
+                Path("/w/one/units.ddd.json"),
+                Path("/w/two/units.ddd.json"),
+                Path("/w/a.ddd.json"),
+                Path("/a/x/v.ddd.json"),
+                Path("/b/x/v.ddd.json"),
+                Path("/v.ddd.json"),
+            ]
+        )
+        assert named == [
+            "one/units.ddd.json",
+            "two/units.ddd.json",
+            "a.ddd.json",
+            "a/x/v.ddd.json",
+            "b/x/v.ddd.json",
+            "/v.ddd.json",
+        ]
+
 
 class TestHover:
     """What the project made of a variable, which is not what the file under the cursor says."""
@@ -1759,6 +1937,46 @@ class TestHover:
         )
         assert "the full range of the datatype" in describe(dictionary, "Whole")
         assert "the full range of the datatype" not in describe(dictionary, "Narrow")
+
+    def test_an_enumeration_s_limits_are_not_said_to_be_the_datatype_s_range(
+        self, tmp_path: Path
+    ) -> None:
+        """10:M12. A ``uint8`` enumeration of 0 and 1 reads ``0 .. 1``, the span of its table:
+        that is the range the conversion covers, which is not the range of the datatype."""
+        from ddd.lsp.hover import describe
+
+        dictionary = self.resolved(
+            tmp_path,
+            declare(
+                "output",
+                "State",
+                conversion={"kind": "enum", "name": "StateA", "enumerators": {"OFF": 0, "ON": 1}},
+            ),
+        )
+        described = describe(dictionary, "State")
+        assert "| limits | 0 .. 1" in described
+        assert "the full range of the datatype" not in described
+
+    def test_an_enumeration_spanning_its_datatype_is_said_to(self, tmp_path: Path) -> None:
+        """A table from the datatype's lowest value to its highest is the datatype's range
+        itself, said as any whole range is: only an enumeration narrower than it is not."""
+        from ddd.lsp.hover import describe
+
+        dictionary = self.resolved(
+            tmp_path,
+            declare(
+                "output",
+                "Level",
+                conversion={
+                    "kind": "enum",
+                    "name": "LevelA",
+                    "enumerators": {"LOW": 0, "HIGH": 255},
+                },
+            ),
+        )
+        assert "| limits | 0 .. 255 — the full range of the datatype |" in describe(
+            dictionary, "Level"
+        )
 
     @pytest.mark.parametrize(
         ("scope", "expected"),
@@ -2228,6 +2446,14 @@ def rewritten_by(changes: dict[str, list[dict[str, Any]]]) -> dict[str, str]:
         uri_to_path(uri).name: apply_edits(uri_to_path(uri), edits)
         for uri, edits in changes.items()
     }
+
+
+def reconciled(offered: list[dict[str, Any]]) -> list[str]:
+    """What each reconcile fix offered changes, after pinning that its title ends saying, in the
+    page's words, that the code of the readers is not touched."""
+    titles = [action["title"] for action in offered]
+    assert all(title.endswith(CODE_NOT_TOUCHED) for title in titles), titles
+    return [title.removesuffix(CODE_NOT_TOUCHED) for title in titles]
 
 
 class TestRename:
@@ -2874,6 +3100,264 @@ class TestSectionsAndRasters:
         assert rename_problem(built, "10-ms", "raster") is None
 
 
+class TestARasterNameIsWrittenAsJson:
+    """10:I9. A raster's name is any printable ASCII but a space, a quote and a backslash among
+    it, and the rename wrote it raw between the quotes: a quote ended the string, so no file it
+    rewrote parsed, and a backslash began an escape, so the name read back was another. It is
+    written as json spells it now, and read back it is the name typed."""
+
+    @pytest.mark.parametrize(
+        "name", ['a"b', "a\\b", "a\\nb"], ids=["quote", "backslash", "backslash-n"]
+    )
+    def test_a_raster_renamed_onto_a_quote_or_a_backslash_reads_back_as_typed(
+        self, tmp_path: Path, name: str
+    ) -> None:
+        from ddd.lsp.navigation import rename_edits, rename_problem
+
+        built, root = built_of(tmp_path, **TIMED)
+        assert rename_problem(built, name, "raster") is None
+        cache: dict[Path, Document] = {}
+        edits = rename_edits(
+            built, read(root / "r.ddd.json", cache), "rasters[0].raster", name, cache
+        )
+        rewritten = rewritten_by(edits.changes)
+        assert set(rewritten) == {"r.ddd.json", "a.ddd.json"}
+        write_tree(root, rewritten)
+        bag = DiagnosticBag()
+        workspace = load_workspace(root / "p.ddd.json", bag)
+        assert [found.check for found in bag if found.severity is Severity.ERROR] == []
+        assert workspace is not None
+        assert [raster.raster for raster in workspace.rasters] == [name]
+        (loaded,) = workspace.components
+        assert loaded.component.raster == name
+        assert loaded.component.interface[0].definition.raster == name
+
+
+UNDER_A_CONDITION: Final = {
+    "c.ddd.json": {"constants": [{"name": "CELLS", "value": 4}, {"name": "ROWS", "value": 2}]},
+    "w.ddd.json": component(
+        "W", declare("output", "Big", dimensions=["CELLS"], condition="CELLS > 2")
+    ),
+}
+"""10:I10's trigger: ``Big`` sized by ``CELLS`` and declared only where ``CELLS > 2``, beside a
+second constant, ``ROWS``, that a condition may spell as well."""
+
+
+def sized_under(condition: str) -> dict[str, Any]:
+    """:data:`UNDER_A_CONDITION`'s component, ``Big`` declared under ``condition`` instead."""
+    return component("W", declare("output", "Big", dimensions=["CELLS"], condition=condition))
+
+
+class TestAConditionSpellingAConstant:
+    """10:I10. The shipped templates define each constant as a macro in the types header, so a
+    ``condition`` may spell one, and ``#if`` reads a name nothing defines as 0: a rename that left
+    the condition spelling the old name compiled the object out, with every check clean. The index
+    records the word apart from the shapes, and the rename rewrites that word, and no other."""
+
+    def renamed(self, tmp_path: Path, w: Any) -> dict[str, str]:
+        """The files renaming ``CELLS`` to ``SLOT_COUNT`` from its entry rewrites, by name, with the
+        edits applied, ``w`` the component declaring ``Big`` - its json, or its text."""
+        from ddd.lsp.navigation import rename_edits
+
+        built, root = built_of(tmp_path, **{**UNDER_A_CONDITION, "w.ddd.json": w})
+        cache: dict[Path, Document] = {}
+        edits = rename_edits(
+            built, read(root / "c.ddd.json", cache), "constants[0].name", "SLOT_COUNT", cache
+        )
+        assert edits.drifted == ()
+        return rewritten_by(edits.changes)
+
+    @staticmethod
+    def big(text: str) -> dict[str, Any]:
+        """``Big``'s declaration, out of the text of the component declaring it."""
+        declared: dict[str, Any] = json.loads(text)["component"]["interface"][0]
+        return declared
+
+    def test_the_index_records_a_condition_s_word_apart_from_the_shapes(
+        self, tmp_path: Path
+    ) -> None:
+        """A shape's string is the name and nothing else, and a condition is an expression: a
+        reader of the shapes that met a condition among them would write the new name over all of
+        it."""
+        built, _root = built_of(tmp_path, **UNDER_A_CONDITION)
+        assert {
+            name: [(site.path.name, site.pointer) for site in sites]
+            for name, sites in built.condition_uses.items()
+        } == {"CELLS": [("w.ddd.json", "component.interface[0].condition")]}
+        assert [site.pointer for site in built.constant_uses["CELLS"]] == [
+            "component.interface[0].definition.dimensions[0]"
+        ]
+
+    @pytest.mark.parametrize(
+        ("source", "pointer"),
+        [
+            ("c.ddd.json", "constants[0].name"),
+            ("w.ddd.json", "component.interface[0].definition.dimensions[0]"),
+        ],
+        ids=["entry", "dimension"],
+    )
+    def test_a_rename_rewrites_a_condition_spelling_the_constant(
+        self, tmp_path: Path, source: str, pointer: str
+    ) -> None:
+        from ddd.lsp.navigation import rename_edits
+
+        built, root = built_of(tmp_path, **UNDER_A_CONDITION)
+        cache: dict[Path, Document] = {}
+        edits = rename_edits(built, read(root / source, cache), pointer, "SLOTS", cache)
+        rewritten = rewritten_by(edits.changes)
+        assert set(rewritten) == {"c.ddd.json", "w.ddd.json"}
+        big = self.big(rewritten["w.ddd.json"])
+        assert (big["condition"], big["definition"]["dimensions"]) == ("SLOTS > 2", ["SLOTS"])
+
+    @pytest.mark.parametrize(
+        ("condition", "after"),
+        [
+            ("defined(CELLS) && CELLS > ROWS", "defined(SLOT_COUNT) && SLOT_COUNT > ROWS"),
+            ("CELLS>2", "SLOT_COUNT>2"),
+            ("MAX_CELLS > CELLS", "MAX_CELLS > SLOT_COUNT"),
+            ("CELLS_MAX > CELLS", "CELLS_MAX > SLOT_COUNT"),
+            ("CELLS2 > CELLS", "CELLS2 > SLOT_COUNT"),
+            ("cells > CELLS", "cells > SLOT_COUNT"),
+            ("CELLS$1 > CELLS", "CELLS$1 > SLOT_COUNT"),
+            (
+                "\N{LATIN SMALL LETTER E WITH ACUTE}CELLS > CELLS",
+                "\N{LATIN SMALL LETTER E WITH ACUTE}CELLS > SLOT_COUNT",
+            ),
+            (
+                "\N{MATHEMATICAL BOLD CAPITAL A}CELLS > CELLS",
+                "\N{MATHEMATICAL BOLD CAPITAL A}CELLS > SLOT_COUNT",
+            ),
+            (
+                "CELLS\N{COMBINING ACUTE ACCENT} > CELLS",
+                "CELLS\N{COMBINING ACUTE ACCENT} > SLOT_COUNT",
+            ),
+            (
+                "CELLS\N{COMBINING DOTTED GRAVE ACCENT} > CELLS",
+                "CELLS\N{COMBINING DOTTED GRAVE ACCENT} > SLOT_COUNT",
+            ),
+            (
+                "CELLS\N{COMBINING RIGHT ARROW ABOVE} > CELLS",
+                "CELLS\N{COMBINING RIGHT ARROW ABOVE} > SLOT_COUNT",
+            ),
+            (
+                "CELLS\N{COMBINING LIGATURE LEFT HALF} > CELLS",
+                "CELLS\N{COMBINING LIGATURE LEFT HALF} > SLOT_COUNT",
+            ),
+            ("defined(ROWS) &&\tCELLS > 2", "defined(ROWS) &&\tSLOT_COUNT > 2"),
+            ('__has_include("x.h") && CELLS > 2', '__has_include("x.h") && SLOT_COUNT > 2'),
+        ],
+        ids=[
+            "every-word",
+            "no-space",
+            "underscore-before",
+            "underscore-after",
+            "digit-after",
+            "other-case",
+            "dollar",
+            "other-script",
+            "astral-letter",
+            "combining-mark",
+            "combining-mark-supplement",
+            "combining-mark-for-symbols",
+            "combining-half-mark",
+            "escaped-tab",
+            "escaped-quotes",
+        ],
+    )
+    def test_the_constant_s_word_is_rewritten_and_no_other(
+        self, tmp_path: Path, condition: str, after: str
+    ) -> None:
+        """Every word of the condition that is the constant, and nothing else: not another
+        constant, not a longer identifier holding it - gcc and clang take a letter of any script
+        and a dollar sign in one, and C11's Annex D a combining mark after the first character -
+        and not the escapes json writes for a tab or a quote before it, which put the word further
+        along in the file than in the condition. Written by ``json.dumps``, a letter beyond the
+        basic plane is the two escapes of a surrogate pair, and is one letter all the same."""
+        rewritten = self.renamed(tmp_path, sized_under(condition))
+        assert self.big(rewritten["w.ddd.json"])["condition"] == after
+
+    def test_a_word_json_spells_with_an_escape_is_rewritten_whole(self, tmp_path: Path) -> None:
+        """``C\\u0045LLS`` is ``CELLS`` as json reads it, so the condition spells the constant,
+        and the edit covers the escape with the rest of the word."""
+        text = json.dumps(sized_under("CELLS > 2"), indent=2).replace(
+            '"CELLS > 2"', '"C\\u0045LLS > 2"'
+        )
+        assert '"condition": "SLOT_COUNT > 2"' in self.renamed(tmp_path, text)["w.ddd.json"]
+
+    @pytest.mark.parametrize(
+        "since",
+        [
+            sized_under("ROWS > 2"),
+            component("W", declare("output", "Big", dimensions=["CELLS"])),
+        ],
+        ids=["respelled", "taken-away"],
+    )
+    def test_a_condition_that_no_longer_spells_it_is_reported_drifted(
+        self, tmp_path: Path, since: dict[str, Any]
+    ) -> None:
+        """The index read the condition as the analysis did, and the file has changed since - the
+        condition respelled, or taken away: the rename names the file rather than leave the old
+        name, or rewrite another word."""
+        from ddd.lsp.navigation import rename_edits
+
+        built, root = built_of(tmp_path, **UNDER_A_CONDITION)
+        write_tree(root, {"w.ddd.json": since})
+        cache: dict[Path, Document] = {}
+        edits = rename_edits(
+            built, read(root / "c.ddd.json", cache), "constants[0].name", "SLOTS", cache
+        )
+        assert [path.name for path in edits.drifted] == ["w.ddd.json"]
+
+    def test_a_word_no_file_declares_as_a_constant_is_the_build_s(self, tmp_path: Path) -> None:
+        """A word of a condition is a constant only where the project declares one of that name;
+        any other is a macro the build defines, or none. A shape naming a constant nothing
+        declares is ``unknown-constant``, and its rename reaches the shapes alone."""
+        from ddd.lsp.navigation import rename_edits
+
+        ghost = component(
+            "W", declare("output", "Big", dimensions=["GHOST"], condition="GHOST > 2")
+        )
+        built, root = built_of(tmp_path, **{"w.ddd.json": ghost})
+        assert built.condition_uses == {}
+        cache: dict[Path, Document] = {}
+        edits = rename_edits(
+            built,
+            read(root / "w.ddd.json", cache),
+            "component.interface[0].definition.dimensions[0]",
+            "SEEN",
+            cache,
+        )
+        big = self.big(rewritten_by(edits.changes)["w.ddd.json"])
+        assert (big["condition"], big["definition"]["dimensions"]) == ("GHOST > 2", ["SEEN"])
+
+    def test_a_raster_spelled_like_a_constant_leaves_the_condition_alone(
+        self, tmp_path: Path
+    ) -> None:
+        """A raster's name is no macro, so no condition spells one, whatever constant shares its
+        spelling."""
+        from ddd.lsp.navigation import rename_edits
+
+        built, root = built_of(
+            tmp_path,
+            **{
+                **UNDER_A_CONDITION,
+                "r.ddd.json": {"rasters": [{"raster": "CELLS", "event": 1, "cycle": "10ms"}]},
+                "w.ddd.json": component(
+                    "W",
+                    declare(
+                        "output", "Big", dimensions=["CELLS"], condition="CELLS > 2", raster="CELLS"
+                    ),
+                ),
+            },
+        )
+        cache: dict[Path, Document] = {}
+        edits = rename_edits(
+            built, read(root / "r.ddd.json", cache), "rasters[0].raster", "R10", cache
+        )
+        big = self.big(rewritten_by(edits.changes)["w.ddd.json"])
+        assert (big["definition"]["raster"], big["condition"]) == ("R10", "CELLS > 2")
+
+
 class TestAUnitPlanAsTextEdits:
     """A unit's plan as an editor applies it, and the buffers that keep it from being made."""
 
@@ -2907,6 +3391,28 @@ class TestAUnitPlanAsTextEdits:
                 ),
                 id="replaced-and-removed",
             ),
+            pytest.param(
+                (
+                    Operation("set", "units[3]", '"bar"'),
+                    Operation("set", "units[0]", '"1/min"'),
+                    Operation("set", "units[1].unit", '"N.m"'),
+                ),
+                id="three-replaced",
+            ),
+            pytest.param(
+                (
+                    Operation("set", "units[0]", '"1/min"'),
+                    Operation("set", "units[1].description", '"torque"'),
+                ),
+                id="replaced-and-member-added",
+            ),
+            pytest.param(
+                (
+                    Operation("remove", "units[3]"),
+                    Operation("set", "units[1].description", '"torque"'),
+                ),
+                id="removed-and-member-added-in-turn",
+            ),
         ],
     )
     def test_a_client_applying_the_edits_writes_what_the_engine_writes(
@@ -2914,11 +3420,16 @@ class TestAUnitPlanAsTextEdits:
     ) -> None:
         """The engine makes a file's operations in turn, each on the text the last one left; a
         client applies a file's edits at once, to the text as it stands. The file has to come
-        out the same, or the editor and ddd gui would write two different things."""
+        out the same, or the editor and ddd gui would write two different things. The edits come
+        in the order of the text, whichever order the operations are in."""
         path = self.vocabulary(tmp_path)
         plan = UnitPlan((PlannedEdit(path, operations),))
         (edits,) = text_edits(plan, {}).values()
         assert apply_edits(path, edits) == edit_text(path.read_text(encoding="utf-8"), operations)
+        starts = [
+            (edit["range"]["start"]["line"], edit["range"]["start"]["character"]) for edit in edits
+        ]
+        assert starts == sorted(starts)
 
     def test_neighbouring_entries_taken_out_are_one_edit(self, tmp_path: Path) -> None:
         """Each removal takes one comma, and against the text as it stands the two would both
@@ -2996,6 +3507,134 @@ class TestAUnitPlanAsTextEdits:
         assert navigation.drift(sites, "X", dict.fromkeys(files, held)) == ()
 
 
+def stating(base: Path, statings: int, *vocabulary: str) -> Path:
+    """A project whose one component declares ``statings`` locals, each stating ``rpm``, beside
+    a units file listing ``vocabulary`` where it lists anything. Returns the component."""
+    files: dict[str, Any] = {
+        "a.ddd.json": component(
+            "A", *(declare("local", f"V{position}", unit="rpm") for position in range(statings))
+        )
+    }
+    if vocabulary:
+        files["units.ddd.json"] = {"units": list(vocabulary)}
+    write_tree(base, {"p.ddd.json": project("P", *files), **files})
+    return base / "a.ddd.json"
+
+
+def documents_built(monkeypatch: pytest.MonkeyPatch, act: Callable[[], object]) -> int:
+    """How many documents ``act`` builds, each a scan of a whole text."""
+    built = 0
+    scanned = Document.__init__
+
+    def counted(document: Document, text: str, *spelling: str) -> None:
+        nonlocal built
+        built += 1
+        scanned(document, text, *spelling)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Document, "__init__", counted)
+        act()
+    return built
+
+
+class TestAUnitPlanRendersInLinearTime:
+    """10:M11. A unit's plan was rendered as text edits by making its operations one after another,
+    a document built of the whole file after each: a rename over one file stating the unit 1,000
+    times built 1,000 documents of it, and answered four times slower for each doubling, and a code
+    action at an unknown unit rendered each rename it offered so. A batch of sets none of which can
+    depend on another is made against the text as it was read, as the edit engine makes it for
+    ``ddd gui``, and read back once per file as it reads it; the vocabulary's removals are still
+    made in turn. Pinned by the documents built, the same for a plan of N statings and of 4N, and
+    by the measuring of the lines around a value, which a literal's edit makes none of."""
+
+    @pytest.mark.parametrize("statings", [10, 40])
+    def test_a_plan_of_sets_builds_one_document_of_its_file_to_read_it_back(
+        self, tmp_path: Path, monkeypatch, statings: int
+    ) -> None:
+        """The edits rendered are the engine's, and one document is built of the file they leave,
+        to read it back as the engine does: not one for each of the operations, and no operation
+        measures the lines around its value (``replacement``), which a literal never reads."""
+        import ddd.editing as editing
+
+        a = stating(tmp_path, statings)
+        cache: dict[Path, Document] = {}
+        workspace = load_workspace(tmp_path / "p.ddd.json", DiagnosticBag())
+        assert workspace is not None
+        project_of = unit_project(tmp_path / "p.ddd.json", (), cache)
+        plan = rename_unit(navigation.index(workspace), project_of, "rpm", "RPM", cache)
+        read(a, cache)
+        rendered: dict[str, list[dict[str, Any]]] = {}
+        measured = 0
+        replaced = editing.replacement
+
+        def measuring(*args: Any, **kwargs: Any) -> Any:
+            nonlocal measured
+            measured += 1
+            return replaced(*args, **kwargs)
+
+        monkeypatch.setattr(editing, "replacement", measuring)
+        assert documents_built(monkeypatch, lambda: rendered.update(text_edits(plan, cache))) == 1
+        assert measured == 0
+        (planned,) = plan.edits
+        assert apply_edits(a, rendered[a.as_uri()]) == edit_text(
+            a.read_text(encoding="utf-8"), planned.operations
+        )
+
+    def answered(self, tmp_path: Path, monkeypatch, request: dict[str, Any]) -> tuple[int, Any]:
+        """The documents a server that has read nothing yet builds while it answers ``request``,
+        and its answer."""
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle({"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {}})
+        built = documents_built(monkeypatch, lambda: server._handle(request))
+        return built, next(m for m in sent(writer) if m.get("id") == request["id"])
+
+    def test_a_rename_builds_as_many_documents_for_n_statings_as_for_4n(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        counted = []
+        for statings in (10, 40):
+            a = stating(tmp_path / str(statings), statings)
+            at = Document(a.read_text(encoding="utf-8")).text_range_of(
+                "component.interface[0].definition.unit"
+            )
+            assert at is not None
+            rename = {
+                "jsonrpc": "2.0",
+                "id": 16,
+                "method": "textDocument/rename",
+                "params": {
+                    "textDocument": {"uri": a.as_uri()},
+                    "position": at["start"],
+                    "newName": "RPM",
+                },
+            }
+            built, answer = self.answered(a.parent, monkeypatch, rename)
+            assert (
+                rewritten_by(answer["result"]["changes"])["a.ddd.json"].count('"RPM"') == statings
+            )
+            counted.append(built)
+        assert counted[0] == counted[1], counted
+
+    def test_a_code_action_at_an_unknown_unit_builds_as_many_for_n_statings_as_for_4n(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """Each rename onto a spelling the finding suggests is a plan of every stating, and every
+        one of them is rendered for the lightbulb."""
+        counted = []
+        for statings in (10, 40):
+            a = stating(tmp_path / str(statings), statings, "RPM", "rpms", "Nm")
+            request = fixes_request(a, UNLISTED, "component.interface[0].definition.unit", 17)
+            built, answer = self.answered(a.parent, monkeypatch, request)
+            assert [action["title"] for action in answer["result"]] == [
+                "Add 'rpm' to the vocabulary",
+                "Rename 'rpm' to 'RPM' everywhere",
+                "Rename 'rpm' to 'rpms' everywhere",
+            ]
+            counted.append(built)
+        assert counted[0] == counted[1], counted
+
+
 class TestPropagating:
     """Giving the other declarations of one object the value under the cursor."""
 
@@ -3028,7 +3667,7 @@ class TestPropagating:
                 "b.ddd.json": component("B", declare("input", "Speed", unit="1/min")),
             },
         )
-        assert offered[0]["title"] == "Apply this unit to 1 other declaration of 'Speed'"
+        assert reconciled(offered)[0] == "Apply this unit to 1 other declaration of 'Speed'"
         (edits,) = offered[0]["edit"]["changes"].values()
         assert edits[0]["newText"] == '"rpm"'
 
@@ -3053,7 +3692,7 @@ class TestPropagating:
         offered = actions(
             built, path, read(path, cache), "component.interface[0].definition", cache, UNSTAMPED
         )
-        titles = [entry["title"] for entry in offered]
+        titles = reconciled(offered)
         assert titles == ["Use the volatile declared in a"]
 
     def test_a_key_the_other_kind_does_not_have_is_not_written_into_it(
@@ -3232,6 +3871,233 @@ class TestPropagating:
         # the lightbulb on a squiggle it does nothing about.
         assert [entry["code"] for entry in action["diagnostics"]] == ["definition-mismatch"]
 
+    def test_an_action_carries_the_findings_it_settles_and_no_others(self, tmp_path: Path) -> None:
+        """10:M12. One action settles one key, so of the findings a client sends on a
+        declaration it carries the ones naming that key alone: a finding naming two keys is
+        settled by neither fix, and one naming none this server knows is carried as ever."""
+        from ddd.lsp.edits import actions
+
+        built = self.built(
+            tmp_path,
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": component(
+                    "B", declare("input", "Speed", unit="1/min", datatype="uint16")
+                ),
+            },
+        )
+        cache: dict[Path, Document] = {}
+        path = tmp_path / "b.ddd.json"
+        unit = {"code": "definition-mismatch", "message": "differ (unit: '1/min' != 'rpm')"}
+        both = {
+            "code": "definition-mismatch",
+            "message": "differ (datatype: uint16 != uint8, unit: '1/min' != 'rpm')",
+        }
+        bare = {"code": "definition-mismatch", "message": "differ"}
+        offered = actions(
+            built,
+            path,
+            read(path, cache),
+            "component.interface[0].definition",
+            cache,
+            [unit, both, bare],
+        )
+        tail = " (the code of the readers is not touched)"
+        carried = {entry["title"].removesuffix(tail): entry["diagnostics"] for entry in offered}
+        assert carried == {
+            "Use the datatype declared in a": [bare],
+            "Use the unit declared in a": [unit, bare],
+            "Apply this datatype to 1 other declaration of 'Speed'": [bare],
+            "Apply this unit to 1 other declaration of 'Speed'": [unit, bare],
+        }
+        both_alone = actions(
+            built,
+            path,
+            read(path, cache),
+            "component.interface[0].definition",
+            cache,
+            [both],
+        )
+        assert [entry for entry in both_alone if "diagnostics" in entry] == []
+
+    @staticmethod
+    def spelled_by_the_checks(*clauses: str) -> dict[str, Any]:
+        """A ``definition-mismatch`` as ``ddd check`` words it, over the clauses of the fields it
+        found different, in their order."""
+        return {
+            "code": "definition-mismatch",
+            "message": "'Speed' is declared differently by component 'B' than by 'A' "
+            f"({', '.join(clauses)})",
+        }
+
+    @pytest.mark.parametrize(
+        ("clause", "key"),
+        [
+            ("datatype: uint16 != uint8", "datatype"),
+            ("datatype: Speed_t != uint8", "typename"),
+            ("unit: '1/min' != 'rpm'", "unit"),
+            ("shape: [3] != scalar", "dimensions"),
+            ("shape: [3] != scalar", "size"),
+            ("conversion: identity != linear(0.5)", "conversion"),
+            ("volatile: true != false", "volatile"),
+            ("limits: [0, 5] != [0, 9]", "limits"),
+            ("references: axis=X != axis=Y", "axis"),
+            ("references: input=X != none", "input"),
+            ("references: x_axis=A, y_axis=B != x_axis=C, y_axis=B", "x_axis"),
+            ("references: x_axis=A, y_axis=B != x_axis=A, y_axis=D", "y_axis"),
+        ],
+    )
+    def test_a_fix_settles_the_finding_naming_its_key_alone(self, clause: str, key: str) -> None:
+        """Each compared field, and each key a field is written by where that is not its own name:
+        the finding naming it alone is the fix's."""
+        from ddd.lsp.edits import _settles
+
+        assert _settles(key, self.spelled_by_the_checks(clause))
+
+    @pytest.mark.parametrize(
+        "clause",
+        [
+            "kind: measurement != curve",
+            "datatype: uint16 != uint8",
+            "shape: [3] != scalar",
+            "conversion: identity != linear(0.5)",
+            "references: axis=X != axis=Y",
+            "volatile: true != false",
+            "limits: [0, 5] != [0, 9]",
+        ],
+    )
+    def test_a_fix_leaves_a_finding_that_names_another_key_beside_its_own(
+        self, clause: str
+    ) -> None:
+        """Whichever the other field is: the finding stays after the fix of the unit, which
+        writes the one key, and the fix of the other key leaves the unit in place."""
+        from ddd.lsp.edits import _settles
+
+        assert not _settles("unit", self.spelled_by_the_checks(clause, "unit: '1/min' != 'rpm'"))
+        assert not _settles("unit", self.spelled_by_the_checks("unit: '1/min' != 'rpm'", clause))
+
+    def test_a_fix_of_the_datatype_leaves_a_finding_naming_the_unit_beside_it(self) -> None:
+        from ddd.lsp.edits import _settles
+
+        both = self.spelled_by_the_checks("datatype: uint16 != uint8", "unit: '1/min' != 'rpm'")
+        assert not _settles("datatype", both)
+        assert not _settles("typename", both)
+
+    @pytest.mark.parametrize(
+        ("clause", "key"),
+        [
+            ("references: axis=X, input=Z != axis=Y, input=W", "axis"),
+            ("references: axis=X, input=Z != axis=Y, input=W", "input"),
+            ("references: x_axis=A, y_axis=B != x_axis=C, y_axis=D", "x_axis"),
+            ("references: x_axis=A, y_axis=B != x_axis=C, y_axis=D", "y_axis"),
+            ("references: axis=X != axis=Y", "input"),
+            ("references: axis=X != axis=Y", "x_axis"),
+            ("references: axis=X", "axis"),
+        ],
+    )
+    def test_a_fix_leaves_a_finding_naming_other_references_or_none_it_can_read(
+        self, clause: str, key: str
+    ) -> None:
+        """A map's two axes, or a curve's axis and its input, are one field the checks compare: the
+        finding carries both where both differ, and either fix leaves the other in place."""
+        from ddd.lsp.edits import _settles
+
+        assert not _settles(key, self.spelled_by_the_checks(clause))
+
+    def test_the_fixes_settle_the_findings_in_the_words_the_analysis_publishes(
+        self, tmp_path: Path
+    ) -> None:
+        """The findings above are written in the test, as ``ddd check`` words them; these are the
+        analysis's own, published through a check and sent back with the request as a client sends
+        them. ``Speed`` differs in its unit alone, and the unit's fixes carry its finding; ``Rate``
+        differs in its datatype and its unit, and no fix carries its finding, which either leaves in
+        place. Which fix settles which finding is read out of the sentence the analysis words, so a
+        rewording of it would otherwise change the answer in silence."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("output", "Speed", unit="rpm"),
+                    declare("output", "Rate", unit="Hz"),
+                ),
+                "b.ddd.json": component(
+                    "B",
+                    declare("input", "Speed", unit="1/min"),
+                    declare("input", "Rate", unit="kHz", datatype="uint16"),
+                ),
+            },
+        )
+        b = tmp_path / "b.ddd.json"
+        document = Document(b.read_text(encoding="utf-8"))
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(opening(tmp_path))
+        assert server._handle(holding(b, document.text))
+        findings = published(writer)[b.as_uri()]
+        tail = " (the code of the readers is not touched)"
+
+        def carried(position: int) -> tuple[str, dict[str, list[dict[str, Any]]]]:
+            """The message of the mismatch drawn over ``b``'s declaration at ``position``, and the
+            findings each fix asked there carries, by its title."""
+            drawn = document.range_of(f"component.interface[{position}].definition")
+            (reported,) = [
+                entry
+                for entry in findings
+                if entry["code"] == "definition-mismatch" and entry["range"] == drawn
+            ]
+            asked = {
+                "textDocument": {"uri": b.as_uri()},
+                "range": drawn,
+                "context": {"diagnostics": [reported]},
+            }
+            request_id = 20 + position
+            assert server._handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "method": "textDocument/codeAction",
+                    "params": asked,
+                }
+            )
+            (answer,) = [message for message in sent(writer) if message.get("id") == request_id]
+            assert answer["result"], "no fix was offered at all"
+            return reported["message"], {
+                entry["title"].removesuffix(tail): entry["diagnostics"]
+                for entry in answer["result"]
+                if "diagnostics" in entry
+            }
+
+        one_key, settled = carried(0)
+        assert ("unit: " in one_key, "datatype: " in one_key) == (True, False)
+        reported = [entry for entry in findings if entry["message"] == one_key]
+        assert settled == {
+            "Use the unit declared in a": reported,
+            "Apply this unit to 1 other declaration of 'Speed'": reported,
+        }
+        two_keys, settled = carried(1)
+        assert ("unit: " in two_keys, "datatype: " in two_keys) == (True, True)
+        assert settled == {}
+
+    def test_a_reconcile_fix_says_the_readers_code_is_not_touched(self, tmp_path: Path) -> None:
+        """The check goes green once the descriptions agree, and the readers keep the scale they
+        were written with: the editor's titles say so after what they change, as the page's do."""
+        offered, _ = self.offer(
+            tmp_path,
+            "b.ddd.json",
+            "component.interface[0].definition.unit",
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": component("B", declare("input", "Speed", unit="1/min")),
+            },
+        )
+        assert [action["title"] for action in offered] == [
+            "Use the unit declared in a (the code of the readers is not touched)",
+            "Apply this unit to 1 other declaration of 'Speed' (the code of the readers is not "
+            "touched)",
+        ]
+
     def test_an_action_with_nothing_to_settle_carries_no_finding(self, tmp_path: Path) -> None:
         offered, _ = self.offer(
             tmp_path,
@@ -3260,7 +4126,7 @@ class TestPropagating:
                 "b.ddd.json": component("B", declare("input", "Speed", unit="1/min")),
             },
         )
-        assert [action["title"] for action in offered] == [
+        assert reconciled(offered) == [
             "Use the unit declared in a",
             "Apply this unit to 1 other declaration of 'Speed'",
         ]
@@ -3275,7 +4141,7 @@ class TestPropagating:
                 "b.ddd.json": component("B", declare("input", "Speed", unit="1/min")),
             },
         )
-        assert offered[0]["title"] == "Apply this unit to 1 other declaration of 'Speed'"
+        assert reconciled(offered)[0] == "Apply this unit to 1 other declaration of 'Speed'"
 
     def test_taking_the_producer_value_edits_only_this_file(self, tmp_path: Path) -> None:
         offered, _ = self.offer(
@@ -3302,7 +4168,7 @@ class TestPropagating:
                 "b.ddd.json": component("B", declare("input", "Speed")),
             },
         )
-        assert offered[0]["title"] == "Use the unit declared in a"
+        assert reconciled(offered)[0] == "Use the unit declared in a"
 
     def test_with_no_single_producer_only_the_outward_fix_is_offered(self, tmp_path: Path) -> None:
         """Two producers is its own finding, and not one to guess a value through."""
@@ -3316,9 +4182,7 @@ class TestPropagating:
                 "c.ddd.json": component("C", declare("input", "Speed", unit="1/min")),
             },
         )
-        assert [action["title"] for action in offered] == [
-            "Apply this unit to 2 other declarations of 'Speed'"
-        ]
+        assert reconciled(offered) == ["Apply this unit to 2 other declarations of 'Speed'"]
 
     def test_a_key_nobody_else_states_can_be_removed(self, tmp_path: Path) -> None:
         """Two declarations disagree just as much when one of them says nothing.
@@ -3335,7 +4199,7 @@ class TestPropagating:
                 "b.ddd.json": component("B", declare("input", "Speed", unit="rpm")),
             },
         )
-        assert [action["title"] for action in offered] == [
+        assert reconciled(offered) == [
             "Remove this unit, which a does not declare",
             "Apply this unit to 1 other declaration of 'Speed'",
         ]
@@ -3367,7 +4231,9 @@ class TestPropagating:
                 "b.ddd.json": component("B", declare("input", "Speed", unit="rpm")),
             },
         )
-        assert offered[0]["title"] == "Remove this unit, which no other declaration of 'Speed' has"
+        assert (
+            reconciled(offered)[0] == "Remove this unit, which no other declaration of 'Speed' has"
+        )
 
     @pytest.mark.parametrize("key", ["unit", "limits"])
     def test_removing_a_member_takes_exactly_one_comma_with_it(
@@ -3425,7 +4291,7 @@ class TestPropagating:
                 "c.ddd.json": component("C", declare("input", "Speed", unit="rpm")),
             },
         )
-        assert [action["title"] for action in offered] == [
+        assert reconciled(offered) == [
             # The producer's silence, sent out - and the value the others agree on, brought in.
             "Remove the unit from 2 other declarations of 'Speed'",
             "Take the unit the other declarations of 'Speed' state",
@@ -3451,9 +4317,7 @@ class TestPropagating:
                 "c.ddd.json": component("C", declare("input", "Speed", unit="1/min")),
             },
         )
-        assert [action["title"] for action in offered] == [
-            "Remove the unit from 2 other declarations of 'Speed'"
-        ]
+        assert reconciled(offered) == ["Remove the unit from 2 other declarations of 'Speed'"]
 
     def test_one_value_the_others_spell_differently_is_still_the_answer_they_agree_on(
         self, tmp_path: Path
@@ -3489,7 +4353,7 @@ class TestPropagating:
                 ),
             },
         )
-        assert [action["title"] for action in offered] == [
+        assert reconciled(offered) == [
             # Taken first: a declaration the loader dropped is in nobody's producer list, so
             # this reads as a consumer, which is offered somebody else's answer first.
             "Take the conversion the other declarations of 'Speed' state",
@@ -3600,7 +4464,7 @@ class TestPropagating:
         )
         # b states no limits, and a declaration that omits them defers to the one that states
         # them - the checker's rule - so the limits are not a disagreement to settle.
-        assert [action["title"] for action in offered] == [
+        assert reconciled(offered) == [
             "Apply this datatype to 1 other declaration of 'Speed'",
             "Apply this unit to 1 other declaration of 'Speed'",
         ]
@@ -3641,14 +4505,14 @@ class TestPropagating:
         consumer, _ = self.offer(
             tmp_path, "cons.ddd.json", "component.interface[0].definition", **files
         )
-        assert [action["title"] for action in consumer] == [
+        assert reconciled(consumer) == [
             "Use the limits declared in prod",
             "Apply this limits to 1 other declaration of 'T'",
         ]
         producer, _ = self.offer(
             tmp_path, "prod.ddd.json", "component.interface[0].definition", **files
         )
-        assert [action["title"] for action in producer] == [
+        assert reconciled(producer) == [
             "Apply this limits to 1 other declaration of 'T'",
         ]
 
@@ -3703,7 +4567,7 @@ class TestPropagating:
                 "b.ddd.json": component("B", declare("input", "Speed")),
             },
         )
-        assert [action["title"] for action in offered] == [
+        assert reconciled(offered) == [
             "Use the unit declared in a",
             "Remove the unit from 1 other declaration of 'Speed'",
         ]
@@ -3907,7 +4771,9 @@ class TestPropagating:
             },
         )
         (use_unit,) = [
-            action for action in offered if action["title"] == "Use the unit declared in a"
+            action
+            for action, changes in zip(offered, reconciled(offered), strict=True)
+            if changes == "Use the unit declared in a"
         ]
         (edits,) = use_unit["edit"]["changes"].values()
         rewritten = apply_edits(tmp_path / "b.ddd.json", edits)
@@ -4083,13 +4949,18 @@ class _ReferenceScanner:
 
 class _ReferenceScan:
     """What ``Document`` recorded of a text when it walked it: its ``__init__``, verbatim but for
-    its names and for its comments, which the module keeps.
+    its names, for its comments, which the module keeps, and for the line ending it notes before
+    the scan, which no answer of the walk's held.
 
     A class, as ``Document`` is, so that the two are called alike: whether a document is too deep
     for the scan depends on the frames above the scan too, and on python 3.14 a call through a
     class's ``__init__`` spends one frame of the recursion limit more than a call of a function
     does. A function in this one's place, with the walk the same in both, read some of the shapes
-    below one level deeper than ``Document`` did.
+    below one level deeper than ``Document`` did. Taking the same arguments, the text alone: on
+    python 3.13 a call leaving out a parameter of the class's ``__init__`` is made without that
+    frame, and ``Document``, given a defaulted second parameter, read thirteen of the cases below
+    one level deeper than this did, on CI's 3.13 legs and on a 3.13.15 on the Linux development
+    PC.
     """
 
     def __init__(self, text: str) -> None:
@@ -4383,6 +5254,142 @@ class TestServer:
             "params": {"textDocument": {"uri": path.as_uri()}},
         }
 
+    def test_opening_a_file_of_another_project_keeps_this_ones_findings(
+        self, tmp_path: Path
+    ) -> None:
+        """A refresh withdraws what its own run reported on, and nothing else.
+
+        With no record, a run covers the document and the project above it. The other
+        project's file is outside it, so its empty answer is not "fixed": the run never looked.
+        One refresh per document, driven message by message, so that no later batching of
+        refreshes can make this pass without the rule.
+        """
+        write_tree(
+            tmp_path,
+            {
+                "one/p.ddd.json": project("One", "a.ddd.json"),
+                "one/a.ddd.json": component("A", declare("input", "X")),
+                "two/p.ddd.json": project("Two", "b.ddd.json"),
+                "two/b.ddd.json": component("B", declare("input", "Y")),
+            },
+        )
+        a, b = tmp_path / "one" / "a.ddd.json", tmp_path / "two" / "b.ddd.json"
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(self.handshake(tmp_path))
+        assert server._handle(self.opened(a))
+        assert server._handle(self.opened(b))
+        final = published(writer)
+        assert [d["code"] for d in final[b.as_uri()]] == ["missing-producer"]
+        assert [d["code"] for d in final[a.as_uri()]] == ["missing-producer"], (
+            "a's error was withdrawn"
+        )
+        # What was kept is still withdrawable: fixing a and saving it empties its list.
+        write_tree(
+            tmp_path,
+            {
+                "one/p.ddd.json": project("One", "a.ddd.json", "c.ddd.json"),
+                "one/c.ddd.json": component("C", declare("output", "X")),
+            },
+        )
+        writer = io.BytesIO()
+        server.writer = writer
+        saved = {"textDocument": {"uri": a.as_uri()}}
+        assert server._handle({"jsonrpc": "2.0", "method": "textDocument/didSave", "params": saved})
+        assert published(writer)[a.as_uri()] == []
+
+    def test_the_demos_sub_project_component_shows_what_ddd_check_shows(
+        self, tmp_path: Path
+    ) -> None:
+        """The outermost description that includes a document answers for it.
+
+        ``subsystems/logging`` is a sub-project of the demo, and its component reads values the
+        demo's other components produce. Checked under the sub-project alone, the nearest
+        description, a clean tree showed errors in the component for values that
+        the demo's other components do write; ``ddd check`` of the top project is clean.
+        """
+        demo = tmp_path / "demo"
+        shutil.copytree(EXAMPLES / "demo", demo)
+        logger = demo / "subsystems" / "logging" / "event_logger.ddd.json"
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=demo)
+        assert server._handle(self.handshake(demo))
+        assert server._handle(self.opened(logger))
+        assert main(["check", str(demo / "demo.ddd.json")]) == EXIT_OK  # the tree is clean
+        errors = [
+            d["code"] for d in published(writer).get(logger.as_uri(), []) if d["severity"] == 1
+        ]
+        assert errors == [], f"a clean project shows {errors}"
+
+    def test_a_deleted_file_is_withdrawn_once_and_not_refreshed(self, tmp_path: Path) -> None:
+        """A pull that changes one file and deletes another, with nothing open.
+
+        The deleted file's findings leave the screen with one empty list, and no run is
+        started from its path: that run is what reported a file that is not there.
+        """
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("input", "X")),
+                "b.ddd.json": component("B", declare("input", "Y")),
+            },
+        )
+        a, b = tmp_path / "a.ddd.json", tmp_path / "b.ddd.json"
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(self.handshake(tmp_path))
+        assert server._handle(self.opened(a))
+        assert [d["code"] for d in published(writer)[b.as_uri()]] == ["missing-producer"]
+        server._handle(
+            {
+                "jsonrpc": "2.0",
+                "method": "textDocument/didClose",
+                "params": {"textDocument": {"uri": a.as_uri()}},
+            }
+        )
+        b.unlink()
+        writer = io.BytesIO()
+        server.writer = writer
+        assert server._handle(
+            {
+                "jsonrpc": "2.0",
+                "method": "workspace/didChangeWatchedFiles",
+                "params": {"changes": [{"uri": b.as_uri(), "type": 3}]},
+            }
+        )
+        assert published(writer) == {b.as_uri(): []}
+        # Once: a later refresh does not empty it again.
+        server._handle(self.opened(a))
+        withdrawals = [
+            m
+            for m in sent(writer)
+            if m.get("method") == "textDocument/publishDiagnostics"
+            and m["params"]["uri"] == b.as_uri()
+        ]
+        assert [m["params"]["diagnostics"] for m in withdrawals] == [[]]
+
+    def test_an_open_document_not_on_disk_keeps_its_findings(self, tmp_path: Path) -> None:
+        """A new file, not yet saved, is checked from its buffer and is not a deleted one."""
+        draft = tmp_path / "new.ddd.json"
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(self.handshake(tmp_path))
+        message = self.opened(draft)
+        message["params"]["textDocument"]["text"] = json.dumps(
+            component("N", declare("input", "X"))
+        )
+        assert server._handle(message)
+        assert not draft.exists()
+        kept = [
+            m["params"]["diagnostics"]
+            for m in sent(writer)
+            if m.get("method") == "textDocument/publishDiagnostics"
+            and m["params"]["uri"] == draft.as_uri()
+        ]
+        assert kept
+        assert kept[-1], "findings of an open, unsaved document were emptied"
+
     def test_opening_the_project_file_does_not_withdraw_the_project_wide_findings(
         self, tmp_path: Path
     ) -> None:
@@ -4392,18 +5399,18 @@ class TestServer:
         project file, reached as a root, used to be read under the policy for a lone
         component, so the second refresh republished the same files without the two checks the
         project exists to answer.
+
+        One check per document, driven message by message: opened together, the two are one
+        check, in which the project the component's search finds reports on the project file,
+        so the project file is never read as a root.
         """
         tree = tmp_path / "inconsistent"
         shutil.copytree(INCONSISTENT.parent, tree)
-        stream = framed(
-            self.handshake(tree),
-            self.opened(tree / "component_c.ddd.json"),
-            self.opened(tree / "project.ddd.json"),
-            {"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
-            {"jsonrpc": "2.0", "method": "exit"},
-        )
         writer = io.BytesIO()
-        assert Server(stream, writer, root=tree).run() == 0
+        server = Server(io.BytesIO(), writer, root=tree)
+        assert server._handle(self.handshake(tree))
+        assert server._handle(self.opened(tree / "component_c.ddd.json"))
+        assert server._handle(self.opened(tree / "project.ddd.json"))
         # The last word on each file, which is what stays on screen.
         final = published(writer)
         drawn = {
@@ -4516,13 +5523,13 @@ class TestServer:
         )
         build_record(tmp_path, tmp_path / "p.ddd.json")
         walks: list[Path] = []
-        original = server_module.discover
+        original = server_module.build_files
 
-        def counted(root: Path, configured: Any = (), refused: Any = None) -> Any:
+        def counted(root: Path, configured: Any = ()) -> Any:
             walks.append(root)
-            return original(root, configured, refused)
+            return original(root, configured)
 
-        monkeypatch.setattr(server_module, "discover", counted)
+        monkeypatch.setattr(server_module, "build_files", counted)
         asked = [
             self.navigation_request(
                 "textDocument/hover",
@@ -4959,36 +5966,313 @@ class TestServer:
         assert answer["error"]["code"] == REQUEST_FAILED
         assert "a.ddd.json" in answer["error"]["message"]
 
-    def test_a_quick_fix_is_refused_while_a_file_of_the_project_did_not_load(
+    def quick_fix_request(self, path: Path) -> dict[str, Any]:
+        """The client asking for the quick fixes at the unit of ``path``'s first declaration,
+        sending no finding, as it asks at every move of the caret."""
+        span = Document(path.read_text(encoding="utf-8")).range_of(
+            "component.interface[0].definition.unit"
+        )
+        return {
+            "jsonrpc": "2.0",
+            "id": 13,
+            "method": "textDocument/codeAction",
+            "params": {
+                "textDocument": {"uri": path.as_uri()},
+                "range": span,
+                "context": {"diagnostics": []},
+            },
+        }
+
+    def test_no_quick_fix_is_offered_while_a_file_of_the_project_did_not_load(
         self, tmp_path: Path
     ) -> None:
         """The same hole seen through the lightbulb: it offered to remove the unit of 'Speed'
-        as one no other declaration has, while the unloaded producer declares exactly that."""
+        as one no other declaration has, while the unloaded producer declares exactly that.
+
+        Refused with an error, it was a failed request at every move of the caret, which is when
+        a client asks, naming no file. None is offered instead, and the log says why."""
         self.half_read_workspace(tmp_path)
-        elsewhere = tmp_path / "c.ddd.json"
-        span = Document(elsewhere.read_text(encoding="utf-8")).range_of(
-            "component.interface[0].definition.unit"
+        writer = io.BytesIO()
+        Server(
+            session(self.quick_fix_request(tmp_path / "c.ddd.json")), writer, root=tmp_path
+        ).run()
+        said, answer = answered(writer)
+        assert answer == response(13, [])
+        assert said == notification("window/logMessage", {"type": 3, "message": WITHHELD})
+
+    def half_read_server(self, tmp_path: Path) -> Server:
+        """A server over :meth:`half_read_workspace`, driven message by message so that each
+        save is a refresh of its own, with ``c.ddd.json`` open."""
+        self.half_read_workspace(tmp_path)
+        server = Server(io.BytesIO(), io.BytesIO(), root=tmp_path)
+        assert server._handle(self.handshake(tmp_path))
+        assert server._handle(self.opened(tmp_path / "c.ddd.json"))
+        return server
+
+    def asked_for_fixes(self, server: Server, path: Path) -> tuple[list[str], list[str]]:
+        """What the log said for one quick-fix request at ``path``'s unit, and the titles of the
+        fixes it offered."""
+        writer = io.BytesIO()
+        server.writer = writer
+        assert server._handle(self.quick_fix_request(path))
+        messages = sent(writer)
+        (answer,) = [message for message in messages if message.get("id") == 13]
+        logged = [
+            message["params"]["message"]
+            for message in messages
+            if message.get("method") == "window/logMessage"
+        ]
+        return logged, reconciled(answer["result"])
+
+    def saved(self, server: Server, path: Path) -> None:
+        """The client saving ``path``, which refreshes."""
+        saving = {"textDocument": {"uri": path.as_uri()}}
+        assert server._handle(
+            {"jsonrpc": "2.0", "method": "textDocument/didSave", "params": saving}
         )
+
+    def producer_saved(self, server: Server, tmp_path: Path, datatype: str) -> None:
+        """``a.ddd.json`` written with ``datatype`` for its producer and saved: ``uint99`` breaks
+        it, ``uint16`` mends it."""
+        producer = component("A", declare("output", "Speed", datatype, unit="rpm"))
+        write_tree(tmp_path, {"a.ddd.json": producer})
+        self.saved(server, tmp_path / "a.ddd.json")
+
+    def test_why_no_quick_fix_is_offered_is_said_once_while_it_stands(self, tmp_path: Path) -> None:
+        """Said at the first request the unread file empties, and again only once the project
+        has been found read whole and is then found broken anew: at every request it is the
+        flood the error answers were, and once a session would hide the second break."""
+        server = self.half_read_server(tmp_path)
+        elsewhere = tmp_path / "c.ddd.json"
+        assert self.asked_for_fixes(server, elsewhere) == ([WITHHELD], [])
+        assert self.asked_for_fixes(server, elsewhere) == ([], []), "said again while it stands"
+        self.saved(server, elsewhere)  # a refresh that finds the project broken still
+        assert self.asked_for_fixes(server, elsewhere) == ([], []), (
+            "said again after a refresh that found it broken"
+        )
+        self.producer_saved(server, tmp_path, "uint16")
+        assert self.asked_for_fixes(server, elsewhere) == (
+            [],
+            ["Apply this unit to 1 other declaration of 'Speed'"],
+        )
+        self.producer_saved(server, tmp_path, "uint99")
+        assert self.asked_for_fixes(server, elsewhere) == ([WITHHELD], []), (
+            "not said again once the project broke anew"
+        )
+
+    def test_a_second_break_is_said_though_no_request_came_between_it_and_the_mend(
+        self, tmp_path: Path
+    ) -> None:
+        """The mend and the second break are both saved, and no request for the quick fixes comes
+        between the two. The refresh that reads the mend is what lets the second break be said:
+        had only a request found the project whole, the first break's sentence would still stand,
+        and the second break would be the one hidden."""
+        server = self.half_read_server(tmp_path)
+        elsewhere = tmp_path / "c.ddd.json"
+        assert self.asked_for_fixes(server, elsewhere) == ([WITHHELD], [])
+        self.producer_saved(server, tmp_path, "uint16")
+        self.producer_saved(server, tmp_path, "uint99")
+        assert self.asked_for_fixes(server, elsewhere) == ([WITHHELD], [])
+
+    def test_a_project_that_cannot_be_read_at_all_is_not_found_read_whole(
+        self, tmp_path: Path
+    ) -> None:
+        """A refresh that cannot read the project description at all has not found the project
+        read whole. Once the description reads again with the same file still unread, the first
+        break is the one standing, and it is not said a second time."""
+        server = self.half_read_server(tmp_path)
+        elsewhere, described = tmp_path / "c.ddd.json", tmp_path / "p.ddd.json"
+        assert self.asked_for_fixes(server, elsewhere) == ([WITHHELD], [])
+        kept = described.read_text(encoding="utf-8")
+        described.write_text('{"project": ', encoding="utf-8")
+        self.saved(server, described)
+        described.write_text(kept, encoding="utf-8")
+        self.saved(server, described)
+        assert self.asked_for_fixes(server, elsewhere) == ([], [])
+
+    def unread_project(self, tmp_path: Path, files: dict[str, Any]) -> Path:
+        """A project of ``c.ddd.json`` and of ``files``, each included under its key and written
+        from its value - a description, bytes, or nothing at all, which leaves its include naming
+        no file - with a build record. Returns ``c.ddd.json``, which states ``rpm``."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "c.ddd.json", *files),
+                "c.ddd.json": component("C", declare("input", "Speed", unit="rpm")),
+                **{name: text for name, text in files.items() if isinstance(text, dict)},
+            },
+        )
+        for name, text in files.items():
+            if isinstance(text, bytes):
+                (tmp_path / name).write_bytes(text)
+        build_record(tmp_path, tmp_path / "p.ddd.json")
+        return tmp_path / "c.ddd.json"
+
+    @pytest.mark.parametrize(
+        ("files", "reason"),
+        [
+            (
+                {"a.ddd.json": DROPPED},
+                "a.ddd.json did not load, so the rest of the project cannot be edited around it; "
+                "fix it and try again",
+            ),
+            (
+                {"missing.ddd.json": None},
+                "missing.ddd.json did not load, so the rest of the project cannot be edited around "
+                "it; fix it and try again",
+            ),
+            (
+                {"bad.ddd.json": b'{"component": "\xff\xfe"}'},
+                "bad.ddd.json did not load, so the rest of the project cannot be edited around it; "
+                "fix it and try again",
+            ),
+            (
+                {"one/x.ddd.json": DROPPED, "two/x.ddd.json": DROPPED},
+                "one/x.ddd.json, two/x.ddd.json did not load, so the rest of the project cannot be "
+                "edited around them; fix them and try again",
+            ),
+            (
+                {"e.ddd.json": ERRING},
+                "e.ddd.json has an error that stops the project being analysed, so the rest of the "
+                "project cannot be edited around it; fix it and try again",
+            ),
+            (
+                {"a.ddd.json": DROPPED, "e.ddd.json": ERRING, "f.ddd.json": ERRING},
+                "a.ddd.json did not load and e.ddd.json, f.ddd.json have an error that stops the "
+                "project being analysed, so the rest of the project cannot be edited around them; "
+                "fix them and try again",
+            ),
+            (
+                {"one/x.ddd.json": DROPPED, "two/x.ddd.json": ERRING},
+                "one/x.ddd.json did not load and two/x.ddd.json has an error that stops the "
+                "project being analysed, so the rest of the project cannot be edited around them; "
+                "fix them and try again",
+            ),
+            (
+                {"bad.ddd.json": b'{"component": '},
+                "bad.ddd.json did not load, so the rest of the project cannot be edited around it; "
+                "fix it and try again",
+            ),
+            (
+                {"z/a.ddd.json": DROPPED, "b/z.ddd.json": DROPPED},
+                "a.ddd.json, z.ddd.json did not load, so the rest of the project cannot be edited "
+                "around them; fix them and try again",
+            ),
+        ],
+        ids=[
+            "did-not-load",
+            "an-include-naming-no-file",
+            "not-utf-8",
+            "two-of-one-name",
+            "loaded-with-an-error",
+            "both",
+            "one-name-both",
+            "not-json",
+            "listed-by-name",
+        ],
+    )
+    def test_the_reason_says_what_each_unread_file_is(
+        self, tmp_path: Path, files: dict[str, Any], reason: str
+    ) -> None:
+        """The reason the rename refusal and the quick fixes' log line both give. A file that did
+        not load is said not to have, and one that loaded with an error to have an error, which
+        stops the analysis but not the read: said of both, "stopped the project reading it" was
+        untrue of the second. A file an include names that cannot be read is that file, not the
+        project description the finding sits in, which read; and two files of one name are told
+        apart by their paths."""
+        elsewhere = self.unread_project(tmp_path, files)
+        writer = io.BytesIO()
+        Server(session(self.quick_fix_request(elsewhere)), writer, root=tmp_path).run()
+        said, answer = answered(writer)
+        assert answer == response(13, [])
+        assert said["params"]["message"] == f"no quick fix is offered: {reason}"
+
+    def test_what_the_read_only_informs_of_withholds_no_fix(self, tmp_path: Path) -> None:
+        """Only an error stops an edit. A units file listing no unit loads, and the read says so
+        as information, ``empty-vocabulary``: nothing is withheld and nothing is said."""
+        elsewhere = self.unread_project(tmp_path, {"units.ddd.json": {"units": []}})
+        writer = io.BytesIO()
+        Server(session(self.quick_fix_request(elsewhere)), writer, root=tmp_path).run()
+        assert answered(writer) == [response(13, [])]
+
+    def test_an_entry_naming_several_files_keeps_the_error_it_reports(self, tmp_path: Path) -> None:
+        """Which of a pattern's files could not be read, the read says in its message alone. The
+        error stays the description's, then, as one it has rather than one that stopped it
+        loading, which it did not."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "c.ddd.json", "parts/*.ddd.json"),
+                "c.ddd.json": component("C", declare("input", "Speed", unit="rpm")),
+                "parts/good.ddd.json": component("G", declare("local", "Fine")),
+            },
+        )
+        (tmp_path / "parts" / "bad.ddd.json").write_bytes(b'{"component": "\xff\xfe"}')
+        build_record(tmp_path, tmp_path / "p.ddd.json")
+        writer = io.BytesIO()
+        Server(
+            session(self.quick_fix_request(tmp_path / "c.ddd.json")), writer, root=tmp_path
+        ).run()
+        said, _ = answered(writer)
+        assert said["params"]["message"] == (
+            "no quick fix is offered: p.ddd.json has an error that stops the project being "
+            "analysed, so the rest of the project cannot be edited around it; fix it and try again"
+        )
+
+    @pytest.mark.parametrize(
+        ("files", "unread"),
+        [
+            (
+                {"one/x.ddd.json": DROPPED, "two/x.ddd.json": DROPPED},
+                "one/x.ddd.json, two/x.ddd.json",
+            ),
+            ({"missing.ddd.json": None}, "missing.ddd.json"),
+        ],
+        ids=["two-of-one-name", "an-include-naming-no-file"],
+    )
+    def test_a_unit_rename_names_each_file_that_did_not_load(
+        self, tmp_path: Path, files: dict[str, Any], unread: str
+    ) -> None:
+        """The unit plans name the files that did not load by the same rule, and are told of an
+        include naming no file by that file."""
+        elsewhere = self.unread_project(tmp_path, files)
         writer = io.BytesIO()
         Server(
             session(
-                {
-                    "jsonrpc": "2.0",
-                    "id": 13,
-                    "method": "textDocument/codeAction",
-                    "params": {
-                        "textDocument": {"uri": elsewhere.as_uri()},
-                        "range": span,
-                        "context": {"diagnostics": []},
-                    },
-                }
+                self.rename_request(elsewhere, "component.interface[0].definition.unit", "1/min")
             ),
             writer,
             root=tmp_path,
         ).run()
         (answer,) = answered(writer)
-        assert answer["error"]["code"] == REQUEST_FAILED
-        assert "a.ddd.json" in answer["error"]["message"]
+        assert answer["error"] == {
+            "code": REQUEST_FAILED,
+            "message": f"{unread} did not load, so renaming 'rpm' could not reach every place it "
+            "is stated",
+        }
+
+    def test_a_file_that_did_not_load_in_two_images_is_said_once(self, tmp_path: Path) -> None:
+        """Both images hold the file, so both withhold the fixes for one reason, in the same
+        words: one line, rather than one per image."""
+        listed = ["a.ddd.json", "b.ddd.json", "c.ddd.json"]
+        self.linked(
+            tmp_path,
+            {"one": listed, "two": listed},
+            {
+                "a.ddd.json": component("A", declare("output", "Speed", "uint99", unit="rpm")),
+                "b.ddd.json": component("B", declare("input", "Speed")),
+                "c.ddd.json": component("C", declare("input", "Speed", unit="rpm")),
+            },
+            records=True,
+        )
+        elsewhere = tmp_path / "c.ddd.json"
+        found = Server(io.BytesIO(), io.BytesIO(), root=tmp_path)._projects_of(elsewhere)
+        assert [loaded.path.name for loaded in found] == ["one.ddd.json", "two.ddd.json"]
+        writer = io.BytesIO()
+        Server(session(self.quick_fix_request(elsewhere)), writer, root=tmp_path).run()
+        said, answer = answered(writer)
+        assert answer == response(13, [])
+        assert said["params"]["message"] == WITHHELD
 
     def test_preparing_a_rename_says_where_the_box_goes(self, tmp_path: Path) -> None:
         consumer = self.shared_workspace(tmp_path)
@@ -5351,6 +6635,492 @@ class TestServer:
         assert answer["error"]["code"] == REQUEST_FAILED
         assert answer["error"]["message"].startswith("b.ddd.json has unsaved changes")
         assert "result" not in answer
+
+    def test_a_rename_from_a_reader_reaches_the_other_images_reader(self, tmp_path: Path) -> None:
+        """A writer linked into two images, each with a reader of its own. Started from the
+        reader of image one, a rename visited the projects holding that reader alone, so it
+        rewrote the writer and left image two's reader naming an object gone - started from the
+        writer, the same rename reached all three."""
+        write_tree(
+            tmp_path,
+            {
+                "one.ddd.json": project("One", "writer.ddd.json", "reader_one.ddd.json"),
+                "two.ddd.json": project("Two", "writer.ddd.json", "reader_two.ddd.json"),
+                "writer.ddd.json": component("W", declare("output", "Speed")),
+                "reader_one.ddd.json": component("R1", declare("input", "Speed")),
+                "reader_two.ddd.json": component("R2", declare("input", "Speed")),
+            },
+        )
+        build_record(tmp_path, tmp_path / "one.ddd.json", image="one.elf")
+        build_record(tmp_path, tmp_path / "two.ddd.json", image="two.elf")
+        reader_one = tmp_path / "reader_one.ddd.json"
+        writer = io.BytesIO()
+        request = self.rename_request(
+            reader_one, "component.interface[0].definition.name", "Velocity"
+        )
+        Server(framed(self.handshake(tmp_path), request, *END), writer, root=tmp_path).run()
+        answer = next(m for m in sent(writer) if m.get("id") == 11)
+        touched = set(answer["result"].get("changes", {})) | {
+            c["textDocument"]["uri"] for c in answer["result"].get("documentChanges", [])
+        }
+        assert (tmp_path / "reader_two.ddd.json").as_uri() in touched, (
+            f"half renamed: {sorted(touched)}"
+        )
+
+    def linked(
+        self,
+        tmp_path: Path,
+        images: dict[str, list[str]],
+        files: dict[str, Any],
+        *,
+        records: bool,
+    ) -> Path:
+        """``files``, and a description of each image of ``images`` including the files it names,
+        project ``One`` for image ``one``. Returns the directory holding the descriptions.
+
+        With ``records`` it is one of their own, each image having a record, as a build tree holds
+        a collected description, so that only the records find them; without, it is the
+        workspace, beside the files they include, where the search above a file finds them.
+        """
+        where = "images/" if records else ""
+        up = "../" if records else ""
+        write_tree(
+            tmp_path,
+            {
+                **{
+                    f"{where}{image}.ddd.json": project(
+                        image.title(), *(f"{up}{name}" for name in included)
+                    )
+                    for image, included in images.items()
+                },
+                **files,
+            },
+        )
+        described = tmp_path / where
+        if records:
+            for image in images:
+                build_record(tmp_path, described / f"{image}.ddd.json", image=f"{image}.elf")
+        return described
+
+    def two_images(self, tmp_path: Path, *, records: bool = True) -> Path:
+        """A writer and the vocabularies shared by two images, and a reader of each image's own:
+        SPEC 7.2's component linked into two images. Each reader reads the writer's ``Speed`` in
+        ``rpm`` and names the shared type, constant, section and raster. Both images check clean,
+        and ``reader_one.ddd.json`` is in image one alone, which reaches image two only through
+        a file the two share. Returns the directory holding the descriptions (:meth:`linked`).
+        """
+        shared = [
+            "types.ddd.json",
+            "constants.ddd.json",
+            "s.ddd.json",
+            "r.ddd.json",
+            "units.ddd.json",
+            "writer.ddd.json",
+        ]
+        return self.linked(
+            tmp_path,
+            {"one": [*shared, "reader_one.ddd.json"], "two": [*shared, "reader_two.ddd.json"]},
+            {
+                "types.ddd.json": types(struct_type("Sensor_t", value_member("v", unit="rpm"))),
+                "constants.ddd.json": {"constants": [{"name": "N", "value": 4}]},
+                "s.ddd.json": PLACED["s.ddd.json"],
+                "r.ddd.json": TIMED["r.ddd.json"],
+                "units.ddd.json": {"units": ["rpm"]},
+                "writer.ddd.json": component("W", declare("output", "Speed", unit="rpm")),
+                **{
+                    f"reader_{image}.ddd.json": component(
+                        f"R_{image}",
+                        declare("input", "Speed", unit="rpm"),
+                        declare("local", "Probe", typename="Sensor_t"),
+                        declare("local", "Buf", dimensions=["N"], section=".calib", raster="10ms"),
+                    )
+                    for image in ("one", "two")
+                },
+            },
+            records=records,
+        )
+
+    def three_images(self, tmp_path: Path, *, records: bool = True) -> Path:
+        """Three images in a chain, every one of them checking clean. Image one holds a writer of
+        ``Speed`` in ``rpm`` and its reader; image two the writer and a bridge reading it; image
+        three the bridge, a writer of its own and a reader of that one. Images one and three
+        share no file: a rename started in image one reaches image three only through the bridge,
+        which image two's edits rewrite and image one's do not. Returns the directory holding the
+        descriptions (:meth:`linked`)."""
+        reads = declare("input", "Speed", unit="rpm")
+        return self.linked(
+            tmp_path,
+            {
+                "one": ["writer.ddd.json", "reader_one.ddd.json"],
+                "two": ["writer.ddd.json", "bridge.ddd.json"],
+                "three": ["bridge.ddd.json", "writer_three.ddd.json", "reader_three.ddd.json"],
+            },
+            {
+                "writer.ddd.json": component("W", declare("output", "Speed", unit="rpm")),
+                "reader_one.ddd.json": component("R_one", reads),
+                "bridge.ddd.json": component("Bridge", reads),
+                "writer_three.ddd.json": component(
+                    "W_three", declare("output", "Speed", unit="rpm")
+                ),
+                "reader_three.ddd.json": component("R_three", reads),
+            },
+            records=records,
+        )
+
+    def opened_holding(self, path: Path, text: str) -> dict[str, Any]:
+        """The client opening ``path`` with ``text`` in its buffer, unsaved."""
+        return {
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": {
+                "textDocument": {
+                    "uri": path.as_uri(),
+                    "languageId": "json",
+                    "version": 1,
+                    "text": text,
+                }
+            },
+        }
+
+    def answer_to(
+        self, tmp_path: Path, request: dict[str, Any], *before: dict[str, Any]
+    ) -> dict[str, Any]:
+        """The server's answer to ``request``, asked after ``before`` in a session the client
+        ends."""
+        writer = io.BytesIO()
+        stream = framed(self.handshake(tmp_path), *before, request, *END)
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        return next(message for message in sent(writer) if message.get("id") == request["id"])
+
+    RENAMES: Final = (
+        ("component.interface[0].definition.name", "Velocity"),
+        ("component.interface[1].definition.typename", "Probe_t"),
+        ("component.interface[2].definition.dimensions[0]", "SLOTS"),
+        ("component.interface[2].definition.section", ".cal"),
+        ("component.interface[2].definition.raster", "20ms"),
+        ("component.interface[0].definition.unit", "1/min"),
+    )
+    """Each kind of rename, asked in :meth:`two_images`'s reader: a variable, a type, a constant,
+    a section, a raster and a unit."""
+
+    @pytest.mark.parametrize(
+        ("pointer", "name"),
+        RENAMES,
+        ids=["variable", "type", "constant", "section", "raster", "unit"],
+    )
+    @pytest.mark.parametrize("records", [True, False], ids=["records", "searched"])
+    def test_every_kind_of_rename_reaches_every_image_holding_a_file_it_touches(
+        self, tmp_path: Path, pointer: str, name: str, records: bool
+    ) -> None:
+        """Each rename starts in image one alone and touches a file image two holds too, so image
+        two is renamed with it: afterwards both images check as clean as before, which a rename
+        stopping at image one leaves image two reading a name nothing declares."""
+        images = self.two_images(tmp_path, records=records)
+        checked = [str(images / image) for image in ("one.ddd.json", "two.ddd.json")]
+        assert [main(["check", image]) for image in checked] == [EXIT_OK, EXIT_OK]
+        reader_one = tmp_path / "reader_one.ddd.json"
+        answer = self.answer_to(tmp_path, self.rename_request(reader_one, pointer, name))
+        rewritten = rewritten_by(answer["result"]["changes"])
+        assert "reader_two.ddd.json" in rewritten, f"half renamed: {sorted(rewritten)}"
+        write_tree(tmp_path, rewritten)
+        assert [main(["check", image]) for image in checked] == [EXIT_OK, EXIT_OK], "half renamed"
+
+    @pytest.mark.parametrize(
+        ("pointer", "name"), [RENAMES[0], RENAMES[-1]], ids=["variable", "unit"]
+    )
+    @pytest.mark.parametrize("records", [True, False], ids=["records", "searched"])
+    def test_a_rename_goes_on_from_every_project_it_reaches_until_none_is_new(
+        self, tmp_path: Path, pointer: str, name: str, records: bool
+    ) -> None:
+        """Image three shares no file with image one: the rename reaches it through the bridge,
+        which image two's edits rewrite and image one's do not. A closure going on from the
+        document's projects alone stops at image two, and leaves image three's writer and reader
+        apart from the bridge it just rewrote."""
+        images = self.three_images(tmp_path, records=records)
+        checked = [str(images / f"{image}.ddd.json") for image in ("one", "two", "three")]
+        assert [main(["check", image]) for image in checked] == [EXIT_OK] * 3
+        reader_one = tmp_path / "reader_one.ddd.json"
+        answer = self.answer_to(tmp_path, self.rename_request(reader_one, pointer, name))
+        rewritten = rewritten_by(answer["result"]["changes"])
+        assert "reader_three.ddd.json" in rewritten, f"stopped short: {sorted(rewritten)}"
+        write_tree(tmp_path, rewritten)
+        assert [main(["check", image]) for image in checked] == [EXIT_OK] * 3, "half renamed"
+
+    def test_a_condition_two_images_share_has_its_word_rewritten_once(self, tmp_path: Path) -> None:
+        """10:I10 through F2, from the constants file: the writer guarding ``Big`` with
+        ``CELLS > 2`` is in both images, so each image's edits rewrite the condition's word at the
+        same place, and the answer carries it once - twice, a client writes the longer name over
+        the start of itself. Both images check clean before and after, as they did with the
+        condition left behind: only the condition's own text tells."""
+        images = self.linked(
+            tmp_path,
+            {
+                "one": ["c.ddd.json", "w.ddd.json", "reader_one.ddd.json"],
+                "two": ["c.ddd.json", "w.ddd.json"],
+            },
+            {
+                **UNDER_A_CONDITION,
+                "reader_one.ddd.json": component(
+                    "R", declare("local", "Buf", dimensions=["CELLS"])
+                ),
+            },
+            records=True,
+        )
+        checked = [str(images / image) for image in ("one.ddd.json", "two.ddd.json")]
+        assert [main(["check", image]) for image in checked] == [EXIT_OK, EXIT_OK]
+        constants = tmp_path / "c.ddd.json"
+        answer = self.answer_to(
+            tmp_path, self.rename_request(constants, "constants[0].name", "SLOT_COUNT")
+        )
+        rewritten = rewritten_by(answer["result"]["changes"])
+        assert set(rewritten) == {"c.ddd.json", "w.ddd.json", "reader_one.ddd.json"}
+        big = json.loads(rewritten["w.ddd.json"])["component"]["interface"][0]
+        assert (big["condition"], big["definition"]["dimensions"]) == (
+            "SLOT_COUNT > 2",
+            ["SLOT_COUNT"],
+        )
+        write_tree(tmp_path, rewritten)
+        assert [main(["check", image]) for image in checked] == [EXIT_OK, EXIT_OK]
+
+    @pytest.mark.parametrize(("records", "image"), [(True, "two.elf"), (False, "two.ddd.json")])
+    def test_a_name_another_image_declares_is_refused_naming_that_image(
+        self, tmp_path: Path, records: bool, image: str
+    ) -> None:
+        """Image two's reader keeps a 'Taken' of its own, which image one has never heard of. The
+        rename is refused before anything is written, and the refusal says which image declares
+        the name: asked from image one, 'this project' alone sends the reader looking in theirs.
+        """
+        self.two_images(tmp_path, records=records)
+        reader_one = tmp_path / "reader_one.ddd.json"
+        write_tree(
+            tmp_path,
+            {
+                "reader_two.ddd.json": component(
+                    "R_two", declare("input", "Speed", unit="rpm"), declare("local", "Taken")
+                )
+            },
+        )
+        request = self.rename_request(reader_one, "component.interface[0].definition.name", "Taken")
+        assert self.answer_to(tmp_path, request)["error"] == {
+            "code": REQUEST_FAILED,
+            "message": (
+                f"in {image}, which this rename reaches too: 'Taken' is already declared by this "
+                "project"
+            ),
+        }
+
+    @pytest.mark.parametrize("outside", [False, True], ids=["in-the-folder", "outside-it"])
+    def test_a_description_is_named_apart_from_another_of_its_file_name(
+        self, tmp_path: Path, outside: bool
+    ) -> None:
+        """Both images' descriptions are called ``project.ddd.json``, each in a folder of its own,
+        and their records name no image. Named by its file name, image two's description reads
+        as image one's: it is named by its path in the workspace folder instead, and in full
+        where it lies outside it."""
+        workspace = tmp_path / "workspace"
+        two = (tmp_path / "elsewhere" if outside else workspace / "two") / "project.ddd.json"
+        up = Path(os.path.relpath(workspace, two.parent)).as_posix()
+        write_tree(
+            tmp_path,
+            {
+                "workspace/one/project.ddd.json": project(
+                    "One", "../writer.ddd.json", "../reader_one.ddd.json"
+                ),
+                str(two.relative_to(tmp_path)): project(
+                    "Two", f"{up}/writer.ddd.json", f"{up}/reader_two.ddd.json"
+                ),
+                "workspace/writer.ddd.json": component("W", declare("output", "Speed")),
+                "workspace/reader_one.ddd.json": component("R_one", declare("input", "Speed")),
+                "workspace/reader_two.ddd.json": component(
+                    "R_two", declare("input", "Speed"), declare("local", "Taken")
+                ),
+            },
+        )
+        for image, described in (("one", workspace / "one" / "project.ddd.json"), ("two", two)):
+            record = workspace / "build" / image / BUILD_INFO_FILENAME
+            record.parent.mkdir(parents=True)
+            record.write_text(json.dumps({"project": described.as_posix()}), encoding="utf-8")
+        request = self.rename_request(
+            workspace / "reader_one.ddd.json", "component.interface[0].definition.name", "Taken"
+        )
+        named = two.resolve().as_posix() if outside else "two/project.ddd.json"
+        assert self.answer_to(workspace, request)["error"]["message"] == (
+            f"in {named}, which this rename reaches too: 'Taken' is already declared by this "
+            "project"
+        )
+
+    @pytest.mark.parametrize(
+        ("pointer", "name", "because"),
+        [
+            (
+                "component.interface[0].definition.name",
+                "Velocity",
+                "did not load, so the rest of the project cannot be edited around it",
+            ),
+            (
+                "component.interface[0].definition.unit",
+                "1/min",
+                "did not load, so renaming 'rpm' could not reach every place it is stated",
+            ),
+        ],
+        ids=["variable", "unit"],
+    )
+    def test_a_file_another_image_could_not_load_refuses_the_rename_naming_that_image(
+        self, tmp_path: Path, pointer: str, name: str, because: str
+    ) -> None:
+        """Image two's reader does not load, so nothing can say what it names: rewriting the
+        writer the two images share would leave it reading a name that is gone."""
+        self.two_images(tmp_path)
+        reader_one = tmp_path / "reader_one.ddd.json"
+        write_tree(
+            tmp_path,
+            {"reader_two.ddd.json": component("R_two", declare("input", "Speed", "uint99"))},
+        )
+        refused = self.answer_to(tmp_path, self.rename_request(reader_one, pointer, name))
+        assert refused["error"]["code"] == REQUEST_FAILED
+        assert refused["error"]["message"].startswith(
+            f"in two.elf, which this rename reaches too: reader_two.ddd.json {because}"
+        )
+
+    @pytest.mark.parametrize(
+        ("pointer", "name"), [RENAMES[0], RENAMES[-1]], ids=["variable", "unit"]
+    )
+    def test_a_buffer_of_another_image_that_moved_a_site_refuses_the_rename(
+        self, tmp_path: Path, pointer: str, name: str
+    ) -> None:
+        """Image two's reader is open with a declaration put in front of the one the index
+        knows, which is drift the rename has to see wherever it reaches."""
+        self.two_images(tmp_path)
+        reader_one = tmp_path / "reader_one.ddd.json"
+        reader_two = tmp_path / "reader_two.ddd.json"
+        interface = json.loads(reader_two.read_text(encoding="utf-8"))["component"]["interface"]
+        moved = json.dumps(
+            component("R_two", declare("local", "Other", unit="Nm"), *interface), indent=2
+        )
+        refused = self.answer_to(
+            tmp_path,
+            self.rename_request(reader_one, pointer, name),
+            self.opened_holding(reader_two, moved),
+        )
+        assert refused["error"]["code"] == REQUEST_FAILED
+        assert refused["error"]["message"].startswith("reader_two.ddd.json has unsaved changes")
+
+    def test_a_file_whose_buffer_moved_its_declaration_still_leads_to_the_other_image(
+        self, tmp_path: Path
+    ) -> None:
+        """The writer's buffer moved 'Speed', so no edit of it is computed - but the rename
+        touches it all the same, and image two holds it: image two is asked its refusals too,
+        and its reader that does not load is answered, which saving the writer would not
+        clear."""
+        self.two_images(tmp_path)
+        reader_one = tmp_path / "reader_one.ddd.json"
+        write_tree(
+            tmp_path,
+            {"reader_two.ddd.json": component("R_two", declare("input", "Speed", "uint99"))},
+        )
+        moved = json.dumps(
+            component("W", declare("local", "Other"), declare("output", "Speed", unit="rpm")),
+            indent=2,
+        )
+        refused = self.answer_to(
+            tmp_path,
+            self.rename_request(reader_one, *self.RENAMES[0]),
+            self.opened_holding(tmp_path / "writer.ddd.json", moved),
+        )
+        assert refused["error"]["message"].startswith(
+            "in two.elf, which this rename reaches too: reader_two.ddd.json did not load"
+        )
+
+    def descriptions_read(self, monkeypatch: pytest.MonkeyPatch) -> list[Path]:
+        """Every file the server reads a workspace out of from now on, resolved, in order."""
+        seen: list[Path] = []
+
+        def spy(path: Path, bag: DiagnosticBag) -> Any:
+            seen.append(path.resolve())
+            return load_workspace(path, bag)
+
+        monkeypatch.setattr(navigation, "load_workspace", spy)
+        return seen
+
+    @pytest.mark.parametrize("records", [True, False], ids=["records", "searched"])
+    def test_a_rename_reads_each_description_at_most_once(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, records: bool
+    ) -> None:
+        """Which projects hold a file the rename touches is asked of the projects already read,
+        and a description is read only where no read of it is in hand. Asked file by file, the
+        search reads every build's project - and without a record every description above the
+        file - once for each file the rename touches. A project found again, holding another of
+        those files, is not indexed and asked again either."""
+        images = self.two_images(tmp_path, records=records)
+        reader_one = tmp_path / "reader_one.ddd.json"
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(self.handshake(tmp_path))
+        seen = self.descriptions_read(monkeypatch)
+        indexed: list[Path] = []
+
+        def index(workspace: Any) -> Any:
+            indexed.append(workspace.root)
+            return navigation.index(workspace)
+
+        monkeypatch.setattr(server_module, "index", index)
+        assert server._handle(self.rename_request(reader_one, *self.RENAMES[0]))
+        (answer,) = (message for message in sent(writer) if message.get("id") == 11)
+        assert (tmp_path / "reader_two.ddd.json").as_uri() in answer["result"]["changes"]
+        assert seen.count((images / "two.ddd.json").resolve()) == 1
+        again = sorted(path.name for path, count in Counter(seen).items() if count > 1)
+        assert again == [], f"read more than once for one rename: {again}"
+        assert sorted(path.name for path in indexed) == ["one.ddd.json", "two.ddd.json"]
+
+    def test_the_projects_an_earlier_request_read_are_not_read_again(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A jump before the rename read the projects of the document, which are kept until the
+        next refresh; the rename starts from those rather than reading them again. Image two was
+        read by that search too, not holding the document, and is not read again either: every
+        description read is kept until the next refresh, which a quick fix asked at every move of
+        the caret reaches the same way."""
+        images = self.two_images(tmp_path)
+        reader_one = tmp_path / "reader_one.ddd.json"
+        position = Document(reader_one.read_text(encoding="utf-8")).range_of(
+            "component.interface[0].definition.name"
+        )["start"]
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(self.handshake(tmp_path))
+        assert server._handle(
+            self.navigation_request("textDocument/definition", reader_one, position)
+        )
+        seen = self.descriptions_read(monkeypatch)
+        assert server._handle(self.rename_request(reader_one, *self.RENAMES[0]))
+        (answer,) = (message for message in sent(writer) if message.get("id") == 11)
+        assert (tmp_path / "reader_two.ddd.json").as_uri() in answer["result"]["changes"]
+        assert (images / "two.ddd.json").exists()
+        assert seen == []
+
+    def test_a_rename_that_touches_no_file_reads_no_description(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """At a position naming nothing renameable a rename computes no edit, so it touches no
+        file and reaches no other project. With the document's projects kept from a jump, it has
+        nothing left to read - where it read image two, to ask it which of no files it held. It is
+        refused rather than answered with an empty edit, which a client applies without a word."""
+        self.two_images(tmp_path)
+        reader_one = tmp_path / "reader_one.ddd.json"
+        position = Document(reader_one.read_text(encoding="utf-8")).range_of(
+            "component.interface[0].definition.name"
+        )["start"]
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(self.handshake(tmp_path))
+        assert server._handle(
+            self.navigation_request("textDocument/definition", reader_one, position)
+        )
+        seen = self.descriptions_read(monkeypatch)
+        assert server._handle(self.rename_request(reader_one, "component.name", "Other"))
+        (answer,) = (message for message in sent(writer) if message.get("id") == 11)
+        assert answer["error"] == {"code": REQUEST_FAILED, "message": EMPTY_RENAME}
+        assert seen == []
 
     def test_a_code_action_on_an_unknown_unit_offers_the_vocabulary_fixes(
         self, tmp_path: Path
@@ -5844,8 +7614,235 @@ class TestServer:
         assert Server(stream, writer, root=tmp_path).run() == 0
         answer = next(m for m in sent(writer) if m.get("id") == 2)
         assert answer["error"]["code"] == REQUEST_FAILED
-        assert "b.ddd.json" in answer["error"]["message"]
+        assert answer["error"]["message"] == (
+            "b.ddd.json has unsaved changes this rename would not see; save it and rename again"
+        )
         assert "result" not in answer
+
+    def test_a_rename_with_an_unsaved_mention_open_is_refused_naming_the_document(
+        self, tmp_path: Path
+    ) -> None:
+        """C's buffer says 'Speed', typed and not saved: the index is the disk's, so a rename of
+        the disk's 'Speed' would leave that mention behind, and the save would then be an
+        unknown reference. It is refused, naming the buffer's file, whatever the rename's
+        subject: the rename is asked from B, which holds nothing the buffer changed."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json", "c.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed")),
+                "b.ddd.json": component("B", declare("input", "Speed")),
+                "c.ddd.json": component("C", declare("input", "Other")),
+            },
+        )
+        c = tmp_path / "c.ddd.json"
+        unsaved = c.read_text(encoding="utf-8").replace('"Other"', '"Speed"')
+        request = self.rename_request(
+            tmp_path / "b.ddd.json", "component.interface[0].definition.name", "Velocity"
+        )
+        answer = self.answer_to(tmp_path, request, self.opened_holding(c, unsaved))
+        assert answer["error"] == {
+            "code": REQUEST_FAILED,
+            "message": "c.ddd.json has unsaved changes this rename would not see; save it and "
+            "rename again",
+        }
+
+    @pytest.mark.parametrize(
+        ("pointer", "name"), [RENAMES[0], RENAMES[-1]], ids=["variable", "unit"]
+    )
+    def test_a_buffer_of_another_image_that_differs_refuses_the_rename_naming_it(
+        self, tmp_path: Path, pointer: str, name: str
+    ) -> None:
+        """Image two's reader has a mention typed and not saved, which the rename started from
+        image one's reader does not see: the refusal is about the buffer, so it is not worded
+        as a refusal from image two."""
+        self.two_images(tmp_path)
+        reader_two = tmp_path / "reader_two.ddd.json"
+        unsaved = reader_two.read_text(encoding="utf-8").replace('"R_two"', '"R_two_renamed"')
+        refused = self.answer_to(
+            tmp_path,
+            self.rename_request(tmp_path / "reader_one.ddd.json", pointer, name),
+            self.opened_holding(reader_two, unsaved),
+        )
+        assert refused["error"] == {"code": REQUEST_FAILED, "message": UNSEEN_RENAME}
+
+    @pytest.mark.parametrize(
+        ("pointer", "name"), [RENAMES[0], RENAMES[-1]], ids=["variable", "unit"]
+    )
+    def test_a_buffer_of_a_project_reached_late_refuses_the_rename(
+        self, tmp_path: Path, pointer: str, name: str
+    ) -> None:
+        """Image three's reader is in no project the rename starts from: it is reached through
+        the bridge, once image two's edits are known, and its buffer refuses the rename all the
+        same."""
+        self.three_images(tmp_path)
+        reader_three = tmp_path / "reader_three.ddd.json"
+        unsaved = reader_three.read_text(encoding="utf-8").replace('"R_three"', '"R_3"')
+        refused = self.answer_to(
+            tmp_path,
+            self.rename_request(tmp_path / "reader_one.ddd.json", pointer, name),
+            self.opened_holding(reader_three, unsaved),
+        )
+        assert refused["error"]["message"].startswith("reader_three.ddd.json has unsaved changes")
+
+    def test_a_buffer_of_a_file_no_reached_project_holds_does_not_refuse_the_rename(
+        self, tmp_path: Path
+    ) -> None:
+        """Notes the workspace keeps beside the project, open and unsaved, are no part of what
+        the rename reads or writes."""
+        self.two_images(tmp_path)
+        write_tree(tmp_path, {"elsewhere.ddd.json": component("E", declare("input", "Other"))})
+        elsewhere = tmp_path / "elsewhere.ddd.json"
+        unsaved = elsewhere.read_text(encoding="utf-8").replace('"Other"', '"Another"')
+        answer = self.answer_to(
+            tmp_path,
+            self.rename_request(
+                tmp_path / "reader_one.ddd.json",
+                "component.interface[0].definition.name",
+                "Velocity",
+            ),
+            self.opened_holding(elsewhere, unsaved),
+        )
+        assert "error" not in answer
+
+    @pytest.mark.parametrize("newline", ["\r\n", "\n"], ids=["crlf", "lf"])
+    def test_a_buffer_that_is_its_file_does_not_refuse_the_rename(
+        self, tmp_path: Path, newline: str
+    ) -> None:
+        """The file is written with CRLF line ends and the buffer is what the client sends for
+        it, with LF: they are the same document, and a refusal at every line end would refuse
+        every rename on Windows."""
+        consumer = self.shared_workspace(tmp_path)
+        on_disk = consumer.read_text(encoding="utf-8")
+        consumer.write_bytes(on_disk.replace("\n", newline).encode("utf-8"))
+        answer = self.answer_to(
+            tmp_path,
+            self.rename_request(consumer, "component.interface[0].definition.name", "Renamed"),
+            self.opened_holding(consumer, on_disk),
+        )
+        assert set(answer["result"]["changes"]) == {
+            (tmp_path / name).as_uri() for name in ("a.ddd.json", "b.ddd.json")
+        }
+
+    def test_a_buffer_that_declares_the_name_the_rename_is_onto_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        """A name only a buffer declares passes the project's own check, which reads the disk:
+        the rename then merges two objects as soon as the buffer is saved."""
+        self.shared_workspace(tmp_path)
+        a = tmp_path / "a.ddd.json"
+        b = tmp_path / "b.ddd.json"
+        unsaved = b.read_text(encoding="utf-8").replace('"Shared"', '"Velocity"')
+        answer = self.answer_to(
+            tmp_path,
+            self.rename_request(a, "component.interface[0].definition.name", "Velocity"),
+            self.opened_holding(b, unsaved),
+        )
+        assert answer["error"] == {
+            "code": REQUEST_FAILED,
+            "message": "b.ddd.json has unsaved changes this rename would not see; save it and "
+            "rename again",
+        }
+
+    def test_the_description_of_the_project_is_a_document_of_it_too(self, tmp_path: Path) -> None:
+        """An include typed into the project's own buffer and not saved is a file the rename
+        does not read."""
+        consumer = self.shared_workspace(tmp_path)
+        described = tmp_path / "p.ddd.json"
+        unsaved = described.read_text(encoding="utf-8").replace('"a.ddd.json"', '"c.ddd.json"')
+        answer = self.answer_to(
+            tmp_path,
+            self.rename_request(consumer, "component.interface[0].definition.name", "Renamed"),
+            self.opened_holding(described, unsaved),
+        )
+        assert answer["error"]["message"].startswith("p.ddd.json has unsaved changes")
+
+    def test_a_buffer_that_does_not_parse_refuses_the_rename(self, tmp_path: Path) -> None:
+        """Mid edit, a buffer is often no json at all: what it will say once it parses is
+        unknown, so it differs from the file."""
+        consumer = self.shared_workspace(tmp_path)
+        other = tmp_path / "a.ddd.json"
+        answer = self.answer_to(
+            tmp_path,
+            self.rename_request(consumer, "component.interface[0].definition.name", "Renamed"),
+            self.opened_holding(other, other.read_text(encoding="utf-8")[:-3]),
+        )
+        assert answer["error"]["message"].startswith("a.ddd.json has unsaved changes")
+
+    def test_every_document_that_differs_is_named_in_path_order(self, tmp_path: Path) -> None:
+        consumer = self.shared_workspace(tmp_path)
+        a = tmp_path / "a.ddd.json"
+        buffers = [
+            self.opened_holding(path, path.read_text(encoding="utf-8").replace("Shared", "X"))
+            for path in (consumer, a)
+        ]
+        answer = self.answer_to(
+            tmp_path,
+            self.rename_request(consumer, "component.interface[0].definition.name", "Renamed"),
+            *buffers,
+        )
+        assert answer["error"]["message"] == (
+            "a.ddd.json, b.ddd.json have unsaved changes this rename would not see; save them "
+            "and rename again"
+        )
+
+    @pytest.mark.parametrize(
+        ("pointer", "name"), [RENAMES[0], RENAMES[-1]], ids=["variable", "unit"]
+    )
+    def test_a_rename_in_a_file_no_project_reads_is_refused_not_answered_empty(
+        self, tmp_path: Path, pointer: str, name: str
+    ) -> None:
+        """A file that is on screen and not on disk is read by no project, so there is nothing
+        to plan: the rename used to be answered with no edit at all, which a client applies
+        without a word."""
+        write_tree(tmp_path, {"new.ddd.json": component("N", declare("input", "X", unit="rpm"))})
+        new = tmp_path / "new.ddd.json"
+        request = self.rename_request(new, pointer, name)
+        typed = new.read_text(encoding="utf-8")
+        new.unlink()
+        answer = self.answer_to(tmp_path, request, self.opened_holding(new, typed))
+        assert answer["error"] == {"code": REQUEST_FAILED, "message": EMPTY_RENAME}
+
+    @pytest.mark.parametrize(
+        ("pointer", "name", "changed"),
+        [
+            (RENAMES[0][0], "Velocity", "moved a declaration"),
+            (RENAMES[-1][0], "1/min", "moved or respelled a unit"),
+        ],
+        ids=["variable", "unit"],
+    )
+    def test_a_file_saved_since_it_was_read_still_refuses_the_rename_as_drifted(
+        self, tmp_path: Path, pointer: str, name: str, changed: str
+    ) -> None:
+        """No buffer differs here: the reader was saved after the server read the project, with
+        a declaration put in front of the one the index knows. It is the drift refusal that
+        answers, since no open document is there to name."""
+        self.two_images(tmp_path)
+        reader_one = tmp_path / "reader_one.ddd.json"
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(self.handshake(tmp_path))
+        request = self.rename_request(reader_one, pointer, name)
+        position = request["params"]["position"]
+        assert server._handle(
+            self.navigation_request("textDocument/definition", reader_one, position)
+        )
+        interface = json.loads(reader_one.read_text(encoding="utf-8"))["component"]["interface"]
+        write_tree(
+            tmp_path,
+            {
+                "reader_one.ddd.json": component(
+                    "R_one", declare("local", "Other", unit="Nm"), *interface
+                )
+            },
+        )
+        assert server._handle(self.rename_request(reader_one, pointer.replace("[0]", "[1]"), name))
+        (answer,) = (message for message in sent(writer) if message.get("id") == 11)
+        assert answer["error"] == {
+            "code": REQUEST_FAILED,
+            "message": "reader_one.ddd.json has changed on disk since the project was read, "
+            f"which {changed} this rename would touch; rename again once it has been read again",
+        }
 
     def test_a_rename_started_in_a_drifted_buffer_is_refused_rather_than_applied_elsewhere(
         self, tmp_path: Path
@@ -6054,20 +8051,20 @@ class TestServer:
     @pytest.mark.parametrize(
         "capabilities",
         [
-            "nonsense",
-            {"workspace": "nonsense"},
-            {"workspace": {"workspaceEdit": "nonsense"}},
+            {},
+            {"workspace": {}},
             {"workspace": {"workspaceEdit": {}}},
+            {"workspace": {"workspaceEdit": {"documentChanges": False}}},
         ],
     )
     def test_anything_short_of_the_exact_announcement_keeps_the_plain_changes_form(
         self, tmp_path: Path, capabilities: Any
     ) -> None:
-        """Each guard in ``_initialise`` refuses a shape one step short of the real
-        announcement: capabilities not a dict, workspace not a dict, workspaceEdit not a dict,
-        and workspaceEdit a dict that never actually says ``documentChanges: true``. Short of
-        the exact shape, the client gets the ``changes`` form, which is the only one it has
-        said it can apply.
+        """Each step of the real announcement left out: no workspace, no workspaceEdit, a
+        workspaceEdit that says nothing of ``documentChanges``, and one that says ``false``.
+        Short of ``documentChanges: true``, the client gets the ``changes`` form, which is the
+        only one it has said it can apply. A step there in another shape is a handshake refused
+        (``TestAMalformedFieldIsRefused``).
         """
         write_tree(
             tmp_path,
@@ -6093,6 +8090,113 @@ class TestServer:
         answer = next(m for m in sent(writer) if m.get("id") == 11)
         assert "changes" in answer["result"]
         assert "documentChanges" not in answer["result"]
+
+    ANNOUNCED: ClassVar[dict[str, Any]] = {
+        "workspace": {"workspaceEdit": {"documentChanges": True, "changeAnnotationSupport": {}}}
+    }
+
+    def edit_answers(self, tmp_path: Path, capabilities: Any, files: int) -> dict[str, Any]:
+        """The rename of ``Speed``, which reaches ``files`` files, and the quick fix that
+        applies its unit to the other declarations, which reach one file fewer, answered to a
+        client that announced ``capabilities``."""
+        names = ["a", "b", "c"][:files]
+        write_tree(
+            tmp_path,
+            {
+                "project.ddd.json": project("P", *(f"{n}.ddd.json" for n in names)),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="Hz")),
+                "b.ddd.json": component("B", declare("input", "Speed")),
+                "c.ddd.json": component("C", declare("input", "Speed")),
+            },
+        )
+        a_text = (tmp_path / "a.ddd.json").read_text(encoding="utf-8")
+        stream = framed(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"rootUri": tmp_path.as_uri(), "capabilities": capabilities},
+            },
+            self.rename_request(
+                tmp_path / "a.ddd.json", "component.interface[0].definition.name", "Velocity"
+            ),
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "textDocument/codeAction",
+                "params": {
+                    "textDocument": {"uri": (tmp_path / "a.ddd.json").as_uri()},
+                    "range": Document(a_text).range_of("component.interface[0].definition"),
+                    "context": {"diagnostics": []},
+                },
+            },
+            {"jsonrpc": "2.0", "id": 3, "method": "shutdown"},
+            {"jsonrpc": "2.0", "method": "exit"},
+        )
+        writer = io.BytesIO()
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        sent_back = sent(writer)
+        fixes = next(m for m in sent_back if m.get("id") == 2)["result"]
+        fix = next((f for f in fixes if f["title"].startswith("Apply this unit")), {})
+        return {
+            "rename": next(m for m in sent_back if m.get("id") == 11)["result"],
+            "fix": fix.get("edit"),
+            "title": fix.get("title"),
+        }
+
+    @pytest.mark.parametrize("answer", ["rename", "fix"])
+    def test_an_edit_reaching_two_files_asks_the_client_to_confirm_it(
+        self, tmp_path: Path, answer: str
+    ) -> None:
+        """10:I11. A client applies a code action's edit and saves every file it touches, so
+        an edit across files is marked for the preview, and every edit of it names the mark."""
+        got = self.edit_answers(tmp_path, self.ANNOUNCED, 3)
+        edit = got[answer]
+        assert "changes" not in edit
+        assert len(edit["documentChanges"]) == (3 if answer == "rename" else 2)
+        (identifier,) = edit["changeAnnotations"]
+        note = edit["changeAnnotations"][identifier]
+        assert note["needsConfirmation"] is True
+        assert note["label"] == ("Rename" if answer == "rename" else got["title"])
+        assert all(
+            text_edit["annotationId"] == identifier
+            for change in edit["documentChanges"]
+            for text_edit in change["edits"]
+        )
+
+    @pytest.mark.parametrize("answer", ["rename", "fix"])
+    @pytest.mark.parametrize(
+        "capabilities",
+        [
+            {"workspace": {"workspaceEdit": {"documentChanges": True}}},
+            {"workspace": {"workspaceEdit": {"changeAnnotationSupport": {}}}},
+            {
+                "workspace": {
+                    "workspaceEdit": {"documentChanges": False, "changeAnnotationSupport": {}}
+                }
+            },
+        ],
+    )
+    def test_a_client_short_of_either_capability_is_sent_no_annotation(
+        self, tmp_path: Path, answer: str, capabilities: Any
+    ) -> None:
+        """An annotated edit exists only inside ``documentChanges``, and an annotation is
+        outside what a client that did not announce it negotiated: ``documentChanges`` left out
+        or said ``false`` beside it is not announced. A ``changeAnnotationSupport`` that is not
+        an object is a handshake refused (``TestAMalformedFieldIsRefused``)."""
+        edit = self.edit_answers(tmp_path, capabilities, 3)[answer]
+        assert "changeAnnotations" not in edit
+        assert "annotationId" not in json.dumps(edit)
+        assert ("documentChanges" in edit) is bool(
+            capabilities["workspace"]["workspaceEdit"].get("documentChanges")
+        )
+
+    @pytest.mark.parametrize("answer", ["rename", "fix"])
+    def test_an_edit_reaching_one_file_stays_unannotated(self, tmp_path: Path, answer: str) -> None:
+        edit = self.edit_answers(tmp_path, self.ANNOUNCED, 1 if answer == "rename" else 2)[answer]
+        assert len(edit["documentChanges"]) == 1
+        assert "changeAnnotations" not in edit
+        assert "annotationId" not in json.dumps(edit)
 
     def test_a_removal_is_not_offered_while_another_declaration_is_unreadable(
         self, tmp_path: Path
@@ -6222,6 +8326,432 @@ class TestServer:
         answer = next(m for m in sent(writer) if m.get("id") == 2)
         for action in answer["result"]:
             assert not action["title"].startswith("Take the unit"), action["title"]
+
+    def alone(self, tmp_path: Path) -> Path:
+        """A reader no record claims, no description includes and no project holds, beside a
+        writer of its input that it knows nothing of: 10:I5's trigger, one folder with no project
+        file and no record. It states a variable, a type, a constant, a section, a raster, a unit
+        and a local (:attr:`RENAMES`, and the local at interface 2)."""
+        write_tree(
+            tmp_path,
+            {
+                "writer.ddd.json": component("W", declare("output", "Speed", unit="rpm")),
+                "reader.ddd.json": component(
+                    "R",
+                    declare("input", "Speed", unit="rpm"),
+                    declare("local", "Probe", typename="Sensor_t"),
+                    declare("local", "Buf", dimensions=["N"], section=".calib", raster="10ms"),
+                ),
+            },
+        )
+        return tmp_path / "reader.ddd.json"
+
+    NO_PROJECT: Final = (
+        "no project is known for reader.ddd.json: only a local variable can be renamed without "
+        "one, because a rename has to reach every file that spells the name - put a project "
+        "file above it that includes it, or configure the build (ddd-build.json)"
+    )
+
+    @pytest.mark.parametrize(
+        ("pointer", "name"),
+        RENAMES,
+        ids=["variable", "type", "constant", "section", "raster", "unit"],
+    )
+    def test_with_no_project_known_every_rename_but_a_locals_is_refused(
+        self, tmp_path: Path, pointer: str, name: str
+    ) -> None:
+        """F2 on an input, a type, a constant, a section, a raster or a unit of a component read
+        on its own rewrote that one file and said nothing, while its writer, a file away, kept the
+        old name. A unit is planned elsewhere (``_rename_unit``) and is refused the same."""
+        reader = self.alone(tmp_path)
+        answer = self.answer_to(tmp_path, self.rename_request(reader, pointer, name))
+        assert answer["error"] == {"code": REQUEST_FAILED, "message": self.NO_PROJECT}
+        assert "result" not in answer
+
+    def test_an_output_with_no_project_known_is_refused_too(self, tmp_path: Path) -> None:
+        """The finding's own trigger: F2 on a writer's output, with its reader beside it."""
+        self.alone(tmp_path)
+        request = self.rename_request(
+            tmp_path / "writer.ddd.json", "component.interface[0].definition.name", "Velocity"
+        )
+        answer = self.answer_to(tmp_path, request)
+        assert answer["error"] == {
+            "code": REQUEST_FAILED,
+            "message": self.NO_PROJECT.replace("reader.ddd.json", "writer.ddd.json"),
+        }
+
+    @pytest.mark.parametrize("position", [1, 2], ids=["a local typed", "a local sized"])
+    def test_with_no_project_known_a_locals_rename_goes_through(
+        self, tmp_path: Path, position: int
+    ) -> None:
+        """A local is spelled in the file declaring it and nowhere else, which is all a component
+        read on its own has."""
+        reader = self.alone(tmp_path)
+        request = self.rename_request(
+            reader, f"component.interface[{position}].definition.name", "Renamed"
+        )
+        answer = self.answer_to(tmp_path, request)
+        assert set(answer["result"]["changes"]) == {reader.as_uri()}
+        assert '"Renamed"' in rewritten_by(answer["result"]["changes"])["reader.ddd.json"]
+
+    def test_a_name_that_is_a_locals_in_one_file_and_not_in_another_is_not_a_locals(
+        self, tmp_path: Path
+    ) -> None:
+        """What is local is what every declaration of the name states: one file declaring a
+        local and an output of one name has an output, which a reader elsewhere may name."""
+        write_tree(
+            tmp_path,
+            {
+                "reader.ddd.json": component(
+                    "R", declare("local", "Speed"), declare("output", "Speed")
+                )
+            },
+        )
+        request = self.rename_request(
+            tmp_path / "reader.ddd.json", "component.interface[0].definition.name", "Velocity"
+        )
+        answer = self.answer_to(tmp_path, request)
+        assert answer["error"]["message"] == self.NO_PROJECT
+
+    def test_a_build_record_naming_the_component_as_its_description_is_a_project(
+        self, tmp_path: Path
+    ) -> None:
+        """An image of one component: the record claims it, so what the rename reaches is known
+        - the component itself."""
+        reader = self.alone(tmp_path)
+        build_record(tmp_path, reader, image="reader.elf")
+        loaded = navigation.workspaces(discover(tmp_path), reader, tmp_path)
+        assert not navigation.is_alone(reader, loaded, discover(tmp_path))
+        request = self.rename_request(reader, "component.interface[0].definition.name", "Rate")
+        answer = self.answer_to(tmp_path, request)
+        assert set(answer["result"]["changes"]) == {reader.as_uri()}
+
+    def test_a_reference_naming_nothing_is_not_a_locals_rename(self, tmp_path: Path) -> None:
+        """A name no declaration states states no scope, so nothing says it is spelled here
+        alone."""
+        write_tree(
+            tmp_path,
+            {
+                "reader.ddd.json": component(
+                    "R", declare("local", "Curve", kind="curve", datatype="uint8", axis="Absent")
+                )
+            },
+        )
+        request = self.rename_request(
+            tmp_path / "reader.ddd.json", "component.interface[0].definition.axis", "Gone"
+        )
+        answer = self.answer_to(tmp_path, request)
+        assert answer["error"]["message"] == self.NO_PROJECT
+
+    def test_a_project_file_read_alone_is_a_known_project(self, tmp_path: Path) -> None:
+        """What the read alone answers for a description naming components: the project, whole,
+        which is no ignorance of what a rename reaches."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed")),
+            },
+        )
+        loaded = navigation.workspaces([], tmp_path / "p.ddd.json")
+        assert not navigation.is_alone(tmp_path / "p.ddd.json", loaded, [])
+        (single,) = navigation.workspaces([], tmp_path / "a.ddd.json")
+        assert single.path == tmp_path / "p.ddd.json"
+        assert not navigation.is_alone(tmp_path / "a.ddd.json", [single], [])
+
+    def test_a_component_read_on_its_own_is_alone(self, tmp_path: Path) -> None:
+        reader = self.alone(tmp_path)
+        loaded = navigation.workspaces([], reader, tmp_path)
+        assert navigation.is_alone(reader, loaded, [])
+        assert not navigation.is_alone(reader, [], [])
+
+    def test_with_a_project_file_above_the_same_rename_edits_every_file(
+        self, tmp_path: Path
+    ) -> None:
+        """The control: the finding's folder with a project file beside the pair."""
+        self.alone(tmp_path)
+        write_tree(tmp_path, {"p.ddd.json": project("P", "writer.ddd.json", "reader.ddd.json")})
+        request = self.rename_request(
+            tmp_path / "writer.ddd.json", "component.interface[0].definition.name", "Velocity"
+        )
+        answer = self.answer_to(tmp_path, request)
+        assert set(answer["result"]["changes"]) == {
+            (tmp_path / name).as_uri() for name in ("writer.ddd.json", "reader.ddd.json")
+        }
+
+    def stopped(self, tmp_path: Path, *, above: str = "") -> Path:
+        """A project, in ``above`` below the workspace, whose plugin stops the read of its
+        description, including a component with a shared output. Returns the component."""
+        write_tree(
+            tmp_path,
+            {
+                f"{above}tools/exiting_plugin.py": EXITING_MODEL_PLUGIN,
+                f"{above}project.ddd.json": project(
+                    "P", "a.ddd.json", "b.ddd.json", plugins=["tools/exiting_plugin.py"]
+                ),
+                f"{above}a.ddd.json": component("A", declare("output", "Speed")),
+                f"{above}b.ddd.json": component(
+                    "B",
+                    declare("input", "Speed"),
+                    declare("local", "X", extensions={"exiting": {"tag": "t"}}),
+                ),
+            },
+        )
+        return tmp_path / f"{above}a.ddd.json"
+
+    REASON: Final = "plugin 'exiting' failed validating an 'extensions' block"
+
+    def test_a_description_above_that_could_not_be_read_is_named_with_its_reason(
+        self, tmp_path: Path
+    ) -> None:
+        """Read alone, the component would answer 'no project is known', which is not what is
+        wrong: a project holds it, and a plugin stops that project's read."""
+        document = self.stopped(tmp_path)
+        request = self.rename_request(document, "component.interface[0].definition.name", "V")
+        message = self.answer_to(tmp_path, request)["error"]["message"]
+        assert message.startswith("project.ddd.json could not be read, so this rename cannot ")
+        assert self.REASON in message
+        assert "no project is known" not in message
+
+    def test_a_description_that_could_not_be_read_is_named_after_a_hover_read_the_projects(
+        self, tmp_path: Path
+    ) -> None:
+        """The projects of a document are kept until the next refresh, and a hover asks for them:
+        the rename that follows finds them read, and still names what stopped one."""
+        document = self.stopped(tmp_path)
+        hover = {
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "textDocument/hover",
+            "params": {
+                "textDocument": {"uri": document.as_uri()},
+                "position": Document(document.read_text(encoding="utf-8")).range_of(
+                    "component.interface[0].definition.name"
+                )["start"],
+            },
+        }
+        request = self.rename_request(document, "component.interface[0].definition.name", "V")
+        message = self.answer_to(tmp_path, request, hover)["error"]["message"]
+        assert message.startswith("project.ddd.json could not be read")
+        assert self.REASON in message
+
+    def test_the_first_of_two_descriptions_that_could_not_be_read_is_the_one_named(
+        self, tmp_path: Path
+    ) -> None:
+        """One refusal, and the same one whichever order the reads happened in: by path."""
+        document = self.stopped(tmp_path)
+        shutil.copy(tmp_path / "project.ddd.json", tmp_path / "another.ddd.json")
+        request = self.rename_request(document, "component.interface[0].definition.name", "V")
+        message = self.answer_to(tmp_path, request)["error"]["message"]
+        assert message.startswith("another.ddd.json could not be read")
+
+    def locals_rename(self, tmp_path: Path, *, recorded: bool) -> dict[str, Any]:
+        """The answer to a rename of ``a``'s local ``Y``, where a plugin stops a description: the
+        one above ``a``, whose other component holds the block the plugin stops on; or, where
+        ``recorded``, the one a second build record names, ``a``'s own project reading whole."""
+        write_tree(
+            tmp_path,
+            {
+                "tools/exiting_plugin.py": EXITING_MODEL_PLUGIN,
+                "a.ddd.json": component("A", declare("local", "Y"), declare("output", "Out")),
+                "b.ddd.json": component(
+                    "B",
+                    declare("input", "Out"),
+                    declare("local", "X", extensions={"exiting": {"tag": "t"}}),
+                ),
+            },
+        )
+        if recorded:
+            write_tree(
+                tmp_path,
+                {
+                    "one/one.ddd.json": project("One", "../a.ddd.json"),
+                    "two/two.ddd.json": project(
+                        "Two",
+                        "../a.ddd.json",
+                        "../b.ddd.json",
+                        plugins=["../tools/exiting_plugin.py"],
+                    ),
+                },
+            )
+            build_record(tmp_path, tmp_path / "one/one.ddd.json", image="one.elf")
+            build_record(tmp_path, tmp_path / "two/two.ddd.json", image="two.elf")
+        else:
+            stopped = project("P", "a.ddd.json", "b.ddd.json", plugins=["tools/exiting_plugin.py"])
+            write_tree(tmp_path, {"project.ddd.json": stopped})
+        request = self.rename_request(
+            tmp_path / "a.ddd.json", "component.interface[0].definition.name", "Z"
+        )
+        return self.answer_to(tmp_path, request)
+
+    @pytest.mark.parametrize("recorded", [False, True], ids=["above-it", "of-another-image"])
+    def test_a_description_that_could_not_be_read_does_not_refuse_a_locals_rename(
+        self, tmp_path: Path, recorded: bool
+    ) -> None:
+        """A local is spelled in the file declaring it and nowhere else, so its rename rewrites that
+        file alone, whichever image holds it, and no description, read or not, changes what it
+        reaches: it goes through, as it does where no project is known."""
+        answer = self.locals_rename(tmp_path, recorded=recorded)
+        assert "error" not in answer, answer["error"]["message"]
+        assert list(answer["result"]["changes"]) == [(tmp_path / "a.ddd.json").as_uri()]
+
+    def test_a_description_that_could_not_be_read_refuses_any_rename_but_a_locals(
+        self, tmp_path: Path
+    ) -> None:
+        """The control: ``a``'s output, which ``b`` reads in the image the plugin stops, is not
+        renamed, since that image would be left reading a name nothing declares."""
+        self.locals_rename(tmp_path, recorded=True)
+        request = self.rename_request(
+            tmp_path / "a.ddd.json", "component.interface[1].definition.name", "Rate"
+        )
+        message = self.answer_to(tmp_path, request)["error"]["message"]
+        assert message.startswith("two/two.ddd.json of the image two.elf could not be read")
+
+    def test_a_unit_rename_is_refused_for_a_description_that_could_not_be_read(
+        self, tmp_path: Path
+    ) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "tools/exiting_plugin.py": EXITING_MODEL_PLUGIN,
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/exiting_plugin.py"]),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "X", extensions={"exiting": {"tag": "t"}}),
+                    declare("local", "Y", unit="rpm"),
+                ),
+            },
+        )
+        request = self.rename_request(
+            tmp_path / "a.ddd.json", "component.interface[1].definition.unit", "1/min"
+        )
+        message = self.answer_to(tmp_path, request)["error"]["message"]
+        assert message.startswith("project.ddd.json could not be read")
+        assert self.REASON in message
+
+    def test_a_record_naming_a_description_that_could_not_be_read_names_its_image(
+        self, tmp_path: Path
+    ) -> None:
+        """Where a build record names the description, its image names it too."""
+        document = self.stopped(tmp_path, above="images/")
+        build_record(tmp_path, tmp_path / "images/project.ddd.json", image="one.elf")
+        request = self.rename_request(document, "component.interface[0].definition.name", "V")
+        message = self.answer_to(tmp_path, request)["error"]["message"]
+        assert message.startswith(
+            "images/project.ddd.json of the image one.elf could not be read, so this rename "
+        )
+        assert self.REASON in message
+
+    def test_a_description_the_closure_meets_and_cannot_read_refuses_the_rename(
+        self, tmp_path: Path
+    ) -> None:
+        """Image one reads, and the rename started in its reader reaches the shared writer, a
+        file a second description holds and a plugin stops: the rename would rewrite image one
+        and leave the second reading a name nothing declares. It is refused, naming that
+        description."""
+        write_tree(
+            tmp_path,
+            {
+                "tools/exiting_plugin.py": EXITING_MODEL_PLUGIN,
+                "one/one.ddd.json": project("One", "../shared/writer.ddd.json", "reader.ddd.json"),
+                "one/reader.ddd.json": component("R", declare("input", "Speed")),
+                "shared/writer.ddd.json": component("W", declare("output", "Speed")),
+                "shared/two.ddd.json": project(
+                    "Two",
+                    "writer.ddd.json",
+                    "other.ddd.json",
+                    plugins=["../tools/exiting_plugin.py"],
+                ),
+                "shared/other.ddd.json": component(
+                    "O", declare("local", "X", extensions={"exiting": {"tag": "t"}})
+                ),
+            },
+        )
+        request = self.rename_request(
+            tmp_path / "one/reader.ddd.json", "component.interface[0].definition.name", "V"
+        )
+        message = self.answer_to(tmp_path, request)["error"]["message"]
+        assert message.startswith(
+            "shared/two.ddd.json could not be read, so this rename cannot tell what it reaches: "
+        )
+        assert self.REASON in message
+
+    def shared_units(self, tmp_path: Path, *, stopped: bool) -> Path:
+        """Image one, in ``one/``, and a units file in ``shared/`` that a second description
+        holds too, which a plugin stops where ``stopped``. Returns image one's reader."""
+        write_tree(
+            tmp_path,
+            {
+                "tools/exiting_plugin.py": EXITING_MODEL_PLUGIN,
+                "one/one.ddd.json": project("One", "../shared/units.ddd.json", "reader.ddd.json"),
+                "one/reader.ddd.json": component("R", declare("input", "Speed", unit="rpm")),
+                "shared/units.ddd.json": {"units": ["rpm"]},
+                "shared/two.ddd.json": project(
+                    "Two",
+                    "units.ddd.json",
+                    *(["other.ddd.json"] if stopped else []),
+                    plugins=["../tools/exiting_plugin.py"],
+                ),
+                **(
+                    {
+                        "shared/other.ddd.json": component(
+                            "O", declare("local", "X", extensions={"exiting": {"tag": "t"}})
+                        )
+                    }
+                    if stopped
+                    else {}
+                ),
+            },
+        )
+        return tmp_path / "one/reader.ddd.json"
+
+    def test_a_unit_rename_meets_a_description_the_closure_could_not_read(
+        self, tmp_path: Path
+    ) -> None:
+        """The units file the rename rewrites is one a second description holds, and a plugin
+        stops that description: refused naming it, as a variable's rename is."""
+        reader = self.shared_units(tmp_path, stopped=True)
+        request = self.rename_request(reader, "component.interface[0].definition.unit", "1/min")
+        message = self.answer_to(tmp_path, request)["error"]["message"]
+        assert message.startswith(
+            "shared/two.ddd.json could not be read, so this rename cannot tell what it reaches: "
+        )
+        assert self.REASON in message
+
+    def test_a_unit_rename_goes_through_once_the_description_is_mended(
+        self, tmp_path: Path
+    ) -> None:
+        """The control of the test above."""
+        reader = self.shared_units(tmp_path, stopped=False)
+        request = self.rename_request(reader, "component.interface[0].definition.unit", "1/min")
+        answer = self.answer_to(tmp_path, request)
+        assert set(answer["result"]["changes"]) == {
+            (tmp_path / name).as_uri() for name in ("one/reader.ddd.json", "shared/units.ddd.json")
+        }
+
+    def test_the_closure_reads_on_once_the_description_it_could_not_read_is_mended(
+        self, tmp_path: Path
+    ) -> None:
+        """The control of the test above: the same trees, the plugin's block mended."""
+        write_tree(
+            tmp_path,
+            {
+                "tools/exiting_plugin.py": EXITING_MODEL_PLUGIN,
+                "one/one.ddd.json": project("One", "../shared/writer.ddd.json", "reader.ddd.json"),
+                "one/reader.ddd.json": component("R", declare("input", "Speed")),
+                "shared/writer.ddd.json": component("W", declare("output", "Speed")),
+                "shared/two.ddd.json": project(
+                    "Two", "writer.ddd.json", plugins=["../tools/exiting_plugin.py"]
+                ),
+            },
+        )
+        request = self.rename_request(
+            tmp_path / "one/reader.ddd.json", "component.interface[0].definition.name", "V"
+        )
+        answer = self.answer_to(tmp_path, request)
+        assert set(answer["result"]["changes"]) == {
+            (tmp_path / name).as_uri() for name in ("one/reader.ddd.json", "shared/writer.ddd.json")
+        }
 
     def test_the_server_asks_for_the_full_text_on_every_change(self, tmp_path: Path) -> None:
         stream = framed(
@@ -6357,6 +8887,281 @@ class TestOfferingAnIdentity:
             built, path, read(path, cache), "component.interface[0].definition", cache, UNSTAMPED
         )
         assert [entry for entry in offered if "id" in entry["title"]] == []
+
+
+def apply_to_the_bytes(path: Path, edits: list[dict[str, Any]]) -> str:
+    """What a client writes into the file as it stands, line ends and all: :func:`apply_edits`
+    reads the text through universal newlines, which is the spelling these tests look for."""
+    text = path.read_bytes().decode("utf-8")
+    starts = [0]
+    for line in text.splitlines(keepends=True):
+        starts.append(starts[-1] + len(line))
+
+    def offset(position: dict[str, int]) -> int:
+        return starts[position["line"]] + position["character"]
+
+    for edit in sorted(edits, key=lambda e: offset(e["range"]["start"]), reverse=True):
+        text = (
+            text[: offset(edit["range"]["start"])]
+            + edit["newText"]
+            + text[offset(edit["range"]["end"]) :]
+        )
+    return text
+
+
+def spelled_with(newline: str, document: dict[str, Any]) -> str:
+    """A description laid out over lines, each ended with ``newline``."""
+    return json.dumps(document, indent=2).replace("\n", newline) + newline
+
+
+def one_line(document: dict[str, Any]) -> str:
+    return json.dumps(document)
+
+
+class TestAnEditCarriesTheFilesOwnNewline:
+    """10:M12 and B9-37. The server reads a closed file through universal newlines, so an edit it
+    builds says ``\\n`` wherever its text has a line to end; a client writing it into a file of
+    ``\\r\\n`` or bare ``\\r`` mixes. Every edit carries the newline of the file it is made
+    in, and the fix giving an object an id writes what ``ddd id`` writes."""
+
+    NEWLINES: ClassVar[list[str]] = ["\r\n", "\r"]
+
+    def built(self, tmp_path: Path, **files: Any) -> Any:
+        from ddd.lsp.navigation import index
+
+        write_tree(tmp_path, {"p.ddd.json": project("P", *files), **files})
+        return index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
+
+    @pytest.mark.parametrize("newline", NEWLINES, ids=["crlf", "cr"])
+    def test_a_key_added_to_a_closed_file_ends_its_line_as_the_file_does(
+        self, tmp_path: Path, newline: str
+    ) -> None:
+        from ddd.lsp.edits import actions
+
+        built = self.built(
+            tmp_path,
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": spelled_with(newline, component("B", declare("input", "Speed"))),
+            },
+        )
+        cache: dict[Path, Document] = {}
+        path = tmp_path / "b.ddd.json"
+        offered = actions(
+            built,
+            path,
+            read(path, cache),
+            "component.interface[0].definition",
+            cache,
+            MISMATCH_REPORTED,
+        )
+        taking = next(entry for entry in offered if entry["title"].startswith("Use the unit"))
+        (edits,) = taking["edit"]["changes"].values()
+        written = apply_to_the_bytes(path, edits)
+        assert '"unit": "rpm"' in written
+        assert written.replace(newline, "").count("\n") == 0
+        assert written.replace(newline, "").count("\r") == 0
+
+    @pytest.mark.parametrize("newline", NEWLINES, ids=["crlf", "cr"])
+    def test_a_value_copied_over_lines_into_a_closed_file_ends_them_as_the_file_does(
+        self, tmp_path: Path, newline: str
+    ) -> None:
+        """The value is copied as the other declaration spelled it, over the lines it was written
+        on: where it replaces one the closed file holds, those lines end as the file's do."""
+        from ddd.lsp.edits import actions
+
+        built = self.built(
+            tmp_path,
+            **{
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "output", "Speed", conversion={"kind": "linear", "factor": 0.5, "offset": 1}
+                    ),
+                ),
+                "b.ddd.json": spelled_with(newline, component("B", declare("input", "Speed"))),
+            },
+        )
+        cache: dict[Path, Document] = {}
+        path = tmp_path / "b.ddd.json"
+        offered = actions(
+            built,
+            path,
+            read(path, cache),
+            "component.interface[0].definition",
+            cache,
+            MISMATCH_REPORTED,
+        )
+        taking = next(entry for entry in offered if entry["title"].startswith("Use the conversion"))
+        (edits,) = taking["edit"]["changes"].values()
+        written = apply_to_the_bytes(path, edits)
+        assert '"factor": 0.5' in written
+        assert written.replace(newline, "").count("\n") == 0
+        assert written.replace(newline, "").count("\r") == 0
+
+    LINEAR: ClassVar[dict[str, Any]] = {"kind": "linear", "factor": 0.5, "offset": 1}
+
+    def conversion_taken(
+        self, tmp_path: Path, buffers: dict[str, str], newline: str, source: str, target: str
+    ) -> tuple[list[dict[str, Any]], Path]:
+        """The edits of "Use the conversion declared in ``source``" asked at ``target``, of two
+        files of which each in ``buffers`` is open with the text given (and written to the disk in
+        ``newline`` where it is not); the target's path."""
+        from ddd.lsp.edits import actions
+
+        texts = {
+            "a.ddd.json": spelled_with(
+                newline, component("A", declare("output", "Speed", conversion=self.LINEAR))
+            ),
+            "b.ddd.json": spelled_with(newline, component("B", declare("input", "Speed"))),
+        }
+        built = self.built(tmp_path, **{name: json.loads(text) for name, text in texts.items()})
+        for name, text in texts.items():
+            (tmp_path / name).write_text(text, encoding="utf-8", newline="")
+        cache = {tmp_path / name: Document(text) for name, text in buffers.items()}
+        path = tmp_path / target
+        offered = actions(
+            built,
+            path,
+            read(path, cache),
+            "component.interface[0].definition",
+            cache,
+            MISMATCH_REPORTED,
+        )
+        taking = next(
+            entry
+            for entry in offered
+            if entry["title"].startswith(f"Use the conversion declared in {source}")
+        )
+        (edits,) = taking["edit"]["changes"].values()
+        return edits, path
+
+    def test_a_value_copied_from_an_open_crlf_buffer_is_not_doubled_into_a_closed_file(
+        self, tmp_path: Path
+    ) -> None:
+        """The buffer holds the value over lines ended ``\\r\\n``, and the closed file ends its
+        lines so too: the lines of the value end once, each as the file's do."""
+        crlf = spelled_with(
+            "\r\n", component("A", declare("output", "Speed", conversion=self.LINEAR))
+        )
+        edits, path = self.conversion_taken(
+            tmp_path, {"a.ddd.json": crlf}, "\r\n", "a", "b.ddd.json"
+        )
+        written = apply_to_the_bytes(path, edits)
+        assert '"factor": 0.5' in written
+        assert "\r\r" not in written
+        assert written.replace("\r\n", "").count("\n") == 0
+        assert written.replace("\r\n", "").count("\r") == 0
+
+    def test_a_value_copied_into_an_open_crlf_buffer_ends_its_lines_as_the_buffer_does(
+        self, tmp_path: Path
+    ) -> None:
+        """The other way: the closed file's value is spelled over line feeds, and the buffer it
+        goes into ends its lines ``\\r\\n``."""
+        crlf = spelled_with("\r\n", component("B", declare("input", "Speed")))
+        edits, _ = self.conversion_taken(tmp_path, {"b.ddd.json": crlf}, "\n", "a", "b.ddd.json")
+        for edit in edits:
+            assert edit["newText"].replace("\r\n", "").count("\n") == 0
+        assert any("\r\n" in edit["newText"] for edit in edits)
+
+    @pytest.mark.parametrize("newline", NEWLINES, ids=["crlf", "cr"])
+    def test_a_unit_added_to_a_closed_units_file_ends_its_line_as_the_file_does(
+        self, tmp_path: Path, newline: str
+    ) -> None:
+        """A unit's plan, which is made by the engine over the text as the server read it: its
+        edits carry the spelling of the file they are written into."""
+        a = stating(tmp_path, 1, "Nm")
+        units = tmp_path / "units.ddd.json"
+        write_tree(tmp_path, {"units.ddd.json": spelled_with(newline, {"units": ["Nm"]})})
+        offered, _ = fixes_asked(
+            tmp_path, a, reported=UNLISTED, pointer="component.interface[0].definition.unit"
+        )
+        adding = next(entry for entry in offered if entry["title"].startswith("Add 'rpm'"))
+        (edits,) = adding["edit"]["changes"].values()
+        written = apply_to_the_bytes(units, edits)
+        assert '"rpm"' in written
+        assert written.replace(newline, "").count("\n") == 0
+        assert written.replace(newline, "").count("\r") == 0
+
+    def spelling_of_ids(self) -> list[tuple[str, str]]:
+        document = component("A", declare("local", "Speed"), declare("local", "Idle"))
+        return [
+            ("one line", one_line(document) + "\n"),
+            ("lf", spelled_with("\n", document)),
+            ("crlf", spelled_with("\r\n", document)),
+            ("cr", spelled_with("\r", document)),
+            ("one line of cr", one_line(document) + "\r"),
+        ]
+
+    @pytest.mark.parametrize("spelling", range(5), ids=["one-line", "lf", "crlf", "cr", "one-cr"])
+    def test_the_offer_writes_the_bytes_ddd_id_writes(self, tmp_path: Path, spelling: int) -> None:
+        """An id an editor gives and one the command gives differ in the minted characters alone,
+        wherever the object is written on one line and however the file ends its lines."""
+        from ddd.lsp.edits import actions
+
+        _, text = self.spelling_of_ids()[spelling]
+        files = {"a.ddd.json": text}
+        built = self.built(tmp_path / "editor", **files)
+        write_tree(tmp_path / "command", files)
+        assert main(["id", "--assign", str(tmp_path / "command" / "a.ddd.json")]) == EXIT_OK
+        by_the_command = (tmp_path / "command" / "a.ddd.json").read_bytes().decode("utf-8")
+        path = tmp_path / "editor" / "a.ddd.json"
+        cache: dict[Path, Document] = {}
+        written = path.read_bytes().decode("utf-8")
+        for at in range(2):
+            offered = actions(
+                built,
+                path,
+                read(path, cache),
+                f"component.interface[{at}].definition",
+                cache,
+                UNSTAMPED,
+            )
+            (giving,) = [entry for entry in offered if "id" in entry["title"]]
+            (edits,) = giving["edit"]["changes"].values()
+            path.write_text(written, encoding="utf-8", newline="")
+            written = apply_to_the_bytes(path, edits)
+            path.write_text(written, encoding="utf-8", newline="")
+            cache.clear()
+        assert without_ids(written) == without_ids(by_the_command)
+
+    def test_the_offer_reads_a_one_line_file_once(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Counted by the searches for a line break the layout makes: the edit is laid out
+        once, however many declarations the file states, and not once for each of them."""
+        import ddd.editing as editing
+        from ddd.lsp.edits import actions
+
+        counts = {"layouts": 0}
+        looked_at = editing._break_after
+
+        def counting(text: str, offset: int) -> int:
+            counts["layouts"] += 1
+            return looked_at(text, offset)
+
+        monkeypatch.setattr(editing, "_break_after", counting)
+        made: list[int] = []
+        for declarations in (4, 16):
+            home = tmp_path / str(declarations)
+            document = component(
+                "A", *(declare("local", f"V{number}") for number in range(declarations))
+            )
+            built = self.built(home, **{"a.ddd.json": one_line(document) + "\n"})
+            path = home / "a.ddd.json"
+            cache: dict[Path, Document] = {}
+            counts["layouts"] = 0
+            offered = actions(
+                built,
+                path,
+                read(path, cache),
+                "component.interface[0].definition",
+                cache,
+                UNSTAMPED,
+            )
+            assert [entry["title"] for entry in offered] == ["Give 'V0' an id"]
+            made.append(counts["layouts"])
+        assert max(made) <= 1, made
 
 
 UNLISTED = [
@@ -6688,6 +9493,26 @@ class TestTheClientsSpelling:
         answer = next(message for message in answered(writer) if message.get("id") == 3)
         assert list(answer["result"]["changes"]) == [opened.as_uri()]
 
+    def test_a_file_the_client_never_opened_is_answered_under_its_resolved_path(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The resolved path is the only spelling anybody knows for such a file, and the only one
+        a uri can be built from when the path is relative: ``as_uri`` refuses a relative path,
+        and the refusal ended the session."""
+        monkeypatch.chdir(tmp_path)
+        server = Server(io.BytesIO(), io.BytesIO(), root=tmp_path)
+        assert server._uri(Path("p.ddd.json")) == (tmp_path / "p.ddd.json").resolve().as_uri()
+
+    def test_a_file_the_client_opened_is_answered_in_its_words_with_no_uri_built(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Built whether it was wanted or not, the uri of a relative path raised even where the
+        client had said how it spells the file."""
+        monkeypatch.chdir(tmp_path)
+        server = Server(io.BytesIO(), io.BytesIO(), root=tmp_path)
+        server._spelled[(tmp_path / "p.ddd.json").resolve()] = "file:///c%3A/work/p.ddd.json"
+        assert server._uri(Path("p.ddd.json")) == "file:///c%3A/work/p.ddd.json"
+
 
 class TestWorkspaceFolders:
     def test_the_folder_containing_the_document_bounds_the_search(self, tmp_path: Path) -> None:
@@ -6784,6 +9609,55 @@ class TestWhatAReconcileActionSettles:
             assert [entry["code"] for entry in action["diagnostics"]] == ["definition-mismatch"]
 
 
+AT_A_DECLARATION: Final = "component.interface[0].definition"
+"""Where a finding about a declaration is drawn, and so where an editor asks for its fixes: over
+the whole definition, whichever key is wrong."""
+
+MISMATCH_REPORTED: Final = ({"code": "definition-mismatch", "source": "ddd", "message": "differs"},)
+"""What a client sends with its request on a ``definition-mismatch``: the finding it is about."""
+
+
+def offered_at(
+    tmp_path: Path,
+    source: str,
+    files: dict[str, Any],
+    reported: Sequence[dict[str, Any]] = (),
+    buffers: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """What the editor offers on the declaration of ``source``, in a project of ``files`` written
+    under ``tmp_path``, the client having sent ``reported``; ``buffers`` are documents open with a
+    text the disk does not hold, by file name."""
+    from ddd.lsp.edits import actions
+
+    built, _ = built_of(tmp_path, **files)
+    cache: dict[Path, Document] = {
+        tmp_path / name: Document(json.dumps(text, indent=2))
+        for name, text in (buffers or {}).items()
+    }
+    path = tmp_path / source
+    return actions(built, path, read(path, cache), AT_A_DECLARATION, cache, reported)
+
+
+def mismatches(root: Path) -> list[str]:
+    """What the project written under ``root`` files as ``definition-mismatch``, in its words."""
+    from ddd.analysis import analyze
+
+    bag = DiagnosticBag()
+    workspace = load_workspace(root / "p.ddd.json", bag)
+    assert workspace is not None, [entry.render() for entry in bag]
+    analyze(workspace, bag)
+    return [entry.message for entry in bag if entry.check == "definition-mismatch"]
+
+
+def preferred(offered: list[dict[str, Any]]) -> list[str]:
+    """What the preferred fixes among the reconcile fixes offered change, by :func:`reconciled`."""
+    return [
+        change
+        for change, action in zip(reconciled(offered), offered, strict=True)
+        if action.get("isPreferred")
+    ]
+
+
 class TestAFixThatWouldNotLoad:
     """A quick fix is offered only where every file it writes still loads.
 
@@ -6793,19 +9667,8 @@ class TestAFixThatWouldNotLoad:
     fix is refused until somebody mends it by hand.
     """
 
-    AT_A_DECLARATION = "component.interface[0].definition"
-
-    def offered(self, tmp_path: Path, source: str, **files: Any) -> list[dict[str, Any]]:
-        """What the editor offers on the declaration of ``source``, over the whole of it."""
-        from ddd.lsp.edits import actions
-
-        built, _ = built_of(tmp_path, **files)
-        cache: dict[Path, Document] = {}
-        path = tmp_path / source
-        return actions(built, path, read(path, cache), self.AT_A_DECLARATION, cache)
-
     def titles(self, tmp_path: Path, source: str, **files: Any) -> list[str]:
-        return [action["title"] for action in self.offered(tmp_path, source, **files)]
+        return reconciled(offered_at(tmp_path, source, files))
 
     def test_a_datatype_is_not_taken_from_a_float_writer_beside_an_enumeration(
         self, tmp_path: Path
@@ -6848,17 +9711,17 @@ class TestAFixThatWouldNotLoad:
             "Apply this conversion to 1 other declaration of 'V'"
         ]
 
-    def test_the_preferred_fix_is_one_that_loads(self, tmp_path: Path) -> None:
-        """The slot goes to the first fix left: the one the lightbulb applies on its own."""
-        from ddd.lsp.edits import actions
-
-        built, _ = built_of(tmp_path, **FLOAT_BESIDE_ENUM)
-        cache: dict[Path, Document] = {}
-        path = tmp_path / "r.ddd.json"
-        reported = [{"code": "definition-mismatch", "source": "ddd", "message": "differs"}]
-        offered = actions(built, path, read(path, cache), self.AT_A_DECLARATION, cache, reported)
-        (preferred,) = [entry for entry in offered if entry.get("isPreferred")]
-        assert preferred["title"] == "Apply this datatype to 1 other declaration of 'V'"
+    def test_no_fix_is_preferred_where_the_owner_s_way_is_withheld(self, tmp_path: Path) -> None:
+        """The slot is the fix the ownership rule orders first, the one the lightbulb applies on
+        its own: the reader's is the writer's datatype, which the loader refuses under the
+        enumeration. The first fix left sends the reader's datatype out, into the writer's file,
+        and none is preferred in its place."""
+        offered = offered_at(tmp_path, "r.ddd.json", FLOAT_BESIDE_ENUM, MISMATCH_REPORTED)
+        assert preferred(offered) == []
+        assert reconciled(offered) == [
+            "Apply this datatype to 1 other declaration of 'V'",
+            "Use the conversion declared in w",
+        ]
 
     def test_a_fix_is_offered_for_the_declarations_that_load_and_not_for_the_one_that_does_not(
         self, tmp_path: Path
@@ -6872,9 +9735,9 @@ class TestAFixThatWouldNotLoad:
             ),
             "r2.ddd.json": component("R2", declare("input", "V", "uint32")),
         }
-        offered = self.offered(tmp_path, "w.ddd.json", **files)
+        offered = offered_at(tmp_path, "w.ddd.json", files)
         (spread,) = [entry for entry in offered if "datatype" in entry["title"]]
-        assert spread["title"] == "Apply this datatype to 1 other declaration of 'V'"
+        assert reconciled([spread]) == ["Apply this datatype to 1 other declaration of 'V'"]
         assert [uri_to_path(uri).name for uri in spread["edit"]["changes"]] == ["r2.ddd.json"]
 
     def test_a_dimension_is_not_taken_away_from_a_string(self, tmp_path: Path) -> None:
@@ -6894,11 +9757,12 @@ class TestAFixThatWouldNotLoad:
 
     def test_the_lightbulb_the_server_answers_offers_only_what_loads(self, tmp_path: Path) -> None:
         """Through the protocol, as an editor asks: the reader's declaration, with the finding it
-        carries, is offered what still loads - the preferred fix among them."""
+        carries, is offered what still loads - and none of it is preferred, the fix the owner's
+        way being the one withheld."""
         write_tree(tmp_path, {"p.ddd.json": project("P", *FLOAT_BESIDE_ENUM), **FLOAT_BESIDE_ENUM})
         build_record(tmp_path, tmp_path / "p.ddd.json")
         reader = tmp_path / "r.ddd.json"
-        span = Document(reader.read_text(encoding="utf-8")).range_of(self.AT_A_DECLARATION)
+        span = Document(reader.read_text(encoding="utf-8")).range_of(AT_A_DECLARATION)
         writer = io.BytesIO()
         server_module.Server(
             session(
@@ -6917,12 +9781,10 @@ class TestAFixThatWouldNotLoad:
             root=tmp_path,
         ).run()
         (answer,) = answered(writer)
-        assert [action["title"] for action in answer["result"]] == [
+        assert [action["title"] for action in answer["result"] if action.get("isPreferred")] == []
+        assert reconciled(answer["result"]) == [
             "Apply this datatype to 1 other declaration of 'V'",
             "Use the conversion declared in w",
-        ]
-        assert [action["title"] for action in answer["result"] if action.get("isPreferred")] == [
-            "Apply this datatype to 1 other declaration of 'V'"
         ]
 
     def test_a_value_the_other_readers_agree_on_is_not_adopted_by_a_string(
@@ -6959,9 +9821,9 @@ class TestAFixThatWouldNotLoad:
             ),
             "r2.ddd.json": component("R2", declare("input", "V", "uint8", dimensions=[8])),
         }
-        offered = self.offered(tmp_path, "w.ddd.json", **files)
+        offered = offered_at(tmp_path, "w.ddd.json", files)
         (removal,) = [entry for entry in offered if entry["title"].startswith("Remove the")]
-        assert removal["title"] == "Remove the dimensions from 1 other declaration of 'V'"
+        assert reconciled([removal]) == ["Remove the dimensions from 1 other declaration of 'V'"]
         assert [uri_to_path(uri).name for uri in removal["edit"]["changes"]] == ["r2.ddd.json"]
 
     def test_a_datatype_is_not_taken_from_a_double_writer_beside_a_scaled_reader(
@@ -7050,7 +9912,7 @@ class TestAFixThatWouldNotLoad:
                     "method": "textDocument/codeAction",
                     "params": {
                         "textDocument": {"uri": reader.as_uri()},
-                        "range": Document(typed).range_of(self.AT_A_DECLARATION),
+                        "range": Document(typed).range_of(AT_A_DECLARATION),
                         "context": {"diagnostics": []},
                     },
                 },
@@ -7061,10 +9923,1311 @@ class TestAFixThatWouldNotLoad:
             root=tmp_path,
         ).run()
         replies = {message["id"]: message for message in answered(writer) if "id" in message}
-        assert [action["title"] for action in replies[15]["result"]] == [
-            "Use the limits declared in w"
-        ]
+        assert reconciled(replies[15]["result"]) == ["Use the limits declared in w"]
         assert 99 in replies, "the server read the request after it"
+
+
+WRITER_NAMES_A_TYPE: Final = {
+    "t.ddd.json": types(scalar_type("Speed_t", "uint8", unit="rpm")),
+    "w.ddd.json": component("W", declare("output", "V", typename="Speed_t")),
+    "r.ddd.json": component("R", declare("input", "V", "uint8", unit="krpm")),
+}
+"""A writer meaning rpm through the type it names, and a reader stating krpm: the type stores the
+reader's byte under the reader's identity, so the unit is all the two disagree about."""
+
+READER_NAMES_A_TYPE: Final = {
+    "t.ddd.json": types(scalar_type("Krpm_t", "uint8", unit="krpm")),
+    "w.ddd.json": component("W", declare("output", "V", "uint8", unit="rpm")),
+    "r.ddd.json": component("R", declare("input", "V", typename="Krpm_t")),
+}
+"""The other way round: the writer states rpm, and the reader means krpm through its type."""
+
+TWO_READERS_ONE_THROUGH_A_TYPE: Final = {
+    "t.ddd.json": types(scalar_type("Krpm_t", "uint8", unit="krpm")),
+    "w.ddd.json": component("W", declare("output", "V", "uint8")),
+    "r1.ddd.json": component("R1", declare("input", "V", "uint8", unit="rpm")),
+    "r2.ddd.json": component("R2", declare("input", "V", typename="Krpm_t")),
+}
+"""A writer stating no unit, a reader stating rpm, and a reader meaning krpm through its type: the
+readers state two units between them, and the writer's silence is neither."""
+
+
+class TestAKeyATypeStates:
+    """10:I8. A declaration naming a declared type states, as the checks read it, every key the
+    type fixes, though its file holds none of them: a writer naming a type gives its reader the
+    type's unit, and no fix takes a key out of the declarations around a type stating it, which
+    would go on stating it whatever the others lose."""
+
+    def test_a_reader_is_offered_the_unit_its_writer_s_type_states(self, tmp_path: Path) -> None:
+        """The writer's file says nothing of a unit and the writer means rpm. Read from the file
+        alone, the reader's one fix took its own unit out, under a title saying the writer
+        declares none, and that fix was the preferred one."""
+        offered = offered_at(tmp_path, "r.ddd.json", WRITER_NAMES_A_TYPE, MISMATCH_REPORTED)
+        assert reconciled(offered) == ["Use the unit declared in w"]
+        assert preferred(offered) == ["Use the unit declared in w"]
+        assert [entry["code"] for entry in offered[0]["diagnostics"]] == ["definition-mismatch"]
+
+    def test_taking_the_unit_the_type_states_settles_the_mismatch(self, tmp_path: Path) -> None:
+        """Applied, and the project analysed again: the reader states what the writer means, and
+        nothing differs. The removal it replaces left the reader stating no unit against rpm."""
+        (fix,) = offered_at(tmp_path, "r.ddd.json", WRITER_NAMES_A_TYPE, MISMATCH_REPORTED)
+        for name, text in rewritten_by(fix["edit"]["changes"]).items():
+            (tmp_path / name).write_text(text, encoding="utf-8", newline="")
+        assert mismatches(tmp_path) == []
+
+    def test_the_writer_is_offered_no_removal_its_type_would_undo(self, tmp_path: Path) -> None:
+        """From the writer, the reader was offered to lose its unit, 'Remove the unit from 1 other
+        declaration': the writer's type goes on stating rpm, and the two went on disagreeing. The
+        writer sends its type's unit out instead, which it was offered nothing to send while its
+        file was read alone, and that settles the two."""
+        offered = offered_at(tmp_path, "w.ddd.json", WRITER_NAMES_A_TYPE, MISMATCH_REPORTED)
+        # Not because nothing differs: the checker files the unit between the two.
+        assert [s for s in mismatches(tmp_path) if "(unit: 'krpm' != 'rpm')" in s] != []
+        assert reconciled(offered) == ["Apply this unit to 1 other declaration of 'V'"]
+        assert preferred(offered) == ["Apply this unit to 1 other declaration of 'V'"]
+        for name, text in rewritten_by(offered[0]["edit"]["changes"]).items():
+            (tmp_path / name).write_text(text, encoding="utf-8", newline="")
+        assert mismatches(tmp_path) == []
+
+    def test_a_reader_agreeing_with_its_writer_s_type_keeps_its_unit(self, tmp_path: Path) -> None:
+        """The reader means rpm, as the writer's type does, and disagrees about its volatility:
+        its unit was offered out all the same, 'which w does not declare', and taking it made the
+        two disagree about the unit too."""
+        files = {
+            **WRITER_NAMES_A_TYPE,
+            "r.ddd.json": component("R", declare("input", "V", "uint8", unit="rpm", volatile=True)),
+        }
+        assert reconciled(offered_at(tmp_path, "r.ddd.json", files, MISMATCH_REPORTED)) == [
+            "Use the volatile declared in w",
+            "Apply this volatile to 1 other declaration of 'V'",
+        ]
+
+    def test_the_writer_keeps_its_unit_while_its_reader_s_type_states_one(
+        self, tmp_path: Path
+    ) -> None:
+        """The second shape, from the writer: it was offered to take its own unit out, as a unit
+        nobody else states, and that fix was preferred, while the reader's type goes on stating
+        krpm."""
+        assert offered_at(tmp_path, "w.ddd.json", READER_NAMES_A_TYPE, MISMATCH_REPORTED) == []
+        # And not because nothing differs: the checker files the unit between the two.
+        assert [s for s in mismatches(tmp_path) if "(unit: 'krpm' != 'rpm')" in s] != []
+
+    def test_a_reader_naming_a_type_is_offered_no_removal_from_its_writer(
+        self, tmp_path: Path
+    ) -> None:
+        """The second shape, from the reader: the writer was offered to lose its unit, 'Remove the
+        unit from 1 other declaration', the one declaration it could not reach being the reader's
+        own, whose type states krpm. What the reader sends out is its type's krpm instead, as a
+        reader stating krpm would, the producer's way being withheld: so nothing is preferred."""
+        offered = offered_at(tmp_path, "r.ddd.json", READER_NAMES_A_TYPE, MISMATCH_REPORTED)
+        # Not because nothing differs: the checker files the unit between the two.
+        assert [s for s in mismatches(tmp_path) if "(unit: 'krpm' != 'rpm')" in s] != []
+        assert reconciled(offered) == ["Apply this unit to 1 other declaration of 'V'"]
+        assert preferred(offered) == []
+        (change,) = offered[0]["edit"]["changes"]
+        assert change == (tmp_path / "w.ddd.json").as_uri()
+
+    def test_a_writer_keeps_its_unit_while_another_reader_s_type_states_one(
+        self, tmp_path: Path
+    ) -> None:
+        """The reader asked at states no unit and names no type, the writer states rpm, and a
+        second reader means krpm through its type. Taking the writer's unit out to match this
+        reader's silence leaves the second stating krpm against none: the type that keeps the key
+        is another declaration's, and no removal is offered beside it. Taking the writer's unit
+        still is."""
+        files = {
+            "t.ddd.json": types(scalar_type("Krpm_t", "uint8", unit="krpm")),
+            "w.ddd.json": component("W", declare("output", "V", "uint8", unit="rpm")),
+            "r.ddd.json": component("R", declare("input", "V", "uint8")),
+            "q.ddd.json": component("Q", declare("input", "V", typename="Krpm_t")),
+        }
+        offered = offered_at(tmp_path, "r.ddd.json", files, MISMATCH_REPORTED)
+        assert reconciled(offered) == ["Use the unit declared in w"]
+
+    @pytest.mark.parametrize(
+        ("files", "source"),
+        [
+            pytest.param(WRITER_NAMES_A_TYPE, "r.ddd.json", id="the-writer-s-type-from-the-reader"),
+            pytest.param(WRITER_NAMES_A_TYPE, "w.ddd.json", id="the-writer-s-type-from-the-writer"),
+            pytest.param(READER_NAMES_A_TYPE, "w.ddd.json", id="the-reader-s-type-from-the-writer"),
+            pytest.param(READER_NAMES_A_TYPE, "r.ddd.json", id="the-reader-s-type-from-the-reader"),
+        ],
+    )
+    def test_no_key_is_removed_beside_a_type_a_buffer_has_moved(
+        self, tmp_path: Path, files: dict[str, Any], source: str
+    ) -> None:
+        """The types file is open with another type inserted above the one the index found, as a
+        reader adding one leaves it before saving. What the type states is then not known, which
+        is neither its value nor its silence: read as silence, every removal above came back, two
+        of them preferred. Nothing is offered beside it, as nothing is beside a declaration whose
+        buffer has moved it."""
+        (named,) = files["t.ddd.json"]["types"]
+        moved = types(scalar_type("Other_t", "uint8", unit="Hz"), named)
+        buffers = {"t.ddd.json": moved}
+        assert offered_at(tmp_path, source, files, MISMATCH_REPORTED, buffers) == []
+
+    def test_a_writer_takes_no_unit_its_readers_disagree_about(self, tmp_path: Path) -> None:
+        """The writer states no unit, one reader states rpm, and the other means krpm through its
+        type. Read from the files alone the readers agreed, and the writer was offered to take the
+        rpm 'the other declarations' state, though one of them means krpm and goes on meaning it."""
+        assert (
+            offered_at(tmp_path, "w.ddd.json", TWO_READERS_ONE_THROUGH_A_TYPE, MISMATCH_REPORTED)
+            == []
+        )
+
+    def test_a_writer_takes_no_unit_while_a_buffer_has_moved_a_reader_s_type(
+        self, tmp_path: Path
+    ) -> None:
+        """What the second reader's type states is not known while its entry has moved, and so
+        neither is the agreement the title would claim: the consensus is withheld, as it is while
+        a buffer has moved one of the declarations it is drawn from."""
+        moved = types(
+            scalar_type("Other_t", "uint8", unit="rpm"), scalar_type("Krpm_t", "uint8", unit="krpm")
+        )
+        buffers = {"t.ddd.json": moved}
+        files = TWO_READERS_ONE_THROUGH_A_TYPE
+        assert offered_at(tmp_path, "w.ddd.json", files, MISMATCH_REPORTED, buffers) == []
+
+
+class TestWhichFixIsPreferred:
+    """The fix a lightbulb applies by itself is the one the ownership rule orders first: the
+    producer's answer taken, at a reader, and the producer's own sent out, at the producer. Where
+    that one is withheld, none is preferred, since the next in the list goes the other way round."""
+
+    def test_a_reader_prefers_its_producer_s_value_and_the_producer_its_own(
+        self, tmp_path: Path
+    ) -> None:
+        files = {
+            "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            "b.ddd.json": component("B", declare("input", "Speed", unit="Hz")),
+        }
+        reader = offered_at(tmp_path, "b.ddd.json", files, MISMATCH_REPORTED)
+        assert (reconciled(reader), preferred(reader)) == (
+            ["Use the unit declared in a", "Apply this unit to 1 other declaration of 'Speed'"],
+            ["Use the unit declared in a"],
+        )
+        producer = offered_at(tmp_path, "a.ddd.json", files, MISMATCH_REPORTED)
+        assert (reconciled(producer), preferred(producer)) == (
+            ["Apply this unit to 1 other declaration of 'Speed'"],
+            ["Apply this unit to 1 other declaration of 'Speed'"],
+        )
+
+    def test_a_reader_s_own_value_sent_out_is_not_preferred(self, tmp_path: Path) -> None:
+        """The producer states no unit, and both readers state rpm: this reader cannot take the
+        producer's silence while the other keeps its unit, and what is left is its own unit sent
+        out, into the producer's file - offered, and not applied by itself."""
+        files = {
+            "a.ddd.json": component("A", declare("output", "Speed")),
+            "b.ddd.json": component("B", declare("input", "Speed", unit="rpm")),
+            "c.ddd.json": component("C", declare("input", "Speed", unit="rpm")),
+        }
+        offered = offered_at(tmp_path, "b.ddd.json", files, MISMATCH_REPORTED)
+        assert (reconciled(offered), preferred(offered)) == (
+            ["Apply this unit to 1 other declaration of 'Speed'"],
+            [],
+        )
+
+    def test_two_producers_prefer_no_fix(self, tmp_path: Path) -> None:
+        """Two components write the variable and disagree: neither owns it, so neither one's value
+        sent over the other's is a fix to apply by itself, where the producer asked was preferred
+        its own, overwriting the other writer."""
+        files = {
+            "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            "b.ddd.json": component("B", declare("output", "Speed", unit="Hz")),
+        }
+        offered = offered_at(tmp_path, "b.ddd.json", files, MISMATCH_REPORTED)
+        assert (reconciled(offered), preferred(offered)) == (
+            ["Apply this unit to 1 other declaration of 'Speed'", "Use the unit declared in a"],
+            [],
+        )
+
+    def test_no_producer_prefers_no_fix(self, tmp_path: Path) -> None:
+        """Nobody writes the variable, and of its two readers one states a unit: no owner's way
+        exists, so taking the unit out is offered and not applied by itself, where it was
+        preferred."""
+        files = {
+            "a.ddd.json": component("A", declare("input", "Speed", unit="rpm")),
+            "b.ddd.json": component("B", declare("input", "Speed")),
+        }
+        offered = offered_at(tmp_path, "a.ddd.json", files, MISMATCH_REPORTED)
+        assert (reconciled(offered), preferred(offered)) == (
+            [
+                "Remove this unit, which no other declaration of 'Speed' has",
+                "Apply this unit to 1 other declaration of 'Speed'",
+            ],
+            [],
+        )
+
+
+def imaged(tmp_path: Path, images: dict[str, list[str]], files: dict[str, Any]) -> Path:
+    """``files``, and for each image of ``images`` a description in ``images/`` including the
+    files it names, and a build record naming that description, which only the record finds.
+    Returns the directory holding the descriptions."""
+    described = {
+        f"images/{image}.ddd.json": project(image.title(), *(f"../{name}" for name in included))
+        for image, included in images.items()
+    }
+    write_tree(tmp_path, {**described, **files})
+    for image in images:
+        build_record(tmp_path, tmp_path / "images" / f"{image}.ddd.json", image=f"{image}.elf")
+    return tmp_path / "images"
+
+
+def fixes_request(
+    path: Path,
+    reported: Sequence[dict[str, Any]] = MISMATCH_REPORTED,
+    pointer: str = AT_A_DECLARATION,
+    request_id: int = 12,
+) -> dict[str, Any]:
+    """The client asking for the quick fixes at ``pointer`` of ``path`` as the disk holds it,
+    sending ``reported``."""
+    return {
+        "jsonrpc": "2.0",
+        "id": request_id,
+        "method": "textDocument/codeAction",
+        "params": {
+            "textDocument": {"uri": path.as_uri()},
+            "range": Document(path.read_text(encoding="utf-8")).range_of(pointer),
+            "context": {"diagnostics": list(reported)},
+        },
+    }
+
+
+def fixes_asked(
+    tmp_path: Path,
+    path: Path,
+    *before: dict[str, Any],
+    reported: Sequence[dict[str, Any]] = MISMATCH_REPORTED,
+    pointer: str = AT_A_DECLARATION,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """The quick fixes a session offers at ``pointer`` of ``path``, the client having sent
+    ``before`` and then ``reported`` with its request, and what the log said meanwhile."""
+    request = fixes_request(path, reported, pointer, request_id=13)
+    writer = io.BytesIO()
+    assert Server(session(*before, request, *END), writer, root=tmp_path).run() == 0
+    said = sent(writer)
+    logged = [m["params"]["message"] for m in said if m.get("method") == "window/logMessage"]
+    return next(m for m in said if m.get("id") == 13)["result"], logged
+
+
+def touched(action: dict[str, Any]) -> set[str]:
+    """The names of the files a fix's edit writes."""
+    return {uri_to_path(uri).name for uri in action["edit"]["changes"]}
+
+
+def holding(path: Path, text: str) -> dict[str, Any]:
+    """The client opening ``path`` with ``text`` in its buffer, unsaved."""
+    return {
+        "jsonrpc": "2.0",
+        "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": {"uri": path.as_uri(), "languageId": "json", "version": 1, "text": text}
+        },
+    }
+
+
+def applied(tmp_path: Path, action: dict[str, Any]) -> None:
+    """Write what ``action``'s edit makes of each file it changes, as a client saves it."""
+    for uri in action["edit"]["changes"]:
+        path = uri_to_path(uri)
+        path.write_text(
+            apply_edits(path, action["edit"]["changes"][uri]), encoding="utf-8", newline=""
+        )
+
+
+def findings_of(description: Path) -> list[str]:
+    """What ``ddd check`` of ``description`` files, check and message: the errors and warnings."""
+    from ddd.analysis import analyze
+
+    bag = DiagnosticBag()
+    workspace = load_workspace(description, bag)
+    assert workspace is not None, [entry.render() for entry in bag]
+    analyze(workspace, bag)
+    return [
+        f"{entry.check}: {entry.message}" for entry in bag if entry.severity is not Severity.INFO
+    ]
+
+
+WRITER_AND_TWO_READERS: Final = {
+    "w.ddd.json": component("W", declare("output", "V", unit="rpm")),
+    "r1.ddd.json": component("R1", declare("input", "V", unit="krpm")),
+    "r2.ddd.json": component("R2", declare("input", "V", unit="krpm")),
+}
+"""A writer stating rpm and two readers stating krpm: from the writer, its unit sent out reaches
+both readers."""
+
+R2_MOVED: Final = json.dumps(
+    component("R2", declare("local", "Other"), declare("input", "V", unit="krpm")), indent=2
+)
+"""The second reader's buffer, a declaration put in front of the one the index found: the pointer
+of ``V`` names ``Other`` there now."""
+
+
+class TestAFixUnderAMovedBuffer:
+    """10:M2. A quick fix whose edit would leave out a declaration a buffer has moved - the
+    pointer the index found naming another object there now - is not offered, rather than
+    performed in part: the fixes taking another declaration's answer withhold so already, and a
+    rename beside it is refused. Asked at every move of the caret, the fix is not refused with an
+    error either, which a client shows as a failed request each time, and no sentence is logged:
+    the buffer is the reader's own, and saving it brings the fix back."""
+
+    def test_a_value_sent_out_is_not_offered_past_a_moved_declaration(self, tmp_path: Path) -> None:
+        """From the writer, 'Apply this unit to 1 other declaration' edited the first reader alone,
+        the second's buffer having moved ``V``."""
+        control = offered_at(tmp_path, "w.ddd.json", WRITER_AND_TWO_READERS, MISMATCH_REPORTED)
+        assert reconciled(control) == ["Apply this unit to 2 other declarations of 'V'"]
+        moved = {"r2.ddd.json": json.loads(R2_MOVED)}
+        moved_under = offered_at(
+            tmp_path, "w.ddd.json", WRITER_AND_TWO_READERS, MISMATCH_REPORTED, moved
+        )
+        assert moved_under == []
+
+    def test_a_key_taken_out_is_not_offered_past_a_moved_declaration(self, tmp_path: Path) -> None:
+        """The other way of sending this declaration's answer out: a silent writer taking the unit
+        out of both readers took it out of the first alone."""
+        files = {
+            **WRITER_AND_TWO_READERS,
+            "w.ddd.json": component("W", declare("output", "V")),
+        }
+        control = offered_at(tmp_path, "w.ddd.json", files, MISMATCH_REPORTED)
+        assert "Remove the unit from 2 other declarations of 'V'" in reconciled(control)
+        moved = {"r2.ddd.json": json.loads(R2_MOVED)}
+        assert offered_at(tmp_path, "w.ddd.json", files, MISMATCH_REPORTED, moved) == []
+
+    def test_the_fix_is_withheld_where_the_rename_beside_it_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        """The finding's own trigger, through a session: the buffer of the second reader moved
+        ``V``, and at the writer the rename is refused while the fix is not offered, with nothing
+        said in the log for it."""
+        write_tree(
+            tmp_path,
+            {"p.ddd.json": project("P", *WRITER_AND_TWO_READERS), **WRITER_AND_TWO_READERS},
+        )
+        w = tmp_path / "w.ddd.json"
+        opened = holding(tmp_path / "r2.ddd.json", R2_MOVED)
+        offered, logged = fixes_asked(tmp_path, w, opened)
+        assert offered == []
+        assert [line for line in logged if "quick fix" in line] == []
+        at = Document(w.read_text(encoding="utf-8")).text_range_of(f"{AT_A_DECLARATION}.name")
+        assert at is not None
+        rename = {
+            "jsonrpc": "2.0",
+            "id": 14,
+            "method": "textDocument/rename",
+            "params": {
+                "textDocument": {"uri": w.as_uri()},
+                "position": at["start"],
+                "newName": "Velocity",
+            },
+        }
+        writer = io.BytesIO()
+        assert Server(session(opened, rename, *END), writer, root=tmp_path).run() == 0
+        refused = next(m for m in sent(writer) if m.get("id") == 14)
+        assert refused["error"]["code"] == REQUEST_FAILED
+        assert refused["error"]["message"].startswith("r2.ddd.json has unsaved changes")
+
+    def test_a_moved_declaration_in_another_image_withholds_the_fix_too(
+        self, tmp_path: Path
+    ) -> None:
+        """The second reader is in image two alone, which holds the writer as well: the fix sent
+        from the writer reaches it through that image, and is withheld for its buffer as for one in
+        the writer's own."""
+        imaged(
+            tmp_path,
+            {"one": ["w.ddd.json", "r1.ddd.json"], "two": ["w.ddd.json", "r2.ddd.json"]},
+            WRITER_AND_TWO_READERS,
+        )
+        w = tmp_path / "w.ddd.json"
+        control, _ = fixes_asked(tmp_path, w)
+        assert reconciled(control) == ["Apply this unit to 2 other declarations of 'V'"]
+        offered, logged = fixes_asked(tmp_path, w, holding(tmp_path / "r2.ddd.json", R2_MOVED))
+        assert offered == []
+        assert [line for line in logged if "quick fix" in line] == []
+
+
+TYPED_PER_IMAGE: Final = {
+    "t1.ddd.json": types(scalar_type("Speed_t", "uint8", unit="rpm")),
+    "t2.ddd.json": types(scalar_type("Speed_t", "uint8", unit="krpm")),
+}
+"""One type name, two types files: ``Speed_t`` states rpm in the first, krpm in the second."""
+
+
+class TestAFixInTwoImages:
+    """10:M3. A component linked into two images is in two projects, each of which offered its
+    fixes: every fix offered twice, both copies preferred, where the two images offer it alike, and
+    a fix sending a writer's answer out offered once per image under one title, each reaching
+    that image's reader and none reaching both. A fix is offered once now, a value sent out reaching
+    every declaration of the variable in every image holding the document, and in every image
+    holding a file it writes, until none is new, the closure a rename reaches by."""
+
+    def test_a_fix_both_images_offer_alike_is_offered_once(self, tmp_path: Path) -> None:
+        imaged(
+            tmp_path,
+            {"one": ["w.ddd.json", "r.ddd.json"], "two": ["w.ddd.json", "r.ddd.json"]},
+            {
+                "w.ddd.json": component("W", declare("output", "V", unit="rpm")),
+                "r.ddd.json": component("R", declare("input", "V", unit="krpm")),
+            },
+        )
+        reader_s_fixes, _ = fixes_asked(tmp_path, tmp_path / "r.ddd.json")
+        assert reconciled(reader_s_fixes) == [
+            "Use the unit declared in w",
+            "Apply this unit to 1 other declaration of 'V'",
+        ]
+        assert preferred(reader_s_fixes) == ["Use the unit declared in w"]
+        writer_s_fixes, _ = fixes_asked(tmp_path, tmp_path / "w.ddd.json")
+        assert reconciled(writer_s_fixes) == ["Apply this unit to 1 other declaration of 'V'"]
+        assert preferred(writer_s_fixes) == ["Apply this unit to 1 other declaration of 'V'"]
+
+    def test_the_identity_fix_is_offered_once(self, tmp_path: Path) -> None:
+        """A writer both images hold and states no id: the fix giving it one is the declaration's
+        own, and one edit of its one file, however many images hold it."""
+        imaged(
+            tmp_path,
+            {"one": ["w.ddd.json", "r.ddd.json"], "two": ["w.ddd.json", "r.ddd.json"]},
+            {
+                "w.ddd.json": component("W", declare("output", "V")),
+                "r.ddd.json": component("R", declare("input", "V")),
+            },
+        )
+        offered, _ = fixes_asked(tmp_path, tmp_path / "w.ddd.json", reported=UNSTAMPED)
+        assert [action["title"] for action in offered] == ["Give 'V' an id"]
+        assert touched(offered[0]) == {"w.ddd.json"}
+
+    def test_a_withheld_first_fix_leaves_the_slot_to_the_next_that_leads(
+        self, tmp_path: Path
+    ) -> None:
+        """The writer states neither a unit nor dimensions. Image one's reader states a unit, and
+        image two's names a type stating another, and dimensions: taking the unit out of the
+        readers, image one's first fix, is withheld, since the type keeps it, and taking the
+        dimensions out of image two's reader leads there, the writer's own answer sent out. It is
+        the first fix offered, and it was not preferred, image one's first having taken the slot
+        before it was withheld - where image two alone preferred it."""
+        imaged(
+            tmp_path,
+            {
+                "one": ["w.ddd.json", "r1.ddd.json"],
+                "two": ["t.ddd.json", "w.ddd.json", "r2.ddd.json"],
+            },
+            {
+                "t.ddd.json": types(scalar_type("Speed_t", "uint16", unit="rpm")),
+                "w.ddd.json": component("W", declare("output", "V", "uint16")),
+                "r1.ddd.json": component("R1", declare("input", "V", "uint16", unit="krpm")),
+                "r2.ddd.json": component(
+                    "R2", declare("input", "V", typename="Speed_t", dimensions=[4])
+                ),
+            },
+        )
+        offered, _ = fixes_asked(tmp_path, tmp_path / "w.ddd.json")
+        assert (reconciled(offered), preferred(offered)) == (
+            [
+                "Remove the dimensions from 1 other declaration of 'V'",
+                "Take the dimensions the other declarations of 'V' state",
+            ],
+            ["Remove the dimensions from 1 other declaration of 'V'"],
+        )
+
+    def test_a_value_sent_out_reaches_the_reader_of_each_image(self, tmp_path: Path) -> None:
+        """From a writer two images share, each with a reader of its own: one fix reaching both
+        readers, where each image offered one reaching its own under the same title."""
+        images = imaged(
+            tmp_path,
+            {"one": ["w.ddd.json", "r1.ddd.json"], "two": ["w.ddd.json", "r2.ddd.json"]},
+            WRITER_AND_TWO_READERS,
+        )
+        offered, _ = fixes_asked(tmp_path, tmp_path / "w.ddd.json")
+        assert reconciled(offered) == ["Apply this unit to 2 other declarations of 'V'"]
+        assert preferred(offered) == ["Apply this unit to 2 other declarations of 'V'"]
+        assert touched(offered[0]) == {"r1.ddd.json", "r2.ddd.json"}
+        applied(tmp_path, offered[0])
+        assert [findings_of(images / f"{image}.ddd.json") for image in ("one", "two")] == [[], []]
+
+    def test_a_value_sent_out_from_one_image_reaches_the_other_through_the_writer(
+        self, tmp_path: Path
+    ) -> None:
+        """The first reader's unit sent into the writer is the writer's in image two as well, whose
+        reader agreed with the writer: it reached the writer alone, and moved the disagreement into
+        image two. It reaches the second reader too, through the writer's file."""
+        images = imaged(
+            tmp_path,
+            {"one": ["w.ddd.json", "r1.ddd.json"], "two": ["w.ddd.json", "r2.ddd.json"]},
+            {
+                **WRITER_AND_TWO_READERS,
+                "r2.ddd.json": component("R2", declare("input", "V", unit="rpm")),
+            },
+        )
+        assert findings_of(images / "two.ddd.json") == []
+        offered, _ = fixes_asked(tmp_path, tmp_path / "r1.ddd.json")
+        sent_out = offered[
+            reconciled(offered).index("Apply this unit to 2 other declarations of 'V'")
+        ]
+        assert touched(sent_out) == {"w.ddd.json", "r2.ddd.json"}
+        applied(tmp_path, sent_out)
+        assert [findings_of(images / f"{image}.ddd.json") for image in ("one", "two")] == [[], []]
+
+    def test_it_goes_on_until_no_image_is_new(self, tmp_path: Path) -> None:
+        """Image three shares no file with image one: the value reaches it through the bridge
+        image two holds, which its edits rewrite and image one's do not."""
+        rpm = declare("input", "V", unit="rpm")
+        images = imaged(
+            tmp_path,
+            {
+                "one": ["w.ddd.json", "r1.ddd.json"],
+                "two": ["w.ddd.json", "bridge.ddd.json"],
+                "three": ["bridge.ddd.json", "w3.ddd.json", "r3.ddd.json"],
+            },
+            {
+                "w.ddd.json": component("W", declare("output", "V", unit="rpm")),
+                "r1.ddd.json": component("R1", declare("input", "V", unit="krpm")),
+                "bridge.ddd.json": component("Bridge", rpm),
+                "w3.ddd.json": component("W3", declare("output", "V", unit="rpm")),
+                "r3.ddd.json": component("R3", rpm),
+            },
+        )
+        offered, _ = fixes_asked(tmp_path, tmp_path / "r1.ddd.json")
+        title = "Apply this unit to 4 other declarations of 'V'"
+        sent_out = offered[reconciled(offered).index(title)]
+        assert touched(sent_out) == {"w.ddd.json", "bridge.ddd.json", "w3.ddd.json", "r3.ddd.json"}
+        applied(tmp_path, sent_out)
+        assert [findings_of(images / f"{n}.ddd.json") for n in ("one", "two", "three")] == [[]] * 3
+
+    @pytest.mark.parametrize("typed", ["the-writer", "the-reader"])
+    def test_two_images_offering_one_title_with_different_edits_offer_neither(
+        self, tmp_path: Path, typed: str
+    ) -> None:
+        """``Speed_t`` is rpm in image one and krpm in image two. Named by the writer, the reader is
+        offered the writer's unit under one title and two edits, one per image; named by the
+        reader, it sends two values out for one key. No single press is both: neither is offered.
+        Each image alone offers its own."""
+        other = declare("output" if typed == "the-reader" else "input", "V", "uint8", unit="Hz")
+        named = declare("input" if typed == "the-reader" else "output", "V", typename="Speed_t")
+        r_is_typed = typed == "the-reader"
+        files = {
+            **TYPED_PER_IMAGE,
+            "w.ddd.json": component("W", other if r_is_typed else named),
+            "r.ddd.json": component("R", named if r_is_typed else other),
+        }
+        both = ["w.ddd.json", "r.ddd.json"]
+        imaged(tmp_path, {"one": ["t1.ddd.json", *both], "two": ["t2.ddd.json", *both]}, files)
+        assert fixes_asked(tmp_path, tmp_path / "r.ddd.json")[0] == []
+        imaged(tmp_path, {"one": ["t1.ddd.json", *both], "two": ["t1.ddd.json", *both]}, files)
+        alike, _ = fixes_asked(tmp_path, tmp_path / "r.ddd.json")
+        assert reconciled(alike) == [
+            "Apply this unit to 1 other declaration of 'V'"
+            if r_is_typed
+            else "Use the unit declared in w"
+        ]
+
+    def test_a_declaration_one_image_cannot_change_is_changed_in_none(self, tmp_path: Path) -> None:
+        """The writer names ``Text_t``, a string type in image one, which takes one dimension, and
+        a byte in image two, which takes any. The reader's two dimensions sent out are the writer's
+        in both images, and would leave it a file image one refuses: left out of the fix, which
+        then changes nothing and is not offered. Image two alone offered it."""
+        both = ["w.ddd.json", "r.ddd.json"]
+        files = {
+            "t1.ddd.json": types(TEXT_TYPE),
+            "t2.ddd.json": types(scalar_type("Text_t", "uint8")),
+            "w.ddd.json": component("W", declare("output", "V", typename="Text_t", dimensions=[8])),
+            "r.ddd.json": component("R", declare("input", "V", "uint8", dimensions=[4, 2])),
+        }
+        imaged(tmp_path, {"one": ["t1.ddd.json", *both], "two": ["t2.ddd.json", *both]}, files)
+        offered, _ = fixes_asked(tmp_path, tmp_path / "r.ddd.json")
+        assert reconciled(offered) == ["Use the dimensions declared in w"]
+        imaged(tmp_path, {"one": ["t2.ddd.json", *both], "two": ["t2.ddd.json", *both]}, files)
+        assert reconciled(fixes_asked(tmp_path, tmp_path / "r.ddd.json")[0]) == [
+            "Use the dimensions declared in w",
+            "Apply this dimensions to 1 other declaration of 'V'",
+        ]
+
+    def test_the_preferred_fix_is_the_one_every_image_leads_with(self, tmp_path: Path) -> None:
+        """Image two has a second writer, which leaves ``V`` no owner there and its fixes no
+        preferred one: the fix image one prefers is not preferred over both."""
+        readers = {
+            "w1.ddd.json": component("W1", declare("output", "V", unit="rpm")),
+            "w2.ddd.json": component("W2", declare("output", "V", unit="rpm")),
+            "r.ddd.json": component("R", declare("input", "V", unit="krpm")),
+        }
+        mine = ["w1.ddd.json", "r.ddd.json"]
+        imaged(tmp_path, {"one": mine, "two": [*mine, "w2.ddd.json"]}, readers)
+        offered, _ = fixes_asked(tmp_path, tmp_path / "r.ddd.json")
+        assert reconciled(offered)[0] == "Use the unit declared in w1"
+        assert preferred(offered) == []
+        imaged(tmp_path, {"one": mine, "two": mine}, readers)
+        assert preferred(fixes_asked(tmp_path, tmp_path / "r.ddd.json")[0]) == [
+            "Use the unit declared in w1"
+        ]
+
+    def test_an_image_a_fix_reaches_holding_a_file_that_did_not_load_withholds_every_fix(
+        self, tmp_path: Path
+    ) -> None:
+        """Image two's reader does not load, so what it states is unknown: the value sent out of
+        image one into the writer would leave it as it is. Nothing is offered, the log saying
+        why, as for a file of the reader's own image that did not load."""
+        imaged(
+            tmp_path,
+            {"one": ["w.ddd.json", "r1.ddd.json"], "two": ["w.ddd.json", "r2.ddd.json"]},
+            {
+                **WRITER_AND_TWO_READERS,
+                "r2.ddd.json": component("R2", declare("input", "V", "uint99")),
+            },
+        )
+        offered, logged = fixes_asked(tmp_path, tmp_path / "r1.ddd.json")
+        assert offered == []
+        assert logged[-1] == (
+            "no quick fix is offered: r2.ddd.json did not load, so the rest of the project cannot "
+            "be edited around it; fix it and try again"
+        )
+
+    @pytest.mark.parametrize("stopped", [True, False], ids=["stopped", "mended"])
+    def test_a_description_a_fix_reaches_that_could_not_be_read_withholds_every_fix(
+        self, tmp_path: Path, stopped: bool
+    ) -> None:
+        """The writer is in a folder of its own, where a second description a plugin stops holds
+        it: what that image's other files state is unknown, so nothing is offered, as a rename is
+        refused for it. Mended, the value reaches the second image's reader."""
+        write_tree(
+            tmp_path,
+            {
+                "tools/exiting_plugin.py": EXITING_MODEL_PLUGIN,
+                "one/one.ddd.json": project("One", "../shared/w.ddd.json", "r1.ddd.json"),
+                "one/r1.ddd.json": component("R1", declare("input", "V", unit="krpm")),
+                "shared/w.ddd.json": component("W", declare("output", "V", unit="rpm")),
+                "shared/r2.ddd.json": component("R2", declare("input", "V", unit="rpm")),
+                "shared/two.ddd.json": project(
+                    "Two",
+                    "w.ddd.json",
+                    "r2.ddd.json",
+                    *(["other.ddd.json"] if stopped else []),
+                    plugins=["../tools/exiting_plugin.py"],
+                ),
+                "shared/other.ddd.json": component(
+                    "O", declare("local", "X", extensions={"exiting": {"tag": "t"}})
+                ),
+            },
+        )
+        r1 = tmp_path / "one/r1.ddd.json"
+        offered, _ = fixes_asked(tmp_path, r1)
+        if stopped:
+            assert offered == []
+            # Asked again, the stopped description is read again, and stops the fixes again: a
+            # description is kept between two questions only where it was read.
+            again = fixes_asked(tmp_path, r1, *[fixes_request(r1)])[0]
+            assert again == []
+        else:
+            title = "Apply this unit to 2 other declarations of 'V'"
+            assert touched(offered[reconciled(offered).index(title)]) == {
+                "w.ddd.json",
+                "r2.ddd.json",
+            }
+
+    def test_the_outermost_description_above_a_file_a_fix_reaches_answers_for_it(
+        self, tmp_path: Path
+    ) -> None:
+        """No build record. The writer the fix reaches lies under a sub-project of its own and an
+        outer project above that, which also holds a second reader: the outer one answers, as it
+        answers the search for a document, and its reader takes the value too. Answered by the
+        sub-project, the fix reached the writer alone."""
+        write_tree(
+            tmp_path,
+            {
+                "one/one.ddd.json": project("One", "r1.ddd.json", "../sub/w.ddd.json"),
+                "one/r1.ddd.json": component("R1", declare("input", "V", unit="krpm")),
+                "sub/inner.ddd.json": project("Inner", "w.ddd.json"),
+                "sub/w.ddd.json": component("W", declare("output", "V", unit="rpm")),
+                "sub/r2.ddd.json": component("R2", declare("input", "V", unit="rpm")),
+                "outer.ddd.json": project("Outer", "sub/w.ddd.json", "sub/r2.ddd.json"),
+            },
+        )
+        offered, _ = fixes_asked(tmp_path, tmp_path / "one/r1.ddd.json")
+        title = "Apply this unit to 2 other declarations of 'V'"
+        assert touched(offered[reconciled(offered).index(title)]) == {"w.ddd.json", "r2.ddd.json"}
+
+    def test_the_folder_a_fix_reaches_into_is_listed_once_for_all_its_files(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No build record, one flat folder: the value sent out from the writer reaches twenty
+        readers, and the projects holding each are looked for above it. Asked file by file, the
+        folder was listed once for each of them; it is listed once for the writer's own search, and
+        once for all twenty."""
+        readers = {
+            f"r{n}.ddd.json": component(f"R{n}", declare("input", "V", unit="krpm"))
+            for n in range(20)
+        }
+        files = {"w.ddd.json": component("W", declare("output", "V", unit="rpm")), **readers}
+        write_tree(tmp_path, {"p.ddd.json": project("P", *files), **files})
+        server = Server(io.BytesIO(), io.BytesIO(), root=tmp_path)
+        assert server._handle({"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {}})
+        listed: list[tuple[Path, str]] = []
+        glob = Path.glob
+
+        def spy(self: Path, pattern: str, **options: Any) -> Any:
+            listed.append((self, pattern))
+            return glob(self, pattern, **options)
+
+        monkeypatch.setattr(Path, "glob", spy)
+        assert server._handle(fixes_request(tmp_path / "w.ddd.json"))
+        assert listed.count((tmp_path.resolve(), "*.ddd.json")) == 2
+
+    def test_a_fix_asked_again_reads_no_description_again(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A client asks for the fixes at every move of the caret, and the value sent out reaches
+        image two each time: read once until the next refresh, as a rename's closure reads each
+        description once. A save reads them again."""
+        imaged(
+            tmp_path,
+            {"one": ["w.ddd.json", "r1.ddd.json"], "two": ["w.ddd.json", "r2.ddd.json"]},
+            {
+                **WRITER_AND_TWO_READERS,
+                "r2.ddd.json": component("R2", declare("input", "V", unit="rpm")),
+            },
+        )
+        r1 = tmp_path / "r1.ddd.json"
+        request = fixes_request(r1, request_id=13)
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle({"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {}})
+        seen: list[Path] = []
+
+        def spy(path: Path, bag: DiagnosticBag) -> Any:
+            seen.append(path.resolve())
+            return load_workspace(path, bag)
+
+        monkeypatch.setattr(navigation, "load_workspace", spy)
+        assert server._handle(request)
+        assert sorted(path.name for path in seen) == ["one.ddd.json", "two.ddd.json"]
+        seen.clear()
+        assert server._handle(request)
+        assert seen == []
+        assert server._handle(
+            {
+                "jsonrpc": "2.0",
+                "method": "textDocument/didSave",
+                "params": {"textDocument": {"uri": r1.as_uri()}},
+            }
+        )
+        seen.clear()
+        assert server._handle(request)
+        assert sorted(path.name for path in seen) == ["one.ddd.json", "two.ddd.json"]
+        (answer, *_) = [m for m in sent(writer) if m.get("id") == 13]
+        assert "Apply this unit to 2 other declarations of 'V'" in reconciled(answer["result"])
+
+
+class TestAWriterNamingATypeAndASilentReader:
+    """A reader stating no unit, beside a writer whose type states one: the check files the two
+    disagreeing, and neither end was offered anything, the unit being listed by no declaration's
+    file. Read through the type, as the checks read it, each end is offered what settles it."""
+
+    FILES: ClassVar[dict[str, Any]] = {
+        "t.ddd.json": types(scalar_type("Speed_t", "uint8", unit="rpm")),
+        "w.ddd.json": component("W", declare("output", "V", typename="Speed_t")),
+        "r.ddd.json": component("R", declare("input", "V", "uint8")),
+    }
+
+    @pytest.mark.parametrize(
+        ("source", "fix"),
+        [
+            ("r.ddd.json", "Use the unit declared in w"),
+            ("w.ddd.json", "Apply this unit to 1 other declaration of 'V'"),
+        ],
+        ids=["at-the-reader", "at-the-writer"],
+    )
+    def test_each_end_is_offered_the_unit_the_type_states(
+        self, tmp_path: Path, source: str, fix: str
+    ) -> None:
+        offered = offered_at(tmp_path, source, self.FILES, MISMATCH_REPORTED)
+        assert [s for s in mismatches(tmp_path) if "(unit: '' != 'rpm')" in s] != []
+        assert reconciled(offered) == [fix]
+        assert preferred(offered) == [fix]
+        applied(tmp_path, offered[0])
+        assert mismatches(tmp_path) == []
+
+
+UNKNOWN_REPORTED: Final = ({"code": "unknown-unit", "source": "ddd", "message": "not listed"},)
+"""What a client sends with its request on an ``unknown-unit``."""
+
+AT_THE_UNIT: Final = "component.interface[0].definition.unit"
+
+
+class TestAUnitFixInTwoImages:
+    """The vocabulary's fixes across images: each offered once, the unit added only where every
+    image planning it adds it alike, and renamed as Rename Symbol renames it, over every image the
+    rename reaches."""
+
+    def test_a_unit_fix_both_images_offer_alike_is_offered_once(self, tmp_path: Path) -> None:
+        both = ["u.ddd.json", "c.ddd.json"]
+        imaged(
+            tmp_path,
+            {"one": both, "two": both},
+            {
+                "u.ddd.json": {"units": ["rpm", "Nm"]},
+                "c.ddd.json": component("C", declare("local", "V", unit="RPM")),
+            },
+        )
+        offered, _ = fixes_asked(
+            tmp_path, tmp_path / "c.ddd.json", reported=UNKNOWN_REPORTED, pointer=AT_THE_UNIT
+        )
+        assert [action["title"] for action in offered] == [
+            "Add 'RPM' to the vocabulary",
+            "Rename 'RPM' to 'rpm' everywhere",
+        ]
+
+    def test_a_unit_two_images_would_add_to_different_files_is_added_to_neither(
+        self, tmp_path: Path
+    ) -> None:
+        """Each image's first units file is its own: added to both, the unit would be listed twice
+        in an image holding the two."""
+        imaged(
+            tmp_path,
+            {"one": ["u1.ddd.json", "c.ddd.json"], "two": ["u2.ddd.json", "c.ddd.json"]},
+            {
+                "u1.ddd.json": {"units": ["rpm"]},
+                "u2.ddd.json": {"units": ["rpm"]},
+                "c.ddd.json": component("C", declare("local", "V", unit="RPM")),
+            },
+        )
+        offered, _ = fixes_asked(
+            tmp_path, tmp_path / "c.ddd.json", reported=UNKNOWN_REPORTED, pointer=AT_THE_UNIT
+        )
+        assert [action["title"] for action in offered] == ["Rename 'RPM' to 'rpm' everywhere"]
+
+    def renaming_across(self, tmp_path: Path) -> Path:
+        """Image one lists ``rpm`` and states ``Rpm`` in a component of its own and in one it
+        shares with image two, which lists ``Rpm``: unknown in image one, known in image two."""
+        return imaged(
+            tmp_path,
+            {
+                "one": ["u1.ddd.json", "c.ddd.json", "s.ddd.json"],
+                "two": ["u2.ddd.json", "s.ddd.json"],
+            },
+            {
+                "u1.ddd.json": {"units": ["rpm"]},
+                "u2.ddd.json": {"units": ["Rpm"]},
+                "c.ddd.json": component("C", declare("local", "V", unit="Rpm")),
+                "s.ddd.json": component("S", declare("local", "X", unit="Rpm")),
+            },
+        )
+
+    def test_the_rename_fix_reaches_the_image_it_rewrites_a_file_of(self, tmp_path: Path) -> None:
+        """Respelled in image one alone, the component the two share named a unit image two does
+        not list. Renamed as Rename Symbol renames it, image two's vocabulary is respelled too, and
+        neither image reports a unit it does not list."""
+        images = self.renaming_across(tmp_path)
+        offered, _ = fixes_asked(
+            tmp_path, tmp_path / "c.ddd.json", reported=UNKNOWN_REPORTED, pointer=AT_THE_UNIT
+        )
+        (renaming,) = [a for a in offered if a["title"] == "Rename 'Rpm' to 'rpm' everywhere"]
+        assert touched(renaming) == {"c.ddd.json", "s.ddd.json", "u2.ddd.json"}
+        applied(tmp_path, renaming)
+        assert [findings_of(images / f"{image}.ddd.json") for image in ("one", "two")] == [[], []]
+
+    def test_the_rename_fix_is_withheld_where_rename_symbol_refuses_it(
+        self, tmp_path: Path
+    ) -> None:
+        """An open document of image two holds what its file does not, which the rename could not
+        see: Rename Symbol is refused, and the fix that is the same rename is not offered."""
+        self.renaming_across(tmp_path)
+        s = tmp_path / "s.ddd.json"
+        typed = json.dumps(component("S", declare("local", "X", unit="Rpm"), declare("local", "Y")))
+        offered, _ = fixes_asked(
+            tmp_path,
+            tmp_path / "c.ddd.json",
+            holding(s, typed),
+            reported=UNKNOWN_REPORTED,
+            pointer=AT_THE_UNIT,
+        )
+        assert [action["title"] for action in offered] == ["Add 'Rpm' to the vocabulary"]
+
+
+class TestAUnitRenamedOntoAUnitOneImageListsAlone:
+    """Two images share a units file listing ``RPM``, and one of them lists ``rpm`` in a file of its
+    own: renaming ``RPM`` onto ``rpm`` merges it in that image and respells it in the other, at
+    the entry the two share. The two plans were sent as one, keyed by where each edit began: the
+    second image's dropped, or the two overlapping. The rename is refused naming both."""
+
+    def units(self, tmp_path: Path, listing: str | None) -> Path:
+        both = ["u.ddd.json", "c.ddd.json"]
+        mine = {
+            image: [*both, *(["own.ddd.json"] if listing in (image, "both") else [])]
+            for image in ("one", "two")
+        }
+        imaged(
+            tmp_path,
+            mine,
+            {
+                "u.ddd.json": {"units": ["RPM", "Nm"]},
+                "own.ddd.json": {"units": ["rpm"]},
+                "c.ddd.json": component("C", declare("local", "V", unit="RPM")),
+            },
+        )
+        return tmp_path / "c.ddd.json"
+
+    def renamed(self, tmp_path: Path, c: Path) -> dict[str, Any]:
+        at = Document(c.read_text(encoding="utf-8")).text_range_of(AT_THE_UNIT)
+        assert at is not None
+        request = {
+            "jsonrpc": "2.0",
+            "id": 14,
+            "method": "textDocument/rename",
+            "params": {
+                "textDocument": {"uri": c.as_uri()},
+                "position": at["start"],
+                "newName": "rpm",
+            },
+        }
+        writer = io.BytesIO()
+        assert Server(session(request, *END), writer, root=tmp_path).run() == 0
+        return next(m for m in sent(writer) if m.get("id") == 14)
+
+    @pytest.mark.parametrize(("listing", "other"), [("one", "two"), ("two", "one")])
+    def test_the_rename_is_refused_naming_both_images(
+        self, tmp_path: Path, listing: str, other: str
+    ) -> None:
+        answer = self.renamed(tmp_path, self.units(tmp_path, listing))
+        assert answer["error"] == {
+            "code": REQUEST_FAILED,
+            "message": (
+                f"{listing}.elf lists 'rpm' and {other}.elf does not, so this rename would rewrite "
+                "u.ddd.json two ways, merging 'RPM' into 'rpm' for the one and respelling it for "
+                "the other: list 'rpm' in both or in neither, and rename again"
+            ),
+        }
+
+    @pytest.mark.parametrize("listing", ["both", None], ids=["both-list-it", "neither-does"])
+    def test_the_rename_goes_on_where_the_images_agree(
+        self, tmp_path: Path, listing: str | None
+    ) -> None:
+        """The control: merged in both, or respelled in both, the two plans are one edit."""
+        c = self.units(tmp_path, listing)
+        rewritten = rewritten_by(self.renamed(tmp_path, c)["result"]["changes"])
+        expected = ["Nm"] if listing == "both" else ["rpm", "Nm"]
+        assert json.loads(rewritten["u.ddd.json"])["units"] == expected
+
+
+class TestGatheringARenamesEdits:
+    """How the projects' edits of a rename are put together: each place once, and two that differ
+    there are told apart as two."""
+
+    def edit(self, start: tuple[int, int], end: tuple[int, int], text: str) -> dict[str, Any]:
+        return {
+            "range": {
+                "start": {"line": start[0], "character": start[1]},
+                "end": {"line": end[0], "character": end[1]},
+            },
+            "newText": text,
+        }
+
+    @pytest.mark.parametrize(
+        ("second", "clash", "kept"),
+        [
+            (((0, 2), (0, 5), "x"), False, 1),
+            (((0, 2), (0, 5), "y"), True, 1),
+            (((0, 4), (0, 7), "x"), True, 1),
+            (((0, 5), (0, 7), "x"), False, 2),
+            (((0, 0), (0, 2), "x"), False, 2),
+            (((0, 2), (0, 2), "x"), False, 2),
+        ],
+        ids=["the-same", "another-text", "overlapping", "after-it", "before-it", "inserted-before"],
+    )
+    def test_an_edit_beside_one_another_project_made(
+        self,
+        tmp_path: Path,
+        second: tuple[tuple[int, int], tuple[int, int], str],
+        clash: bool,
+        kept: int,
+    ) -> None:
+        """The first project replaced characters 2 to 5 of a line with ``x``. The same edit from a
+        second is kept once; one overlapping it, or writing another text there, is the first
+        project's edit met; one beside it, or inserting at its start, is an edit of its own."""
+        write_tree(
+            tmp_path, {"p.ddd.json": project("P", "a.ddd.json"), "a.ddd.json": component("A")}
+        )
+        first = navigation.read_project(tmp_path / "p.ddd.json")
+        other = navigation.read_project(tmp_path / "a.ddd.json")
+        assert first is not None
+        assert other is not None
+        changes: dict[str, list[dict[str, Any]]] = {}
+        made: dict[str, Any] = {}
+        assert Server._gather(changes, made, {"f": [self.edit((0, 2), (0, 5), "x")]}, first) is None
+        found = Server._gather(changes, made, {"f": [self.edit(*second)]}, other)
+        assert found == (("f", first) if clash else None)
+        assert len(changes["f"]) == kept
+
+    def test_two_insertions_at_one_place_are_two_ways(self, tmp_path: Path) -> None:
+        write_tree(tmp_path, {"p.ddd.json": project("P")})
+        loaded = navigation.read_project(tmp_path / "p.ddd.json")
+        assert loaded is not None
+        changes: dict[str, list[dict[str, Any]]] = {}
+        made: dict[str, Any] = {}
+        Server._gather(changes, made, {"f": [self.edit((1, 1), (1, 1), "a")]}, loaded)
+        assert Server._gather(changes, made, {"f": [self.edit((1, 1), (1, 1), "b")]}, loaded) == (
+            "f",
+            loaded,
+        )
+
+
+EXTERNAL_REFUSED: Final = (
+    "'DriverStatus_t' is an external type whose name driver_status.h defines, so a rename here "
+    "would leave that header defining the old one"
+)
+"""What a rename of ``examples/structures``' external ``DriverStatus_t`` is refused with."""
+
+
+def rename_at(path: Path, pointer: str, name: str) -> dict[str, Any]:
+    """``F2`` on the string at ``pointer`` of ``path`` as the disk holds it, renaming it onto
+    ``name``."""
+    at = Document(path.read_text(encoding="utf-8")).text_range_of(pointer)
+    assert at is not None
+    return {
+        "jsonrpc": "2.0",
+        "id": 15,
+        "method": "textDocument/rename",
+        "params": {
+            "textDocument": {"uri": path.as_uri()},
+            "position": at["start"],
+            "newName": name,
+        },
+    }
+
+
+def renamed_at(root: Path, path: Path, pointer: str, name: str, *before: dict[str, Any]) -> Any:
+    """The server's answer to ``F2`` on the string at ``pointer`` of ``path``, renaming it onto
+    ``name``, in a session over ``root`` that sent ``before`` first."""
+    writer = io.BytesIO()
+    request = rename_at(path, pointer, name)
+    assert Server(session(*before, request, *END), writer, root=root).run() == 0
+    return next(message for message in sent(writer) if message.get("id") == 15)
+
+
+class TestAnExternalTypeIsNotRenamed:
+    """10:M9. An external type names a c type the header beside it defines, and its name is that
+    header's, not the project's: renamed, the header went on defining the old name, the generated
+    types header spelled the new one, and the build stopped at the first compile, while ``ddd
+    check`` said nothing. A rename of one is refused, from its entry or from any ``typename``
+    spelling it, wherever a project the rename reaches declares it so, and the page's Types tab
+    refuses it in the same words (``tests/test_type_plans.py``)."""
+
+    def structures(self, tmp_path: Path) -> Path:
+        """A copy of ``examples/structures``, whose types file declares ``DriverStatus_t`` as an
+        external type that ``driver_status.h`` defines, and nests it in ``Sensor_t``."""
+        root = tmp_path / "structures"
+        shutil.copytree(EXAMPLES / "structures", root)
+        return root
+
+    @pytest.mark.parametrize(
+        "pointer", ["types[1].name", "types[4].members[2].typename"], ids=["entry", "member"]
+    )
+    def test_an_external_type_is_refused_from_its_entry_and_from_a_name_of_it(
+        self, tmp_path: Path, pointer: str
+    ) -> None:
+        """The finding's trigger: accepted, the rename rewrote the entry and the member, and the
+        header still ended ``} DriverStatus_t;``."""
+        root = self.structures(tmp_path)
+        types_file = root / "types.ddd.json"
+        answer = renamed_at(root, types_file, pointer, "DriverState_t")
+        assert answer["error"] == {"code": REQUEST_FAILED, "message": EXTERNAL_REFUSED}
+
+    @pytest.mark.parametrize("name", ["int", "Sample_t"], ids=["reserved", "taken"])
+    def test_an_external_type_is_refused_whatever_it_would_be_renamed_onto(
+        self, tmp_path: Path, name: str
+    ) -> None:
+        """Asked before the new name is judged, since no new name would do: refused for the name
+        it would take, the rename sent the reader to try another, which the type then refused."""
+        root = self.structures(tmp_path)
+        types_file = root / "types.ddd.json"
+        answer = renamed_at(root, types_file, "types[1].name", name)
+        assert answer["error"] == {"code": REQUEST_FAILED, "message": EXTERNAL_REFUSED}
+
+    def test_a_type_the_project_declares_itself_is_renamed_as_before(self, tmp_path: Path) -> None:
+        """The control, in the same file: a structure is the project's own, and so is its name."""
+        root = self.structures(tmp_path)
+        types_file = root / "types.ddd.json"
+        answer = renamed_at(root, types_file, "types[2].name", "Reading_t")
+        assert set(rewritten_by(answer["result"]["changes"])) == {"types.ddd.json"}
+
+    def test_a_variable_spelled_as_an_external_type_is_renamed(self, tmp_path: Path) -> None:
+        """The refusal is the type's: a variable spelled ``Word_t`` beside the external type of
+        that name is the project's own, and renaming it is how their collision is mended."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
+                "t.ddd.json": {"types": [{"type": "external", "name": "Word_t", "header": "w.h"}]},
+                "a.ddd.json": component("A", declare("local", "Word_t")),
+            },
+        )
+        a = tmp_path / "a.ddd.json"
+        answer = renamed_at(tmp_path, a, "component.interface[0].definition.name", "Word")
+        assert json.loads(rewritten_by(answer["result"]["changes"])["a.ddd.json"]) == component(
+            "A", declare("local", "Word")
+        )
+
+    def test_a_type_another_image_declares_external_is_refused_naming_that_image(
+        self, tmp_path: Path
+    ) -> None:
+        """Image one declares ``Foo_t`` a structure of its own and image two an external type,
+        and the structure both images hold nests it: renamed from image one's entry, the rename
+        reaches image two through the member, where the name is the header's."""
+        imaged(
+            tmp_path,
+            {"one": ["t1.ddd.json", "s.ddd.json"], "two": ["t2.ddd.json", "s.ddd.json"]},
+            {
+                "t1.ddd.json": types(struct_type("Foo_t")),
+                "t2.ddd.json": {
+                    "types": [{"type": "external", "name": "Foo_t", "header": "foo.h"}]
+                },
+                "s.ddd.json": types(struct_type("Holder_t", value_member("foo", typename="Foo_t"))),
+            },
+        )
+        answer = renamed_at(tmp_path, tmp_path / "t1.ddd.json", "types[0].name", "Bar_t")
+        assert answer["error"] == {
+            "code": REQUEST_FAILED,
+            "message": (
+                "in two.elf, which this rename reaches too: 'Foo_t' is an external type whose "
+                "name foo.h defines, so a rename here would leave that header defining the old one"
+            ),
+        }
+
+
+POINTER_SPELLED: Final = '{"units": ["rpm", "RPM", "rpm"], "units[2]": 0}'
+"""A units file listing ``rpm`` twice and ``RPM`` once, with a key after the list spelling the
+pointer of its third entry: the parse reads ``rpm`` there, and the scan records that member there,
+which is where the edit engine cuts. No file the loader takes holds such a key."""
+
+UNSEEN_UNITS: Final = (
+    "u.ddd.json has unsaved changes this rename would not see; save it and rename again"
+)
+
+
+class TestAUnitPlanTheEngineCannotMakeInAText:
+    """Renaming ``rpm`` onto ``RPM`` where a units file lists both is a merge, which takes the
+    entries of ``rpm`` out one after the other, each at the pointer the index found. In a text
+    spelling one of those pointers as a key, the unit is still there as the parse reads it, so the
+    rename was planned; the engine took the member out with the entry, across the list's end, and
+    then found nothing at the next one. Its refusal ended Rename Symbol in an error answer, and the
+    whole lightbulb with it, since a quick fix renaming a unit is planned as Rename Symbol plans
+    it. The rename is refused instead, and its fix not offered, as for any text the index no
+    longer describes: an open document that differs from its file, or a file changed on disk since
+    it was read."""
+
+    def single(self, tmp_path: Path) -> Path:
+        """One project stating ``rpm`` in ``a.ddd.json`` and listing it twice, beside ``RPM``, in
+        ``u.ddd.json``. Returns ``a.ddd.json``."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "u.ddd.json", "a.ddd.json"),
+                "u.ddd.json": {"units": ["rpm", "RPM", "rpm"]},
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        return tmp_path / "a.ddd.json"
+
+    def test_the_rename_merges_both_entries_while_the_file_holds_no_such_key(
+        self, tmp_path: Path
+    ) -> None:
+        """The control: the same rename, nothing open."""
+        answer = renamed_at(tmp_path, self.single(tmp_path), AT_THE_UNIT, "RPM")
+        assert json.loads(rewritten_by(answer["result"]["changes"])["u.ddd.json"]) == {
+            "units": ["RPM"]
+        }
+
+    def test_rename_symbol_is_refused_for_a_buffer_the_engine_cannot_make_it_in(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        a = self.single(tmp_path)
+        opened = holding(tmp_path / "u.ddd.json", POINTER_SPELLED)
+        answer = renamed_at(tmp_path, a, AT_THE_UNIT, "RPM", opened)
+        assert answer["error"] == {"code": REQUEST_FAILED, "message": UNSEEN_UNITS}
+        assert capsys.readouterr().err == ""
+
+    def test_a_closed_file_changed_on_disk_before_its_event_is_refused_as_one_that_moved(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """No buffer differs: the text was saved into the closed file from elsewhere after the
+        project was read, and the rename asked before the event that makes the server read it
+        again. Refused naming that file alone, as a place the index found that has moved, and not
+        answered with the edits of the files the engine could make them in."""
+        a = self.single(tmp_path)
+        server = Server(io.BytesIO(), io.BytesIO(), root=tmp_path)
+        assert server._handle({"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {}})
+        assert server._handle(fixes_request(a, (), AT_THE_UNIT))  # the project read and kept
+        (tmp_path / "u.ddd.json").write_text(POINTER_SPELLED, encoding="utf-8")
+        writer = io.BytesIO()
+        server.writer = writer
+        assert server._handle(rename_at(a, AT_THE_UNIT, "RPM"))
+        (answer,) = sent(writer)
+        assert answer["error"] == {
+            "code": REQUEST_FAILED,
+            "message": "u.ddd.json has changed on disk since the project was read, which moved "
+            "or respelled a unit this rename would touch; rename again once it has been read "
+            "again",
+        }
+        assert capsys.readouterr().err == ""
+
+    def test_a_respelling_is_read_back_and_refused_in_a_text_the_engine_cannot_make_it_in(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The same text, and a rename onto a spelling no entry lists: a plan of sets at the
+        entries, which the engine makes at once and reads back, and so refuses. Sent as the edits
+        were made, the new name was written over the value of the key that spells the pointer of
+        the third entry, and the list was left as it was."""
+        a = self.single(tmp_path)
+        server = Server(io.BytesIO(), io.BytesIO(), root=tmp_path)
+        assert server._handle({"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {}})
+        assert server._handle(fixes_request(a, (), AT_THE_UNIT))
+        (tmp_path / "u.ddd.json").write_text(POINTER_SPELLED, encoding="utf-8")
+        writer = io.BytesIO()
+        server.writer = writer
+        assert server._handle(rename_at(a, AT_THE_UNIT, "Rpm"))
+        (answer,) = sent(writer)
+        assert answer["error"] == {
+            "code": REQUEST_FAILED,
+            "message": "u.ddd.json has changed on disk since the project was read, which moved "
+            "or respelled a unit this rename would touch; rename again once it has been read "
+            "again",
+        }
+        assert capsys.readouterr().err == ""
+
+    def across(self, tmp_path: Path) -> Path:
+        """Image one holds ``c.ddd.json`` and ``d.ddd.json``, both stating ``rpm``, and lists
+        ``RPM``; image three holds ``d.ddd.json`` and lists ``rpm`` twice beside ``RPM``. Returns
+        ``c.ddd.json``, at whose unit image one reports ``unknown-unit``."""
+        imaged(
+            tmp_path,
+            {
+                "one": ["c.ddd.json", "d.ddd.json", "u1.ddd.json"],
+                "three": ["d.ddd.json", "u.ddd.json"],
+            },
+            {
+                "c.ddd.json": component("C", declare("output", "Speed", unit="rpm")),
+                "d.ddd.json": component("D", declare("input", "Speed", unit="rpm")),
+                "u1.ddd.json": {"units": ["RPM", "Nm"]},
+                "u.ddd.json": {"units": ["rpm", "RPM", "rpm"]},
+            },
+        )
+        return tmp_path / "c.ddd.json"
+
+    def test_the_lightbulb_offers_the_rename_while_nothing_is_open(self, tmp_path: Path) -> None:
+        """The control: the rename fix reaches image three through ``d.ddd.json``."""
+        c = self.across(tmp_path)
+        offered, _ = fixes_asked(tmp_path, c, reported=UNKNOWN_REPORTED, pointer=AT_THE_UNIT)
+        (renaming,) = [a for a in offered if a["title"] == "Rename 'rpm' to 'RPM' everywhere"]
+        assert touched(renaming) == {"c.ddd.json", "d.ddd.json", "u.ddd.json"}
+
+    def test_the_lightbulb_offers_the_other_fixes_and_not_the_rename(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The rename is planned beyond the document's own images, in image three, whose units file
+        is open on the text: the lightbulb is answered, without the rename it would be refused."""
+        c = self.across(tmp_path)
+        opened = holding(tmp_path / "u.ddd.json", POINTER_SPELLED)
+        offered, _ = fixes_asked(
+            tmp_path, c, opened, reported=UNKNOWN_REPORTED, pointer=AT_THE_UNIT
+        )
+        assert [action["title"] for action in offered] == ["Add 'rpm' to the vocabulary"]
+        assert capsys.readouterr().err == ""
 
 
 class TestMessagesTheClientGetsWrong:
@@ -7184,6 +11347,479 @@ class TestMessagesTheClientGetsWrong:
         assert answers[12]["error"]["code"] == INVALID_PARAMS
         assert "untitled:Untitled-1" in answers[12]["error"]["message"]
         assert answers[99]["result"] is None
+
+
+NOT_A: Final = "'{}' is missing or is not {}"
+"""How a field that is not the shape its method takes is refused, by its name and its kind."""
+
+BEFORE_THE_START: Final = "'{}' is {}; a position counts lines and characters from 0"
+"""How a coordinate of a position before the start of the document is refused."""
+
+NO_FILE: Final = (
+    "'{}' cannot name a file: its path holds a null character or a lone surrogate, which no "
+    "file name holds"
+)
+"""How a ``file:`` uri whose path no file system can be asked about is refused."""
+
+
+def a_null_in(path: Path) -> str:
+    """The uri of ``path`` with a null character escaped into its file name."""
+    return path.as_uri().replace(".ddd.json", "%00.ddd.json")
+
+
+class TestAMalformedFieldIsRefused:
+    """10:M1. Every field the server reads from a request's params is refused with the
+    invalid-parameters error naming it, where it is not the shape the protocol gives it, and the
+    session goes on: a request sent wrong is the client's mistake, answered as one.
+
+    Each test also asserts that nothing went to stderr, which is where the net writes the trace of
+    a defect of the server's own: since a defect costs one answer rather than the session, a test of
+    the session going on would pass with every refusal here taken out, each fault answered as the
+    server's own defect, naming no field. A field the protocol lets a client leave out takes its
+    default, and so does one it requires and the server tolerates the absence of - the handshake's
+    ``capabilities`` and ``rootUri``, a context's ``diagnostics``; one the protocol lets it send as
+    null is null; any other value of another shape is refused.
+    """
+
+    AT: ClassVar[dict[str, int]] = {"line": 0, "character": 0}
+
+    def refused(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        request: dict[str, Any],
+        *before: dict[str, Any],
+    ) -> dict[str, Any]:
+        """What the server answers ``request``, sent after ``before`` in a session the client ends
+        cleanly, with nothing on stderr."""
+        writer = io.BytesIO()
+        assert Server(session(*before, request, *END), writer, root=tmp_path).run() == 0
+        assert capsys.readouterr().err == ""
+        answers = {message["id"]: message for message in answered(writer) if "id" in message}
+        assert answers[99] == response(99, None), "the session goes on"
+        return answers[request["id"]]
+
+    def code_action(self, path: Path, **params: Any) -> dict[str, Any]:
+        """A request for the quick fixes at the start of ``path``, with ``params`` in place of the
+        well formed ones."""
+        well_formed: dict[str, Any] = {
+            "textDocument": {"uri": path.as_uri()},
+            "range": {"start": self.AT, "end": self.AT},
+            "context": {"diagnostics": []},
+        }
+        return {
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "textDocument/codeAction",
+            "params": {**well_formed, **params},
+        }
+
+    def positioned(self, method: str, path: Path, position: Any, **more: Any) -> dict[str, Any]:
+        """A request at ``position`` of ``path``: a hover, a jump, a rename or its preparation."""
+        return {
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": method,
+            "params": {"textDocument": {"uri": path.as_uri()}, "position": position, **more},
+        }
+
+    @pytest.mark.parametrize(
+        ("context", "message"),
+        [
+            ({"diagnostics": None}, NOT_A.format("params.context.diagnostics", "list")),
+            ({"diagnostics": 3}, NOT_A.format("params.context.diagnostics", "list")),
+            ({"diagnostics": [1]}, NOT_A.format("params.context.diagnostics[]", "dict")),
+            (
+                {"diagnostics": [{"code": []}]},
+                "'params.context.diagnostics[].code' is not int or str",
+            ),
+            (
+                {"diagnostics": [{"code": None}]},
+                "'params.context.diagnostics[].code' is not int or str",
+            ),
+            (
+                {"diagnostics": [{"code": True}]},
+                "'params.context.diagnostics[].code' is not int or str",
+            ),
+        ],
+        ids=["null", "a-number", "not-a-finding", "a-list-code", "a-null-code", "a-bool-code"],
+    )
+    def test_a_code_action_s_findings(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        context: dict[str, Any],
+        message: str,
+    ) -> None:
+        """The findings a code action is asked about: a list of findings, each an object whose
+        ``code``, where it has one, is a number or a string. Each of these ended the session with a
+        trace, and then cost its answer."""
+        request = self.code_action(tmp_path / "a.ddd.json", context=context)
+        assert self.refused(tmp_path, capsys, request) == error(7, INVALID_PARAMS, message)
+
+    def test_a_code_action_s_findings_may_be_left_out(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The control: a context with no ``diagnostics`` at all is asked about none, and a finding
+        with no ``code``, or one numbered by another server, is one this server has no fix for."""
+        write_tree(tmp_path, {"a.ddd.json": component("A", declare("local", "V"))})
+        for context in ({}, {"diagnostics": [{"message": "x"}, {"code": 7}]}):
+            request = self.code_action(tmp_path / "a.ddd.json", context=context)
+            assert self.refused(tmp_path, capsys, request) == response(7, [])
+
+    @pytest.mark.parametrize(
+        ("start", "message"),
+        [
+            ({"line": True, "character": 0}, NOT_A.format("params.range.start.line", "int")),
+            ({"line": 0}, NOT_A.format("params.range.start.character", "int")),
+            ({"line": -1, "character": 0}, BEFORE_THE_START.format("params.range.start.line", -1)),
+            (
+                {"line": 0, "character": -2},
+                BEFORE_THE_START.format("params.range.start.character", -2),
+            ),
+        ],
+        ids=["a-bool-line", "no-character", "a-line-before-the-start", "a-character-before-it"],
+    )
+    def test_a_code_action_s_range(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        start: dict[str, Any],
+        message: str,
+    ) -> None:
+        """A range's start is named as the start it is, where a refusal named it
+        ``params.range.line``, which no client sends."""
+        request = self.code_action(tmp_path / "a.ddd.json", range={"start": start, "end": self.AT})
+        assert self.refused(tmp_path, capsys, request) == error(7, INVALID_PARAMS, message)
+
+    @pytest.mark.parametrize(
+        "method",
+        [
+            "textDocument/hover",
+            "textDocument/definition",
+            "textDocument/references",
+            "textDocument/prepareRename",
+            "textDocument/rename",
+        ],
+    )
+    @pytest.mark.parametrize(
+        ("position", "message"),
+        [
+            (
+                {"line": -1000, "character": 0},
+                BEFORE_THE_START.format("params.position.line", -1000),
+            ),
+            (
+                {"line": 0, "character": -1},
+                BEFORE_THE_START.format("params.position.character", -1),
+            ),
+            ({"line": "0", "character": 0}, NOT_A.format("params.position.line", "int")),
+            ({"line": 0, "character": 1.5}, NOT_A.format("params.position.character", "int")),
+        ],
+        ids=["a-line-before-the-start", "a-character-before-it", "a-text-line", "a-fraction"],
+    )
+    def test_a_position(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        method: str,
+        position: dict[str, Any],
+        message: str,
+    ) -> None:
+        """A line before the first ended a hover with ``IndexError``, every request at a position
+        reading it the same way; a character before the first was read as the line's start."""
+        write_tree(tmp_path, {"a.ddd.json": component("A", declare("local", "V"))})
+        request = self.positioned(method, tmp_path / "a.ddd.json", position, newName="W")
+        assert self.refused(tmp_path, capsys, request) == error(7, INVALID_PARAMS, message)
+
+    @pytest.mark.parametrize(
+        "method",
+        [
+            "textDocument/hover",
+            "textDocument/definition",
+            "textDocument/references",
+            "textDocument/prepareRename",
+            "textDocument/rename",
+            "textDocument/codeAction",
+        ],
+    )
+    @pytest.mark.parametrize("escaped", ["%00", "\x00", "\ud800"], ids=["escaped", "null", "lone"])
+    def test_a_uri_whose_path_no_file_system_takes(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], method: str, escaped: str
+    ) -> None:
+        """A null character in a uri, escaped or not, ended every request reading the document with
+        ``embedded null character``, and so did a surrogate standing alone - ``\\ud800`` written
+        into the uri's json - wherever a path is spelled in utf-8."""
+        uri = (tmp_path / "a.ddd.json").as_uri().replace(".ddd.json", f"{escaped}.ddd.json")
+        request = (
+            self.code_action(tmp_path / "a.ddd.json")
+            if method == "textDocument/codeAction"
+            else self.positioned(method, tmp_path / "a.ddd.json", self.AT, newName="W")
+        )
+        request["params"]["textDocument"]["uri"] = uri
+        assert self.refused(tmp_path, capsys, request) == error(
+            7, INVALID_PARAMS, NO_FILE.format(uri)
+        )
+
+    @pytest.mark.parametrize(
+        "method",
+        [
+            "textDocument/hover",
+            "textDocument/definition",
+            "textDocument/references",
+            "textDocument/prepareRename",
+            "textDocument/rename",
+            "textDocument/codeAction",
+        ],
+    )
+    @pytest.mark.parametrize("held", ["\x00", "\ud800"], ids=["null", "lone"])
+    def test_a_uri_whose_host_no_file_system_takes(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], method: str, held: str
+    ) -> None:
+        """``file://`` then a host, a network share's: the host is the start of the path it names,
+        and one holding a null character or a lone surrogate was asked of the file system all the
+        same, the path being checked before the host was put in front of it."""
+        uri = f"file://ho{held}st/share/a.ddd.json"
+        request = (
+            self.code_action(tmp_path / "a.ddd.json")
+            if method == "textDocument/codeAction"
+            else self.positioned(method, tmp_path / "a.ddd.json", self.AT, newName="W")
+        )
+        request["params"]["textDocument"]["uri"] = uri
+        assert self.refused(tmp_path, capsys, request) == error(
+            7, INVALID_PARAMS, NO_FILE.format(uri)
+        )
+
+    @pytest.mark.parametrize("held", ["\x00", "\ud800"], ids=["null", "lone"])
+    def test_a_notification_whose_host_no_file_system_takes_is_answered_with_nothing(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], held: str
+    ) -> None:
+        document = {"uri": f"file://ho{held}st/share/a.ddd.json", "version": 1, "text": "{}"}
+        opened = {
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": {"textDocument": document},
+        }
+        writer = io.BytesIO()
+        assert Server(session(opened, *END), writer, root=tmp_path).run() == 0
+        assert answered(writer) == [response(99, None)]
+        assert capsys.readouterr().err == ""
+
+    @pytest.mark.parametrize("method", ["didOpen", "didChange", "didSave", "didClose", "watched"])
+    def test_a_notification_whose_uri_no_file_system_takes_is_answered_with_nothing(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], method: str
+    ) -> None:
+        """A notification gets no answer, a refused one included, and nothing is said on stderr
+        either: it is the client's mistake, not a defect of the server's. Opening one ended the
+        session, and then wrote a trace."""
+        uri = a_null_in(tmp_path / "a.ddd.json")
+        document = {"uri": uri, "version": 1, "text": "{}"}
+        notified = {
+            "didOpen": ("textDocument/didOpen", {"textDocument": document}),
+            "didChange": (
+                "textDocument/didChange",
+                {"textDocument": document, "contentChanges": [{"text": "{}"}]},
+            ),
+            "didSave": ("textDocument/didSave", {"textDocument": {"uri": uri}}),
+            "didClose": ("textDocument/didClose", {"textDocument": {"uri": uri}}),
+            "watched": ("workspace/didChangeWatchedFiles", {"changes": [{"uri": uri, "type": 2}]}),
+        }[method]
+        writer = io.BytesIO()
+        stream = session({"jsonrpc": "2.0", "method": notified[0], "params": notified[1]}, *END)
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        assert answered(writer) == [response(99, None)]
+        assert capsys.readouterr().err == ""
+
+    def initialized(self, params: Any) -> dict[str, Any]:
+        return {"jsonrpc": "2.0", "id": 7, "method": "initialize", "params": params}
+
+    @pytest.mark.parametrize(
+        ("params", "message"),
+        [
+            ([1], NOT_A.format("params", "dict")),
+            (None, NOT_A.format("params", "dict")),
+            ({"rootUri": 3}, NOT_A.format("params.rootUri", "str")),
+            (
+                {"workspaceFolders": [{"uri": "file:///w"}], "rootUri": 3},
+                NOT_A.format("params.rootUri", "str"),
+            ),
+            ({"workspaceFolders": 3}, NOT_A.format("params.workspaceFolders", "list")),
+            ({"workspaceFolders": [3]}, NOT_A.format("params.workspaceFolders[]", "dict")),
+            (
+                {"workspaceFolders": [{"uri": None}]},
+                NOT_A.format("params.workspaceFolders[].uri", "str"),
+            ),
+            ({"capabilities": "nonsense"}, NOT_A.format("params.capabilities", "dict")),
+            (
+                {"capabilities": {"workspace": "nonsense"}},
+                NOT_A.format("params.capabilities.workspace", "dict"),
+            ),
+            (
+                {"capabilities": {"workspace": {"workspaceEdit": "nonsense"}}},
+                NOT_A.format("params.capabilities.workspace.workspaceEdit", "dict"),
+            ),
+            (
+                {"capabilities": {"workspace": {"workspaceEdit": {"documentChanges": "yes"}}}},
+                NOT_A.format("params.capabilities.workspace.workspaceEdit.documentChanges", "bool"),
+            ),
+            (
+                {"capabilities": {"workspace": {"workspaceEdit": {"documentChanges": None}}}},
+                NOT_A.format("params.capabilities.workspace.workspaceEdit.documentChanges", "bool"),
+            ),
+            (
+                {
+                    "capabilities": {
+                        "workspace": {
+                            "workspaceEdit": {"documentChanges": True, "changeAnnotationSupport": 1}
+                        }
+                    }
+                },
+                NOT_A.format(
+                    "params.capabilities.workspace.workspaceEdit.changeAnnotationSupport", "dict"
+                ),
+            ),
+            (
+                {"capabilities": {"workspace": {"didChangeWatchedFiles": "nonsense"}}},
+                NOT_A.format("params.capabilities.workspace.didChangeWatchedFiles", "dict"),
+            ),
+            (
+                {
+                    "capabilities": {
+                        "workspace": {"didChangeWatchedFiles": {"dynamicRegistration": "yes"}}
+                    }
+                },
+                NOT_A.format(
+                    "params.capabilities.workspace.didChangeWatchedFiles.dynamicRegistration",
+                    "bool",
+                ),
+            ),
+            (
+                {
+                    "capabilities": {
+                        "workspace": {"didChangeWatchedFiles": {"dynamicRegistration": None}}
+                    }
+                },
+                NOT_A.format(
+                    "params.capabilities.workspace.didChangeWatchedFiles.dynamicRegistration",
+                    "bool",
+                ),
+            ),
+        ],
+        ids=[
+            "params-a-list",
+            "params-null",
+            "root-a-number",
+            "root-a-number-beside-folders",
+            "folders-a-number",
+            "a-folder-a-number",
+            "a-folder-uri-null",
+            "capabilities-text",
+            "workspace-text",
+            "workspace-edit-text",
+            "document-changes-text",
+            "document-changes-null",
+            "annotations-a-number",
+            "watching-text",
+            "registration-text",
+            "registration-null",
+        ],
+    )
+    def test_the_handshake(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], params: Any, message: str
+    ) -> None:
+        """Every field ``initialize`` reads, the capabilities its edits are shaped by among them.
+        A refused handshake leaves the session unopened, so the client may send a well formed one
+        and be served from there."""
+        writer = io.BytesIO()
+        hello = {"jsonrpc": "2.0", "id": 8, "method": "initialize", "params": {}}
+        stream = framed(self.initialized(params), hello, *END)
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        assert capsys.readouterr().err == ""
+        refusal, opened, ended = sent(writer)
+        assert refusal == error(7, INVALID_PARAMS, message)
+        assert opened["result"]["serverInfo"]["name"] == "ddd"
+        assert ended == response(99, None)
+
+    @pytest.mark.parametrize("field", ["rootUri", "workspaceFolders"])
+    def test_a_folder_uri_whose_path_no_file_system_takes(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], field: str
+    ) -> None:
+        """Taken as a workspace folder, it ended the first request that resolved a document under
+        it; refused, the session waits for a handshake it can open."""
+        uri = a_null_in(tmp_path / "w.ddd.json").removesuffix(".ddd.json")
+        params = {"rootUri": uri} if field == "rootUri" else {"workspaceFolders": [{"uri": uri}]}
+        writer = io.BytesIO()
+        hello = {"jsonrpc": "2.0", "id": 8, "method": "initialize", "params": {}}
+        stream = framed(self.initialized(params), hello, *END)
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        assert capsys.readouterr().err == ""
+        assert sent(writer)[0] == error(7, INVALID_PARAMS, NO_FILE.format(uri))
+
+    def test_a_root_uri_no_file_system_takes_is_refused_beside_named_folders(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Beside folders the client names, the root is no folder taken: it is read for its shape
+        all the same, as every other field is, and a path holding a null character is refused."""
+        uri = a_null_in(tmp_path / "w.ddd.json").removesuffix(".ddd.json")
+        params = {"workspaceFolders": [{"uri": tmp_path.as_uri()}], "rootUri": uri}
+        writer = io.BytesIO()
+        hello = {"jsonrpc": "2.0", "id": 8, "method": "initialize", "params": {}}
+        stream = framed(self.initialized(params), hello, *END)
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        assert capsys.readouterr().err == ""
+        assert sent(writer)[0] == error(7, INVALID_PARAMS, NO_FILE.format(uri))
+
+    def test_a_handshake_refused_after_a_field_it_had_read_changes_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        """Its folders were taken before its capabilities were refused, so a refused handshake left
+        the session rooted where the refused one said. Every field is read before any is kept."""
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        server = Server(io.BytesIO(), io.BytesIO(), root=tmp_path)
+        refused = {"rootUri": elsewhere.as_uri(), "capabilities": "nonsense"}
+        with pytest.raises(MessageError, match=r"^'params\.capabilities' is missing"):
+            server._handle(self.initialized(refused))
+        assert server.roots == [tmp_path]
+        assert not server._initialised
+
+    @pytest.mark.parametrize(
+        "params",
+        [
+            {},
+            {"rootUri": None, "workspaceFolders": None},
+            {"rootUri": "", "workspaceFolders": []},
+            {"capabilities": {}},
+            {"capabilities": {"workspace": {}}},
+            {"capabilities": {"workspace": {"workspaceEdit": {}}}},
+            {"capabilities": {"workspace": {"didChangeWatchedFiles": {}}}},
+        ],
+        ids=[
+            "empty",
+            "nulls",
+            "empty-folders",
+            "no-workspace",
+            "no-edit",
+            "nothing-announced",
+            "no-registration",
+        ],
+    )
+    def test_a_handshake_may_leave_out_what_the_server_tolerates(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], params: dict[str, Any]
+    ) -> None:
+        """The control: what the protocol lets a client leave out, or send as null, and what it
+        requires and the server tolerates the absence of, takes its default - the folder the
+        server was started with, edits in the plain form, and no watcher asked for."""
+        writer = io.BytesIO()
+        server = Server(framed(self.initialized(params), INITIALIZED, *END), writer, root=tmp_path)
+        assert server.run() == 0
+        assert capsys.readouterr().err == ""
+        answer, ended = sent(writer)
+        assert answer["result"]["serverInfo"]["name"] == "ddd"
+        assert ended == response(99, None)
+        assert server.roots == [tmp_path]
+        assert not server._versioned_edits
+        assert not server._annotated_edits
 
 
 class TestTheLifecycle:
@@ -7323,6 +11959,168 @@ class TestTheLifecycle:
         """A client that gave up before saying hello still gets a server that goes away; the
         protocol names this case so that such a server is not left running."""
         assert Server(framed({"jsonrpc": "2.0", "method": "exit"}), io.BytesIO()).run() == 1
+
+
+class TestADefectInAnsweringOneMessage:
+    """10:I13 and decision 10.1: a defect in answering one message costs that answer, not the
+    session.
+
+    The front end reports through findings rather than raising, but what translates them is code
+    like any other, and a hover that raised ended the session: every finding on screen went with
+    it, and a client gives up restarting a server that the next hover ends again. Each test makes
+    one handler raise, as a defect would.
+    """
+
+    @staticmethod
+    def defect(*_: Any) -> None:
+        """A handler failing as a defect of the server would, whatever it is asked."""
+        msg = "a defect of the server's own"
+        raise RuntimeError(msg)
+
+    def hover(self, path: Path) -> dict[str, Any]:
+        return {
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "textDocument/hover",
+            "params": {
+                "textDocument": {"uri": path.as_uri()},
+                "position": {"line": 0, "character": 0},
+            },
+        }
+
+    def test_a_request_the_server_fails_on_is_answered_and_the_session_goes_on(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Answered with the protocol's internal error, -32603, naming the method and the fault,
+        with the trace on stderr, which is the server's log; and the next message is read."""
+        monkeypatch.setattr(Server, "_hover", self.defect)
+        writer = io.BytesIO()
+        stream = session(self.hover(tmp_path / "a.ddd.json"), *END)
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        failed, ended = answered(writer)
+        assert failed == error(
+            7,
+            -32603,
+            "textDocument/hover failed on a defect of ddd (RuntimeError: a defect of the server's "
+            "own); the trace is in the server's log",
+        )
+        assert ended == response(99, None)
+        trace = capsys.readouterr().err
+        assert trace.startswith(
+            "ddd: textDocument/hover failed on a defect of this server, and the session goes on\n"
+            "Traceback (most recent call last):\n"
+        )
+        assert trace.endswith("RuntimeError: a defect of the server's own\n")
+
+    def test_a_notification_the_server_fails_on_is_answered_with_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A notification never gets an answer, a failed one included: the trace on stderr is all
+        there is of it, and the next message is read. A relative record ended the session on the
+        first ``didOpen``, which is a notification. The document is open, with the text every
+        client sends, and not on disk yet: a path that is neither is not checked at all."""
+        monkeypatch.setattr(Server, "refresh", self.defect)
+        opened = {
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": {"textDocument": {"uri": (tmp_path / "a.ddd.json").as_uri(), "text": ""}},
+        }
+        writer = io.BytesIO()
+        assert Server(session(opened, *END), writer, root=tmp_path).run() == 0
+        assert answered(writer) == [response(99, None)]
+        trace = capsys.readouterr().err
+        assert trace.startswith(
+            "ddd: textDocument/didOpen failed on a defect of this server, and the session goes "
+            "on\nTraceback (most recent call last):\n"
+        )
+        assert trace.endswith("RuntimeError: a defect of the server's own\n")
+
+    def test_an_interrupt_still_ends_the_run(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The net is for defects, and an interrupt is not one: it is no ``Exception``, and it
+        still ends the run."""
+
+        def interrupted(*_: Any) -> None:
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(Server, "_hover", interrupted)
+        stream = session(self.hover(tmp_path / "a.ddd.json"), *END)
+        with pytest.raises(KeyboardInterrupt):
+            Server(stream, io.BytesIO(), root=tmp_path).run()
+
+
+class TestHoversThatEndedTheSession:
+    """10:I13: hovers that raised out of the session, each now answered with what the object is.
+
+    Asked through a session, as a client asks: each of these ended it.
+    """
+
+    def hovered(self, tmp_path: Path, *declarations: dict[str, Any]) -> str:
+        """What a hover on the name of the last of ``declarations`` answers, in a project above
+        the component declaring them."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", *declarations),
+            },
+        )
+        path = tmp_path / "a.ddd.json"
+        position = Document(path.read_text(encoding="utf-8")).range_of(
+            f"component.interface[{len(declarations) - 1}].definition.name"
+        )["start"]
+        request = {
+            "jsonrpc": "2.0",
+            "id": 12,
+            "method": "textDocument/hover",
+            "params": {"textDocument": {"uri": path.as_uri()}, "position": position},
+        }
+        writer = io.BytesIO()
+        assert Server(session(request, *END), writer, root=tmp_path).run() == 0
+        (answer,) = [message for message in answered(writer) if message.get("id") == 12]
+        described: str = answer["result"]["contents"]["value"]
+        return described
+
+    def test_an_init_that_states_no_value_draws_nothing(self, tmp_path: Path) -> None:
+        """A parameter whose ``init`` is ``[]``, which the checks report as ``init-invalid``: a
+        scalar has no dimension to take the width of a row from, so the rows were cut at a width
+        of nothing. There is nothing to draw, and nothing is drawn."""
+        described = self.hovered(
+            tmp_path, declare("output", "K", "uint8", kind="parameter", init=[])
+        )
+        assert described.startswith("**K** — parameter, `uint8`")
+        assert described.endswith("| volatile | no |")
+
+    def test_an_axis_whose_init_states_no_point_has_no_span(self, tmp_path: Path) -> None:
+        """The same init on an axis, met from the curve it gives a shape: the span of its points
+        was asked of no points."""
+        described = self.hovered(
+            tmp_path,
+            declare("output", "X", "uint8", kind="axis", size=2, init=[]),
+            declare("output", "K", "uint8", kind="curve", axis="X", init=[1, 2]),
+        )
+        assert "| axis | `X` |" in described
+
+    def test_a_float64_block_spanning_more_than_a_float_holds_is_drawn(
+        self, tmp_path: Path
+    ) -> None:
+        """A valid project whose init runs from ``-1.7e308`` to ``1.7e308``: both are doubles and
+        the distance between them is not, so the span was infinite and the highest value's
+        position was NaN. Each bar is drawn where it falls."""
+        described = self.hovered(
+            tmp_path,
+            declare(
+                "output",
+                "K",
+                "float64",
+                kind="value_block",
+                dimensions=[3],
+                init=[-1.7e308, 1.7e308, 0],
+            ),
+        )
+        assert main(["check", str(tmp_path / "p.ddd.json")]) == EXIT_OK
+        assert described.endswith("```text\n▁█▅\n-1.7e+308 .. 1.7e+308\n```")
 
 
 class TestWhatTheServerSaysAboutARecord:
@@ -7739,3 +12537,2241 @@ class TestAWatchedFileChanging:
         assert server._handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
         assert server._handle(self.changed())
         assert published(writer) == {}
+
+
+class TestWhatNoRunReportsOnLeavesTheScreen:
+    """10:I1's converse. A check withdraws the findings of a file its run reported on, and keeps
+    those of a file no run of it looked at; but a file a run reported on before, which no run
+    reports on now - a component taken out of its project's ``includes`` - kept its findings for
+    the session, though ``ddd check`` no longer reports them. And a description a pull rewrote, in
+    a project no open document belongs to, was not checked again while a document of another
+    project was open, so its findings went on describing it as it was.
+
+    Each message is handled on its own, one check per message that marks a document, and the
+    findings are read as the last word published for each file."""
+
+    def saved(self, path: Path) -> list[dict[str, Any]]:
+        """The client typing ``path``'s text as the disk now holds it, and saving it."""
+        uri = path.as_uri()
+        return [
+            {
+                "jsonrpc": "2.0",
+                "method": "textDocument/didChange",
+                "params": {
+                    "textDocument": {"uri": uri, "version": 2},
+                    "contentChanges": [{"text": path.read_text(encoding="utf-8")}],
+                },
+            },
+            {
+                "jsonrpc": "2.0",
+                "method": "textDocument/didSave",
+                "params": {"textDocument": {"uri": uri}},
+            },
+        ]
+
+    @staticmethod
+    def disagreeing(producer: Path, consumer: Path) -> dict[str, Any]:
+        """A writer and a reader of ``Speed`` that disagree on its unit, as files of a tree."""
+        return {
+            producer.as_posix(): component("W", declare("output", "Speed", unit="rpm")),
+            consumer.as_posix(): component("R", declare("input", "Speed", unit="1/min")),
+        }
+
+    @staticmethod
+    def last_codes(writer: io.BytesIO, path: Path) -> list[str]:
+        """The checks of the last findings published for ``path``, sorted."""
+        return sorted(entry["code"] for entry in published(writer).get(path.as_uri(), []))
+
+    @pytest.mark.parametrize(
+        "ran", ["the-project-read-alone", "the-project-above-a-component", "the-build-of-a-record"]
+    )
+    def test_a_component_taken_out_of_its_project_is_withdrawn(
+        self, tmp_path: Path, ran: str
+    ) -> None:
+        """The component is taken out of its project's ``includes``, and the project is checked
+        again: read as the project file it is, open and saved; found above its other component,
+        open, as the watcher reports the change; or run as a build record names it. Its run no
+        longer reports on the component, and no other run does."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                **self.disagreeing(Path("a.ddd.json"), Path("b.ddd.json")),
+            },
+        )
+        p, a, b = (tmp_path / name for name in ("p.ddd.json", "a.ddd.json", "b.ddd.json"))
+        if ran == "the-build-of-a-record":
+            build_record(tmp_path, p)
+        opened = a if ran == "the-project-above-a-component" else p
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(opening(tmp_path))
+        assert server._handle(holding(opened, opened.read_text(encoding="utf-8")))
+        assert "definition-mismatch" in self.last_codes(writer, a)
+        assert "definition-mismatch" in self.last_codes(writer, b)
+        write_tree(tmp_path, {"p.ddd.json": project("P", "a.ddd.json")})
+        changed = [changed_on_disk(p)] if opened == a else self.saved(p)
+        for message in changed:
+            assert server._handle(message)
+        assert published(writer)[b.as_uri()] == [], "b kept what p's run no longer says"
+        assert "definition-mismatch" not in self.last_codes(writer, a)
+
+    def test_a_description_mended_to_include_the_document_no_more_is_withdrawn(
+        self, tmp_path: Path
+    ) -> None:
+        """A plugin stops the description above an open component, and the search for the
+        component's project names it there, as a finding of its own. Mended, and including the
+        component no more, it is named by no search and reported on by no run: the component's
+        next check withdraws what its search said of it."""
+        write_tree(
+            tmp_path,
+            {
+                "tools/exiting_plugin.py": EXITING_MODEL_PLUGIN,
+                "p.ddd.json": project(
+                    "P", "a.ddd.json", "b.ddd.json", plugins=["tools/exiting_plugin.py"]
+                ),
+                "a.ddd.json": component("A", declare("input", "X")),
+                "b.ddd.json": component(
+                    "B", declare("local", "Y", extensions={"exiting": {"tag": "t"}})
+                ),
+            },
+        )
+        p, a = tmp_path / "p.ddd.json", tmp_path / "a.ddd.json"
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(opening(tmp_path))
+        assert server._handle(holding(a, a.read_text(encoding="utf-8")))
+        assert self.last_codes(writer, p) == ["plugin-invalid"]
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "b.ddd.json"),
+                "b.ddd.json": component("B", declare("local", "Y")),
+            },
+        )
+        for message in self.saved(a):
+            assert server._handle(message)
+        assert published(writer)[p.as_uri()] == [], "p kept what a's search no longer says"
+
+    def test_a_description_fixed_behind_the_editor_is_checked_while_another_project_is_open(
+        self, tmp_path: Path
+    ) -> None:
+        """Project one's findings are on screen with nothing of it open, kept while project two's
+        document is: the reader of one is fixed on disk, by a pull, and the watcher reports it."""
+        write_tree(
+            tmp_path,
+            {
+                "one/p1.ddd.json": project("One", "a1.ddd.json", "b1.ddd.json"),
+                **self.disagreeing(Path("one/a1.ddd.json"), Path("one/b1.ddd.json")),
+                "two/p2.ddd.json": project("Two", "a2.ddd.json"),
+                "two/a2.ddd.json": component("A2", declare("output", "Rate")),
+            },
+        )
+        p1, p2 = tmp_path / "one" / "p1.ddd.json", tmp_path / "two" / "p2.ddd.json"
+        a1, b1 = tmp_path / "one" / "a1.ddd.json", tmp_path / "one" / "b1.ddd.json"
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(opening(tmp_path))
+        assert server._handle(holding(p1, p1.read_text(encoding="utf-8")))
+        assert server._handle(closing(p1))
+        assert server._handle(holding(p2, p2.read_text(encoding="utf-8")))
+        assert "definition-mismatch" in self.last_codes(writer, a1), "kept, as 10:I1 asks"
+        write_tree(
+            tmp_path, {"one/b1.ddd.json": component("R", declare("input", "Speed", unit="rpm"))}
+        )
+        assert server._handle(changed_on_disk(b1))
+        assert "definition-mismatch" not in self.last_codes(writer, a1)
+        assert "definition-mismatch" not in self.last_codes(writer, b1)
+
+    def test_a_component_inside_a_folder_inside_the_removed_one_keeps_nothing_it_gave(
+        self, tmp_path: Path
+    ) -> None:
+        """The outer folder holds the project, the nested one its two components and no project of
+        its own, and nothing is open: the outer folder removed, the components are checked again
+        from the folder that stays, each on its own, and keep none of the project's findings."""
+        outer, nested = tmp_path / "outer", tmp_path / "outer" / "nested"
+        write_tree(
+            outer,
+            {
+                "p.ddd.json": project("P", "nested/a.ddd.json", "nested/b.ddd.json"),
+                **self.disagreeing(Path("nested/a.ddd.json"), Path("nested/b.ddd.json")),
+            },
+        )
+        a, b = nested / "a.ddd.json", nested / "b.ddd.json"
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(opening(outer, nested))
+        assert server._handle(holding(a, a.read_text(encoding="utf-8")))
+        assert server._handle(closing(a))
+        assert "definition-mismatch" in self.last_codes(writer, b)
+        assert server._handle(folders_changed(removed=[outer]))
+        assert "definition-mismatch" not in self.last_codes(writer, a)
+        assert "definition-mismatch" not in self.last_codes(writer, b)
+        assert server.roots == [nested]
+
+    def test_what_a_removed_records_build_reported_is_checked_with_a_document_open(
+        self, tmp_path: Path
+    ) -> None:
+        """A build record turns the project's mismatches into warnings, and a document of another
+        project is open: the record deleted, the project's files on screen are checked again, as
+        the project above them says under the default severities, where they kept the record's."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                **self.disagreeing(Path("a.ddd.json"), Path("b.ddd.json")),
+                "other/q.ddd.json": project("Q", "c.ddd.json"),
+                "other/c.ddd.json": component("C", declare("output", "Rate")),
+            },
+        )
+        record = build_record(
+            tmp_path, tmp_path / "p.ddd.json", severity=["definition-mismatch=warning"]
+        )
+        a, c = tmp_path / "a.ddd.json", tmp_path / "other" / "c.ddd.json"
+
+        def mismatch(writer: io.BytesIO) -> list[int]:
+            last = published(writer).get(a.as_uri(), [])
+            return [entry["severity"] for entry in last if entry["code"] == "definition-mismatch"]
+
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(opening(tmp_path))
+        assert server._handle(holding(c, c.read_text(encoding="utf-8")))
+        assert mismatch(writer) == [2]
+        record.unlink()
+        assert server._handle(changed_on_disk(record, kind=3))
+        assert mismatch(writer) == [1], "a kept the severity of a record that is gone"
+
+
+class Arrivals:
+    """An inbox handing :meth:`Server._serve` what was read off the stream, arrival by arrival.
+
+    What one arrival holds is queued together, as the reading thread queues what a client sent at
+    once: the server takes the first, and the rest are behind it. The next arrival lands only when
+    the server asks for more with this one all taken, where a queue makes it wait, so what a later
+    arrival holds had not been sent while the server handled the ones before. That is the client's
+    timing, said by the test rather than left to a race between two threads.
+    """
+
+    def __init__(self, writer: io.BytesIO, *arrivals: Sequence[Any]) -> None:
+        self.writer = writer
+        self.coming = [list(arrival) for arrival in arrivals]
+        self.queued: list[Any] = []
+        self.landed: list[list[dict[str, Any]]] = []
+        """What the server had written when each arrival landed."""
+        self.taken = 0
+        """How many things the server has taken so far."""
+
+    def get(self) -> Any:
+        if not self.queued:
+            self.landed.append(sent(self.writer))
+            self.queued = self.coming.pop(0)
+        self.taken += 1
+        return self.queued.pop(0)
+
+    def qsize(self) -> int:
+        return len(self.queued)
+
+
+class Typing(Arrivals):
+    """Arrivals while the reader goes on typing: behind each ``didChange`` the server takes,
+    another lands, ``keystrokes`` more in all, as a client sends one at every key."""
+
+    def __init__(self, writer: io.BytesIO, *arrivals: Sequence[Any], keystrokes: int) -> None:
+        super().__init__(writer, *arrivals)
+        self.keystrokes = keystrokes
+
+    def get(self) -> Any:
+        taken = super().get()
+        if taken.get("method") == "textDocument/didChange" and self.keystrokes:
+            self.keystrokes -= 1
+            self.queued.append(taken)
+        return taken
+
+
+class TestDocumentsMarkedTogetherAreCheckedTogether:
+    """10:I12: the documents that messages queued together mark are checked together, each
+    project once.
+
+    A save reaches the server twice, as a ``didSave`` and as the watch event the extension sends
+    for the file the editor wrote, and the event checked every open document on its own: ten
+    documents open, and the project was analysed once for the save and ten times more for the
+    event that followed it, while every hover and rename waited behind them. Most of these hand
+    the server what was read arrival by arrival (:class:`Arrivals`), so that what came together
+    is the test's to say.
+    """
+
+    def tabs(self, tmp_path: Path) -> list[Path]:
+        """Ten open documents, the components of the one project a build record names, each
+        reading what nobody writes."""
+        names = [f"c{number}.ddd.json" for number in range(10)]
+        write_tree(
+            tmp_path,
+            {"p.ddd.json": project("P", *names)}
+            | {
+                name: component(f"C{number}", declare("input", f"V{number}"))
+                for number, name in enumerate(names)
+            },
+        )
+        build_record(tmp_path, tmp_path / "p.ddd.json", severity=["missing-id=ignore"])
+        return [tmp_path / name for name in names]
+
+    def hello(self, tmp_path: Path) -> dict[str, Any]:
+        return {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {"workspaceFolders": [{"uri": tmp_path.as_uri()}]},
+        }
+
+    def opened(self, path: Path) -> dict[str, Any]:
+        return {
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": {
+                "textDocument": {
+                    "uri": path.as_uri(),
+                    "languageId": "json",
+                    "version": 1,
+                    "text": path.read_text(encoding="utf-8"),
+                }
+            },
+        }
+
+    def saved(self, path: Path) -> dict[str, Any]:
+        return {
+            "jsonrpc": "2.0",
+            "method": "textDocument/didSave",
+            "params": {"textDocument": {"uri": path.as_uri()}},
+        }
+
+    def watched(self, path: Path) -> dict[str, Any]:
+        """The watch event the extension sends for a file the editor saved."""
+        return {
+            "jsonrpc": "2.0",
+            "method": "workspace/didChangeWatchedFiles",
+            "params": {"changes": [{"uri": path.as_uri(), "type": 2}]},
+        }
+
+    def typed(self, path: Path) -> dict[str, Any]:
+        """A keystroke in ``path``, which the server keeps and checks nothing for."""
+        return {
+            "jsonrpc": "2.0",
+            "method": "textDocument/didChange",
+            "params": {
+                "textDocument": {"uri": path.as_uri(), "version": 2},
+                "contentChanges": [{"text": path.read_text(encoding="utf-8")}],
+            },
+        }
+
+    def hover(self, path: Path) -> dict[str, Any]:
+        return {
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "textDocument/hover",
+            "params": {
+                "textDocument": {"uri": path.as_uri()},
+                "position": {"line": 0, "character": 0},
+            },
+        }
+
+    def analyses(self, monkeypatch: pytest.MonkeyPatch, inbox: Arrivals) -> Counter[int]:
+        """Every analysis a check runs, counted by the arrival it ran in, the first being 1."""
+        ran: Counter[int] = Counter()
+        original = service.analyze
+
+        def counted(*args: Any, **kwargs: Any) -> Any:
+            ran[len(inbox.landed)] += 1
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(service, "analyze", counted)
+        return ran
+
+    def test_a_save_and_its_watch_event_queued_together_are_one_analysis(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """So are the ``didOpen`` of ten documents, which an editor sends for the files a rename
+        rewrites; and each check is published before the server waits for what has not arrived."""
+        tabs = self.tabs(tmp_path)
+        writer = io.BytesIO()
+        inbox = Arrivals(
+            writer,
+            [self.hello(tmp_path), *map(self.opened, tabs)],
+            [self.saved(tabs[0]), self.watched(tabs[0])],
+            END,
+        )
+        ran = self.analyses(monkeypatch, inbox)
+        assert Server(io.BytesIO(), writer, root=tmp_path)._serve(inbox) == 0
+        assert ran == Counter({1: 1, 2: 1})
+        checked = inbox.landed[2][len(inbox.landed[1]) :]
+        assert sorted(message["params"]["uri"] for message in checked) == sorted(
+            tab.as_uri() for tab in tabs
+        )
+        assert {
+            entry["code"] for message in checked for entry in message["params"]["diagnostics"]
+        } == {"missing-producer"}
+
+    def test_a_save_and_its_watch_event_apart_are_one_analysis_each(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The watch event lands after the save was checked, so it is a check of its own."""
+        tabs = self.tabs(tmp_path)
+        writer = io.BytesIO()
+        inbox = Arrivals(
+            writer,
+            [self.hello(tmp_path), *map(self.opened, tabs)],
+            [self.saved(tabs[0])],
+            [self.watched(tabs[0])],
+            END,
+        )
+        ran = self.analyses(monkeypatch, inbox)
+        assert Server(io.BytesIO(), writer, root=tmp_path)._serve(inbox) == 0
+        assert ran == Counter({1: 1, 2: 1, 3: 1})
+
+    def test_each_project_is_analysed_once_however_many_of_its_documents_are_open(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Five documents open in each of two projects no record names, each found above its
+        files: their ``didOpen`` are one analysis of each, and so is a watch event. Nothing in
+        them is an error, which would stop an analysis of the project a second time anyway."""
+        names = [f"c{number}.ddd.json" for number in range(5)]
+        tree: dict[str, Any] = {}
+        for folder in ("one", "two"):
+            tree[f"{folder}/p.ddd.json"] = project(folder.title(), *names)
+            for number, name in enumerate(names):
+                tree[f"{folder}/{name}"] = component(f"C{number}", declare("local", f"V{number}"))
+        write_tree(tmp_path, tree)
+        tabs = [tmp_path / folder / name for folder in ("one", "two") for name in names]
+        writer = io.BytesIO()
+        inbox = Arrivals(
+            writer,
+            [self.hello(tmp_path), *map(self.opened, tabs)],
+            [self.watched(tabs[0])],
+            END,
+        )
+        ran = self.analyses(monkeypatch, inbox)
+        assert Server(io.BytesIO(), writer, root=tmp_path)._serve(inbox) == 0
+        assert ran == Counter({1: 2, 2: 2})
+
+    def test_each_document_is_searched_for_within_its_own_workspace_folder(
+        self, tmp_path: Path
+    ) -> None:
+        """Two workspace folders, a document open in each and its project a directory above it:
+        checked together, each search above is bounded by the folder holding its document, as
+        when each was checked by itself."""
+        write_tree(
+            tmp_path,
+            {
+                "one/p.ddd.json": project("One", "sub/a.ddd.json"),
+                "one/sub/a.ddd.json": component("A", declare("input", "X")),
+                "two/p.ddd.json": project("Two", "sub/b.ddd.json"),
+                "two/sub/b.ddd.json": component("B", declare("input", "Y")),
+            },
+        )
+        a, b = tmp_path / "one" / "sub" / "a.ddd.json", tmp_path / "two" / "sub" / "b.ddd.json"
+        hello = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "workspaceFolders": [
+                    {"uri": (tmp_path / "one").as_uri()},
+                    {"uri": (tmp_path / "two").as_uri()},
+                ]
+            },
+        }
+        writer = io.BytesIO()
+        inbox = Arrivals(writer, [hello, self.opened(a), self.opened(b)], END)
+        assert Server(io.BytesIO(), writer, root=tmp_path)._serve(inbox) == 0
+        final = published(writer)
+        assert [entry["code"] for entry in final[a.as_uri()]] == ["missing-producer"]
+        assert [entry["code"] for entry in final[b.as_uri()]] == ["missing-producer"]
+
+    def test_a_request_queued_behind_them_is_answered_once_they_are_checked(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An answer may be about what the check finds, so the check comes first, before the
+        keystroke still queued behind the request."""
+        tabs = self.tabs(tmp_path)
+        writer = io.BytesIO()
+        inbox = Arrivals(
+            writer,
+            [self.hello(tmp_path), *map(self.opened, tabs)],
+            [self.saved(tabs[0]), self.watched(tabs[0]), self.hover(tabs[0]), self.typed(tabs[0])],
+            END,
+        )
+        ran = self.analyses(monkeypatch, inbox)
+        assert Server(io.BytesIO(), writer, root=tmp_path)._serve(inbox) == 0
+        assert ran == Counter({1: 1, 2: 1})
+        during = inbox.landed[2][len(inbox.landed[1]) :]
+        assert [message.get("method", message.get("id")) for message in during] == [
+            "textDocument/publishDiagnostics"
+        ] * 10 + [7]
+
+    def test_the_check_is_not_held_while_keystrokes_keep_coming(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Due once what was queued behind the save is handled: held until the queue empties, it
+        would wait for as long as the reader goes on typing."""
+        tabs = self.tabs(tmp_path)
+        writer = io.BytesIO()
+        opening = [self.hello(tmp_path), *map(self.opened, tabs)]
+        inbox = Typing(
+            writer, opening, [self.saved(tabs[0]), self.typed(tabs[1])], END, keystrokes=50
+        )
+        taken: list[int] = []
+        original = service.analyze
+
+        def counted(*args: Any, **kwargs: Any) -> Any:
+            taken.append(inbox.taken)
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(service, "analyze", counted)
+        assert Server(io.BytesIO(), writer, root=tmp_path)._serve(inbox) == 0
+        assert taken == [len(opening), len(opening) + 2]
+
+    def test_a_check_withdraws_only_the_files_it_reported_on(self, tmp_path: Path) -> None:
+        """10:I1's rule holds for a check of what arrived together: opening a file of another
+        project keeps this one's findings."""
+        write_tree(
+            tmp_path,
+            {
+                "one/p.ddd.json": project("One", "a.ddd.json"),
+                "one/a.ddd.json": component("A", declare("input", "X")),
+                "two/p.ddd.json": project("Two", "b.ddd.json"),
+                "two/b.ddd.json": component("B", declare("input", "Y")),
+            },
+        )
+        a, b = tmp_path / "one" / "a.ddd.json", tmp_path / "two" / "b.ddd.json"
+        writer = io.BytesIO()
+        inbox = Arrivals(writer, [self.hello(tmp_path), self.opened(a)], [self.opened(b)], END)
+        assert Server(io.BytesIO(), writer, root=tmp_path)._serve(inbox) == 0
+        final = published(writer)
+        assert [entry["code"] for entry in final[b.as_uri()]] == ["missing-producer"]
+        assert [entry["code"] for entry in final[a.as_uri()]] == ["missing-producer"], (
+            "a's error was withdrawn"
+        )
+
+    def test_a_defect_in_a_check_costs_that_check_alone(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Answered as a defect in a notification is (10:I13): with nothing, and its trace on
+        stderr, naming the messages that marked the documents. The next message is handled, and
+        the documents are not checked again for it."""
+        tabs = self.tabs(tmp_path)
+        checked: list[tuple[Path, ...]] = []
+        original = Server.refresh
+
+        def refresh(server: Server, *documents: Path) -> None:
+            checked.append(documents)
+            if len(checked) == 1:
+                msg = "a defect of the server's own"
+                raise RuntimeError(msg)
+            original(server, *documents)
+
+        monkeypatch.setattr(Server, "refresh", refresh)
+        writer = io.BytesIO()
+        inbox = Arrivals(
+            writer,
+            [self.hello(tmp_path), self.saved(tabs[0]), self.watched(tabs[0])],
+            [self.saved(tabs[1])],
+            END,
+        )
+        assert Server(io.BytesIO(), writer, root=tmp_path)._serve(inbox) == 0
+        trace = capsys.readouterr().err
+        assert trace.startswith(
+            "ddd: textDocument/didSave, workspace/didChangeWatchedFiles failed on a defect of this "
+            "server, and the session goes on\nTraceback (most recent call last):\n"
+        )
+        assert trace.count("Traceback") == 1
+        assert trace.endswith("RuntimeError: a defect of the server's own\n")
+        assert checked == [(tabs[0].resolve(),), (tabs[1].resolve(),)]
+        assert [message["id"] for message in sent(writer) if "id" in message] == [1, 99]
+        assert [entry["code"] for entry in published(writer)[tabs[1].as_uri()]] == [
+            "missing-producer"
+        ]
+
+    def test_broken_framing_ends_the_run_once_what_came_before_it_is_checked(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The check of a document marked before the break is still owed when the break ends the
+        run with 1, said once on stderr."""
+        tabs = self.tabs(tmp_path)
+        writer = io.BytesIO()
+        broken = ProtocolError("Content-Length is not a count of bytes")
+        inbox = Arrivals(writer, [self.hello(tmp_path), self.opened(tabs[0]), broken])
+        assert Server(io.BytesIO(), writer, root=tmp_path)._serve(inbox) == 1
+        assert capsys.readouterr().err == f"ddd: {broken}\n"
+        assert [entry["code"] for entry in published(writer)[tabs[0].as_uri()]] == [
+            "missing-producer"
+        ]
+
+    def test_broken_framing_seen_by_the_reading_thread_still_ends_the_run(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Read ahead on a thread of its own, a session whose framing breaks still ends with 1,
+        said once, and the document it opened first is checked: whether the break was already
+        queued behind the ``didOpen`` or not."""
+        tabs = self.tabs(tmp_path)
+        writer = io.BytesIO()
+        stream = io.BytesIO(
+            framed(self.hello(tmp_path), self.opened(tabs[0])).getvalue()
+            + b"Content-Length: banana\r\n\r\n{}"
+        )
+        assert Server(stream, writer, root=tmp_path).run() == 1
+        err = capsys.readouterr().err
+        assert err.startswith("ddd: Content-Length is not a count of bytes: 'banana'")
+        assert err.count("\n") == 1
+        assert [entry["code"] for entry in published(writer)[tabs[0].as_uri()]] == [
+            "missing-producer"
+        ]
+
+    @pytest.mark.parametrize(
+        ("end", "code"),
+        [(None, 0), ({"jsonrpc": "2.0", "method": "exit"}, 1)],
+        ids=["the stream ending", "an exit with no shutdown"],
+    )
+    def test_the_check_owed_when_the_run_ends_is_made(
+        self, tmp_path: Path, end: dict[str, Any] | None, code: int
+    ) -> None:
+        """As every message was checked before the next was read, when they were read in turn."""
+        tabs = self.tabs(tmp_path)
+        writer = io.BytesIO()
+        inbox = Arrivals(writer, [self.hello(tmp_path), self.opened(tabs[0]), end])
+        assert Server(io.BytesIO(), writer, root=tmp_path)._serve(inbox) == code
+        assert [entry["code"] for entry in published(writer)[tabs[0].as_uri()]] == [
+            "missing-producer"
+        ]
+
+    def test_a_watch_event_that_checks_nothing_still_drops_what_was_read(
+        self, tmp_path: Path
+    ) -> None:
+        """Nothing open, and the one file it reports deleted: no check runs, and a jump asked
+        afterwards reads the project as the disk now holds it, not as it was read before."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Shared")),
+                "b.ddd.json": component("B", declare("input", "Shared")),
+            },
+        )
+        a, b = tmp_path / "a.ddd.json", tmp_path / "b.ddd.json"
+        position = Document(b.read_text(encoding="utf-8")).range_of(
+            "component.interface[0].definition.name"
+        )["start"]
+        jump = {
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "textDocument/definition",
+            "params": {"textDocument": {"uri": b.as_uri()}, "position": position},
+        }
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(self.hello(tmp_path))
+        assert server._handle(jump)
+        assert [found["uri"] for found in sent(writer)[-1]["result"]] == [a.as_uri()]
+        a.unlink()
+        assert server._handle(
+            {
+                "jsonrpc": "2.0",
+                "method": "workspace/didChangeWatchedFiles",
+                "params": {"changes": [{"uri": a.as_uri(), "type": 3}]},
+            }
+        )
+        assert server._handle(jump)
+        assert sent(writer)[-1] == response(7, [])
+
+    def test_a_document_another_project_reported_on_is_searched_for_all_the_same(
+        self, tmp_path: Path
+    ) -> None:
+        """Three descriptions side by side, ``q2`` holding both documents: ``q3`` holds the second
+        too, and is analysed for it, though ``q2``'s run reported on it already."""
+        write_tree(
+            tmp_path,
+            {
+                "q1.ddd.json": project("Q1", "d1.ddd.json", "x.ddd.json"),
+                "q2.ddd.json": project("Q2", "d1.ddd.json", "d2.ddd.json"),
+                "q3.ddd.json": project("Q3", "d2.ddd.json", "y.ddd.json"),
+                "d1.ddd.json": component("D1", declare("local", "One")),
+                "d2.ddd.json": component("D2", declare("local", "Two")),
+                "x.ddd.json": component("X", declare("local", "Three")),
+                "y.ddd.json": component("Y", declare("input", "Nobody")),
+            },
+        )
+        documents = [tmp_path / "d1.ddd.json", tmp_path / "d2.ddd.json"]
+        reports = service.collect([], documents, tmp_path)
+        assert [entry["code"] for entry in reports[tmp_path / "y.ddd.json"]] == ["missing-producer"]
+
+    def test_each_description_above_the_documents_is_read_once(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Ten documents of one project above them, each searched for: the search for the first
+        reads the description, and the nine after it find it read."""
+        names = [f"c{number}.ddd.json" for number in range(10)]
+        write_tree(
+            tmp_path,
+            {"p.ddd.json": project("P", *names)}
+            | {
+                name: component(f"C{number}", declare("local", "V"))
+                for number, name in enumerate(names)
+            },
+        )
+        seen: list[Path] = []
+        original = navigation.load_workspace
+
+        def counted(path: Path, bag: DiagnosticBag) -> Any:
+            seen.append(path)
+            return original(path, bag)
+
+        monkeypatch.setattr(navigation, "load_workspace", counted)
+        reports = service.collect([], [tmp_path / name for name in names], tmp_path)
+        assert set(reports) >= {tmp_path / name for name in names}
+        assert seen.count(tmp_path / "p.ddd.json") == 1, seen
+
+    def test_a_document_no_project_answers_for_is_read_alone_only_where_none_reported_on_it(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``d2`` lies outside the directory of the description that includes it, so no search
+        above it finds one. Checked with ``d1``, that description's run reports on it, and
+        whichever of the two came first ``d2`` is not analysed on its own as well."""
+        write_tree(
+            tmp_path,
+            {
+                "images/q.ddd.json": project("Q", "d1.ddd.json", "../shared/d2.ddd.json"),
+                "images/d1.ddd.json": component("D1", declare("output", "Speed")),
+                "shared/d2.ddd.json": component("D2", declare("input", "Speed")),
+            },
+        )
+        d1, d2 = tmp_path / "images" / "d1.ddd.json", tmp_path / "shared" / "d2.ddd.json"
+        analysed: list[Path] = []
+        original = service.analyze
+
+        def counted(workspace: Any, bag: DiagnosticBag) -> Any:
+            analysed.append(workspace.root.resolve())
+            return original(workspace, bag)
+
+        monkeypatch.setattr(service, "analyze", counted)
+        service.collect([], [d2], tmp_path)
+        assert analysed == [d2.resolve()], "checked by itself, it is read on its own"
+        for order in ([d2, d1], [d1, d2]):
+            analysed.clear()
+            assert d2 in service.collect([], order, tmp_path)
+            assert analysed == [(tmp_path / "images" / "q.ddd.json").resolve()], order
+
+    def test_the_reading_thread_hands_over_what_it_cannot_follow(self, tmp_path: Path) -> None:
+        """A frame holding no message is answered on the server's thread, which alone writes, and
+        broken framing ends the reading there; both are handed over, after what came before."""
+        hello = self.hello(tmp_path)
+        stream = io.BytesIO(
+            framed(hello).getvalue() + raw_frame(b"{ not json") + b"Content-Length: banana\r\n\r\n"
+        )
+        inbox: queue.SimpleQueue[Any] = queue.SimpleQueue()
+        Server(stream, io.BytesIO(), root=tmp_path)._read(inbox)
+        message, unparsed, broken = inbox.get_nowait(), inbox.get_nowait(), inbox.get_nowait()
+        assert message == hello
+        assert isinstance(unparsed, MessageError)
+        assert unparsed.code == PARSE_ERROR
+        assert isinstance(broken, ProtocolError)
+        assert inbox.empty()
+
+    def test_anything_else_the_stream_raises_reaches_the_caller(self, tmp_path: Path) -> None:
+        """As it did when the stream was read in turn: the reading thread hands it over, and the
+        server raises it."""
+
+        class Broken(io.BytesIO):
+            def readline(self, size: int | None = -1) -> bytes:
+                msg = "the pipe broke"
+                raise OSError(msg)
+
+        inbox: queue.SimpleQueue[Any] = queue.SimpleQueue()
+        server = Server(Broken(), io.BytesIO(), root=tmp_path)
+        server._read(inbox)
+        fault = inbox.get_nowait()
+        assert inbox.empty()
+        with pytest.raises(OSError, match="the pipe broke"):
+            server._serve(Arrivals(io.BytesIO(), [fault]))
+
+    def test_the_command_ends_cleanly_while_the_client_holds_its_stdin_open(
+        self, tmp_path: Path
+    ) -> None:
+        """The reading thread is still waiting for a frame after ``exit``, and the interpreter
+        closes ``sys.stdin`` on its way out: waiting for the lock that read holds, it aborts the
+        process, so a stop the client prepared for would end in a core dump. Run from the
+        sources this suite imports, whatever else is installed."""
+        import subprocess
+
+        frames = framed(self.hello(tmp_path), *END).getvalue()
+        sources = Path(server_module.__file__).parents[2]
+        path = os.pathsep.join(filter(None, [str(sources), os.environ.get("PYTHONPATH")]))
+        with subprocess.Popen(
+            [sys.executable, "-m", "ddd", "lsp"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            cwd=tmp_path,
+            env={**os.environ, "PYTHONPATH": path},
+        ) as process:
+            assert process.stdin is not None
+            assert process.stdout is not None
+            process.stdin.write(frames)
+            process.stdin.flush()
+            ended = process.wait(timeout=120)
+            wire = process.stdout.read()
+        assert ended == 0
+        assert [message["id"] for message in sent(io.BytesIO(wire))] == [1, 99]
+
+    def test_the_command_reads_a_stdin_descriptor_through_a_reader_of_its_own(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Over the same descriptor, so that what the interpreter closes on its way out is not
+        what the reading thread waits in. The file is closed once that thread has read it to its
+        end, so that no later file given the same descriptor is read in its place."""
+        import threading
+
+        class Stream:
+            def __init__(self, buffer: Any) -> None:
+                self.buffer = buffer
+
+        readers: list[Any] = []
+        reading: list[threading.Thread] = []
+
+        class Recorded(Server):
+            def __init__(self, reader: Any, *args: Any, **kwargs: Any) -> None:
+                readers.append(reader)
+                super().__init__(reader, *args, **kwargs)
+
+            def _read(self, inbox: Any) -> None:
+                reading.append(threading.current_thread())
+                super()._read(inbox)
+
+        frames = tmp_path / "frames"
+        frames.write_bytes(framed(self.hello(tmp_path), *END).getvalue())
+        wire = io.BytesIO()
+        monkeypatch.setattr(server_module, "Server", Recorded)
+        with frames.open("rb") as stdin:
+            monkeypatch.setattr("sys.stdin", Stream(stdin))
+            monkeypatch.setattr("sys.stdout", Stream(wire))
+            assert server_module.serve() == 0
+            (reader,) = readers
+            assert reader is not stdin
+            assert reader.fileno() == stdin.fileno()
+            (thread,) = reading
+            thread.join()
+        assert [message["id"] for message in sent(wire)] == [1, 99]
+
+
+class TestAHoverResolvesOncePerCheck:
+    """10:I12: the dictionary a hover answers from is kept per description until what was read
+    from disk is dropped, where every hover resolved the whole project again."""
+
+    def workspace(self, tmp_path: Path, *extra: str) -> Path:
+        """``b`` reading what ``a`` writes, in a project a build record names, which also includes
+        each of ``extra``."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json", *extra),
+                "a.ddd.json": component("A", declare("output", "Speed")),
+                "b.ddd.json": component("B", declare("input", "Speed")),
+            },
+        )
+        build_record(tmp_path, tmp_path / "p.ddd.json")
+        return tmp_path / "b.ddd.json"
+
+    def hover(self, path: Path) -> dict[str, Any]:
+        position = Document(path.read_text(encoding="utf-8")).range_of(
+            "component.interface[0].definition.name"
+        )["start"]
+        return {
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "textDocument/hover",
+            "params": {"textDocument": {"uri": path.as_uri()}, "position": position},
+        }
+
+    def test_hovers_between_two_checks_resolve_the_project_once(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from ddd.lsp import hover
+
+        consumer = self.workspace(tmp_path)
+        resolved: list[Any] = []
+        original = hover.analyze
+
+        def counted(workspace: Any, bag: DiagnosticBag) -> Any:
+            resolved.append(workspace)
+            return original(workspace, bag)
+
+        monkeypatch.setattr(hover, "analyze", counted)
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+        assert server._handle(self.hover(consumer))
+        assert server._handle(self.hover(consumer))
+        assert len(resolved) == 1
+        saving = {"textDocument": {"uri": consumer.as_uri()}}
+        assert server._handle(
+            {"jsonrpc": "2.0", "method": "textDocument/didSave", "params": saving}
+        )
+        assert server._handle(self.hover(consumer))
+        assert len(resolved) == 2, "a check drops the dictionary with the rest of what was read"
+        answers = [message["result"] for message in sent(writer) if message.get("id") == 7]
+        assert len(answers) == 3
+        assert answers[0] == answers[1] == answers[2]
+        assert "Written by **A**, read by **B**." in answers[0]["contents"]["value"]
+
+    def test_each_project_a_hover_answers_from_keeps_a_dictionary_of_its_own(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Two projects, a workspace folder each, whose writers of ``Speed`` are named apart:
+        hovered in one, in the other and in the first again, with no check between, each answer
+        names its own project's writer, and each project is resolved once. Kept under one key,
+        the second answer was the first project's, and stayed so until the next check."""
+        from ddd.lsp import hover
+
+        tree: dict[str, Any] = {}
+        for folder in ("one", "two"):
+            name = folder.title()
+            tree[f"{folder}/p.ddd.json"] = project(name, "sub/w.ddd.json", "sub/r.ddd.json")
+            tree[f"{folder}/sub/w.ddd.json"] = component(
+                f"Writer{name}", declare("output", "Speed")
+            )
+            tree[f"{folder}/sub/r.ddd.json"] = component(f"Reader{name}", declare("input", "Speed"))
+        write_tree(tmp_path, tree)
+        resolved: list[str] = []
+        original = hover.analyze
+
+        def counted(workspace: Any, bag: DiagnosticBag) -> Any:
+            resolved.append(workspace.root.parent.name)
+            return original(workspace, bag)
+
+        monkeypatch.setattr(hover, "analyze", counted)
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        folders = [{"uri": (tmp_path / folder).as_uri()} for folder in ("one", "two")]
+        hello = {"workspaceFolders": folders}
+        assert server._handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": hello})
+        hovered = ["one", "two", "one"]
+        for folder in hovered:
+            assert server._handle(self.hover(tmp_path / folder / "sub" / "r.ddd.json"))
+        answers = [message["result"] for message in sent(writer) if message.get("id") == 7]
+        for answer, folder in zip(answers, hovered, strict=True):
+            said, name = answer["contents"]["value"], folder.title()
+            assert f"Written by **Writer{name}**, read by **Reader{name}**." in said, folder
+        assert resolved == ["one", "two"]
+
+    def test_a_constant_s_hover_resolves_the_first_project_alone(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A constant is the first project's answer, as the summary of an object is: the other
+        project holding the document is resolved to say who writes an object and who reads it, and
+        a constant's hover resolved it all the same."""
+        from ddd.lsp import hover
+
+        imaged(
+            tmp_path,
+            {"one": ["c.ddd.json", "a.ddd.json"], "two": ["c.ddd.json", "a.ddd.json"]},
+            {
+                "c.ddd.json": {"constants": [{"name": "CELLS", "value": 4}]},
+                "a.ddd.json": component("A", declare("output", "Buf", dimensions=["CELLS"])),
+            },
+        )
+        resolved: list[str] = []
+        original = hover.analyze
+
+        def counted(workspace: Any, bag: DiagnosticBag) -> Any:
+            resolved.append(workspace.root.name)
+            return original(workspace, bag)
+
+        monkeypatch.setattr(hover, "analyze", counted)
+        a = tmp_path / "a.ddd.json"
+        position = Document(a.read_text(encoding="utf-8")).range_of(
+            "component.interface[0].definition.dimensions[0]"
+        )["start"]
+        asked = {"textDocument": {"uri": a.as_uri()}, "position": position}
+        writer = io.BytesIO()
+        request = {"jsonrpc": "2.0", "id": 7, "method": "textDocument/hover", "params": asked}
+        assert Server(session(request, *END), writer, root=tmp_path).run() == 0
+        (answer,) = [message["result"] for message in answered(writer) if message.get("id") == 7]
+        assert answer["contents"]["value"].startswith("**CELLS** = 4")
+        assert resolved == ["one.ddd.json"]
+
+    def test_a_hover_in_a_project_whose_read_reported_an_error_answers_all_the_same(
+        self, tmp_path: Path
+    ) -> None:
+        """A check analyses no such project, so the hover's dictionary is not the check's: the
+        hover resolves what did load, as it always has."""
+        consumer = self.workspace(tmp_path, "c.ddd.json")
+        write_tree(tmp_path, {"c.ddd.json": component("C", declare("nonsense", "X"))})
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+        opened = {"textDocument": {"uri": consumer.as_uri()}}
+        assert server._handle(
+            {"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": opened}
+        )
+        assert "schema" in {
+            entry["code"] for entry in published(writer)[(tmp_path / "c.ddd.json").as_uri()]
+        }
+        assert server._handle(self.hover(consumer))
+        (answer,) = [message["result"] for message in sent(writer) if message.get("id") == 7]
+        assert "Written by **A**, read by **B**." in answer["contents"]["value"]
+
+    def test_a_hover_in_a_document_no_project_can_be_read_for_says_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        """A new document, open and not saved yet: the cursor is on a name it declares, and there
+        is no project to resolve, not even the document read on its own."""
+        draft = tmp_path / "draft.ddd.json"
+        text = json.dumps(component("D", declare("output", "Speed")))
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+        opened = {"textDocument": {"uri": draft.as_uri(), "version": 1, "text": text}}
+        assert server._handle(
+            {"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": opened}
+        )
+        position = Document(text).range_of("component.interface[0].definition.name")["start"]
+        asked = {"textDocument": {"uri": draft.as_uri()}, "position": position}
+        assert server._handle(
+            {"jsonrpc": "2.0", "id": 7, "method": "textDocument/hover", "params": asked}
+        )
+        assert not draft.exists()
+        assert sent(writer)[-1] == response(7, None)
+
+
+class TestAHoverSpeaksForEveryProjectHoldingTheDocument:
+    """10:M4. Who writes a variable and who reads it is said for every project holding the document,
+    each component named once. Said from the first project alone, a writer linked into two images
+    was read by the first image's reader, while find references listed the second's too, and of two
+    writers the hover named one. Where it says that nothing produces the variable, or that nobody
+    reads it, the files of those projects that did not load are named under it: what such a file
+    declares is in no project's answer, and the sentence was untrue of a project whose writer, or
+    whose reader, is in that file."""
+
+    NAME: ClassVar[str] = "component.interface[0].definition.name"
+
+    def asked(self, tmp_path: Path, *requests: dict[str, Any]) -> dict[int, Any]:
+        """What a session answers each of ``requests``, by its id."""
+        writer = io.BytesIO()
+        assert Server(session(*requests, *END), writer, root=tmp_path).run() == 0
+        return {message["id"]: message.get("result") for message in answered(writer)}
+
+    def at(self, method: str, path: Path, request_id: int = 7) -> dict[str, Any]:
+        """A request at the name of the first declaration of ``path``."""
+        position = Document(path.read_text(encoding="utf-8")).range_of(self.NAME)["start"]
+        return {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "method": method,
+            "params": {"textDocument": {"uri": path.as_uri()}, "position": position},
+        }
+
+    def hovered(self, tmp_path: Path, path: Path) -> str:
+        """The markdown a hover at the name of the first declaration of ``path`` answers."""
+        answer = self.asked(tmp_path, self.at("textDocument/hover", path))[7]
+        assert answer is not None
+        return str(answer["contents"]["value"])
+
+    @pytest.mark.parametrize("typed", [{}, {"typename": "S_t"}], ids=["a-value", "a-structure"])
+    def test_a_writer_in_two_images_names_the_reader_of_each(
+        self, tmp_path: Path, typed: dict[str, str]
+    ) -> None:
+        """The readers find references lists, the second image's as much as the first's."""
+        imaged(
+            tmp_path,
+            {
+                "one": ["t.ddd.json", "w.ddd.json", "r1.ddd.json"],
+                "two": ["t.ddd.json", "w.ddd.json", "r2.ddd.json"],
+            },
+            {
+                "t.ddd.json": types(struct_type("S_t")),
+                "w.ddd.json": component("Writer", declare("output", "V", **typed)),
+                "r1.ddd.json": component("ReaderOne", declare("input", "V", **typed)),
+                "r2.ddd.json": component("ReaderTwo", declare("input", "V", **typed)),
+            },
+        )
+        w = tmp_path / "w.ddd.json"
+        answers = self.asked(
+            tmp_path, self.at("textDocument/hover", w), self.at("textDocument/references", w, 8)
+        )
+        assert sorted(uri_to_path(found["uri"]).name for found in answers[8]) == [
+            "r1.ddd.json",
+            "r2.ddd.json",
+            "w.ddd.json",
+        ]
+        said = answers[7]["contents"]["value"]
+        assert "Written by **Writer**, read by **ReaderOne** and **ReaderTwo**." in said
+
+    def test_a_component_both_images_hold_is_named_once(self, tmp_path: Path) -> None:
+        imaged(
+            tmp_path,
+            {"one": ["w.ddd.json", "r.ddd.json"], "two": ["w.ddd.json", "r.ddd.json"]},
+            {
+                "w.ddd.json": component("Writer", declare("output", "V")),
+                "r.ddd.json": component("Reader", declare("input", "V")),
+            },
+        )
+        for hovered in ("w.ddd.json", "r.ddd.json"):
+            said = self.hovered(tmp_path, tmp_path / hovered)
+            assert "Written by **Writer**, read by **Reader**." in said, hovered
+
+    @pytest.mark.parametrize(
+        ("apart", "first"),
+        [(False, "output"), (True, "output"), (False, "local")],
+        ids=["in-one-project", "one-per-image", "one-of-them-local"],
+    )
+    def test_two_writers_are_both_named(self, tmp_path: Path, apart: bool, first: str) -> None:
+        """Two components writing the variable in one project, which ``ddd check`` files as
+        ``multiple-producers`` - or as ``local-conflict``, where one of them declares it local - or
+        one in each image holding the reader: the hover named one of them, the one the analysis
+        builds the object from."""
+        files = {
+            "w1.ddd.json": component("W1", declare(first, "V")),
+            "w2.ddd.json": component("W2", declare("output", "V")),
+            "r.ddd.json": component("R", declare("input", "V")),
+        }
+        if apart:
+            imaged(
+                tmp_path,
+                {"one": ["w1.ddd.json", "r.ddd.json"], "two": ["w2.ddd.json", "r.ddd.json"]},
+                files,
+            )
+        else:
+            write_tree(tmp_path, {"p.ddd.json": project("P", *files), **files})
+        said = self.hovered(tmp_path, tmp_path / "r.ddd.json")
+        assert "Written by **W1** and **W2**, read by **R**." in said
+
+    def test_a_reader_s_file_that_did_not_load_is_named_where_nobody_reads(
+        self, tmp_path: Path
+    ) -> None:
+        """``r.ddd.json`` states a datatype there is not, and the reader it declares is in no
+        dictionary: the writer was read by nobody."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "w.ddd.json", "r.ddd.json"),
+                "w.ddd.json": component("W", declare("output", "V")),
+                "r.ddd.json": component("R", declare("input", "V", "uint99")),
+            },
+        )
+        said = self.hovered(tmp_path, tmp_path / "w.ddd.json")
+        assert (
+            "Written by **W**, read by *nobody*.\n\n"
+            "*`r.ddd.json` did not load, so a reader there would not be named.*"
+        ) in said
+
+    def test_a_writer_s_file_that_did_not_load_is_named_where_nothing_produces_it(
+        self, tmp_path: Path
+    ) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "w.ddd.json", "r.ddd.json"),
+                "w.ddd.json": component("W", declare("output", "V", "uint99")),
+                "r.ddd.json": component("R", declare("input", "V")),
+            },
+        )
+        said = self.hovered(tmp_path, tmp_path / "r.ddd.json")
+        assert (
+            "*No component produces this.*\n\n"
+            "*`w.ddd.json` did not load, so a writer there would not be named.*"
+        ) in said
+
+    def test_the_files_that_did_not_load_are_those_of_every_project_holding_it(
+        self, tmp_path: Path
+    ) -> None:
+        """The writer is in two images, and its reader's file, in the second, did not load; two
+        files of one name are told apart, each by its path from the first directory they do not
+        share."""
+        imaged(
+            tmp_path,
+            {
+                "one": ["w.ddd.json", "one/r.ddd.json"],
+                "two": ["w.ddd.json", "two/r.ddd.json"],
+            },
+            {
+                "w.ddd.json": component("W", declare("output", "V")),
+                "one/r.ddd.json": component("R1", declare("input", "V", "uint99")),
+                "two/r.ddd.json": component("R2", declare("input", "V", "uint99")),
+            },
+        )
+        said = self.hovered(tmp_path, tmp_path / "w.ddd.json")
+        assert (
+            "*`one/r.ddd.json`, `two/r.ddd.json` did not load, so a reader there would not be "
+            "named.*"
+        ) in said
+
+    def test_a_file_that_did_not_load_is_not_named_beside_a_writer_and_a_reader(
+        self, tmp_path: Path
+    ) -> None:
+        """The hover says nothing untrue of a variable it names a writer and a reader of: the line
+        is for the sentence saying there is none."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "w.ddd.json", "r.ddd.json", "x.ddd.json"),
+                "w.ddd.json": component("W", declare("output", "V")),
+                "r.ddd.json": component("R", declare("input", "V")),
+                "x.ddd.json": component("X", declare("input", "Y", "uint99")),
+            },
+        )
+        said = self.hovered(tmp_path, tmp_path / "w.ddd.json")
+        assert "Written by **W**, read by **R**." in said
+        assert "did not load" not in said
+
+    STOPPED: ClassVar[str] = (
+        "*In `one.elf`, which holds this file too, a plugin stopped the analysis: who writes this "
+        "there, and who reads it, is not named.*"
+    )
+    """The line under who writes and who reads a variable while image one's plugin stops it."""
+
+    def stopped(self, tmp_path: Path, images: dict[str, Sequence[str]], *stopping: str) -> None:
+        """A writer of ``V``, a reader of it, and a component holding a local, in the images of
+        ``images``, each a description including the files it names and a build record naming it;
+        the descriptions of ``stopping`` name a plugin that exits in its check hook."""
+        plugin = {"plugins": ["../tools/exiting_plugin.py"]}
+        write_tree(
+            tmp_path,
+            {
+                "tools/exiting_plugin.py": EXITING_CHECK_PLUGIN,
+                **{
+                    f"images/{image}.ddd.json": project(
+                        image.title(),
+                        *(f"../{name}" for name in included),
+                        **(plugin if image in stopping else {}),
+                    )
+                    for image, included in images.items()
+                },
+                "w.ddd.json": component("Writer", declare("output", "V")),
+                "r1.ddd.json": component("ReaderOne", declare("input", "V")),
+                "r2.ddd.json": component("ReaderTwo", declare("input", "V")),
+                "a.ddd.json": component("A", declare("local", "L")),
+            },
+        )
+        for image in images:
+            build_record(tmp_path, tmp_path / "images" / f"{image}.ddd.json", image=f"{image}.elf")
+
+    @pytest.mark.parametrize(
+        ("one", "two", "hovered", "said"),
+        [
+            (
+                ["w.ddd.json", "r1.ddd.json"],
+                ["w.ddd.json", "r2.ddd.json"],
+                "w.ddd.json",
+                "Written by **Writer**, read by **ReaderTwo**.",
+            ),
+            (
+                ["w.ddd.json", "r1.ddd.json"],
+                ["w.ddd.json"],
+                "w.ddd.json",
+                "Written by **Writer**, read by *nobody*.",
+            ),
+            (
+                ["w.ddd.json", "r1.ddd.json"],
+                ["r1.ddd.json"],
+                "r1.ddd.json",
+                "*No component produces this.*",
+            ),
+            (["a.ddd.json"], ["a.ddd.json"], "a.ddd.json", "Local to **A**."),
+        ],
+        ids=["a-reader-in-each-image", "its-only-reader-there", "its-writer-there", "a-local"],
+    )
+    def test_a_project_a_plugin_stops_is_named_under_who_writes_and_reads(
+        self, tmp_path: Path, one: list[str], two: list[str], hovered: str, said: str
+    ) -> None:
+        """Image one's plugin exits in its check hook, so that project resolves to nothing for a
+        hover, which answers from image two and names image one under whatever it says of who
+        writes the variable and who reads it, as a rename's refusal names an image: left out in
+        silence, a writer whose only reader is in image one was read by nobody."""
+        self.stopped(tmp_path, {"one": one, "two": two}, "one")
+        assert f"{said}\n\n{self.STOPPED}" in self.hovered(tmp_path, tmp_path / hovered)
+
+    def test_two_projects_a_plugin_stops_are_named_together(self, tmp_path: Path) -> None:
+        both = ["w.ddd.json", "r1.ddd.json"]
+        self.stopped(tmp_path, {"one": both, "two": both, "three": both}, "one", "three")
+        assert (
+            "Written by **Writer**, read by **ReaderOne**.\n\n*In `one.elf` and `three.elf`, which "
+            "hold this file too, a plugin stopped the analysis: who writes this there, and who "
+            "reads it, is not named.*"
+        ) in self.hovered(tmp_path, tmp_path / "w.ddd.json")
+
+    def test_a_description_a_plugin_stops_is_named_by_its_path_in_the_folder(
+        self, tmp_path: Path
+    ) -> None:
+        """No build record names the two descriptions holding the file, which the search above it
+        finds: the one a plugin stops is named by its path in the workspace folder, as a rename's
+        refusal names one."""
+        write_tree(
+            tmp_path,
+            {
+                "tools/exiting_plugin.py": EXITING_CHECK_PLUGIN,
+                "proj/one.ddd.json": project(
+                    "One",
+                    "sub/w.ddd.json",
+                    "sub/r1.ddd.json",
+                    plugins=["../tools/exiting_plugin.py"],
+                ),
+                "proj/two.ddd.json": project("Two", "sub/w.ddd.json", "sub/r2.ddd.json"),
+                "proj/sub/w.ddd.json": component("Writer", declare("output", "V")),
+                "proj/sub/r1.ddd.json": component("ReaderOne", declare("input", "V")),
+                "proj/sub/r2.ddd.json": component("ReaderTwo", declare("input", "V")),
+            },
+        )
+        assert (
+            "Written by **Writer**, read by **ReaderTwo**.\n\n*In `proj/one.ddd.json`, which holds "
+            "this file too, a plugin stopped the analysis: who writes this there, and who reads "
+            "it, is not named.*"
+        ) in self.hovered(tmp_path, tmp_path / "proj" / "sub" / "w.ddd.json")
+
+
+class TestOneSpellingPerFile:
+    """10:M5. A file the client opens through a junction or a link has two spellings: the one the
+    client opened it under, and the one the loader resolves it to, under which the server publishes
+    it until the client opens it. Its findings go out under one of them at a time, the other's
+    withdrawn when they move, and an open document is the declaration the index found there
+    whichever way the client spelled it."""
+
+    def linked(self, tmp_path: Path) -> tuple[Path, Path]:
+        """``r`` reading ``V``, which ``w`` writes, and ``Y``, which nothing writes, in ``real``;
+        and ``link``, a second spelling of ``real``."""
+        real = tmp_path / "real"
+        write_tree(
+            real,
+            {
+                "p.ddd.json": project("P", "w.ddd.json", "r.ddd.json"),
+                "w.ddd.json": component("W", declare("output", "V", id="k7m2q9xr4t8w")),
+                "r.ddd.json": component("R", declare("input", "V"), declare("input", "Y")),
+            },
+        )
+        link = tmp_path / "link"
+        directory_link(link, real)
+        return real, link
+
+    def notified(self, method: str, path: Path) -> dict[str, Any]:
+        return {
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": {"textDocument": {"uri": path.as_uri()}},
+        }
+
+    def test_findings_published_under_another_spelling_are_withdrawn_under_it(
+        self, tmp_path: Path
+    ) -> None:
+        """``r`` goes out under its resolved spelling while only ``w`` is open, then under the
+        link once it is opened there: what went out under the first spelling stayed there after
+        ``r`` was mended and saved, since nothing published under it again."""
+        real, link = self.linked(tmp_path)
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+        assert server._handle(self.notified("textDocument/didOpen", link / "w.ddd.json"))
+        resolved = (real / "r.ddd.json").resolve().as_uri()
+        assert [entry["code"] for entry in published(writer)[resolved]] == ["missing-producer"]
+        writer = server.writer = io.BytesIO()
+        assert server._handle(self.notified("textDocument/didOpen", link / "r.ddd.json"))
+        assert published(writer).get(resolved) == [], (
+            "withdrawn under the spelling it went out under"
+        )
+        assert [entry["code"] for entry in published(writer)[(link / "r.ddd.json").as_uri()]] == [
+            "missing-producer"
+        ]
+        write_tree(real, {"r.ddd.json": component("R", declare("input", "V"))})
+        writer = server.writer = io.BytesIO()
+        assert server._handle(self.notified("textDocument/didSave", link / "r.ddd.json"))
+        assert published(writer) == {(link / "r.ddd.json").as_uri(): []}
+
+    def test_a_file_published_once_under_one_spelling_is_withdrawn_once(
+        self, tmp_path: Path
+    ) -> None:
+        """Nothing is withdrawn under a spelling that holds nothing on screen: a file whose last
+        publication was empty, or one that goes out under the spelling it went out under."""
+        real, link = self.linked(tmp_path)
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+        assert server._handle(self.notified("textDocument/didOpen", link / "w.ddd.json"))
+        assert server._handle(self.notified("textDocument/didOpen", link / "r.ddd.json"))
+        assert server._handle(self.notified("textDocument/didSave", link / "r.ddd.json"))
+        resolved = (real / "r.ddd.json").resolve().as_uri()
+        under = [
+            message["params"]["diagnostics"]
+            for message in sent(writer)
+            if message.get("method") == "textDocument/publishDiagnostics"
+            and message["params"]["uri"] == resolved
+        ]
+        assert [[entry["code"] for entry in each] for each in under] == [["missing-producer"], []]
+
+    def test_the_producer_opened_through_a_link_is_offered_a_producer_s_fixes(
+        self, tmp_path: Path
+    ) -> None:
+        """The declaration asked at kept the client's spelling, which no index site equals: the
+        producer was a consumer of its own variable, its removal lost, its fixes ordered as a
+        reader's and none preferred."""
+        real = tmp_path / "real"
+        write_tree(
+            real,
+            {
+                "p.ddd.json": project("P", "w.ddd.json", "r.ddd.json"),
+                "w.ddd.json": component("W", declare("output", "V", unit="rpm")),
+                "r.ddd.json": component("R", declare("input", "V")),
+            },
+        )
+        link = tmp_path / "link"
+        directory_link(link, real)
+        w = link / "w.ddd.json"
+        offered, _ = fixes_asked(tmp_path, w, holding(w, w.read_text(encoding="utf-8")))
+        assert (reconciled(offered), preferred(offered)) == (
+            [
+                "Apply this unit to 1 other declaration of 'V'",
+                "Remove this unit, which no other declaration of 'V' has",
+            ],
+            ["Apply this unit to 1 other declaration of 'V'"],
+        )
+        assert [touched(action) for action in offered] == [{"r.ddd.json"}, {"w.ddd.json"}]
+        assert list(offered[1]["edit"]["changes"]) == [(link / "w.ddd.json").as_uri()]
+
+
+class TestAFindingIsDrawnInTheBuffer:
+    """10:M6. The findings are the disk's, and an open document's are drawn in the text the client
+    holds for it. Drawn at the disk's places in a buffer with lines typed above them, unsaved, the
+    squiggles landed on other keys - after a save of another file, and at the open of a buffer the
+    client restored unsaved. A key the buffer no longer holds is drawn over the nearest key around
+    it that the buffer holds, and at the top of a buffer that is not json."""
+
+    FILES: ClassVar[dict[str, Any]] = {
+        "p.ddd.json": project("P", "w.ddd.json", "r.ddd.json"),
+        "w.ddd.json": component("W", declare("output", "V", unit="rpm", id="k7m2q9xr4t8w")),
+        "r.ddd.json": component("R", declare("input", "V", unit="krpm"), declare("input", "Y")),
+    }
+    """``r`` disagrees with ``w`` about the unit of ``V``, a ``definition-mismatch`` over its first
+    definition, and reads ``Y``, which nothing writes, a ``missing-producer`` over its second
+    declaration."""
+
+    def typed_above(self, text: str) -> str:
+        """``r``'s text with five lines typed above its interface: a description, and four blank
+        lines."""
+        return text.replace(
+            '"name": "R",\n', '"name": "R",\n    "description": "reads V",\n\n\n\n\n', 1
+        )
+
+    def drawn(self, writer: io.BytesIO, path: Path) -> dict[str, Any]:
+        """Where each finding last published for ``path`` is drawn, by its check."""
+        return {entry["code"]: entry["range"] for entry in published(writer)[path.as_uri()]}
+
+    def where(self, text: str) -> dict[str, Any]:
+        """Where ``r``'s two findings lie in ``text``."""
+        document = Document(text)
+        return {
+            "definition-mismatch": document.range_of("component.interface[0].definition"),
+            "missing-producer": document.range_of("component.interface[1]"),
+        }
+
+    def started(self, tmp_path: Path) -> tuple[Server, io.BytesIO]:
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+        return server, writer
+
+    def test_a_finding_is_drawn_where_the_unsaved_buffer_holds_its_key(
+        self, tmp_path: Path
+    ) -> None:
+        """Five lines typed above the interface of ``r``, unsaved, and then ``w`` saved: the
+        findings of ``r`` went out at the disk's lines, five above their keys on screen."""
+        write_tree(tmp_path, self.FILES)
+        w, r = tmp_path / "w.ddd.json", tmp_path / "r.ddd.json"
+        disk = r.read_text(encoding="utf-8")
+        typed = self.typed_above(disk)
+        server, _ = self.started(tmp_path)
+        assert server._handle(holding(w, w.read_text(encoding="utf-8")))
+        assert server._handle(holding(r, disk))
+        changed = {
+            "textDocument": {"uri": r.as_uri(), "version": 2},
+            "contentChanges": [{"text": typed}],
+        }
+        assert server._handle(
+            {"jsonrpc": "2.0", "method": "textDocument/didChange", "params": changed}
+        )
+        writer = server.writer = io.BytesIO()
+        saved = {"textDocument": {"uri": w.as_uri()}}
+        assert server._handle({"jsonrpc": "2.0", "method": "textDocument/didSave", "params": saved})
+        assert [range["start"]["line"] - 5 for range in self.where(typed).values()] == [
+            range["start"]["line"] for range in self.where(disk).values()
+        ]
+        assert self.drawn(writer, r) == self.where(typed)
+
+    def test_a_buffer_restored_unsaved_is_drawn_in_from_its_open(self, tmp_path: Path) -> None:
+        write_tree(tmp_path, self.FILES)
+        r = tmp_path / "r.ddd.json"
+        typed = self.typed_above(r.read_text(encoding="utf-8"))
+        server, writer = self.started(tmp_path)
+        assert server._handle(holding(r, typed))
+        assert self.drawn(writer, r) == self.where(typed)
+
+    def test_a_note_is_drawn_where_the_buffer_it_points_into_holds_its_key(
+        self, tmp_path: Path
+    ) -> None:
+        """The disagreement of ``r`` points at ``w``'s declaration, its other side, which the reader
+        clicks to: in ``w``'s buffer, with lines typed above it unsaved, as ``w``'s findings are."""
+        write_tree(tmp_path, self.FILES)
+        w, r = tmp_path / "w.ddd.json", tmp_path / "r.ddd.json"
+        typed = w.read_text(encoding="utf-8").replace(
+            '"name": "W",\n', '"name": "W",\n    "description": "writes V",\n\n\n\n\n', 1
+        )
+        server, writer = self.started(tmp_path)
+        assert server._handle(holding(w, typed))
+        (finding,) = [
+            entry
+            for entry in published(writer)[r.as_uri()]
+            if entry["code"] == "definition-mismatch"
+        ]
+        assert [note["location"] for note in finding["relatedInformation"]] == [
+            {"uri": w.as_uri(), "range": Document(typed).range_of(AT_A_DECLARATION)}
+        ]
+
+    def test_a_declaration_typed_above_another_takes_the_place_its_finding_names(
+        self, tmp_path: Path
+    ) -> None:
+        """A finding names its key by its place in the file: with a declaration typed in front of
+        the two of ``r``, unsaved, each finding is drawn over the declaration the buffer holds at
+        its place, the one in front of its own, until the file is saved and checked again."""
+        write_tree(tmp_path, self.FILES)
+        r = tmp_path / "r.ddd.json"
+        text = json.dumps(
+            component(
+                "R",
+                declare("local", "Typed"),
+                declare("input", "V", unit="krpm"),
+                declare("input", "Y"),
+            ),
+            indent=2,
+        )
+        server, writer = self.started(tmp_path)
+        assert server._handle(holding(r, text))
+        assert self.drawn(writer, r) == self.where(text)
+
+    @pytest.mark.parametrize("unsaved", ["its-declaration-taken-out", "not-json"])
+    def test_a_key_the_buffer_no_longer_holds_is_drawn_around_it(
+        self, tmp_path: Path, unsaved: str
+    ) -> None:
+        """The buffer took out the declaration ``missing-producer`` is about, or is caught mid edit:
+        the finding is drawn over the interface holding what is left, or at the top."""
+        write_tree(tmp_path, self.FILES)
+        r = tmp_path / "r.ddd.json"
+        if unsaved == "not-json":
+            text = r.read_text(encoding="utf-8")[:-12]
+            top = {"line": 0, "character": 0}
+            expected = {"start": top, "end": top}
+        else:
+            text = json.dumps(component("R", declare("input", "V", unit="krpm")), indent=2)
+            expected = Document(text).range_of("component.interface")
+        server, writer = self.started(tmp_path)
+        assert server._handle(holding(r, text))
+        assert self.drawn(writer, r)["missing-producer"] == expected
+
+    def test_a_fix_is_found_at_the_finding_drawn_in_the_buffer(self, tmp_path: Path) -> None:
+        """A client asks for the quick fixes where it drew a finding, sending the finding back:
+        asked at the disk's place in the buffer, the caret was on no declaration, and nothing was
+        offered."""
+        write_tree(tmp_path, self.FILES)
+        w, r = tmp_path / "w.ddd.json", tmp_path / "r.ddd.json"
+        server, writer = self.started(tmp_path)
+        assert server._handle(holding(w, w.read_text(encoding="utf-8")))
+        assert server._handle(holding(r, self.typed_above(r.read_text(encoding="utf-8"))))
+        (finding,) = [
+            entry
+            for entry in published(writer)[r.as_uri()]
+            if entry["code"] == "definition-mismatch"
+        ]
+        asked = {
+            "textDocument": {"uri": r.as_uri()},
+            "range": finding["range"],
+            "context": {"diagnostics": [finding]},
+        }
+        assert server._handle(
+            {"jsonrpc": "2.0", "id": 13, "method": "textDocument/codeAction", "params": asked}
+        )
+        offered = next(message for message in sent(writer) if message.get("id") == 13)["result"]
+        assert preferred(offered) == ["Use the unit declared in w"]
+        assert offered[0]["diagnostics"] == [finding]
+
+    @pytest.mark.parametrize("typed", ["a-description-and-four-blank-lines", "five-blank-lines"])
+    def test_a_buffer_closed_unsaved_has_its_findings_drawn_where_the_file_holds_them(
+        self, tmp_path: Path, typed: str
+    ) -> None:
+        """Lines typed above the interface of ``r``, and the document closed without saving: its
+        findings, drawn in the buffer, stayed at its lines, five below their keys in the file, until
+        the next check that reported on ``r``. Closed, it is checked again, and they are drawn where
+        the disk holds them, whether the lines hold a key or are blank and parse as the file."""
+        write_tree(tmp_path, self.FILES)
+        r = tmp_path / "r.ddd.json"
+        disk = r.read_text(encoding="utf-8")
+        if typed == "five-blank-lines":
+            buffer = disk.replace('"name": "R",\n', '"name": "R",\n\n\n\n\n\n', 1)
+        else:
+            buffer = self.typed_above(disk)
+        server, writer = self.started(tmp_path)
+        assert server._handle(holding(r, buffer))
+        assert self.drawn(writer, r) == self.where(buffer) != self.where(disk)
+        assert server._handle(closing(r))
+        assert self.drawn(writer, r) == self.where(disk)
+
+    @pytest.mark.parametrize("closed", ["its-own-lines-in-crlf", "no-finding-on-screen"])
+    def test_a_buffer_whose_findings_sit_where_the_file_has_them_is_closed_unchecked(
+        self, tmp_path: Path, closed: str
+    ) -> None:
+        """Closing a document costs no check where nothing it drew can be elsewhere in the file: a
+        buffer holding the file's lines, its line endings aside, which a client counts alike; or a
+        document with no finding on screen, ``p``, whatever its buffer holds."""
+        write_tree(tmp_path, self.FILES)
+        path = tmp_path / ("r.ddd.json" if closed == "its-own-lines-in-crlf" else "p.ddd.json")
+        disk = path.read_text(encoding="utf-8")
+        if closed == "its-own-lines-in-crlf":
+            buffer = disk.replace("\n", "\r\n")
+        else:
+            buffer = disk.replace("{\n", "{\n\n\n\n\n\n", 1)
+        server, writer = self.started(tmp_path)
+        assert server._handle(holding(path, buffer))
+        assert (path.as_uri() in published(writer)) == (closed == "its-own-lines-in-crlf")
+        writer = server.writer = io.BytesIO()
+        assert server._handle(closing(path))
+        assert sent(writer) == []
+
+    def test_what_a_document_declares_itself_is_read_from_the_disk(self, tmp_path: Path) -> None:
+        """A component no project holds, read on its own, whose buffer is a project description: it
+        is checked as the component the disk holds, under the checks one file can settle, whatever
+        its buffer says it is."""
+        write_tree(tmp_path, {"a.ddd.json": component("A", declare("input", "X"))})
+        a = (tmp_path / "a.ddd.json").resolve()
+        buffered = {a: Document(json.dumps(project("P", "a.ddd.json"), indent=2))}
+        assert service.collect([], [a], tmp_path, buffered) == {a: []}
+
+
+REGISTRATION: Final = {
+    "jsonrpc": "2.0",
+    "id": "ddd-watch",
+    "method": "client/registerCapability",
+    "params": {
+        "registrations": [
+            {
+                "id": "ddd-watch",
+                "method": "workspace/didChangeWatchedFiles",
+                "registerOptions": {
+                    "watchers": [
+                        {"globPattern": "**/*.ddd.json"},
+                        {"globPattern": "**/ddd-build.json"},
+                    ]
+                },
+            }
+        ]
+    },
+}
+"""What the server asks of a client that takes registrations while the session runs: to watch
+every description and every build record of the workspace."""
+
+
+def opening(*folders: Path, **workspace: Any) -> dict[str, Any]:
+    """An ``initialize`` naming ``folders``, from a client announcing ``workspace`` of the workspace
+    capabilities."""
+    return {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "workspaceFolders": [{"uri": folder.as_uri()} for folder in folders],
+            "capabilities": {"workspace": workspace},
+        },
+    }
+
+
+def changed_on_disk(*paths: Path, kind: int = 2) -> dict[str, Any]:
+    """The watch event a client sends for ``paths``: changed, or created (1) or deleted (3)."""
+    return {
+        "jsonrpc": "2.0",
+        "method": "workspace/didChangeWatchedFiles",
+        "params": {"changes": [{"uri": path.as_uri(), "type": kind} for path in paths]},
+    }
+
+
+def closing(path: Path) -> dict[str, Any]:
+    return {
+        "jsonrpc": "2.0",
+        "method": "textDocument/didClose",
+        "params": {"textDocument": {"uri": path.as_uri()}},
+    }
+
+
+def folders_changed(added: Sequence[Path] = (), removed: Sequence[Path] = ()) -> dict[str, Any]:
+    """The client adding ``added`` to its workspace folders and taking ``removed`` out."""
+    return {
+        "jsonrpc": "2.0",
+        "method": "workspace/didChangeWorkspaceFolders",
+        "params": {
+            "event": {
+                "added": [{"uri": folder.as_uri(), "name": folder.name} for folder in added],
+                "removed": [{"uri": folder.as_uri(), "name": folder.name} for folder in removed],
+            }
+        },
+    }
+
+
+def logged(writer: io.BytesIO) -> list[str]:
+    """Every line the server put in the client's log."""
+    return [
+        message["params"]["message"]
+        for message in sent(writer)
+        if message.get("method") == "window/logMessage"
+    ]
+
+
+def codes(writer: io.BytesIO, path: Path) -> list[str]:
+    """The checks of the findings last published for ``path``, sorted."""
+    return sorted(entry["code"] for entry in published(writer)[path.as_uri()])
+
+
+class TestTheServerRegistersTheWatcher:
+    """10:M8, decision 10.6. The watcher was the extension's, so a client launching the server
+    itself - Neovim, Helix, Emacs - heard of no file changed behind the editor, and the extension's
+    watched the descriptions alone: a configure that rewrote only a build record left the old
+    severities on screen until the next save. The server asks the client to watch both, where the
+    client takes registrations while the session runs, once it has said it is initialized."""
+
+    def registrations(self, writer: io.BytesIO) -> list[dict[str, Any]]:
+        return [
+            message
+            for message in sent(writer)
+            if message.get("method") == "client/registerCapability"
+        ]
+
+    def test_the_server_asks_to_watch_the_descriptions_and_the_records(
+        self, tmp_path: Path
+    ) -> None:
+        writer = io.BytesIO()
+        hello = opening(tmp_path, didChangeWatchedFiles={"dynamicRegistration": True})
+        assert Server(framed(hello, INITIALIZED, *END), writer, root=tmp_path).run() == 0
+        answer, *rest = sent(writer)
+        assert answer["id"] == 1
+        assert rest == [REGISTRATION, response(99, None)]
+
+    def test_nothing_is_asked_before_the_client_is_initialized(self, tmp_path: Path) -> None:
+        """The protocol's moment for a registration is the client's ``initialized``: until it,
+        the client may not have taken the answer to ``initialize`` in yet."""
+        writer = io.BytesIO()
+        hello = opening(tmp_path, didChangeWatchedFiles={"dynamicRegistration": True})
+        assert Server(framed(hello, *END), writer, root=tmp_path).run() == 0
+        assert self.registrations(writer) == []
+
+    @pytest.mark.parametrize(
+        "workspace",
+        [
+            {},
+            {"didChangeWatchedFiles": {}},
+            {"didChangeWatchedFiles": {"dynamicRegistration": False}},
+        ],
+        ids=["no-watching", "no-registration", "declined"],
+    )
+    def test_a_client_that_takes_no_registration_is_asked_for_none(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], workspace: dict[str, Any]
+    ) -> None:
+        """It gets no watch events from the server, as it got none before, and a request it did
+        not say it takes is one it may refuse."""
+        writer = io.BytesIO()
+        stream = framed(opening(tmp_path, **workspace), INITIALIZED, *END)
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        assert self.registrations(writer) == []
+        assert capsys.readouterr().err == ""
+
+    def test_the_watcher_is_asked_for_once(self, tmp_path: Path) -> None:
+        """Two watchers send every change twice: a client saying ``initialized`` a second time is
+        not asked again."""
+        writer = io.BytesIO()
+        hello = opening(tmp_path, didChangeWatchedFiles={"dynamicRegistration": True})
+        stream = framed(hello, INITIALIZED, INITIALIZED, *END)
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        assert self.registrations(writer) == [REGISTRATION]
+
+
+class TestAnAnswerFromTheClient:
+    """10:M8. A message carrying an ``id`` and no ``method`` is the client's answer to a request of
+    the server's - its registration of the watcher - and is answered nothing. It was answered as a
+    request naming no method: an error in the client's log about a message it had sent right."""
+
+    @pytest.mark.parametrize(
+        "answer",
+        [{"result": None}, {"error": {"code": METHOD_NOT_FOUND, "message": "not here"}}],
+        ids=["a-result", "an-error"],
+    )
+    @pytest.mark.parametrize("when", ["before-initialize", "in-session", "after-shutdown"])
+    def test_it_is_answered_nothing(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        answer: dict[str, Any],
+        when: str,
+    ) -> None:
+        reply = {"jsonrpc": "2.0", "id": "ddd-watch", **answer}
+        hello = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}
+        shutdown, leave = END
+        messages = {
+            "before-initialize": (reply, hello, shutdown, leave),
+            "in-session": (hello, reply, shutdown, leave),
+            "after-shutdown": (hello, shutdown, reply, leave),
+        }[when]
+        writer = io.BytesIO()
+        assert Server(framed(*messages), writer, root=tmp_path).run() == 0
+        assert [message["id"] for message in sent(writer)] == [1, 99]
+        assert capsys.readouterr().err == ""
+
+    def test_an_answer_queued_between_two_opens_does_not_part_their_check(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Only a message the server answers is waited on by a check (:meth:`Server._serve`): an
+        answer arriving between two opens queued together left the first checked on its own, and
+        the second in a check of its own."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("input", "X")),
+                "b.ddd.json": component("B", declare("input", "Y")),
+            },
+        )
+        build_record(tmp_path, tmp_path / "p.ddd.json")
+        a, b = tmp_path / "a.ddd.json", tmp_path / "b.ddd.json"
+        reply = {"jsonrpc": "2.0", "id": "ddd-watch", "result": None}
+        writer = io.BytesIO()
+        together = [
+            opening(tmp_path),
+            holding(a, a.read_text(encoding="utf-8")),
+            reply,
+            holding(b, b.read_text(encoding="utf-8")),
+        ]
+        inbox = Arrivals(writer, together, END)
+        ran: list[int] = []
+        original = service.analyze
+
+        def counted(*args: Any, **kwargs: Any) -> Any:
+            ran.append(1)
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(service, "analyze", counted)
+        assert Server(io.BytesIO(), writer, root=tmp_path)._serve(inbox) == 0
+        assert len(ran) == 1
+        assert sorted(published(writer)) == sorted([a.as_uri(), b.as_uri()])
+
+
+class TestABuildRecordChangingOnDisk:
+    """10:M8, B9-30. A build record is watched as the descriptions are, and its change is a change
+    of which projects there are and of their severities: what was found is forgotten, and what is
+    open is checked again, or what is on screen where nothing is open. A record is never checked
+    as a description: reached as one, it was read as a component and given a finding of its own,
+    and so was any json of another name."""
+
+    def workspace(self, tmp_path: Path, *severities: str) -> tuple[Path, Path]:
+        """``r`` stating another unit than ``w``, which writes ``V``: a ``definition-mismatch``,
+        reported at both and an error unless the record's ``severities`` say otherwise. Returns
+        ``r`` and the record."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "w.ddd.json", "r.ddd.json"),
+                "w.ddd.json": component("W", declare("output", "V", unit="rpm", id="k7m2q9xr4t8w")),
+                "r.ddd.json": component("R", declare("input", "V", unit="krpm")),
+            },
+        )
+        record = build_record(tmp_path, tmp_path / "p.ddd.json", severity=list(severities))
+        return tmp_path / "r.ddd.json", record
+
+    def graded(self, writer: io.BytesIO) -> dict[str, list[tuple[str, int]]]:
+        """Each file last published, by its name, with the check and severity of each finding."""
+        return {
+            uri_to_path(uri).name: [(entry["code"], entry["severity"]) for entry in findings]
+            for uri, findings in published(writer).items()
+        }
+
+    def started(self, tmp_path: Path) -> tuple[Server, io.BytesIO]:
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(opening(tmp_path))
+        return server, writer
+
+    def test_an_open_document_is_checked_again_under_the_record_as_it_reads_now(
+        self, tmp_path: Path
+    ) -> None:
+        """The record rewritten by a configure that lowers the mismatch to a warning."""
+        r, record = self.workspace(tmp_path)
+        server, writer = self.started(tmp_path)
+        assert server._handle(holding(r, r.read_text(encoding="utf-8")))
+        assert self.graded(writer)["r.ddd.json"] == [("definition-mismatch", 1)]
+        build_record(tmp_path, tmp_path / "p.ddd.json", severity=["definition-mismatch=warning"])
+        writer = server.writer = io.BytesIO()
+        assert server._handle(changed_on_disk(record))
+        assert self.graded(writer) == {
+            "r.ddd.json": [("definition-mismatch", 2)],
+            "w.ddd.json": [("definition-mismatch", 2)],
+        }
+
+    def test_with_nothing_open_what_is_on_screen_is_checked_again(self, tmp_path: Path) -> None:
+        """The record deleted, with ``r`` closed and its findings on screen: they are the build's
+        no longer, and ``r`` is checked through the project above it, under the default severities.
+        Checked from the record's path, nothing was: the path is gone."""
+        r, record = self.workspace(tmp_path, "definition-mismatch=warning")
+        server, writer = self.started(tmp_path)
+        assert server._handle(holding(r, r.read_text(encoding="utf-8")))
+        assert server._handle(closing(r))
+        assert self.graded(writer)["r.ddd.json"] == [("definition-mismatch", 2)]
+        record.unlink()
+        writer = server.writer = io.BytesIO()
+        assert server._handle(changed_on_disk(record, kind=3))
+        assert self.graded(writer) == {
+            "r.ddd.json": [("definition-mismatch", 1)],
+            "w.ddd.json": [("definition-mismatch", 1)],
+        }
+
+    def test_with_nothing_open_a_description_the_loader_reads_by_a_name_in_capitals_is_checked(
+        self, tmp_path: Path
+    ) -> None:
+        """The loader takes a file whose name ends ``.ddd.json`` in any case: an event for
+        ``R.DDD.JSON`` with nothing open was dropped, and the findings of the file stayed on
+        screen as the disk no longer held them."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "w.ddd.json", "R.DDD.JSON"),
+                "w.ddd.json": component("W", declare("output", "V", unit="rpm", id="k7m2q9xr4t8w")),
+                "R.DDD.JSON": component("R", declare("input", "V", unit="krpm")),
+            },
+        )
+        r = tmp_path / "R.DDD.JSON"
+        server, writer = self.started(tmp_path)
+        assert server._handle(holding(r, r.read_text(encoding="utf-8")))
+        assert server._handle(closing(r))
+        assert self.graded(writer)["R.DDD.JSON"] == [("definition-mismatch", 1)]
+        write_tree(tmp_path, {"R.DDD.JSON": component("R", declare("input", "V", unit="rpm"))})
+        writer = server.writer = io.BytesIO()
+        assert server._handle(changed_on_disk(r))
+        assert self.graded(writer) == {"R.DDD.JSON": [], "w.ddd.json": []}
+
+    @pytest.mark.parametrize("named", [BUILD_INFO_FILENAME, "notes.json"])
+    def test_with_nothing_open_a_file_that_is_no_description_is_not_checked_as_one(
+        self, tmp_path: Path, named: str
+    ) -> None:
+        """Nothing on screen and nothing open: there is nothing to check again, and the file the
+        event names is checked as nothing - a record is read as a record, at the next search for
+        them, and a json of another name is none of this server's."""
+        _, record = self.workspace(tmp_path)
+        changed = record if named == BUILD_INFO_FILENAME else tmp_path / named
+        changed.write_text('{"format": 1}', encoding="utf-8")
+        server, writer = self.started(tmp_path)
+        assert server._handle(changed_on_disk(changed))
+        assert published(writer) == {}
+
+
+class TestFoldersAddedAndRemovedLater:
+    """10:M10. The workspace folders are the client's, and it adds and removes them while the
+    session runs. A folder added was not followed: a document in it was checked as one outside
+    every folder, on its own, where named at ``initialize`` its project was found above it. A
+    folder removed is answered as if it had never been named: what was published under it alone is
+    withdrawn, and an open document under it is checked as one outside every folder."""
+
+    def tree(self, tmp_path: Path) -> tuple[Path, Path, Path]:
+        """Folder ``a``, and folder ``b`` holding the project of ``parts/c.ddd.json`` and
+        ``parts/d.ddd.json``. ``c`` reads what nobody writes and writes what nobody reads, which
+        only its project can say: read on its own it shows the ``missing-id`` of its output alone.
+        ``d`` reads what nobody writes too. Returns ``a``, ``b`` and ``c``."""
+        a, b = tmp_path / "a", tmp_path / "b"
+        write_tree(a, {"q.ddd.json": project("Q")})
+        write_tree(
+            b,
+            {
+                "p.ddd.json": project("P", "parts/c.ddd.json", "parts/d.ddd.json"),
+                "parts/c.ddd.json": component(
+                    "C", declare("input", "In"), declare("output", "Out")
+                ),
+                "parts/d.ddd.json": component("D", declare("input", "Other")),
+            },
+        )
+        return a, b, b / "parts" / "c.ddd.json"
+
+    def checked(self, tmp_path: Path, *folders: Path) -> dict[str, list[dict[str, Any]]]:
+        """What a session initialised with ``folders`` publishes once ``c`` is open."""
+        c = tmp_path / "b" / "parts" / "c.ddd.json"
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(opening(*folders))
+        assert server._handle(holding(c, c.read_text(encoding="utf-8")))
+        return published(writer)
+
+    def test_the_server_says_it_follows_the_folders(self, tmp_path: Path) -> None:
+        """Without it, a client sends no change of its folders at all."""
+        writer = io.BytesIO()
+        assert Server(framed(opening(tmp_path), *END), writer, root=tmp_path).run() == 0
+        assert sent(writer)[0]["result"]["capabilities"]["workspace"] == {
+            "workspaceFolders": {"supported": True, "changeNotifications": True}
+        }
+
+    def test_a_folder_added_later_is_searched_as_one_named_from_the_start(
+        self, tmp_path: Path
+    ) -> None:
+        a, b, c = self.tree(tmp_path)
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(opening(a))
+        assert server._handle(holding(c, c.read_text(encoding="utf-8")))
+        assert codes(writer, c) == ["missing-id"]
+        writer = server.writer = io.BytesIO()
+        assert server._handle(folders_changed(added=[b]))
+        assert codes(writer, c) == ["missing-id", "missing-producer", "unused-output"]
+        assert published(writer) == self.checked(tmp_path, a, b)
+
+    def test_a_folder_removed_is_answered_as_if_it_had_never_been_named(
+        self, tmp_path: Path
+    ) -> None:
+        a, b, c = self.tree(tmp_path)
+        d = b / "parts" / "d.ddd.json"
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(opening(a, b))
+        assert server._handle(holding(c, c.read_text(encoding="utf-8")))
+        assert codes(writer, d) == ["missing-producer"]
+        writer = server.writer = io.BytesIO()
+        assert server._handle(folders_changed(removed=[b]))
+        assert published(writer) == {
+            d.as_uri(): [],
+            c.as_uri(): self.checked(tmp_path, a)[c.as_uri()],
+        }
+        assert self.publications(writer, c) == 1, "an open document is checked, not withdrawn first"
+        assert server.roots == [a]
+
+    def publications(self, writer: io.BytesIO, path: Path) -> int:
+        """How many times the findings of ``path`` were published."""
+        return sum(
+            message.get("method") == "textDocument/publishDiagnostics"
+            and message["params"]["uri"] == path.as_uri()
+            for message in sent(writer)
+        )
+
+    def test_with_nothing_open_what_is_on_screen_is_checked_in_a_folder_added_later(
+        self, tmp_path: Path
+    ) -> None:
+        """``c`` closed, and its findings on screen: they are checked again once the folder holding
+        its project is added, as a build record's change checks them again."""
+        a, b, c = self.tree(tmp_path)
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(opening(a))
+        assert server._handle(holding(c, c.read_text(encoding="utf-8")))
+        assert server._handle(closing(c))
+        writer = server.writer = io.BytesIO()
+        assert server._handle(folders_changed(added=[b]))
+        assert codes(writer, c) == ["missing-id", "missing-producer", "unused-output"]
+
+    def test_a_file_under_a_folder_that_stays_is_not_withdrawn(self, tmp_path: Path) -> None:
+        """Under the folder removed and under ``parts``, a folder of its own that stays, ``d`` is
+        not under the removed one alone: ``parts`` answers for it, its own project ``q`` saying
+        what ``p`` did, and the findings are not withdrawn to be published again."""
+        a, b, c = self.tree(tmp_path)
+        d = b / "parts" / "d.ddd.json"
+        write_tree(b / "parts", {"q.ddd.json": project("Q", "c.ddd.json", "d.ddd.json")})
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(opening(a, b, b / "parts"))
+        assert server._handle(holding(c, c.read_text(encoding="utf-8")))
+        assert codes(writer, d) == ["missing-producer"]
+        writer = server.writer = io.BytesIO()
+        assert server._handle(folders_changed(removed=[b]))
+        assert codes(writer, d) == ["missing-producer"]
+        assert self.publications(writer, d) == 1
+        assert server.roots == [a, b / "parts"]
+
+    def test_a_file_the_removed_folder_alone_answered_for_is_checked_again(
+        self, tmp_path: Path
+    ) -> None:
+        """``parts`` stays as a folder of its own, holding no project: ``d`` is not under the
+        removed folder alone, so it is not withdrawn, and with ``c`` open it was not checked again
+        either, keeping the ``missing-producer`` only the project above ``parts`` gave it. As
+        one outside every project it says nothing of the kind."""
+        a, b, c = self.tree(tmp_path)
+        d = b / "parts" / "d.ddd.json"
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(opening(a, b, b / "parts"))
+        assert server._handle(holding(c, c.read_text(encoding="utf-8")))
+        assert codes(writer, d) == ["missing-producer"]
+        writer = server.writer = io.BytesIO()
+        assert server._handle(folders_changed(removed=[b]))
+        assert published(writer)[d.as_uri()] == []
+
+    def test_with_nothing_open_what_a_removed_folder_held_is_withdrawn(
+        self, tmp_path: Path
+    ) -> None:
+        """Everything on screen lies under the folder removed, and nothing is open to check
+        again: each file is withdrawn, once, and none is checked from a path no folder holds."""
+        a, b, c = self.tree(tmp_path)
+        d = b / "parts" / "d.ddd.json"
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(opening(a, b))
+        assert server._handle(holding(c, c.read_text(encoding="utf-8")))
+        assert server._handle(closing(c))
+        assert codes(writer, d) == ["missing-producer"]
+        writer = server.writer = io.BytesIO()
+        assert server._handle(folders_changed(removed=[b]))
+        assert published(writer) == {c.as_uri(): [], d.as_uri(): []}
+        assert self.publications(writer, c) == 1
+        assert self.publications(writer, d) == 1
+
+    def test_with_every_folder_removed_the_server_answers_where_it_was_started(
+        self, tmp_path: Path
+    ) -> None:
+        """As a session initialised with no folder does."""
+        _, b, _ = self.tree(tmp_path)
+        started = tmp_path / "started"
+        server = Server(io.BytesIO(), io.BytesIO(), root=started)
+        assert server._handle(opening(b))
+        assert server.roots == [b]
+        assert server._handle(folders_changed(removed=[b]))
+        assert server.roots == [started]
+        assert server._handle(folders_changed(added=[b]))
+        assert server.roots == [b]
+
+    @staticmethod
+    def malformed(case: str, good: dict[str, str]) -> dict[str, Any]:
+        """The folder change ``case`` names, ``good`` - a folder named right - among the folders it
+        adds wherever those are a list."""
+        params = {
+            "no-event": {},
+            "event-null": {"event": None},
+            "added-null": {"event": {"added": None, "removed": []}},
+            "removed-a-number": {"event": {"added": [good], "removed": 3}},
+            "a-folder-a-number": {"event": {"added": [good, 3], "removed": []}},
+            "a-folder-uri-null": {"event": {"added": [good, {"uri": None}], "removed": []}},
+            "a-folder-not-on-disk": {
+                "event": {"added": [good, {"uri": "untitled:x"}], "removed": []}
+            },
+            "a-folder-no-file-system-takes": {
+                "event": {"added": [good], "removed": [{"uri": "file:///a%00b"}]}
+            },
+        }
+        changed: dict[str, Any] = {
+            "jsonrpc": "2.0",
+            "method": "workspace/didChangeWorkspaceFolders",
+        }
+        if case in params:
+            changed["params"] = params[case]
+        return changed
+
+    @pytest.mark.parametrize(
+        "case",
+        [
+            "no-params",
+            "no-event",
+            "event-null",
+            "added-null",
+            "removed-a-number",
+            "a-folder-a-number",
+            "a-folder-uri-null",
+            "a-folder-not-on-disk",
+            "a-folder-no-file-system-takes",
+        ],
+    )
+    def test_a_change_the_server_cannot_read_changes_nothing(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], case: str
+    ) -> None:
+        """Answered with nothing, as a notification always is, with nothing on stderr: the
+        client's mistake, not a defect of the server's. Every field is read before any is kept, so
+        a folder named right beside one named wrong is not taken either."""
+        a, b, _ = self.tree(tmp_path)
+        changed = self.malformed(case, {"uri": b.as_uri(), "name": "b"})
+        writer = io.BytesIO()
+        server = Server(framed(opening(a), changed, *END), writer, root=tmp_path)
+        assert server.run() == 0
+        assert answered(writer) == [response(99, None)]
+        assert capsys.readouterr().err == ""
+        assert server.roots == [a]
+
+
+class TestARelativeBuildDirectoryIsReadInEachFolder:
+    """10:M10, B9-33. A relative ``-b`` was read against the server's working directory, which
+    VS Code makes its first workspace folder: the build of every other folder, and of a folder
+    added later, went unfound, and an editor started elsewhere found none. It is read against each
+    workspace folder, and a record two folders reach is counted once."""
+
+    def folder(self, base: Path, name: str) -> Path:
+        """A folder holding a project and the record of its build, ``build/ddd/<name>.elf``."""
+        folder = base / name
+        write_tree(
+            folder,
+            {
+                "p.ddd.json": project(name.upper(), "c.ddd.json"),
+                "c.ddd.json": component(name.upper(), declare("input", "X")),
+            },
+        )
+        build_record(folder, folder / "p.ddd.json", image=f"{name}.elf")
+        return folder
+
+    def started(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *build_directories: Path
+    ) -> tuple[Server, io.BytesIO]:
+        """A server started in a directory that is none of its folders, with ``build_directories``
+        as its ``-b``."""
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        monkeypatch.chdir(elsewhere)
+        writer = io.BytesIO()
+        return Server(io.BytesIO(), writer, build_directories=build_directories), writer
+
+    def test_each_folder_s_build_is_found(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        a, b = self.folder(tmp_path, "a"), self.folder(tmp_path, "b")
+        server, writer = self.started(tmp_path, monkeypatch, Path("build"))
+        assert server._handle(opening(a, b))
+        assert server._handle(holding(a / "c.ddd.json", "{}"))
+        assert logged(writer) == [
+            f"a.elf: {(a / 'p.ddd.json').as_posix()}",
+            f"b.elf: {(b / 'p.ddd.json').as_posix()}",
+        ]
+
+    def test_a_folder_added_later_has_its_build_found_too(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        a, b = self.folder(tmp_path, "a"), self.folder(tmp_path, "b")
+        server, writer = self.started(tmp_path, monkeypatch, Path("build"))
+        assert server._handle(opening(a))
+        assert server._handle(holding(a / "c.ddd.json", "{}"))
+        writer = server.writer = io.BytesIO()
+        assert server._handle(folders_changed(added=[b]))
+        assert logged(writer) == [
+            f"a.elf: {(a / 'p.ddd.json').as_posix()}",
+            f"b.elf: {(b / 'p.ddd.json').as_posix()}",
+        ]
+        assert codes(writer, b / "c.ddd.json") == ["missing-producer"]
+
+    def test_a_record_two_folders_reach_is_counted_once(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A ``-b`` naming one directory from both, as an absolute one does: its record was found
+        once per folder, announced twice and its project analysed twice at every check."""
+        shared = self.folder(tmp_path, "shared")
+        a, b = tmp_path / "a", tmp_path / "b"
+        a.mkdir()
+        b.mkdir()
+        server, writer = self.started(tmp_path, monkeypatch, shared / "build")
+        assert server._handle(opening(a, b))
+        assert server._handle(holding(shared / "c.ddd.json", "{}"))
+        assert logged(writer) == [f"shared.elf: {(shared / 'p.ddd.json').as_posix()}"]
+
+    def test_with_no_folder_named_it_is_read_where_the_server_was_started(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The control: a client naming no folder, the server answers in the directory it was
+        started in, and reads a relative ``-b`` there, as it always did."""
+        here = self.folder(tmp_path, "here")
+        monkeypatch.chdir(here)
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, build_directories=[Path("build")])
+        assert server._handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+        assert server._handle(holding(here / "c.ddd.json", "{}"))
+        assert logged(writer) == [f"here.elf: {(here / 'p.ddd.json').as_posix()}"]

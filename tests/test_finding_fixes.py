@@ -57,6 +57,13 @@ class TestTheCodeIsNotTouched:
         (fix,) = fixes_for("definition-mismatch", root / "b.ddd.json", DEFINITION, {}, built)
         assert fix.title == ("Use the unit declared in a (the code of the readers is not touched)")
 
+    def test_the_editor_s_titles_end_in_the_same_words(self) -> None:
+        # The language server's quick fixes for a mismatch are the same decisions, and their titles
+        # say the same of the readers' code, from a constant of the editor's own.
+        from ddd.lsp.edits import CODE_NOT_TOUCHED as THE_EDITOR_S
+
+        assert THE_EDITOR_S == CODE_NOT_TOUCHED
+
 
 class TestAnIdentity:
     def test_a_producing_declaration_without_one_is_offered_an_id(self, tmp_path: Path) -> None:
@@ -407,14 +414,29 @@ class TestAMismatch:
 
     def test_a_producer_with_only_the_taking_direction_offers_nothing(self, tmp_path: Path) -> None:
         # The mirror image of the case above, on the giving side instead of the taking side.
-        # `a` is the sole producer, so the no-single-producer guard does not apply here - this
-        # isolates the other guard, the one inside the per-key loop. `b` reads `Speed` and names
-        # a type that fixes `unit` to a value `a` does not state, so `a`'s own value cannot be
-        # sent to `b` at all (`given` is blocked) - but `a` stating no unit is something `b`'s
-        # type does not contradict, so `a` *could* adopt that silence (`taken` exists, via
-        # `_remove_here`). A producer's finding owns the giving direction, not the taking one;
-        # asked unowned, `a` is still offered that button - asked the way the page asks, nothing
-        # is, rather than quietly falling through to the direction it does not own.
+        # `w` is the sole producer, so the no-single-producer guard does not apply here - this
+        # isolates the other guard, the one inside the per-key loop. `r` reads `V` as text, which
+        # has no unit, so `w`'s own unit cannot be sent to `r` at all (`given` is blocked: the
+        # file would not load) - but nobody else states a unit, so `w` *could* adopt that silence
+        # (`taken` exists, via `_remove_here`). A producer's finding owns the giving direction,
+        # not the taking one; asked unowned, `w` is still offered that button - asked the way the
+        # page asks, nothing is, rather than quietly falling through to the direction it does
+        # not own.
+        built, root = built_of(tmp_path, **UNIT_BESIDE_TEXT)
+        unit = f"{DEFINITION}.unit"
+        document = read(root / "w.ddd.json", {})
+        unowned = reconciliations(built, root / "w.ddd.json", document, unit, {})
+        assert [decision.title for decision in unowned] == [
+            "Remove this unit, which no other declaration of 'V' has"
+        ]
+        assert fixes_for("definition-mismatch", root / "w.ddd.json", unit, {}, built) == ()
+
+    def test_a_producer_keeps_a_key_its_reader_s_type_states(self, tmp_path: Path) -> None:
+        # The fixture the test above was built on, until a reader's type counted as stating the
+        # unit: `b` reads `Speed` naming `Speed_t`, which states kPa, so `a` stating none would
+        # not be a silence `b` shares. Taking `a`'s unit out leaves the two disagreeing still, kPa
+        # against none, and it is offered to nobody - not to the editor, asked unowned, any more
+        # than to the page, which owns no taking direction at `a`.
         built, root = built_of(
             tmp_path,
             **{
@@ -425,10 +447,7 @@ class TestAMismatch:
         )
         unit = f"{DEFINITION}.unit"
         document = read(root / "a.ddd.json", {})
-        unowned = reconciliations(built, root / "a.ddd.json", document, unit, {})
-        assert [decision.title for decision in unowned] == [
-            "Remove this unit, which no other declaration of 'Speed' has"
-        ]
+        assert reconciliations(built, root / "a.ddd.json", document, unit, {}) == []
         assert fixes_for("definition-mismatch", root / "a.ddd.json", unit, {}, built) == ()
 
     def test_two_producers_disagreeing_with_each_other_are_offered_nothing(
@@ -516,19 +535,19 @@ class TestAMismatch:
         assert titles(offered) == ["Use the datatype declared in a"]
         assert "a.ddd.json" not in {edit.path.name for fix in offered for edit in fix.changes}
 
-    def test_a_mismatch_between_a_type_and_a_base_datatype_offers_nothing(
-        self, tmp_path: Path
-    ) -> None:
+    def test_a_reader_is_offered_the_unit_its_writer_s_type_states(self, tmp_path: Path) -> None:
         # One component has adopted the project's scalar type and the other has not, which is
         # the shape in which what a declaration states and what it resolves to part company: `a`
         # is silent in its file about the datatype, the conversion and the unit, and means all
-        # three through `Speed_t`. Read as silence, that offered six one-click buttons across the
-        # two mirrored rows, five of which wrote a file the loader then refused - a `typename`
-        # beside a `datatype`, either storage key taken away, the conversion a datatype comes
-        # with taken away - and the sixth removed `b`'s unit and left the mismatch standing.
-        # `settled_at` now reads both rules, so every one of them is withheld: settling this
-        # takes more than one key at a time, and the reader follows the panel link the finding
-        # already carries.
+        # three through `Speed_t`, the unit being the one `b` disagrees about. Read as silence,
+        # every button across the two mirrored rows either wrote a file the loader then refused -
+        # a `typename` beside a `datatype`, either storage key taken away, the conversion a
+        # datatype comes with taken away - or took `b`'s unit out and left the mismatch standing,
+        # and `settled_at`, reading both rules, withheld them all. Read through the type, the
+        # producer's unit is there to take: `b` takes rpm and the two agree. `a`'s own row sends
+        # its type's rpm out, the same edit from the producer's side, where it offered nothing
+        # while its file was read alone; taking `b`'s out would leave `a`'s type stating rpm
+        # against none, and is offered to nobody.
         built, root = built_of(
             tmp_path,
             **{
@@ -539,11 +558,46 @@ class TestAMismatch:
                 "t.ddd.json": types(scalar_type("Speed_t", datatype="uint16", unit="rpm")),
             },
         )
-        for name in ("a.ddd.json", "b.ddd.json"):
-            assert fixes_for("definition-mismatch", root / name, DEFINITION, {}, built) == ()
-        # And not because there is nothing to report: the unit really does disagree, through the
-        # type, which is what the panel this finding links to settles a key at a time.
-        assert settle(built, "Speed", "unit", '"rpm"', {}).unsettled == ()
+        sent_out = fixes_for("definition-mismatch", root / "a.ddd.json", DEFINITION, {}, built)
+        assert titles(sent_out) == ["Apply this unit to 1 other declaration of 'Speed'"]
+        offered = fixes_for("definition-mismatch", root / "b.ddd.json", DEFINITION, {}, built)
+        assert titles(offered) == ["Use the unit declared in a"]
+        assert offered[0].changes == sent_out[0].changes
+        (edit,) = offered[0].changes
+        assert [(o.op, o.pointer, o.raw) for o in edit.operations] == [
+            ("set", f"{DEFINITION}.unit", '"rpm"')
+        ]
+        text = edit.path.read_text(encoding="utf-8")
+        edit.path.write_text(edit_text(text, edit.operations), encoding="utf-8", newline="")
+
+        bag = DiagnosticBag()
+        workspace = load_workspace(root / "p.ddd.json", bag)
+        assert workspace is not None, messages(bag)
+        analyze(workspace, bag)
+        assert "definition-mismatch" not in checks(bag), messages(bag)
+
+    @pytest.mark.parametrize("source", ["a.ddd.json", "b.ddd.json"])
+    def test_nothing_is_removed_beside_a_type_moved_on_disk_since_the_analysis(
+        self, tmp_path: Path, source: str
+    ) -> None:
+        # The page asks the index of the revision it analysed, and reads the files as they stand:
+        # the types file now holds another type where the index found `Speed_t`. What `Speed_t`
+        # states is not known there, which is neither rpm nor silence. Read as silence, `b`'s row
+        # was offered to take its unit out "which a does not declare", and `a`'s to take it out of
+        # `b`; either leaves `Speed_t` stating rpm against none.
+        built, root = built_of(
+            tmp_path,
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed", typename="Speed_t")),
+                "b.ddd.json": component("B", declare("input", "Speed", "uint8", unit="kPa")),
+                "t.ddd.json": types(scalar_type("Speed_t", "uint8", unit="rpm")),
+            },
+        )
+        moved = types(
+            scalar_type("Other_t", "uint8", unit="kPa"), scalar_type("Speed_t", "uint8", unit="rpm")
+        )
+        (root / "t.ddd.json").write_text(json.dumps(moved, indent=2), encoding="utf-8", newline="")
+        assert fixes_for("definition-mismatch", root / source, DEFINITION, {}, built) == ()
 
     def test_a_declaration_that_cannot_take_the_value_stops_the_fix_being_offered(
         self, tmp_path: Path

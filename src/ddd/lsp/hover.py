@@ -21,14 +21,17 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
+from math import isinf
+from pathlib import Path
 from typing import Final
 
 from ddd.analysis import analyze
 from ddd.diagnostics import DiagnosticBag
 from ddd.ir import DataDictionary, ResolvedInstance, ResolvedLeaf, ResolvedObject
-from ddd.lsp.navigation import Loaded
+from ddd.lsp.navigation import Loaded, told_apart
 from ddd.models.common import format_number
+from ddd.models.component import Scope
 from ddd.models.conversion import EnumConversion, conversion_range, raw_reading
 from ddd.models.objects import ObjectKind, broadcast, flatten, format_shape
 from ddd.models.types import ExternalType, Member, ScalarType, StructType
@@ -56,8 +59,16 @@ def sparkline(values: list[float], low: float, high: float) -> str:
     ``high`` above ``low`` is the caller's promise; a set with no variation in it is not drawn
     at all, because a row of identical bars looks like a reading of the data rather than the
     absence of one.
+
+    Two finite values can lie further apart than a float counts: ``-1.7e308`` and ``1.7e308``
+    are both doubles, and the distance between them is not. The span is halved there, every
+    value with it, which leaves each bar where it falls and the arithmetic finite. Taken whole,
+    the span was infinite: every bar fell to the lowest, the highest value's position was NaN,
+    and a hover on a project ``ddd check`` passes ended the session.
     """
     span = high - low
+    if isinf(span):
+        values, low, span = [value / 2 for value in values], low / 2, high / 2 - low / 2
     return "".join(
         BARS[min(int((value - low) / span * len(BARS)), len(BARS) - 1)] for value in values
     )
@@ -68,9 +79,11 @@ def rows(entry: ResolvedObject) -> list[list[float]]:
 
     A map is stored row wise, so the last dimension is the width of a row: that is the
     direction the x axis runs in, and drawing it that way puts the picture the same way round
-    as the calibration tool shows it. A string init flattens to no values and so draws no
-    rows; ``_drawing`` states it as text before it ever asks, and the one dimension every
-    string has keeps the row width positive should anything else ask.
+    as the calibration tool shows it. An init that flattens to no values draws no rows: a
+    string, which ``_drawing`` states as text before it ever asks, and a list stating nothing,
+    which the checks report as ``init-invalid``. A scalar has no dimension to take the width of
+    a row from, so the rows of such a list were cut at a width of nothing, and a hover on it
+    ended the session.
     """
     if entry.init is None:
         return []
@@ -78,6 +91,8 @@ def rows(entry: ResolvedObject) -> list[list[float]]:
         entry.conversion.to_physical(value)
         for value in flatten(broadcast(entry.init, tuple(entry.shape)))
     ]
+    if not values:
+        return []
     width = entry.shape[-1] if entry.shape else len(values)
     return [values[start : start + width] for start in range(0, len(values), width)]
 
@@ -245,35 +260,63 @@ def _member_type(member: Member) -> str:
 
 
 def describe(dictionary: DataDictionary, name: str) -> str | None:
-    """The markdown an editor shows for one data object, or nothing if it has none."""
+    """The markdown an editor shows for one data object, or nothing if it has none: as one
+    project resolves it, which reaches no project beside it (:func:`describe_across`)."""
+    return describe_across(dictionary, name)
+
+
+def describe_across(
+    dictionary: DataDictionary,
+    name: str,
+    *,
+    others: Sequence[DataDictionary] = (),
+    unloaded: Sequence[Path] = (),
+    stopped: Sequence[str] = (),
+) -> str | None:
+    """The markdown an editor shows for one data object, or nothing if ``dictionary`` has none.
+
+    ``dictionary`` and ``others`` are every project holding the document a hover is asked in that
+    resolved, the first first; ``unloaded`` the files of any project holding it that did not load,
+    and ``stopped`` the names of the projects holding it whose analysis a plugin stopped, as a
+    sentence names a project. The object is described as ``dictionary`` resolves it; who writes it
+    and who reads it is said for all of them (:func:`_ownership`), since a component linked into
+    two images is in two projects, and a variable it writes is read by the readers of both. Said
+    from the first alone, a writer in two images was read by the first image's reader, while find
+    references listed the second's too.
+    """
+    every = (dictionary, *others)
     instance = next((entry for entry in dictionary.instances if entry.name == name), None)
     if instance is not None:
-        return _describe_instance(dictionary, instance)
+        ownership = _ownership(every, name, unloaded, stopped)
+        return _describe_instance(dictionary, instance, ownership)
     entry = dictionary.by_name.get(name)
     if entry is None:
         return None
     lines = [f"**{entry.name}** — {entry.kind.value}, `{entry.datatype.value}`", ""]
     if entry.description:
         lines += [entry.description, ""]
-    lines += [_ownership(entry), "", *_facts(entry, dictionary)]
+    lines += [*_ownership(every, name, unloaded, stopped), "", *_facts(entry, dictionary)]
     drawn = _drawing(entry)
     if drawn:
         lines += ["", *drawn]
     return "\n".join(lines)
 
 
-def _describe_instance(dictionary: DataDictionary, entry: ResolvedInstance) -> str:
+def _describe_instance(
+    dictionary: DataDictionary, entry: ResolvedInstance, ownership: list[str]
+) -> str:
     """What a structured variable is: the type it names, and what that type holds.
 
     The members are the whole point of hovering one. The file under the cursor says
     ``"typename": "Sensor_t"`` and nothing else; what a reader wants is what is inside it,
     which lives in another file - and, for each member, the unit and limits the project worked
-    out rather than the ones anybody wrote down.
+    out rather than the ones anybody wrote down. Who writes it and who reads it is
+    ``ownership``, said for every project holding the document (:func:`_ownership`).
     """
     lines = [f"**{entry.name}** — {entry.kind.value}, `{entry.type}`", ""]
     if entry.description:
         lines += [entry.description, ""]
-    lines += [_ownership(entry), ""]
+    lines += [*ownership, ""]
     facts = [("type", f"`{entry.type}`")]
     if entry.shape:
         facts.append(("shape", f"`{format_shape(entry.spelled_shape)}`"))
@@ -310,20 +353,106 @@ def _member_storage(leaf: ResolvedLeaf) -> str:
     )
 
 
-def _ownership(entry: ResolvedObject | ResolvedInstance) -> str:
-    """Who writes it and who reads it, which is the whole point of a data dictionary."""
-    if entry.owner is None:
-        return "*No component produces this.*"
-    if entry.local:
-        return f"Local to **{entry.owner}**."
-    readers = ", ".join(f"**{name}**" for name in entry.consumers) or "*nobody*"
-    return f"Written by **{entry.owner}**, read by {readers}."
+def _ownership(
+    dictionaries: Sequence[DataDictionary],
+    name: str,
+    unloaded: Sequence[Path],
+    stopped: Sequence[str],
+) -> list[str]:
+    """Who writes it and who reads it, which is the whole point of a data dictionary: in every
+    project of ``dictionaries``, each component named once, however many of them hold it.
+
+    Read off the components each project resolved, which keep every declaration the analysis
+    kept, rather than off the object, which keeps the one producer it is built from: of two
+    components writing it - ``multiple-producers``, or one in each of two images - the hover named
+    that one alone. A component declaring it ``local`` is the only one that may, and the sentence
+    says so where it is the only writer.
+
+    Where it says that no component produces the object, or that none reads it, the files of those
+    projects that did not load are named under it (:func:`_did_not_load`): what such a file
+    declares is in no project's answer, and the sentence was untrue of a project whose writer, or
+    whose reader, is there. Where it names both, an unread file takes nothing from what it says.
+
+    A project holding the document that a plugin stopped resolving - ``stopped`` names each - is
+    in no answer at all, so every name the sentence gives is partial, whatever it gives: the
+    projects are named under it, whichever it is (:func:`_unresolved`). Left out in silence, a
+    writer whose only reader is in such a project was read by nobody.
+    """
+    writers: set[str] = set()
+    local: set[str] = set()
+    readers: set[str] = set()
+    for dictionary in dictionaries:
+        for component in dictionary.components:
+            for declared in component.declarations:
+                if declared.name != name:
+                    continue
+                if declared.scope is Scope.INPUT:
+                    readers.add(component.name)
+                    continue
+                writers.add(component.name)
+                if declared.scope is Scope.LOCAL:
+                    local.add(component.name)
+    if not writers:
+        said = ["*No component produces this.*", *_did_not_load(unloaded, "writer")]
+    elif len(writers) == 1 and writers == local:
+        said = [f"Local to **{next(iter(writers))}**."]
+    else:
+        sentence = f"Written by {_listed(writers)}, read by {_listed(readers) or '*nobody*'}."
+        said = [sentence] if readers else [sentence, *_did_not_load(unloaded, "reader")]
+    return [*said, *_unresolved(stopped)]
+
+
+def _listed(names: Iterable[str]) -> str:
+    """Components named in a sentence, in order of their names: ``**A**``, ``**A** and **B**``,
+    ``**A**, **B** and **C**``; nothing for none."""
+    return _joined([f"**{name}**" for name in sorted(names)])
+
+
+def _joined(items: Sequence[str]) -> str:
+    """Items named in a sentence, in their order: ``A``, ``A and B``, ``A, B and C``; nothing for
+    none."""
+    if len(items) < 2:
+        return "".join(items)
+    return f"{', '.join(items[:-1])} and {items[-1]}"
+
+
+def _unresolved(stopped: Sequence[str]) -> list[str]:
+    """The line under who writes an object and who reads it, naming each project holding the
+    document whose analysis a plugin stopped as a rename's refusal names one - by its image, or by
+    its description where no build record names one (:meth:`~ddd.lsp.navigation.Reach.described`);
+    nothing where every project resolved."""
+    if not stopped:
+        return []
+    named = _joined([_span(project) for project in stopped])
+    holds = "holds" if len(stopped) == 1 else "hold"
+    return [
+        "",
+        f"*In {named}, which {holds} this file too, a plugin stopped the analysis: who writes "
+        "this there, and who reads it, is not named.*",
+    ]
+
+
+def _did_not_load(unloaded: Sequence[Path], role: str) -> list[str]:
+    """The line under a sentence saying that no ``role`` - a writer, or a reader - is known,
+    naming the files that did not load, each told apart from another of its name
+    (:func:`~ddd.lsp.navigation.told_apart`); nothing where every file loaded."""
+    if not unloaded:
+        return []
+    named = ", ".join(_span(file) for file in told_apart(unloaded))
+    return ["", f"*{named} did not load, so a {role} there would not be named.*"]
 
 
 def _facts(entry: ResolvedObject, dictionary: DataDictionary) -> list[str]:
     """The resolved properties, as a table an editor renders."""
     rendered = [("unit", _cell(entry.unit) if entry.unit else "*none*")]
-    low, high = conversion_range(entry.conversion, entry.datatype)
+    # An enumeration's limits are the span of its table, which is the datatype's only where the
+    # table runs from the datatype's lowest value to its highest: they are compared with that.
+    whole = (entry.datatype.raw_min, entry.datatype.raw_max)
+    low, high = (
+        whole
+        if isinstance(entry.conversion, EnumConversion)
+        else conversion_range(entry.conversion, entry.datatype)
+    )
     limits = f"{format_number(entry.limits.min)} .. {format_number(entry.limits.max)}"
     if (entry.limits.min, entry.limits.max) == (low, high):
         # Said rather than guessed at: the dictionary has resolved away whether this was
@@ -352,9 +481,10 @@ def _facts(entry: ResolvedObject, dictionary: DataDictionary) -> list[str]:
 def _axis_range(dictionary: DataDictionary, target: str) -> str:
     """The span an axis covers, which is what makes its name mean something.
 
-    Only for an axis, and only when it has points. The ``input`` of an axis names a
-    measurement rather than an axis, and its init is one value, so a range of it would be a
-    number repeated twice.
+    Only for an axis, and only when it has points: an init stating none, which the checks
+    report as ``init-invalid``, has no span either, and asking one of no points ended the
+    session. The ``input`` of an axis names a measurement rather than an axis, and its init is
+    one value, so a range of it would be a number repeated twice.
     """
     axis = dictionary.by_name.get(target)
     if axis is None or axis.kind is not ObjectKind.AXIS or axis.init is None:
@@ -363,6 +493,8 @@ def _axis_range(dictionary: DataDictionary, target: str) -> str:
         axis.conversion.to_physical(value)
         for value in flatten(broadcast(axis.init, tuple(axis.shape)))
     ]
+    if not points:
+        return ""
     span = f"{format_number(min(points))} .. {format_number(max(points))} {_bars(axis.unit)}"
     return f" — {span.rstrip()}"
 

@@ -1673,6 +1673,886 @@ class TestPackaging:
                 )
 
 
+class TestWhichDescriptionAnswersForAFile:
+    """10:I2. The server walks to the root and answers from the outermost description that
+    includes a file, so a component of a sub-project shows what ``ddd check`` of the top project
+    shows. Every page that says how the server finds a file's project says so."""
+
+    STATED: ClassVar[dict[str, tuple[str, tuple[str, ...]]]] = {
+        "SPEC.md": (
+            SPEC,
+            (
+                "checked under the project descriptions of the outermost directory that include it",
+                "A description nearer the file that includes it as well is a sub-project of the "
+                "outer one and is dropped",
+                "A file that is itself a project description is searched for above like any file",
+            ),
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            (
+                "checks the file under the project descriptions of the outermost directory that "
+                "include it",
+                "A description nearer the file that includes it as well is a sub-project of the "
+                "outer one and is dropped",
+                "A file that is itself a project description is searched for above like any file",
+            ),
+        ),
+        "README.md": (
+            README,
+            (
+                "through the outermost project description that includes it",
+                "a sub-project nearer the file is dropped",
+                "A project description no description above includes is checked as the project "
+                "it is",
+            ),
+        ),
+        "editors/vscode/README.md": (
+            (ROOT / "editors" / "vscode" / "README.md").read_text(encoding="utf-8"),
+            (
+                "checked through the outermost project description above it that includes it",
+                "a project description no description above includes is checked as the project "
+                "it is",
+            ),
+        ),
+        "docs/faq.rst": (
+            (ROOT / "docs" / "faq.rst").read_text(encoding="utf-8"),
+            ("checked under the outermost containing project",),
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(STATED))
+    def test_the_page_says_the_outermost_description_answers(self, page: str) -> None:
+        text, phrases = self.STATED[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"
+
+    @pytest.mark.parametrize("page", sorted(STATED))
+    def test_no_page_still_says_the_nearest_one_answers(self, page: str) -> None:
+        said = flattened(self.STATED[page][0])
+        for stale in (
+            "descriptions of the nearest directory",
+            "through the nearest project description",
+            "under the nearest containing project",
+            "rather than searched for above",
+        ):
+            assert stale not in said, f"{page} still says: {stale!r}"
+
+
+class TestWhatARenameReaches:
+    """10:I3. A rename reaches every project holding a file it rewrites, until none is new, so a
+    component linked into two images, both found for it, is renamed with the readers of both;
+    and where a project the file it starts from is not in uses the name or holds a file that did
+    not load, the refusal names that project's image, or its description. Every page that says
+    what a rename reaches says so."""
+
+    REACHED: ClassVar[str] = (
+        "then every project holding a file their edits rewrite, until none is new. A component "
+        "linked into two images is in two projects where both are found for it"
+    )
+    FOUND: ClassVar[str] = (
+        "by their build records, or, where no record claims it, by the search above it - and a "
+    )
+    ASKED: ClassVar[str] = (
+        "Every project the rename reaches is asked each refusal above before anything is "
+        "written. Where a project the file it starts from does not belong to already uses the "
+        "name, declares the type an external one, or holds a file that did not load, or loaded "
+        "with an error that stops the project being analysed, the refusal names that project's "
+        "image, or its description where no build record names it"
+    )
+    UNSAVED: ClassVar[str] = (
+        "unsaved changes are refused naming the file that holds them, wherever it is."
+    )
+    """What SPEC 7.2 and the editor page say in the same words: how far a rename reaches, where
+    it finds the images, which refusals each project it reaches is asked, and what a refusal
+    from another image names."""
+
+    FINDS: ClassVar[str] = (
+        "as long as the server finds both images for it: through their build records, or, "
+        "without records, through a project description above it."
+    )
+    """Where the two READMEs say, in the same words, when the other image is found."""
+
+    STATED: ClassVar[dict[str, tuple[str, tuple[str, ...]]]] = {
+        "SPEC.md": (
+            SPEC,
+            (
+                "renaming an object, a declared type or a declared constant everywhere the "
+                "projects it reaches write it - ",
+                "or one a project it reaches already uses, whether for another object",
+                "A rename reaches every project that holds a file it rewrites: the projects the "
+                f"file it starts from belongs to, {REACHED} as below - {FOUND}rename that rewrites "
+                "it then rewrites the readers of both images, whichever of the two the file it "
+                "starts from is in; reaching only the projects of that file would leave the other "
+                f"image reading a name nothing declares. {ASKED}; {UNSAVED}",
+            ),
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            (
+                "or one a project it reaches already uses - for another object",
+                "and one a project it reaches already declares as a section: the format permits "
+                "two",
+                "or one a project it reaches already declares as a raster, is refused",
+                "It is refused, naming the file, while a file of a project it reaches does not "
+                "load at all, and for no lesser error of a file - ",
+                "A rename reaches every project that holds a file it rewrites: the projects of the "
+                f"file it starts from, {REACHED}, as *Which project a file belongs to* below says "
+                f"- {FOUND}variable it writes is then renamed in the readers of both images, "
+                "whichever of the two the file the rename starts from is in; so is a type, a "
+                "constant, a section, a raster or a unit that a file of both spells. "
+                f'{ASKED} - asked from one image, a name "already declared by this project" in '
+                f"the other sends the reader looking in the wrong one; {UNSAVED}",
+            ),
+        ),
+        "README.md": (
+            README,
+            (
+                "It reaches every project holding a file it rewrites, and in turn every project "
+                "holding a file those projects' edits rewrite, so a component linked into two "
+                "images is renamed with the readers of both, whichever image the file you start "
+                f"from is in - {FINDS} A name c reserves, one that is not a usable identifier, or "
+                "one a project it reaches already declares is refused with the reason before a "
+                "single file is touched",
+                "Where an image the file you started from is not in already declares the name, "
+                "declares the type an external one, or holds a file that did not load, or loaded "
+                "with an error that stops the project being analysed, the refusal names that "
+                "image, or its project description where no build record names one.",
+            ),
+        ),
+        "editors/vscode/README.md": (
+            (ROOT / "editors" / "vscode" / "README.md").read_text(encoding="utf-8"),
+            (
+                "spelling it - in every project holding a file the rename rewrites, so a "
+                "component linked into two images is renamed with the readers of both, whichever "
+                f"image the file you start from is in, {FINDS} A name c reserves, one that is not "
+                "a usable identifier, or one a project it reaches already declares is refused "
+                "with the reason rather than half applied, naming the image it comes from - or its "
+                "project description, without a build record - when that is not yours. An "
+                "external type is not renamed at all, its name being the one the header defining "
+                "it spells, and that refusal names the image too where a project the rename "
+                "reaches declares the type so.",
+            ),
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(STATED))
+    def test_the_page_says_a_rename_reaches_every_project_holding_a_file_it_rewrites(
+        self, page: str
+    ) -> None:
+        text, phrases = self.STATED[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"
+
+    @pytest.mark.parametrize("page", sorted(STATED))
+    def test_no_page_still_says_a_rename_stays_in_one_project(self, page: str) -> None:
+        said = flattened(self.STATED[page][0])
+        for stale in (
+            "everywhere the project writes it",
+            "or one the project already uses",
+            "only while a file of the project does not load at all",
+            "or one the project already declares is refused",
+            "one the project already declares as a section",
+            "the project already declares as a raster",
+            "every project holding one of theirs in turn",
+            "is in two projects, so a",
+            "whichever image the file you start from is in. A name",
+            "the refusal names that image.",
+            "naming the image it comes from when that is not yours",
+        ):
+            assert stale not in said, f"{page} still says: {stale!r}"
+
+
+class TestWhatARenameIsRefusedFor:
+    """10:I4. A rename is planned from the disk, so it is refused, naming the document, while an
+    open document of a project it reaches holds what its file does not, and when it
+    would rewrite nothing. The three pages that list the refusals say so."""
+
+    OPEN: ClassVar[str] = (
+        "while an open document of a project it reaches holds what its file on disk does not"
+    )
+    EMPTY: ClassVar[str] = "when it would rewrite nothing"
+    PHRASES: ClassVar[dict[str, tuple[str, tuple[str, ...]]]] = {
+        "SPEC.md": (
+            SPEC,
+            (
+                f"A rename is refused as well, naming the document, {OPEN}, since the rename is "
+                "planned from the files and a mention typed and not saved is one it cannot see; "
+                "and it is refused when it would rewrite nothing, which an editor applies "
+                "without a word.",
+            ),
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            (
+                f"A rename is refused as well, naming the document, {OPEN}, since the rename is "
+                "planned from the files and a mention typed and not saved is one it cannot see; "
+                "and it is refused when it would rewrite nothing, which an editor applies "
+                "without a word. Fix or save the file and ask again.",
+            ),
+        ),
+        "README.md": (
+            README,
+            (f"A rename is refused too {OPEN}, naming it, and {EMPTY}.",),
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(PHRASES))
+    def test_the_page_says_when_a_rename_is_refused_for_what_it_cannot_see(self, page: str) -> None:
+        text, phrases = self.PHRASES[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"
+
+
+class TestWhatARenameIsRefusedForWithNoProject:
+    """10:I5. With no project known, a rename of anything but a local variable is refused, saying
+    so, and a rename of anything but a local variable that needs a description which could not be
+    read is refused naming it and why, a local's rewriting its own file alone. The three pages
+    that list the refusals say so, and the editor page's first sentence on the rename no longer
+    promises every file where no project is known."""
+
+    ALONE: ClassVar[str] = (
+        "a component that no build record claims, that no description above it includes and "
+        "that declares no project itself is read on its own"
+    )
+    PHRASES: ClassVar[dict[str, tuple[str, tuple[str, ...]]]] = {
+        "SPEC.md": (
+            SPEC,
+            (
+                "A rename of anything but a local variable is refused as well, saying that no "
+                f"project is known, while none is: {ALONE}, and renaming what it shares would "
+                "rewrite that one file and leave every other file spelling the name holding it.",
+                "And a rename of anything but a local variable is refused, naming the "
+                "description and why, where a description it needs could not be read - one a "
+                "plugin stops, whether a build record names it or the search above a file found "
+                "it: the files it holds would be rewritten for no image, and the others left "
+                "reading a name nothing declares, where a local variable's rewrites the one file "
+                "that spells it, whichever image holds that file.",
+            ),
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            (
+                "A rename of anything but a local variable is refused as well, saying that no "
+                f"project is known, while none is: {ALONE}, and renaming what it shares would "
+                "rewrite that one file and leave every other file spelling the name holding it. "
+                "Put a project file above it that includes it, or configure the build.",
+                "And a rename of anything but a local variable is refused, naming the "
+                "description and why, where a description it needs could not be read - one a "
+                "plugin stops, whether a build record names it or the search above a file found "
+                "it: the files it holds would be rewritten for no image, and the others left "
+                "reading a name nothing declares, where a local variable's rewrites the one file "
+                "that spells it, whichever image holds that file.",
+                "across as many files as that takes once the server knows the project holding "
+                "them - a ``local`` variable needs none.",
+            ),
+        ),
+        "README.md": (
+            README,
+            (
+                "It is refused, saying that no project is known, for anything but a local "
+                "variable while none is: a component no record claims, that no description "
+                "above it includes and that declares no project itself is read on its own.",
+                "And it is refused for anything but a local variable, naming the description and "
+                "why, where a description it needs could not be read: a plugin stops it.",
+            ),
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(PHRASES))
+    def test_the_page_says_when_a_rename_is_refused_with_no_project_known(self, page: str) -> None:
+        text, phrases = self.PHRASES[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"
+
+    def test_the_changelog_refuses_no_locals_rename_for_a_description_it_could_not_read(
+        self,
+    ) -> None:
+        """A local is spelled in the file declaring it and nowhere else, all its rename rewrites, so
+        no image is left half renamed."""
+        said = flattened(CHANGELOG)
+        assert "a local variable's too" not in said
+        assert (
+            "every rename but a local variable's is refused, naming the description and why, "
+            "since the files it holds would be rewritten for no image, where a local variable is "
+            "spelled in its own file alone, whichever image holds it." in said
+        )
+
+    def test_the_readme_paragraph_is_wrapped_to_its_width(self) -> None:
+        """Task 4 joined two of its sentences onto one line, 150 characters long."""
+        start = README.index("**Rename** (`F2`)")
+        paragraph = README[start : README.index("\n\n", start)]
+        assert max(len(line) for line in paragraph.splitlines()) <= 100
+
+    def test_the_editor_page_wraps_the_sentence_after_the_drift_one_to_its_width(self) -> None:
+        """The sentence on an open document that differs was wrapped short, ending a line after
+        'planned from'."""
+        assert (
+            "since the rename is planned from the files and a\nmention typed" in EDITOR_INTEGRATION
+        )
+
+
+class TestWhatTheQuickFixesAnswerWhileAFileDidNotLoad:
+    """10:I6. While a file of the project did not load, a request for the quick fixes is answered
+    with none rather than with an error, which a client shows as a failed request at every move
+    of the caret; the reason is that file's own finding, and the log says it once. The three
+    pages that list the refusals say so, and SPEC and the editor page say where the reason is."""
+
+    PHRASES: ClassVar[dict[str, tuple[str, tuple[str, ...]]]] = {
+        "SPEC.md": (
+            SPEC,
+            (
+                "In the second state a request for the quick fixes, which a client makes at every "
+                "move of the caret, is answered with none rather than with an error: the reason "
+                "is in the finding of the file that did not load, or loaded with an error, and "
+                "the server's log says it once, and "
+                "again only once the project has been read whole and is found broken anew.",
+            ),
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            (
+                "In the second state a request for the quick fixes, which the editor makes at "
+                "every move of the caret, is answered with none rather than with an error, which "
+                "it would show as a failed request each time: an empty lightbulb in such a "
+                "project has its reason in the finding of the file that did not load, or "
+                "loaded with an error, and in the server's log, which says it once for as long as "
+                "it stands.",
+            ),
+        ),
+        "README.md": (
+            README,
+            (
+                "while a file of the project did not load, or loaded with an error that stops the "
+                "project being analysed, a rename is refused the same way and the quick fixes "
+                "offer nothing, the server's log saying why once:",
+            ),
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(PHRASES))
+    def test_the_page_says_what_the_quick_fixes_answer_while_a_file_did_not_load(
+        self, page: str
+    ) -> None:
+        text, phrases = self.PHRASES[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"
+
+    def test_the_readme_no_longer_says_the_quick_fixes_are_refused_while_a_file_did_not_load(
+        self,
+    ) -> None:
+        assert (
+            "moved a declaration they would touch or while a file of the project did not load"
+            not in flattened(README)
+        )
+
+
+class TestWhatTheLastSmallSentencesOfTheEditorSay:
+    """10:M12 and the items earlier parts routed to the last: a unit's rename is refused where a
+    file no longer holds the unit, and the editor's plan and the page's agree for one project
+    alone."""
+
+    UNIT_MOVED: ClassVar[str] = (
+        "A file that no longer holds the unit where the project was read - an open document "
+        "with unsaved changes that moved or respelled it, or a closed file changed on disk "
+        "since - refuses it as well, naming the file."
+    )
+    TWO_PLANS: ClassVar[str] = (
+        "Both are the plans ``ddd gui`` previews and applies, made as text edits: for one "
+        "project the editor and the page do the same, but the page plans over the one project it "
+        "is open on and the editor's rename over every image it reaches, so across images the "
+        "editor's reaches files the page's does not; a plan that is refused is not offered."
+    )
+
+    def test_the_editor_page_says_when_a_unit_s_rename_is_refused_for_a_moved_file(self) -> None:
+        said = flattened(EDITOR_INTEGRATION)
+        assert ("because renaming may be how such a mistake is fixed. " + self.UNIT_MOVED) in said
+
+    def test_the_editor_page_says_how_far_the_editor_and_the_page_agree(self) -> None:
+        said = flattened(EDITOR_INTEGRATION)
+        assert self.TWO_PLANS in said
+        assert "so the editor and the page never disagree about what either does" not in said
+
+
+class TestWhatADefectOfTheServerCosts:
+    """10:I13. A message the server fails on through a defect of its own costs that answer and
+    not the session: a request is answered with the internal error and a notification with
+    nothing, the trace going to the server's log, and the editor page says how a client shows
+    it. A record naming its project by a relative path is skipped, and why announced, as any
+    record the server cannot use is."""
+
+    PHRASES: ClassVar[dict[str, tuple[str, tuple[str, ...]]]] = {
+        "SPEC.md": (
+            SPEC,
+            (
+                "A message the server fails to answer through a defect of its own does not stop "
+                "it either: a request is answered with the protocol's internal error, a "
+                "notification with nothing, and the trace is written to the server's standard "
+                "error, which is its log.",
+                "or naming a check this version has not got or its project by a relative path, "
+                "which a build never writes, is skipped and the reason announced with them.",
+            ),
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            (
+                "A request the server fails on, through a defect of its own rather than anything "
+                "in the files, is answered with the protocol's internal error, and the session "
+                "goes on with every finding on screen. A client shows such a request as a failed "
+                "request - VS Code with a notification - and the trace is in the server's log, "
+                "its standard error, which VS Code shows in the **DDD** output channel.",
+                "a record written by a newer DDD, that names a check this version of DDD has not "
+                "got, or that names its project by a relative path, which a build never writes, "
+                "is skipped and the reason announced with it",
+            ),
+        ),
+        "README.md": (
+            README,
+            (
+                "one written by a newer DDD, naming a check this one has not got, or naming its "
+                "project by a relative path -",
+            ),
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(PHRASES))
+    def test_the_page_says_what_a_defect_of_the_server_costs(self, page: str) -> None:
+        text, phrases = self.PHRASES[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"
+
+
+class TestAQuickFixUnderAMovedBufferAndAcrossImages:
+    """10:M2 and 10:M3. A quick fix is not offered, rather than refused or performed in part,
+    while a buffer has moved a declaration its edit would touch; it is offered once over every
+    image holding the document, a value it sends out reaching every image holding a file it writes;
+    and a unit's rename is refused naming both images where two would rewrite a units file two
+    ways. SPEC 7.2, the editor page and the README say so."""
+
+    MOVED: ClassVar[str] = (
+        "while an open document has unsaved changes that moved a declaration the edit would "
+        "touch, or a closed file changed on disk since the project was read has moved one, and "
+        "while a file of the project did not load, or loaded with an error that stops the "
+        "project being analysed."
+    )
+    CLOSED: ClassVar[str] = (
+        "A rename refused for a closed file changed on disk says so, and goes through once the "
+        "server has read the project again: at the next open or save of a document, or when the "
+        "editor reports the change."
+    )
+    FIRST: ClassVar[str] = (
+        "In the first state a quick fix is not offered rather than offered for the declarations "
+        "a buffer, or a closed file changed on disk, left in place, and nothing is said: a "
+        "buffer is the reader's own, and saving it brings the fix back, as the server's reading "
+        "the file again does for the other."
+    )
+    ACROSS: ClassVar[str] = (
+        "A quick fix is offered once however many projects holding the document offer it, and a "
+        "fix sending the declaration's own answer out - its value applied to the other "
+        "declarations of the object, or a key taken out of them - reaches the declarations of "
+        "each of those projects, and of every project holding a file it writes, until none is "
+        "new, as a rename does."
+    )
+    NEITHER: ClassVar[str] = (
+        "Where two of them offer one fix under one title with different edits, it is not offered; "
+        "and every fix is withheld where one reaches a project holding a file that did not load, "
+        "or loaded with an error that stops the project being analysed, or a description, beyond "
+        "the document's own projects, that cannot be read."
+    )
+    TWO_WAYS: ClassVar[str] = (
+        "A unit's rename is refused as well, naming both, where two projects it reaches would "
+        "rewrite a units file they share two ways: the one listing the unit renamed onto merges "
+        "the old spelling into it, and the other respells it."
+    )
+    PHRASES: ClassVar[dict[str, tuple[str, tuple[str, ...]]]] = {
+        "SPEC.md": (
+            SPEC,
+            (
+                "A rename is also refused, naming the file, and a quick fix is not offered, in two "
+                "states where the project the edit would be computed from is not the project on "
+                f"disk: {MOVED} Neither is performed in part. {FIRST} {CLOSED} In the second state "
+                "a request for the quick fixes",
+                f"{ACROSS} {NEITHER}",
+                "A fix renaming a unit is the rename of that unit (`F2`), over every project it "
+                "reaches, and is not offered where that rename is refused.",
+                f"wherever it is. {TWO_WAYS}",
+            ),
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            (
+                "A variable's, a type's, a constant's, a section's or a raster's rename is also "
+                "refused - naming the file, and before anything is written - and a quick fix "
+                "below is not "
+                "offered, while the project on disk is not the project the edit would be computed "
+                f"from: {MOVED}",
+                f"exactly that key. {FIRST} {CLOSED} In the second state",
+                "A component linked into two images is in two projects, and a fix the two offer "
+                "alike is offered once. A fix sending this declaration's value out, or taking a "
+                "key out of the others, reaches the declarations of both images, and of every "
+                "image holding a file it writes, until none is new, as a rename does. Where two "
+                "images offer one fix under one title with different edits - two values one type "
+                "states in two images, say - neither is offered; and every fix is withheld where "
+                "one reaches an image holding a file that did not load, or loaded with an error "
+                "that stops the project being analysed, or a description, beyond the document's "
+                "own images, that cannot be read.",
+                "The rename is the one ``F2`` makes from the unit, over every image it reaches, "
+                "and is not offered where that rename is refused; the unit is added only where "
+                "every image planning it adds it to the same file, since an image holding both "
+                "files would list it twice.",
+                "It is refused, naming the file, while a file of a project it reaches does not "
+                "load at all, and for no lesser error of a file - a unit listed twice",
+                f"wherever it is. {TWO_WAYS}",
+            ),
+        ),
+        "README.md": (
+            README,
+            (
+                "A rename is refused outright, naming the file, while a document has unsaved "
+                "changes that moved a declaration it would touch, or a file changed on disk since "
+                "the project was read has moved one, and a quick fix that would touch one is not "
+                "offered; while a file of the project did not load, or loaded with an error that "
+                "stops the project being analysed, a rename is refused the same way and the quick "
+                "fixes offer nothing, the server's log saying why once:",
+                "A component linked into two images is offered each fix once, and a value sent "
+                "out from it reaches the declarations of every image holding a file the fix "
+                "writes.",
+            ),
+        ),
+        "CHANGELOG.md": (
+            CHANGELOG,
+            (
+                "Every fix is withheld where one reaches a project holding a file that did not "
+                "load, or loaded with an error that stops the project being analysed, or a "
+                "description beyond the document's own that cannot be read;",
+                "or a file of another image that did not load, or loaded with an error that stops "
+                "the project being analysed, is dealt with there first,",
+                "declares the type an external one or holds a file that did not load, or loaded "
+                "with an error that stops the project being analysed, the refusal names its image,",
+            ),
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(PHRASES))
+    def test_the_page_says_what_a_quick_fix_reaches_and_withholds(self, page: str) -> None:
+        text, phrases = self.PHRASES[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"
+
+    @pytest.mark.parametrize("page", sorted(PHRASES))
+    def test_no_page_still_says_the_quick_fixes_are_refused_under_a_moved_buffer(
+        self, page: str
+    ) -> None:
+        said = flattened(self.PHRASES[page][0])
+        for stale in (
+            "A rename and the quick fixes are also refused, naming the file",
+            "rename, and every quick fix below, is also refused",
+            "A rename and the quick fixes are refused outright",
+            "Both are refused whole rather than performed in part",
+            "It is refused, naming the file, only while a file of a project it reaches",
+            "and while a file of the project reported an error that stopped it being read",
+            "while a file of the project did not load a rename is refused the same way",
+        ):
+            assert stale not in said, f"{page} still says: {stale!r}"
+
+
+class TestWhatAMalformedRequestIsAnswered:
+    """10:M1. A request whose parameters are not the shape its method takes is refused with the
+    invalid-parameters error naming what is wrong, and a notification is answered with nothing:
+    SPEC 7.2 says which shapes those are."""
+
+    def test_spec_says_what_a_malformed_request_is_answered(self) -> None:
+        assert (
+            "a request whose parameters are not the shape its method takes - a field of another "
+            "type than the protocol gives it, a position before the start of the document, a uri "
+            "whose path holds a null character - is answered with the invalid-parameters error "
+            "naming what is wrong, while a notification is answered with nothing, which is what a "
+            "notification always gets."
+        ) in flattened(SPEC)
+
+
+class TestWhatAQuickFixReadsThroughAType:
+    """10:I8. A declaration naming a declared type states, as the checker reads it, every key the
+    type fixes: the producing component's value is the one its type states, and no key is offered
+    for removal while a type states it. SPEC 7.2 and the editor page say so."""
+
+    PHRASES: ClassVar[dict[str, tuple[str, tuple[str, ...]]]] = {
+        "SPEC.md": (
+            SPEC,
+            (
+                "including removing a key the others do not have - a declaration naming a "
+                "declared type having every key the type fixes, as the checks read it - which "
+                "change descriptions and never the code of the components that read the variable",
+            ),
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            (
+                "the type fixes its ``datatype``, ``unit``, ``conversion`` and ``limits``, which "
+                "may not be stated beside the ``typename``, so none of them is offered to it, and "
+                "spreading one of them to the other declarations leaves it out.",
+                "It states them all the same, as the checker reads it: the producing component's "
+                "value is the one its type states, where it names one, and no key is offered for "
+                "removal while a type one of the declarations names states it, since that "
+                "declaration would go on stating it and the removal would settle nothing.",
+            ),
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(PHRASES))
+    def test_the_page_says_a_type_states_what_it_fixes(self, page: str) -> None:
+        text, phrases = self.PHRASES[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"
+
+    def test_the_editor_page_no_longer_counts_three_keys_a_type_fixes(self) -> None:
+        assert "so none of the three is offered to it" not in flattened(EDITOR_INTEGRATION)
+
+
+class TestWhichQuickFixIsPreferred:
+    """The editor's preferred fix is the one the ownership rule orders first, and none where that
+    one is not offered, rather than the next in the list, nor where the variable has two producers
+    or none and so no owner. The editor page says so."""
+
+    def test_the_editor_page_says_which_fix_is_preferred(self) -> None:
+        assert (
+            "The fixes are listed by which component owns the variable: a component that reads "
+            "it is offered the producer's value first, and the producer its own, sent out. The "
+            "first is marked as the preferred fix, the one the editor's automatic fix applies, "
+            "only where it goes the owner's way: where that way is not offered, none is marked, "
+            "rather than the other way round, and none is where two components write the "
+            "variable, or none does, which leaves it no owner."
+        ) in flattened(EDITOR_INTEGRATION)
+
+    def test_the_editor_page_no_longer_hands_the_place_down_the_list(self) -> None:
+        said = flattened(EDITOR_INTEGRATION)
+        assert "the next one in the list takes the preferred place" not in said
+        assert (
+            "so it is not offered. A fix that reaches several declarations is offered for those "
+            "that load."
+        ) in said
+
+
+class TestWhatAQuickFixTitleSays:
+    """Every reconcile fix says in its title that the code of the readers is not touched, the
+    editor's as the page's, and the two pages that say what such a title says, say so - of the
+    reconcile fixes, and not of the identity and vocabulary fixes the editor page goes on to."""
+
+    PHRASES: ClassVar[dict[str, tuple[str, str, tuple[str, ...]]]] = {
+        "README.md": (
+            README,
+            "They change descriptions only: the code of the readers is not touched, and each fix "
+            "says so in its title, in the editor as in `ddd gui`.",
+            ("and the fix a finding of `ddd gui` carries says so in its title",),
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            "They change descriptions: the code of the components that read the variable is not "
+            "touched, and the title of each fix reconciling a ``definition-mismatch`` says so, as "
+            "the one a finding of ``ddd gui`` carries does.",
+            (
+                "the title of the fix a finding of ``ddd gui`` carries says so",
+                "and the title of each fix says so",
+            ),
+        ),
+    }
+    """Each page, what it says now, and what it said before: of the page's fix alone, then of
+    every fix the page names."""
+
+    @pytest.mark.parametrize("page", sorted(PHRASES))
+    def test_the_page_says_each_fix_s_title_says_so(self, page: str) -> None:
+        text, now, before = self.PHRASES[page]
+        said = flattened(text)
+        assert now in said, f"{page} no longer says: {now!r}"
+        for stale in before:
+            assert stale not in said, f"{page} still says: {stale!r}"
+
+
+class TestWhatAConstantsRenameRewrites:
+    """10:I10. A constant's rename rewrites every ``condition`` spelling it as a word, that word
+    alone, beside its entry and its shapes: ``#if`` reads a name nothing defines as 0, and a
+    condition left spelling the old name compiled its object out with every check clean. Each page
+    that says what a constant's rename rewrites says so."""
+
+    PHRASES: ClassVar[dict[str, tuple[str, str, str]]] = {
+        "SPEC.md": (
+            SPEC,
+            "the declaration and every reference, `typename`, dimension or axis `size` spelling "
+            "it, and, of every `condition` spelling a constant as a word, that word - refused up "
+            "front",
+            "dimension or axis `size` spelling it - refused up front",
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            "a declared constant from its entry or from any dimension or axis ``size`` spelling "
+            "it, in its entry, in every one of those and in every ``condition`` spelling it as a "
+            "word, where that word alone is rewritten: ``#if`` reads a name nothing defines as 0, "
+            "so a condition left spelling the old name would compile its object out with every "
+            "check clean.",
+            "a declared constant from its entry or from any dimension or axis ``size`` spelling "
+            "it. For those three",
+        ),
+        "README.md": (
+            README,
+            "on a declared constant, in its declaration, in every dimension or axis `size` "
+            "spelling it and in every `condition` spelling it as a word - that word alone, and "
+            "never a longer identifier holding it.",
+            "on a declared constant, in its declaration and in every dimension or axis `size` "
+            "spelling it.",
+        ),
+        "editors/vscode/README.md": (
+            (ROOT / "editors" / "vscode" / "README.md").read_text(encoding="utf-8"),
+            "and a declared type or constant across its declaration and every `typename`, "
+            "dimension or `size` spelling it, and a constant across the word of every `condition` "
+            "spelling it - in every project",
+            "dimension or `size` spelling it - in every project",
+        ),
+    }
+    """Each page, what it says now, and what it said before, of the shapes alone."""
+
+    @pytest.mark.parametrize("page", sorted(PHRASES))
+    def test_the_page_says_a_constant_s_rename_rewrites_its_word_in_a_condition(
+        self, page: str
+    ) -> None:
+        text, now, before = self.PHRASES[page]
+        said = flattened(text)
+        assert now in said, f"{page} no longer says: {now!r}"
+        assert before not in said, f"{page} still says: {before!r}"
+
+    def test_the_editor_page_says_only_the_word_is_replaced_and_how_a_name_is_written(
+        self,
+    ) -> None:
+        """10:I9 beside it: a raster's name may hold a quote or a backslash, which the rename
+        wrote raw between the quotes, so that no file it rewrote parsed, or read back another
+        name. The sentence saying how a rename writes says both."""
+        said = flattened(EDITOR_INTEGRATION)
+        assert (
+            "Only the characters between the quotes are replaced - in a ``condition``, the "
+            "constant's own word, never a longer identifier holding it - and the new name is "
+            "written there as json spells it, escaping the quote or the backslash a raster's name "
+            "may hold, so formatting survives and free text is left alone."
+        ) in said
+        assert (
+            "Only the characters between the quotes are replaced, so formatting survives"
+        ) not in said
+
+
+class TestAnExternalTypeIsNotRenamed:
+    """10:M9. An external type's name is the one the header that defines it spells, which no
+    rename of a description reaches, so neither the editor's ``F2`` nor the page's Types tab
+    renames one. Every page that says what a type's rename does, or what a rename refuses, says
+    so."""
+
+    PHRASES: ClassVar[dict[str, tuple[str, tuple[str, ...]]]] = {
+        "SPEC.md": (
+            SPEC,
+            (
+                "because a rename that silently merges two objects compiles, links, and shares "
+                "storage nobody intended to share, and refused for an external type that a "
+                "project it reaches declares, since its name is the one the header defining it "
+                "spells and a rename of the descriptions would leave that header defining the old "
+                "one; and quick fixes",
+            ),
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            (
+                "which the loader would refuse. An external type is not renamed at all, from its "
+                "entry or from any ``typename``: its name is the one the header defining it "
+                "spells, which no edit of a description reaches, so a rename would leave that "
+                "header defining the old name and stop the build at its first compile. It is "
+                "refused, naming the header, wherever a project the rename reaches declares the "
+                "type so.",
+            ),
+        ),
+        "README.md": (
+            README,
+            (
+                "an unusable name is otherwise noticed a build later. An external type is not "
+                "renamed at all: its name is the one the header defining it spells, which no "
+                "rename of a description reaches.",
+            ),
+        ),
+        "editors/vscode/README.md": (
+            (ROOT / "editors" / "vscode" / "README.md").read_text(encoding="utf-8"),
+            (
+                "when that is not yours. An external type is not renamed at all, its name being "
+                "the one the header defining it spells, and that refusal names the image too",
+            ),
+        ),
+        "docs/command_line_interface.rst": (
+            COMMAND_LINE_INTERFACE,
+            (
+                "what a scalar type fixes is changed there, and renaming a type rewrites every "
+                "declaration and member naming it in one edit, but an external type is refused, "
+                "its name being the one the header defining it spells.",
+            ),
+        ),
+        "docs/developer_documentation.rst": (
+            PAGES["docs/developer_documentation.rst"],
+            (
+                "``ddd.lsp.navigation.Index`` records every type's entry and the header of each "
+                "external one, every declaration and member naming one,",
+                "A rename is the editor's rename - ``rename_sites`` says which strings it "
+                "rewrites, ``named_by_a_header`` why an external type is not renamed at all and "
+                "``rename_problem`` why a name may not be used, so the tab and the editor cannot "
+                "disagree -",
+            ),
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(PHRASES))
+    def test_the_page_says_an_external_type_is_not_renamed(self, page: str) -> None:
+        text, phrases = self.PHRASES[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"
+
+    def test_no_page_still_says_every_type_is_renamed(self) -> None:
+        """The Types tab was said to rename a type with every name reaching it, and the module
+        notes named the one check of a new name alone."""
+        for page, stale in (
+            (
+                COMMAND_LINE_INTERFACE,
+                "and renaming one rewrites every declaration and member naming it in one edit.",
+            ),
+            (
+                PAGES["docs/developer_documentation.rst"],
+                "says which strings it rewrites and ``rename_problem`` why a name may not be used",
+            ),
+        ):
+            assert stale not in flattened(page)
+
+
+class TestWhatTheSharedTabCountsAsAUse:
+    """14:M13 and 10:I10 on the page. The Shared files tab renames a constant through the
+    editor's sites, and counts, lists and refuses a removal by a constant's uses: its shapes and
+    the conditions spelling it, a constant only a condition spells having read as used by nothing
+    and gone. The command line page says so."""
+
+    def test_the_page_says_a_rename_rewrites_the_word_of_a_condition(self) -> None:
+        assert (
+            "Renaming one rewrites every place naming it in one edit - for a constant every shape "
+            "spelling it and its word in every ``condition`` spelling it; for a section"
+        ) in flattened(COMMAND_LINE_INTERFACE)
+
+    def test_the_page_says_a_condition_spelling_a_constant_refuses_its_removal(self) -> None:
+        said = flattened(COMMAND_LINE_INTERFACE)
+        assert (
+            "Removing one is refused while anything still names it - a shape or a ``condition`` "
+            "spelling it, for a constant; a definition placing data there, for a section;"
+        ) in said
+        assert "still names it - a shape, for a constant;" not in said
+
+
 class TestWhatThePolicySaysOfAnAdvisory:
     """20:I4. ``SECURITY.md`` said which release is supported and how to report a vulnerability
     privately, and nothing of an advisory: which versions one names, or where one is published.
@@ -4614,10 +5494,10 @@ class TestPublishedDocumentation:
     ) -> None:
         """Publish refuses a release whose tag is not ``v`` and the version ``pyproject.toml``
         states, before it uploads anything - the whole tag, its ``v`` included, as
-        ``test_a_release_tag_has_to_carry_its_prefix`` pins there. A release named by hand has
-        been through no Publish, so the build makes the same check of the tree it checked out,
-        and refuses to publish documentation under a version that commit does not state; a
-        release Publish published passes it again."""
+        ``test_a_release_tag_has_to_carry_its_prefix`` pins there. A tag named by hand has no
+        run of Publish to read, so the build makes the same check of the tree it checked out,
+        and refuses to publish documentation under a version that commit does not state, a tag
+        typed wrong; a release Publish published passes it again."""
         context = (
             completed(head_branch=tag)
             if route == "a release Publish published"
@@ -4801,11 +5681,14 @@ class TestPublishedDocumentation:
             "newest",
             "what the tag check refuses": "this is what refuses one naming a version its commit "
             "does not state, whose documentation would be published under another version's name",
+            "why it still matters": "a tag named on a dispatch is for a release pypi.org holds, "
+            "which passed it in Publish before its upload",
         }
         missing = [what for what, claim in claims.items() if claim not in said]
         assert not missing, f"docs.yml no longer says {missing}"
         assert "every check a release's run makes" not in said
         assert "does not state - documentation of a version PyPI never received" not in said
+        assert "has been through no Publish" not in said
 
     def test_the_changelog_says_which_release_is_published_by_hand(self) -> None:
         """20:I3 in the entry, and in the opening's item naming it: what the route by hand
@@ -9837,3 +10720,640 @@ def test_the_command_line_page_says_which_hosts_ddd_gui_takes() -> None:
         "``--host`` takes that address, the default ``127.0.0.1`` or a name resolving to either, "
         "and refuses any other." in flat
     )
+
+
+class TestAMultiFileEditIsPreviewed:
+    """10:I11. An edit reaching two files or more is sent marked for confirmation to a client that
+    announced both capabilities, so the reader sees it first and may leave a file out, which
+    applies it in part."""
+
+    SAID: ClassVar[dict[str, tuple[str, tuple[str, ...]]]] = {
+        "SPEC.md": (
+            SPEC,
+            (
+                "An edit reaching two files or more, a rename's or a quick fix's, is sent marked "
+                "`needsConfirmation` to a client that announced both `documentChanges` and "
+                "`changeAnnotationSupport`, so that the client shows it before applying and "
+                "saving it. The reader can then leave a file out of the edit, which applies it "
+                "in part, by the reader's choice; a client that announced only one of the two "
+                "is sent the edit unmarked, and applies it at once.",
+            ),
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            (
+                "An edit reaching two files or more, a rename's or a quick fix's, is sent marked "
+                "``needsConfirmation`` to a client that announced both ``documentChanges`` and "
+                "``changeAnnotationSupport``, so that the client shows it before applying and "
+                "saving it. The reader can then leave a file out of the edit, which applies it "
+                "in part, by the reader's choice; a client that announced only one of the two "
+                "is sent the edit unmarked, and applies it at once.",
+            ),
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(SAID))
+    def test_the_page_says_a_multi_file_edit_is_previewed(self, page: str) -> None:
+        text, phrases = self.SAID[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"
+
+    def test_the_module_says_what_marks_the_preview(self) -> None:
+        said = flattened((ROOT / "src" / "ddd" / "lsp" / "edits.py").read_text(encoding="utf-8"))
+        assert (
+            "marks a multi-file code action ``needsConfirmation`` for a client that announced it"
+            in said
+        )
+        assert "a client shows a multi-file code action in a preview first" not in said
+
+
+class TestWhatArrivesTogetherIsCheckedTogether:
+    """10:I12. Opens, saves and watched changes that arrive together are checked together, each
+    project once, before the next request is answered and never waiting for what has not been
+    sent."""
+
+    SAID: ClassVar[dict[str, tuple[str, tuple[str, ...]]]] = {
+        "SPEC.md": (
+            SPEC,
+            (
+                "Opens, saves and watched changes that arrive together are checked together, "
+                "each project once for all of them: the server checks the documents they name "
+                "once it has handled every message already waiting behind the first of them, and "
+                "before it answers a request that came after them, never waiting for a message "
+                "not yet sent. A save and the change the client's watcher reports for it, "
+                "arriving together, are one analysis of the project however many of its "
+                "documents are open.",
+            ),
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            (
+                "Opens, saves and watched changes that arrive together are checked together, "
+                "each project once for all of them: the server checks the documents they name "
+                "once it has handled every message already waiting behind the first of them, and "
+                "before it answers a request that came after them, never waiting for a message "
+                "not yet sent. A save and the change the editor's watcher reports for it, "
+                "arriving together, are one analysis of the project however many of its "
+                "documents are open.",
+            ),
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(SAID))
+    def test_the_page_says_what_arrives_together_is_checked_together(self, page: str) -> None:
+        text, phrases = self.SAID[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"
+
+
+class TestWhatAHoverSaysOfWhoWritesAndReadsIt:
+    """10:M4. A hover says who writes a data object and who reads it in every project holding the
+    file, each component named once, and names under a sentence saying that nothing writes it or
+    that nothing reads it every file of those projects that did not load."""
+
+    SAID: ClassVar[dict[str, tuple[str, tuple[str, ...], tuple[str, ...]]]] = {
+        "SPEC.md": (
+            SPEC,
+            (
+                "A hover on a data object says who writes it and who reads it in every project "
+                "holding the file, each component named once: an object a component linked into "
+                "two images writes is read by the readers of both, and one two components write "
+                "is written by both. Where it says that no component produces the object, or that "
+                "none reads it, it names under that sentence every file of those projects that did "
+                "not load, since what such a file declares is in no project's answer.",
+                "Where a plugin stops the analysis of a project holding the file, the hover names "
+                "that project under who writes the object and who reads it - by the image its "
+                "build record names, or by its description in the workspace folder where none "
+                "does - since what that project says of either is in no answer.",
+            ),
+            (),
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            (
+                "the limits derived from a datatype and a conversion nobody wrote down, who writes "
+                "it and who reads it in every project holding the file, what an enum's numbers "
+                "are called,",
+                "A component linked into two images is in two projects, and a variable it writes "
+                "is read by the readers of both: the hover names each component once, and both "
+                "components where two write one variable. Where it says that no component "
+                "produces the variable, or that none reads it, it names under that line every "
+                "file of those projects that did not load, since what such a file declares is in "
+                "no project's answer.",
+                "Where a plugin stops the analysis of a project holding the file, the hover names "
+                "that project under the line - by its image, or by its description where no build "
+                "record names one - since who writes the variable there, and who reads it, is in "
+                "no answer.",
+            ),
+            ("its producer and its consumers",),
+        ),
+        "README.md": (
+            README,
+            (
+                "limits derived from a datatype and a conversion nobody wrote down, who writes it "
+                "and who reads it in every image holding the file, what an enum's numbers mean,",
+                "Where a plugin stops the analysis of one of those images, the hover names the "
+                "image, since who writes and reads the variable there is not counted.",
+            ),
+            ("who writes it and who reads it, what an enum's numbers mean",),
+        ),
+        "editors/vscode/README.md": (
+            (ROOT / "editors" / "vscode" / "README.md").read_text(encoding="utf-8"),
+            (
+                "limits derived from a datatype and a conversion, who writes it and who reads it "
+                "in every image holding the file, what an enum's numbers mean,",
+                "Where a plugin stops the analysis of one of the images holding the file, the "
+                "hover names that image, since who writes and reads the variable there is not "
+                "counted.",
+            ),
+            ("who writes it and who reads it, what an enum's numbers mean",),
+        ),
+    }
+    """Each page, what it says now, and what it said before of a hover's writers and readers."""
+
+    @pytest.mark.parametrize("page", sorted(SAID))
+    def test_the_page_says_a_hover_speaks_for_every_project_holding_the_file(
+        self, page: str
+    ) -> None:
+        text, phrases, stale = self.SAID[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"
+        for phrase in stale:
+            assert phrase not in said, f"{page} still says: {phrase!r}"
+
+
+class TestWhichSpellingAFilesFindingsGoOutUnder:
+    """10:M5. A file's findings are on screen under one spelling at a time: published under its
+    resolved path before the client opened it under another, they are withdrawn there when they go
+    out under the client's, where they stayed on screen for good."""
+
+    SAID: ClassVar[dict[str, tuple[str, str]]] = {
+        "SPEC.md": (
+            SPEC,
+            "A file's findings are published under one spelling at a time: a file whose findings "
+            "went out under its resolved path before the client opened it has them withdrawn "
+            "there once they go out under the client's spelling, since nothing publishes under "
+            "the first again.",
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            "A file's findings are on screen under one spelling at a time: published under its "
+            "resolved path before it was opened, they are withdrawn there once they go out under "
+            "the spelling it was opened with.",
+        ),
+        "README.md": (
+            README,
+            "gets its squiggles on the document you actually have open, and none left behind "
+            "under the spelling a file went out under before you opened it.",
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(SAID))
+    def test_the_page_says_a_file_s_findings_go_out_under_one_spelling(self, page: str) -> None:
+        text, phrase = self.SAID[page]
+        assert phrase in flattened(text), f"{page} no longer says: {phrase!r}"
+
+
+class TestWhatACheckWithdraws:
+    """10:I1. A check withdraws the findings of a file it reports on and finds nothing wrong with,
+    and of a file a run from the same place reported on the last time and no run reports on now:
+    a component taken out of its project's ``includes`` kept its findings for the session. Any
+    other file keeps its own, since a check of another project says nothing of it."""
+
+    SAID: ClassVar[dict[str, tuple[str, str]]] = {
+        "SPEC.md": (
+            SPEC,
+            "A check withdraws the findings of every file a run of it reports on and finds nothing "
+            "wrong with, and of every file that a run from the same place - a build's project, a "
+            "description above a document, a document read alone - reported on the last time and "
+            "that no run reports on now: a component taken out of its project's `includes` is no "
+            "longer the project's, and `ddd check` no longer reports on it. Any other file keeps "
+            "its findings:",
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            "A check withdraws the findings of every file a run of it reports on and finds nothing "
+            "wrong with, and of every file that a run from the same place - a build's project, a "
+            "description above a document, a document read alone - reported on the last time and "
+            "that no run reports on now: a component taken out of its project's ``includes`` is no "
+            "longer the project's, and ``ddd check`` no longer reports on it. Any other file keeps "
+            "its findings:",
+        ),
+        "CHANGELOG.md": (
+            CHANGELOG,
+            "A check now withdraws the files a run of it reports on and finds nothing wrong with, "
+            "and the files a run from the same project or document reported on the last time and "
+            "no run reports on now: a component taken out of its project's `includes` leaves the "
+            "screen, as it leaves what `ddd check` reports.",
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(SAID))
+    def test_the_page_says_what_a_check_withdraws(self, page: str) -> None:
+        text, phrase = self.SAID[page]
+        assert phrase in flattened(text), f"{page} no longer says: {phrase!r}"
+
+
+class TestTheEditorsMigrationsAreNamed:
+    """Two editor entries said there was nothing to migrate beside steps they ask: a unit's rename
+    refused over images sharing a units file that only one of them lists the new unit in, and a
+    fix no longer offered under a buffer that moved, or where Rename Symbol refuses the unit's
+    rename. Each names its step, and the opening lists it under its entry's lead."""
+
+    MIGRATIONS: ClassVar[dict[str, tuple[str, str]]] = {
+        "A unit's rename is made over every image it reaches, or refused, naming the file.": (
+            "Migrating costs a step where the images a rename reaches share a units file and only "
+            "one of them lists the unit renamed onto: the unit is listed in both or in neither, as "
+            "the refusal says, and the rename asked again.",
+            '"A unit\'s rename is made over every image it reaches, or refused, naming the file": '
+            "where the images it reaches share a units file and only one of them lists the unit "
+            "renamed onto, the unit is listed in both or in neither, and the rename asked again.",
+        ),
+        "A fix is offered once across the images it reaches, and not past a buffer that moved.": (
+            "Migrating costs a step where a fix is now not offered: a buffer that moved a "
+            "declaration the fix writes is saved, and where the fix that respells an unknown unit "
+            "is withheld because Rename Symbol is refused, an unsaved document of a project it "
+            "reaches among the reasons, the step that refusal names is taken; the fix is then "
+            "offered again.",
+            '"A fix is offered once across the images it reaches, and not past a buffer that '
+            'moved": a buffer that moved a declaration a fix writes is saved, and where the fix '
+            "that respells an unknown unit is withheld because Rename Symbol is refused, the step "
+            "that refusal names is taken, and the fix is offered again.",
+        ),
+    }
+
+    @pytest.mark.parametrize("lead", sorted(MIGRATIONS))
+    def test_the_entry_names_its_migration_and_the_opening_lists_it(self, lead: str) -> None:
+        said = flattened(CHANGELOG)
+        start = said.index(f"**{lead}**")
+        entry = said[start : said.index(" * **", start)]
+        migration, item = self.MIGRATIONS[lead]
+        assert migration in entry
+        assert "Nothing to migrate" not in entry
+        assert item in said[: said.index("## 0.11.0")]
+
+
+class TestWhereAnOpenDocumentsFindingsAreDrawn:
+    """10:M6. The findings are the disk's, and an open document's are drawn in its text as the
+    client holds it, around the key where that text no longer holds it, and over the item a list
+    holds at the key's place in it."""
+
+    SAID: ClassVar[dict[str, tuple[str, str]]] = {
+        "SPEC.md": (
+            SPEC,
+            "An open document's findings are drawn in that text as well: over the key a finding "
+            "is about where the text holds it, over the nearest key around it that the text holds "
+            "where it does not, and at the top of a text that is not json - the place read from "
+            "that text, and never from the file on disk. A finding names its key by its place in "
+            "the file, so where unsaved changes put another item at that place of a list - a "
+            "declaration typed above the one it is about - the finding is drawn over that item "
+            "until the file is saved. A document closed without saving, its findings drawn in a "
+            "text whose lines are not its file's, is checked again, and they are drawn where the "
+            "file holds their keys.",
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            "The findings are the disk's, and an open document's are drawn in its text as the "
+            "editor holds it: over the key a finding is about where the unsaved buffer holds it, "
+            "over the nearest key around it that the buffer holds where it does not, and at the "
+            "top of a buffer that is not json. A finding names its key by its place in the file, "
+            "so a declaration typed above the one it is about, in the same list, takes the "
+            "finding's place until the file is saved. A document closed without saving, its "
+            "findings drawn in a buffer whose lines are not its file's, is checked again, and they "
+            "are drawn where the file holds their keys.",
+        ),
+        "CHANGELOG.md": (
+            CHANGELOG,
+            "A document closed without saving, its findings drawn in a buffer whose lines are not "
+            "its file's, is checked again, so that they are drawn where the file holds their keys,",
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(SAID))
+    def test_the_page_says_where_an_open_document_s_findings_are_drawn(self, page: str) -> None:
+        text, phrase = self.SAID[page]
+        assert phrase in flattened(text), f"{page} no longer says: {phrase!r}"
+
+
+EXTENSION = ROOT / "editors" / "vscode"
+"""The VS Code extension: a launcher for the server, its manifest beside its sources."""
+
+
+def extension_setting(name: str) -> str:
+    """The description the extension's manifest gives the setting ``name``, as VS Code shows it."""
+    manifest = json.loads((EXTENSION / "package.json").read_text(encoding="utf-8"))
+    return manifest["contributes"]["configuration"]["properties"][name]["markdownDescription"]
+
+
+def option_help(command: str, option: str) -> str:
+    """The help ``ddd <command> --help`` prints for ``option``, before argparse wraps it."""
+    commands = next(
+        action
+        for action in _build_parser()._actions
+        if isinstance(action, argparse._SubParsersAction)
+    )
+    return next(
+        action.help or ""
+        for action in commands.choices[command]._actions
+        if option in action.option_strings
+    )
+
+
+class TestTheExtensionStartsTheServerForADescription:
+    """10:M7, B9-32. The extension is activated on any json document, since a description opened
+    outside a folder, or created after the window opened, is announced by nothing else; and it
+    started the server at once, so every trusted workspace that opened a json file ran ``ddd lsp``,
+    and showed the error of a ``ddd`` not installed. It starts the server once a description is
+    open or the workspace holds one, and not before."""
+
+    SAID: ClassVar[dict[str, tuple[str, str]]] = {
+        "SPEC.md": (
+            SPEC,
+            "It starts the server once a description file is open or the workspace holds one, so "
+            "that a json file of another name starts nothing.",
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            "It starts the server once a description file is open or the workspace holds one, so "
+            "that a json file of another name starts nothing,",
+        ),
+        "editors/vscode/README.md": (
+            (EXTENSION / "README.md").read_text(encoding="utf-8"),
+            "It starts the server once a `*.ddd.json` is open or the workspace holds one, so a "
+            "json file of another name starts nothing,",
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(SAID))
+    def test_the_page_says_when_the_extension_starts_the_server(self, page: str) -> None:
+        text, phrase = self.SAID[page]
+        assert phrase in flattened(text), f"{page} no longer says: {phrase!r}"
+
+    def test_the_manifest_keeps_both_ways_of_being_activated(self) -> None:
+        """Activated by the workspace alone, the extension would not start for a description
+        opened outside a folder, or created after the window opened: which document is a
+        description is the extension's to decide once it runs (``config.ts``)."""
+        manifest = json.loads((EXTENSION / "package.json").read_text(encoding="utf-8"))
+        assert manifest["activationEvents"] == [
+            "workspaceContains:**/*.ddd.json",
+            "onLanguage:json",
+        ]
+
+
+class TestTheServerWatchesWhatItReads:
+    """10:M8, decision 10.6. The watcher was the extension's, so an editor launching the server
+    itself heard of no file changed behind it, and it watched the descriptions alone, so a configure
+    rewriting only a build record left the old severities on screen. The server asks the client to
+    watch both, and the extension watches nothing of its own: two watchers send every change
+    twice."""
+
+    SAID: ClassVar[dict[str, tuple[str, tuple[str, ...], tuple[str, ...]]]] = {
+        "SPEC.md": (
+            SPEC,
+            (
+                "The server asks the client to watch every description file and every build record "
+                "of the workspace, `**/*.ddd.json` and `**/ddd-build.json`, once the client has "
+                "said it is initialized, wherever the client announced that it takes such a "
+                "registration while the session runs; a client that did not is asked for nothing, "
+                "and a file changed behind the editor's back is read again at the next open or "
+                "save.",
+                "A description the client reports changed is checked again where its findings are "
+                "on screen, whatever is open, and while no document is open whether they are or "
+                "not:",
+                "A change of a build record is a change of which projects there are and of their "
+                "severities: the records are searched for again, and the open documents and every "
+                "file whose findings are on screen are checked again under them. A record is never "
+                "checked as a description, nor is any other file the client reports that is not "
+                "one.",
+                "The client's answer to a request of the server's - a message carrying an `id` and "
+                "no `method` - is answered with nothing.",
+                "everything a reader sees is the tool's answer, and the server asks the client "
+                "itself for what it needs to hear of the files,",
+            ),
+            (
+                "and hears of a file changed behind the editor's back",
+                "or, while no document is open, every file whose findings are on screen",
+            ),
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            (
+                "reported on open, on save, and when a description file or a build record changes "
+                "on disk - a build writes them and a branch switch rewrites them all, and neither "
+                "is something a document event would report.",
+                "The server asks the editor to watch every description file and every build record "
+                "of the workspace, once the editor has said it is initialized, where its client "
+                "takes such a registration while the session runs, as VS Code's does; a client "
+                "that does not is asked for nothing, and a file changed behind it is read again at "
+                "the next open or save. A description changing is checked again where its findings "
+                "are on screen, whatever is open, and while none is open whether they are or not:",
+                "A build record changing is a change of which projects there are and of their "
+                "severities: the open documents and every file whose findings are on screen are "
+                "checked again under the records as they now read.",
+                "watches nothing itself: the server asks for the watcher it needs, as it asks any "
+                "other editor that announced it takes such a registration while the session runs.",
+            ),
+            (
+                "when the editor reports that a description file it watches changed",
+                "and hears of a file changed behind it",
+                "as it asks any other editor.",
+                "or, while none is open, every file whose findings are on screen",
+            ),
+        ),
+        "README.md": (
+            README,
+            (
+                "it is a launcher and nothing more, which is why everything below works the same "
+                "either way, in any editor that watches the files the server asks it to.",
+                "The server reports on open, on save, and when a description file or a build "
+                "record changes on disk behind your back - a build writes them, a branch switch "
+                "rewrites them all - which it asks the editor to watch, and it publishes for",
+            ),
+            ("when the editor tells it a description file changed",),
+        ),
+        "editors/vscode/README.md": (
+            (EXTENSION / "README.md").read_text(encoding="utf-8"),
+            (
+                "Findings appear on open, on save, and when a description or a build record "
+                "changes on disk, for **every** file of the project",
+                "watches nothing itself: the server asks VS Code to watch the descriptions and the "
+                "build records, as it asks any editor that announced it takes such a registration "
+                "while the session runs.",
+                "works the same in any editor that can start a language server and watch the files "
+                "it asks for",
+            ),
+            ("Findings appear on open and on save,", "build records, as it asks any editor."),
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(SAID))
+    def test_the_page_says_what_the_server_watches(self, page: str) -> None:
+        text, phrases, stale = self.SAID[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"
+        for phrase in stale:
+            assert phrase not in said, f"{page} still says: {phrase!r}"
+
+    def test_the_extension_watches_nothing_of_its_own(self) -> None:
+        """The server registers the watcher with the client; one the extension made as well would
+        send every change twice."""
+        source = (EXTENSION / "src" / "extension.ts").read_text(encoding="utf-8")
+        assert not re.search(r"createFileSystemWatcher\s*\(", source)
+        assert not re.search(r"fileEvents\s*:", source)
+
+    def test_a_change_of_a_setting_takes_a_restart(self) -> None:
+        """Both settings are read once, when the server is started (``start()``), and nothing said
+        so of the executable."""
+        for setting in ("ddd.buildDirectories", "ddd.executable"):
+            assert (
+                "A change takes effect once the server is restarted: **DDD: Restart Language "
+                "Server**." in extension_setting(setting)
+            )
+        said = flattened(EDITOR_INTEGRATION)
+        assert (
+            "set it to an absolute path to use the interpreter of a virtual environment. A change "
+            "takes effect once the server is restarted." in said
+        )
+        assert (
+            "| `ddd.executable` | the `ddd` command; a bare name is looked up on the PATH. A "
+            "change takes a restart: **DDD: Restart Language Server** |"
+        ) in flattened((EXTENSION / "README.md").read_text(encoding="utf-8"))
+        assert (
+            "The command is **DDD: Restart Language Server**, for picking up a newly installed "
+            "tool, or a change of the settings, without reloading the window."
+        ) in flattened(EDITOR_INTEGRATION)
+
+
+class TestTheFoldersAreFollowed:
+    """10:M10, B9-33. A folder added after the start was not followed, a relative ``-b`` was read
+    against the directory the server was started in, which VS Code makes its first folder, and the
+    pages said a relative one was read against "the workspace folder". It is read against each, a
+    folder added later included."""
+
+    SAID: ClassVar[dict[str, tuple[str, tuple[str, ...], tuple[str, ...]]]] = {
+        "SPEC.md": (
+            SPEC,
+            (
+                "or, unconfigured, the conventional directories `build`, `out` and `cmake-build-*` "
+                "under each workspace folder,",
+                "Each record found is counted under the path it resolves to, and once however many "
+                "folders reach it,",
+                "the server walks from the file's directory up to the workspace folder holding it",
+                "takes the build directories as repeatable `-b` arguments, a relative one read "
+                "against each workspace folder, or against the server's working directory while "
+                "the client names none;",
+                "The workspace folders are those the client names at `initialize`, and those it "
+                "adds and removes while the session runs, which the server says it follows: a "
+                "folder added is searched as one named from the start, its build records found and "
+                "the open documents checked again, and a folder removed is answered as if it had "
+                "never been named - what was published under it alone is withdrawn, and an open "
+                "document under it is checked as one outside every folder.",
+            ),
+            ("a relative one read against the server's working directory;",),
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            (
+                "``cmake-build-*`` under each workspace folder are. A relative ``-b`` path is read "
+                "against each workspace folder, which is what makes a bare ``build`` mean the one "
+                "beside the sources of each, a folder added later included, and against the "
+                "directory the server was started in only while the editor names no folder.",
+                "Each record is counted under the path it resolves to, and once however many "
+                "folders reach it,",
+                "the server walks from the file's directory up to the workspace folder holding it",
+                "The workspace folders are those the editor names when it starts the server, and "
+                "those it adds and removes afterwards, which the server says it follows: a folder "
+                "added is searched as one named from the start, its build records found and the "
+                "open documents checked again; a folder removed is answered as if it had never "
+                "been named - what was published under it alone is withdrawn, and an open "
+                "document under it is checked as one outside every folder.",
+                "a relative entry is read against each workspace folder. Left empty, the "
+                "conventional build directory names in each workspace folder are searched. A "
+                "change takes effect once the server is restarted.",
+            ),
+            (
+                "relative to the directory the server was started in",
+                "which is where the extension starts the server",
+            ),
+        ),
+        "editors/vscode/README.md": (
+            (EXTENSION / "README.md").read_text(encoding="utf-8"),
+            (
+                "a relative entry is read against each workspace folder. Empty searches the usual "
+                "names in each workspace folder. A change takes a restart: **DDD: Restart Language "
+                "Server**",
+            ),
+            ("a relative entry is relative to the workspace folder",),
+        ),
+        "editors/vscode/package.json": (
+            extension_setting("ddd.buildDirectories"),
+            (
+                "A relative path is read against each workspace folder. Leave empty to search the "
+                "usual build directory names in each workspace folder.",
+            ),
+            ("where the server is started",),
+        ),
+        "ddd lsp --help": (
+            option_help("lsp", "-b"),
+            (
+                "A relative one is read against each workspace folder, and without one the usual "
+                "build directory names are searched in each, the directory the server is started "
+                "in standing for the folders while the editor names none",
+            ),
+            ("next to the workspace",),
+        ),
+        "docs/faq.rst": (
+            (ROOT / "docs" / "faq.rst").read_text(encoding="utf-8"),
+            (
+                "the ones named with ``-b`` (the ``ddd.buildDirectories`` setting in VS Code), a "
+                "relative one read against each workspace folder, or the conventional directory "
+                "names in each workspace folder.",
+            ),
+            ("conventional directory names next to the workspace",),
+        ),
+        "README.md": (
+            README,
+            (
+                "Point it at an out-of-tree build with `-b DIR`, a relative one read against each "
+                "workspace folder; without it the usual build directory names are searched in each "
+                "workspace folder.",
+            ),
+            ("directory names next to the workspace are searched",),
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(SAID))
+    def test_the_page_says_the_folders_are_followed(self, page: str) -> None:
+        text, phrases, stale = self.SAID[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"
+        for phrase in stale:
+            assert phrase not in said, f"{page} still says: {phrase!r}"
+
+    def test_the_changelog_says_what_a_relative_build_directory_means_now(self) -> None:
+        """The meaning of an option is the public interface the changelog's preamble names: the
+        entry, and the opening's item naming it, say what an editor started elsewhere migrates."""
+        said = flattened(UNRELEASED)
+        claims = {
+            "the entry": "* **A relative `ddd lsp -b` is read against each workspace folder.** It "
+            "was read against the directory the server was started in,",
+            "the entry, what it reads": "The server now reads a relative `-b` against each folder "
+            "the client names, those it adds while the session runs among them, and against the "
+            "directory it was started in only while the client names none; a record two folders "
+            "reach is counted once.",
+            "the entry, its migration": "An editor that starts `ddd lsp -b <dir>` from a directory "
+            "that is none of its workspace folders, meaning that directory, names it absolute.",
+            "the entry, the extension": "A relative entry of the extension's "
+            "`ddd.buildDirectories` means what it did in a workspace of one folder, and in one of "
+            "several finds the build beside each.",
+            "the opening's item": '- "A relative `ddd lsp -b` is read against each workspace '
+            'folder": an editor that starts `ddd lsp -b <dir>` from a directory that is none of '
+            "its workspace folders, meaning that directory, names it absolute.",
+        }
+        missing = [what for what, claim in claims.items() if claim not in said]
+        assert not missing, f"the changelog no longer says {missing}"

@@ -29,6 +29,7 @@ from ddd.editing import (
     EditError,
     Operation,
     TextEdit,
+    edits_at_once,
     indent_unit,
     insertion,
     lay_out,
@@ -38,7 +39,7 @@ from ddd.editing import (
     replacement,
 )
 from ddd.loading import included_files, resolve_path
-from ddd.lsp.navigation import Index, Site, changed_since, drift
+from ddd.lsp.navigation import Index, Site, changed_since, drift, told_apart
 from ddd.lsp.ranges import Document, read
 from ddd.pointers import parent_pointer
 
@@ -591,19 +592,19 @@ def _paths(entries: Iterable[Site]) -> list[Path]:
 
 
 def _names(files: Iterable[Path]) -> str:
-    return ", ".join(file.name for file in files)
+    """The files as a refusal lists them, two of one name told apart by their paths
+    (:func:`~ddd.lsp.navigation.told_apart`)."""
+    return ", ".join(told_apart(files))
 
 
 def text_edits(plan: UnitPlan, cache: dict[Path, Document]) -> dict[str, list[dict[str, Any]]]:
     """A plan as a language client applies it: the protocol's text edits, by file uri.
 
-    Each operation is made by the edit engine's own :func:`~ddd.editing.replacement`,
-    :func:`~ddd.editing.member_addition`, :func:`~ddd.editing.removal` or
-    :func:`~ddd.editing.insertion`, on the text the operations before it left - the way
-    ``POST /api/edit`` makes them, so an editor and ``ddd gui`` write the same bytes. A client
-    applies a file's edits all at once, to the text as it stands, and refuses two that overlap,
-    so the edits are restated against that text, and edits that meet become one: two
-    neighbouring vocabulary entries taken out would otherwise both claim the comma between them.
+    Each file's operations are made as the edit engine makes them for ``POST /api/edit``, so an
+    editor and ``ddd gui`` write the same bytes (:func:`_simultaneous`). A client applies a file's
+    edits all at once, to the text as it stands, and refuses two that overlap, so the edits are
+    restated against that text, and edits that meet become one: two neighbouring vocabulary
+    entries taken out would otherwise both claim the comma between them.
 
     Each file is read through ``cache``, which holds the buffers an editor has open, because
     the edit is applied to what is on screen. A plan that creates a file - an adoption, which
@@ -653,15 +654,27 @@ def _unlisted(built: Index, unit: str, cache: dict[Path, Document]) -> tuple[Pat
 def _simultaneous(document: Document, operations: Sequence[Operation]) -> list[TextEdit]:
     """The operations' edits of ``document`` as its text stands, in order and none overlapping.
 
-    Made one after another, as the engine makes them, with every character of the result
-    remembered by where it came from: an offset of the text as it stands, or none for a
-    character an edit wrote. Whatever lies between two characters kept from that text is one
+    A batch none of whose operations can depend on another - a rename's sets of a literal at every
+    place stating the unit, or at every entry listing it - is made against the text as it was
+    read, as the engine makes such a batch (:func:`~ddd.editing.edits_at_once`), and builds one
+    document of the file, to read it back as the engine does: refused as ``unverified`` where the
+    edits leave another document than the plan meant. Made one after another instead, it built a
+    document of the whole file after each operation, so that a rename over one file stating its
+    unit N times built N of them, and its time grew as the square of N.
+
+    Any other batch - the entries of the vocabulary a merge takes out, each moving the entries
+    after it - is made one operation after another, as the engine makes it, with every character
+    of the result remembered by where it came from: an offset of the text as it stands, or none
+    for a character an edit wrote. Whatever lies between two characters kept from that text is one
     edit of it, however many operations it took.
     """
+    at_once = edits_at_once(document, operations)
+    if at_once is not None:
+        return sorted(at_once, key=lambda edit: edit.start)
     current = document
     origins: list[int | None] = list(range(len(document.text)))
     for operation in operations:
-        edit = _engine_edit(current, operation)
+        edit = engine_edit(current, operation)
         origins[edit.start : edit.end] = [None] * len(edit.text)
         text = current.text
         current = Document(f"{text[: edit.start]}{edit.text}{text[edit.end :]}")
@@ -682,7 +695,7 @@ def _simultaneous(document: Document, operations: Sequence[Operation]) -> list[T
     return edits
 
 
-def _engine_edit(document: Document, operation: Operation) -> TextEdit:
+def engine_edit(document: Document, operation: Operation) -> TextEdit:
     """The edit the engine makes for one operation, as :func:`ddd.editing.edit_text` makes it:
     an entry taken out with one comma, an element inserted into an array, a value replaced, or
     a member added to an object that has none of that name. A plan makes no ``move``."""
@@ -704,5 +717,5 @@ def _protocol_edit(document: Document, edit: TextEdit) -> dict[str, Any]:
     :mod:`ddd.lsp.edits` gives its quick fixes."""
     return {
         "range": {"start": document.position(edit.start), "end": document.position(edit.end)},
-        "newText": edit.text,
+        "newText": document.spelled(edit.text),
     }

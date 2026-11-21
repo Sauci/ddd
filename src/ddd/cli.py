@@ -356,8 +356,10 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
         default=[],
         metavar="DIR",
         help=(
-            "directory holding a build of this project; repeatable. Without it the usual "
-            "build directory names next to the workspace are searched"
+            "directory holding a build of this project; repeatable. A relative one is read "
+            "against each workspace folder, and without one the usual build directory names "
+            "are searched in each, the directory the server is started in standing for the "
+            "folders while the editor names none"
         ),
     )
     lsp.set_defaults(handler=_command_lsp)

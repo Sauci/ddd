@@ -5,10 +5,14 @@
  * reason this exists: everything a user sees - the findings, going to a definition, finding
  * references - comes from `ddd lsp` and would work in any editor that can start it. Nothing
  * here adds a feature, so nothing here should grow one without a reason that could not be
- * served from the server instead.
+ * served from the server instead. That holds for the files the server has to hear of changing
+ * on disk too: the server asks the client to watch them, as it asks any editor, and a watcher
+ * made here as well would send every change twice.
  *
  * Only `*.ddd.json` is claimed. Those files are json and the json language service keeps
  * working on them: the published schemas go on doing structure while the server does meaning.
+ * The extension is activated by any json document as well, and starts the server only once a
+ * description is open or the workspace holds one (`wanted` in `config.ts`).
  */
 
 import * as vscode from "vscode";
@@ -18,25 +22,56 @@ import {
   ServerOptions,
 } from "vscode-languageclient/node";
 
-import { serverArguments, settingsFrom } from "./config";
+import { DESCRIPTIONS, describes, serverArguments, settingsFrom, wanted } from "./config";
 
 const SECTION = "ddd";
-const DOCUMENTS = "**/*.ddd.json";
 
 let client: LanguageClient | undefined;
+
+/** Whether the server has been started: once it has, only the command starts it again. */
+let started = false;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   context.subscriptions.push(
     vscode.commands.registerCommand("ddd.restartServer", async () => {
       await stop();
+      started = true;
       await start();
     }),
+    // Listened to before the workspace is searched, so that a description opened during the
+    // search is not missed; each does nothing once the server has been started.
+    vscode.workspace.onDidOpenTextDocument((document) => {
+      if (describes(document)) {
+        void startOnce();
+      }
+    }),
+    vscode.workspace.onDidChangeWorkspaceFolders(async () => {
+      if (!started && (await holdsADescription())) {
+        await startOnce();
+      }
+    }),
   );
-  await start();
+  if (await wanted(vscode.workspace.textDocuments, holdsADescription)) {
+    await startOnce();
+  }
 }
 
 export async function deactivate(): Promise<void> {
   await stop();
+}
+
+/** Whether a workspace folder holds a description, which a search for one answers. */
+async function holdsADescription(): Promise<boolean> {
+  return (await vscode.workspace.findFiles(DESCRIPTIONS.pattern, undefined, 1)).length > 0;
+}
+
+/** Start the server the first time it is wanted, and never again from here. */
+async function startOnce(): Promise<void> {
+  if (started) {
+    return;
+  }
+  started = true;
+  await start();
 }
 
 async function start(): Promise<void> {
@@ -45,14 +80,9 @@ async function start(): Promise<void> {
     command: settings.executable,
     args: serverArguments(settings),
   };
-  const options: LanguageClientOptions = {
-    documentSelector: [{ scheme: "file", language: "json", pattern: DOCUMENTS }],
-    // The server reads the description files from disk rather than from the editor, so it is
-    // the saves it has to hear about; watching them also covers a file changed by a build or
-    // by a branch switch, which no document event would report. The server acts on the
-    // notification this sends: `workspace/didChangeWatchedFiles` checks the project again.
-    synchronize: { fileEvents: vscode.workspace.createFileSystemWatcher(DOCUMENTS) },
-  };
+  // No `synchronize.fileEvents`: the server registers the watcher it needs, the descriptions and
+  // the build records, and acts on what the client sends for it.
+  const options: LanguageClientOptions = { documentSelector: [DESCRIPTIONS] };
   const starting = new LanguageClient(SECTION, "DDD", server, options);
   client = starting;
   try {

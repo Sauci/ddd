@@ -29,10 +29,16 @@ BUILD_DIRECTORY_PATTERNS: Final = ("build", "out", "cmake-build-*")
 def build_files(root: Path, configured: Sequence[Path] = ()) -> list[Path]:
     """Every build record under the configured directories, or under the usual ones.
 
+    A configured directory is read against ``root``, as the usual ones are, so that a relative one
+    names the directory under it - an absolute one names itself. The language server asks this of
+    each workspace folder: read against the directory the process was started in, ``-b build``
+    named the build beside the one folder an editor starts its server in, and none beside any
+    other.
+
     Sorted, so that two runs over one workspace report the same projects in the same order and
     a diagnostic does not move between images from one save to the next.
     """
-    directories = list(configured) or [
+    directories = [root / directory for directory in configured] or [
         candidate
         for pattern in BUILD_DIRECTORY_PATTERNS
         for candidate in sorted(root.glob(pattern))

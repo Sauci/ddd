@@ -1312,9 +1312,9 @@ def refuse_plugins(revision: Revision, changes: Sequence[FileChange]) -> None:
     existing description the edit changes is compared before and after, whatever kind it is now:
     a document rewritten from any other kind into a project naming plugins, or into one that
     includes a description naming plugins, names other plugins the next analysis would load, and
-    its kind before the edit is not what the next analysis reads it as. ``_plugins_named`` and
-    ``_includes_of`` answer ``()`` for a document that is no project, so a change touching
-    neither is passed over all the same. A description brought in or dropped is read for the
+    its kind before the edit is not what the next analysis reads it as. :func:`_listed` answers
+    ``()`` for a document that is no project, so a change touching neither list is passed over
+    all the same. A description brought in or dropped is read for the
     plugins it names and those its own includes bring, by the loader's reading of json alone and
     never by importing one (:func:`_subtree_names_plugins`): the files the next analysis would
     read, and no other."""
@@ -1353,35 +1353,33 @@ def _refuse_plugin_change(described: Path, before: Any, after: Any, *, created: 
     names plugins (:data:`PLUGINS`). ``before`` is ``None`` for a file the edit creates, which
     named none before, and ``created`` says which the refusal is, so each says what the reader
     changes by hand."""
-    if _plugins_named(before) != _plugins_named(after):
+    if _listed(before, "plugins") != _listed(after, "plugins"):
         raise EditError(PLUGINS, _PLUGINS_CREATED if created else _PLUGINS_LIST)
     # Seeded with the edited description, so a tree that leads back to it is not read for the
     # plugins it already names, which this edit of its includes does not change.
     seen = {described}
-    for entry in set(_includes_of(before)) ^ set(_includes_of(after)):
+    for entry in set(_listed(before, "includes")) ^ set(_listed(after, "includes")):
         for included in included_files(described, entry):
             if _subtree_names_plugins(resolve_path(included), seen):
                 raise EditError(PLUGINS, _PLUGINS_INCLUDES)
 
 
-def _plugins_named(data: Any) -> tuple[str, ...]:
-    """The ``project.plugins`` entries of a description's document, in the order it names them,
-    each a string: the code it runs. Empty where it states none, or the document is no project.
-    Ordered, so a reorder of the list - which reorders the hooks that run - is a change. Order
-    is held within one list alone: a reorder of ``includes`` is allowed, bringing in and dropping
-    nothing, though it reorders the plugins the included descriptions name."""
-    block = data.get("project") if isinstance(data, dict) else None
-    listed = block.get("plugins") if isinstance(block, dict) else None
-    if not isinstance(listed, list):
-        return ()
-    return tuple(entry for entry in listed if isinstance(entry, str))
+def _listed(data: Any, key: str) -> tuple[str, ...]:
+    """What a description's document lists under ``project.<key>`` - its ``plugins``, the code
+    it runs, or its ``includes`` - the strings of it in the order it lists them. Empty where it
+    lists none, or the document is no project: a list the loader refuses with a ``schema`` error,
+    one that is no list, names nothing, and neither does an entry that is no string.
 
+    The one reading of those lists the session makes, so that its walks cannot come to two
+    answers about one description: the plugins guard (:func:`_refuse_plugin_change`,
+    :func:`_subtree_names_plugins`), what a revision watches (:func:`_watched`,
+    :func:`_expanded_by`), and the files a project's own includes name (:func:`named_by`).
 
-def _includes_of(data: Any) -> tuple[str, ...]:
-    """The ``project.includes`` entries of a description's document, each a string. Empty where it
-    states none, or the document is no project."""
+    Ordered, so that a reorder of ``plugins`` - which reorders the hooks that run - is a change.
+    Order is held within one list alone: a reorder of ``includes`` is allowed, bringing in and
+    dropping nothing, though it reorders the plugins the included descriptions name."""
     block = data.get("project") if isinstance(data, dict) else None
-    listed = block.get("includes") if isinstance(block, dict) else None
+    listed = block.get(key) if isinstance(block, dict) else None
     if not isinstance(listed, list):
         return ()
     return tuple(entry for entry in listed if isinstance(entry, str))
@@ -1404,9 +1402,9 @@ def _subtree_names_plugins(project: Path, seen: set[Path]) -> bool:
         return False
     seen.add(project)
     data = read_json(project)
-    if _plugins_named(data):
+    if _listed(data, "plugins"):
         return True
-    for entry in _includes_of(data):
+    for entry in _listed(data, "includes"):
         for included in included_files(project, entry):
             if _subtree_names_plugins(resolve_path(included), seen):
                 return True
@@ -1595,17 +1593,14 @@ def named_by(project: Path) -> set[Path]:
     from before, and cost opening the one analysis more it always cost, which the first revision
     asks for as it is published.
 
-    Read again after :func:`_is_project` judged the file, so the two conditional expressions
-    guard a description changed in between; an ``includes`` that is not a list names nothing,
-    the loader refusing it with a ``schema`` error.
+    Read again after :func:`_is_project` judged the file, by the one reading of a description's
+    lists (:func:`_listed`), so that a description changed in between to no project, or to an
+    ``includes`` that is no list, names nothing more than itself - the loader refusing such a
+    list with a ``schema`` error.
     """
     named = {project}
-    data = read_json(project)
-    block = data.get("project") if isinstance(data, dict) else None
-    listed = block.get("includes") if isinstance(block, dict) else None
-    if isinstance(listed, list):
-        for entry in listed:
-            named.update(included_files(project, entry))
+    for entry in _listed(read_json(project), "includes"):
+        named.update(included_files(project, entry))
     return named
 
 
@@ -1628,7 +1623,7 @@ def _watched(
     for described in descriptions:
         data = read_json(described)
         watched |= _expanded_by(described, data)
-        for spelling in _plugins_named(data):
+        for spelling in _listed(data, "plugins"):
             if spelling.endswith(".py"):
                 plugins.update(plugin_files(spelling, described.parent))
     return tuple(sorted(watched | plugins)), tuple(sorted(plugins))
@@ -1665,7 +1660,7 @@ def _expanded_by(described: Path, data: Any) -> set[Path]:
     """Where every wildcard include of the description ``described``, its document ``data``,
     expands (:func:`_expanded_in`); nothing where it is no project."""
     expanded: set[Path] = set()
-    for entry in _includes_of(data):
+    for entry in _listed(data, "includes"):
         expanded |= _expanded_in(described, entry)
     return expanded
 

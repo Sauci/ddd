@@ -17,12 +17,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ddd.diagnostics import Diagnostic
+from ddd.editing import TextEdit
 from ddd.finding_routes import UNIT_CHECKS
 from ddd.findings_by_file import FindingsByFile, Pair
 from ddd.lsp.navigation import Index, Site, UnitSite
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import PlannedEdit, UnitProject, UnitRefusalError, adoption, listing_files
-from ddd.variables import Planned, declarations_of, hunks, planned, role_of
+from ddd.variables import Planned, declarations_of, lines_replaced, planned, role_of
 
 
 @dataclass(frozen=True, slots=True)
@@ -258,10 +259,16 @@ def previewed(
     A file the plan changes carries the fingerprint the analysis read it at, from
     ``fingerprints`` (keyed by resolved path), exactly as :func:`ddd.variables.preview` has it.
     A file the plan creates has none - ``POST /api/edit`` creates a file for a change without
-    one - and its one hunk is the whole file, at line 1.
+    one - and its one hunk is the whole file, at line 1: the one span of an empty text its one
+    ``set`` replaces, read as every plan's lines are (:func:`ddd.variables.lines_replaced`).
     """
     return tuple(
-        Planned(edit.path, None, edit.operations, hunks("", edit.operations[0].raw or ""))
+        Planned(
+            edit.path,
+            None,
+            edit.operations,
+            lines_replaced("", (TextEdit(0, 0, edit.operations[0].raw or ""),)),
+        )
         if edit.creates
         else planned(edit.path, edit.operations, fingerprints)
         for edit in edits

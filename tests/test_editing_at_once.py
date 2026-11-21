@@ -20,6 +20,7 @@ import math
 import random
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
+from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +41,7 @@ from ddd.editing import (
     Operation,
     TextEdit,
     apply_changes,
+    edit_spans,
     edit_text,
     fingerprint,
     indent_unit,
@@ -53,13 +55,14 @@ from ddd.variables import hunks, planned
 
 def oracle(text: str, operations: Sequence[Operation]) -> str:
     """``edit_text`` as it stood before a batch could be made at once, its body copied but for the
-    module its helpers are named through: every operation in order, each verified against the
-    parsed document before the next one."""
+    module its helpers are named through, and the edits ``_made`` now hands back beside the text,
+    which it leaves unread: every operation in order, each verified against the parsed document
+    before the next one."""
     unreadable = "the file is not json DDD reads, so no pointer names a place in it"
     document = editing._read(text, UNREADABLE, unreadable)
     expected = copy.deepcopy(document.data)
     for operation in operations:
-        text, expected = editing._made(document, operation, expected)
+        text, expected, _ = editing._made(document, operation, expected)
         document = editing._read(text, UNVERIFIED, "an edit left the file unreadable")
         if editing._canonical(document.data) != editing._canonical(expected):
             raise EditError(
@@ -862,6 +865,108 @@ class TestTheSameAnswer:
             "refused computing": 0,
             "in turn": 1766,
         }
+
+
+def spans_make(text: str, operations: Sequence[Operation]) -> int:
+    """Asserts that the spans ``edit_spans`` answers make out of ``text`` the text it answers,
+    which is ``edit_text``'s, each in the order the text writes them and none overlapping another;
+    and hands back how many spans there were. A batch the engine refuses has none to check, and
+    counts none."""
+    try:
+        made = edit_spans(text, operations)
+    except EditError:
+        return 0
+    assert made.text == edit_text(text, operations)
+    assert editing._all_applied(text, made.replaced) == made.text
+    for span, following in pairwise(made.replaced):
+        assert span.start <= span.end <= following.start <= following.end
+    return len(made.replaced)
+
+
+class TestTheSpansReplaced:
+    """14:I6. What a plan's lines are read off: the spans of the text as it was given that a
+    batch replaced, made at once or one operation after another, each of the text given."""
+
+    def test_a_batch_made_at_once_replaces_its_own_edits_spans(self) -> None:
+        text = json.dumps(declarations(3), indent=2) + "\n"
+        operations = [
+            Operation("set", f"component.interface[{n}].definition.datatype", '"uint16"')
+            for n in (2, 0)
+        ]
+        made = edit_spans(text, operations)
+        first, last = (text.index('"uint8"', at) for at in (0, text.rindex('"name": "V2"')))
+        assert made.replaced == (
+            TextEdit(first, first + 7, '"uint16"'),
+            TextEdit(last, last + 7, '"uint16"'),
+        )
+
+    def test_operations_made_in_turn_replace_spans_of_the_text_as_given(self) -> None:
+        """Taking out ``units[2]`` first and ``units[0]`` next, the second edit is made on the text
+        the first left, and is restated against the text given: two spans of it, apart."""
+        text = '{"units": ["rpm", "Nm", "kPa", "degC"]}'
+        made = edit_spans(text, [Operation("remove", "units[2]"), Operation("remove", "units[0]")])
+        assert made.text == '{"units": ["Nm", "degC"]}'
+        assert made.replaced == (
+            TextEdit(text.index('"rpm"'), text.index('"Nm"'), ""),
+            TextEdit(text.index('"kPa"'), text.index('"degC"'), ""),
+        )
+
+    def test_a_move_replaces_where_it_took_the_element_and_where_it_put_it(self) -> None:
+        text = '{"list": [1, 2, 3]}'
+        made = edit_spans(text, [Operation("move", "list[0]", to=2)])
+        assert made.text == '{"list": [2, 3, 1]}'
+        assert editing._all_applied(text, made.replaced) == made.text
+        assert edit_spans(text, [Operation("move", "list[1]", to=1)]).replaced == ()
+
+    def test_every_example(self) -> None:
+        """Every value of every example file set anew at once, every object given a member at
+        once, and forty random batches of every kind."""
+        for path in sorted(EXAMPLES.rglob("*.json")):
+            text = path.read_text(encoding="utf-8-sig")
+            rng = random.Random(path.name)
+            data = json.loads(text)
+            sets = [Operation("set", p, another(v, rng)) for p, v in literal_leaves(data)]
+            assert spans_make(text, sets) == len(sets)
+            added = [
+                Operation("set", f"{pointer}.{key}" if pointer else key, rng.choice(LITERALS))
+                for pointer, members in objects_of(data)
+                for key in [next(key for key in ("id", "added", "added2") if key not in members)]
+            ]
+            assert spans_make(text, added) == len(added)
+            for _ in range(40):
+                spans_make(text, batch(data, rng))
+
+    def test_random_documents_and_batches(self) -> None:
+        """The documents and batches of :class:`TestTheSameAnswer`, of both kinds: of these six
+        thousand, 2,826 replace a span - 1,330 of every kind, 1,496 of places apart - and each is
+        made by its spans; the others are refused, or change nothing."""
+        rng = random.Random(19)
+        made = 0
+        for kind in (batch, apart):
+            for _ in range(3_000):
+                text = document(rng)
+                made += spans_make(text, kind(json.loads(text), rng)) > 0
+        assert made == 2_826
+
+    def test_edits_made_in_turn_restated(self) -> None:
+        """Random edits each made on the text the one before left, restated against the first:
+        made from that text, they make the last one."""
+        rng = random.Random(23)
+        for _ in range(3_000):
+            first = text = "".join(rng.choice("ab\n ") for _ in range(rng.randint(0, 20)))
+            steps = []
+            for _ in range(rng.randint(0, 6)):
+                start = rng.randint(0, len(text))
+                end = rng.randint(start, len(text))
+                step = TextEdit(
+                    start, end, "".join(rng.choice("xy\n") for _ in range(rng.randint(0, 3)))
+                )
+                steps.append(step)
+                text = editing._applied(text, step)
+            restated = editing._restated(steps)
+            assert editing._all_applied(first, restated) == text
+            for span, following in pairwise(restated):
+                assert span.start <= span.end < following.start <= following.end
 
 
 class TestTheWorkGrowsWithTheFile:

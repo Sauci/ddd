@@ -11470,11 +11470,25 @@ class TestAPluginChangedUnderDddGui:
                 "files it.",
                 "`plugin-not-found` and `plugin-invalid` have a fixed severity, because a project "
                 "cannot be interpreted without the plugins it names.",
+                "and says how many the project has of its own. While `plugin-changed` stands, the "
+                "tab counts it as one of the open project's own errors, so its verdict is a "
+                "refusal until the server is restarted, where the commands, which import every "
+                "plugin afresh, never file it.",
             ),
             (
                 "an edit takes effect in the next run, and in the editor after the server is",
                 "Both checks have a fixed severity",
             ),
+        ),
+        "docs/command_line_interface.rst": (
+            COMMAND_LINE_INTERFACE,
+            (
+                "the answer says how many errors the project has of its own. While "
+                "``plugin-changed`` stands it is one of them, so the verdict is a refusal until "
+                "the server is restarted, where ``ddd compare``, which imports every plugin "
+                "afresh, never files it.",
+            ),
+            (),
         ),
         "docs/plugins.rst": (
             PAGES["docs/plugins.rst"],

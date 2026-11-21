@@ -1737,7 +1737,10 @@ run is reported as an error - the candidate's own, the baseline's carried ones a
 comparison's alike - and the exit code follows the verdict
 ([section 7](#7-tool-interface)). `ddd compare`, `ddd check --baseline` and the Compare tab of
 `ddd gui` give one pair one verdict, since they ask one function: the tab counts the open project's own errors in it as the commands do, under the strictest
-reading of the build records that grade it, and says how many the project has of its own. When the baseline carries an error, the comparison is
+reading of the build records that grade it, and says how many the project has of its own.
+While `plugin-changed` stands, the tab counts it as one of the open project's own errors, so its
+verdict is a refusal until the server is restarted, where the commands, which import every plugin
+afresh, never file it. When the baseline carries an error, the comparison is
 made and the verdict is a refusal; when a side cannot be read, no verdict is printed and the exit
 code is 1.
 

@@ -291,7 +291,7 @@ def lines_replaced(before: str, replaced: Sequence[TextEdit]) -> tuple[Hunk, ...
     for edit in replaced:
         first, final = first_line_of(edit), line_of(edit.end)
         if runs and first <= runs[-1][1]:
-            runs[-1] = (runs[-1][0], max(final, runs[-1][1]), [*runs[-1][2], edit])
+            runs[-1] = (runs[-1][0], final, [*runs[-1][2], edit])
         else:
             runs.append((first, final, [edit]))
     found: list[Hunk] = []

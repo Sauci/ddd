@@ -327,12 +327,14 @@ class TestADocumentScannedAlready:
         [
             '{"component": {"name": "B", "interface": [], "limit": NaN}}',
             '{"component": {"name": "B", "name": "C", "interface": []}}',
+            "[" * 600 + "]" * 600,
         ],
-        ids=["NaN", "a-key-spelled-twice"],
+        ids=["NaN", "a-key-spelled-twice", "deeper-than-the-scan-walks"],
     )
     def test_the_loader_s_rule_is_asked_of_its_text_all_the_same(self, text: str) -> None:
-        """Python's own parser read both into a document, and the loader refuses both: refused as
-        they are without a document."""
+        """Python's own parser read the first two into a document, and the loader refuses both;
+        the last the loader reads, and its document holds nothing, the scan giving up on it:
+        each refused as it is without a document."""
         operations = (Operation("set", "component.name", '"D"'),)
         with pytest.raises(EditError) as given:
             edit_spans(text, operations, Document(text))

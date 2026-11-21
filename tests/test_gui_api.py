@@ -1439,6 +1439,16 @@ class TestOpeningWithoutTheWalk:
         assert post(api, "/api/open", wanted).status == 200
         assert len(walks) == 1
 
+    def test_a_project_an_open_s_own_walk_found_is_opened_without_walking_again(
+        self, root: Path, walks: list[Path]
+    ) -> None:
+        """No listing asked for, the first open walks for its path; the walk it made is kept as
+        a listing's is, and another project it found is opened without walking again."""
+        api = Api(Session(root))
+        first = post(api, "/api/open", {"path": (root / "other" / "q.ddd.json").as_posix()})
+        second = post(api, "/api/open", {"path": (root / "p.ddd.json").as_posix()})
+        assert (first.status, second.status, len(walks)) == (200, 200, 1)
+
     def test_a_project_no_listing_found_is_walked_for(
         self, api: Api, root: Path, walks: list[Path]
     ) -> None:
@@ -14011,6 +14021,104 @@ class TestEachRevisionIsResolvedOnce:
         stamps = api._derive(revision).stamps
         assert carried
         assert all(each is stamps for each in carried)
+
+    @pytest.mark.parametrize(
+        ("example", "description", "path", "query"),
+        [
+            *PLANS,
+            (
+                "demo",
+                "demo.ddd.json",
+                "/api/cells-plan",
+                {"name": "CurveA", "at": "[0],[2]", "raw": "1300,750"},
+            ),
+        ],
+    )
+    def test_each_plan_s_edit_is_made_from_the_documents_its_plan_read(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        example: str,
+        description: str,
+        path: str,
+        query: dict[str, str],
+    ) -> None:
+        """The route hands the engine the cache its plan read each file through, so that making
+        the edit scans no file as it stands again: only the text each edit leaves, which the
+        engine reads back."""
+        api = opened_example(tmp_path, example, description)
+        scanned: list[str] = []
+        previewing: list[bool] = []
+        init = Document.__init__
+
+        def scanning(document: Document, text: str) -> None:
+            if previewing:
+                scanned.append(text)
+            init(document, text)
+
+        def watched(name: str) -> None:
+            real = getattr(api_module, name)
+
+            def previewed(*arguments: Any) -> Any:
+                previewing.append(True)
+                try:
+                    return real(*arguments)
+                finally:
+                    previewing.pop()
+
+            monkeypatch.setattr(api_module, name, previewed)
+
+        for name in ("previewed", "preview", "planned"):
+            watched(name)
+        monkeypatch.setattr(Document, "__init__", scanning)
+        asked = dict(query)
+        if "file" in asked:
+            asked["file"] = posix(tmp_path / example, asked["file"])
+        reply = get(api, path, **asked)
+        assert reply.status == 200, reply.body
+        changed = [
+            Path(change["file"]) for change in reply.body["changes"] if change["fingerprint"]
+        ]
+        assert changed
+        assert scanned
+        assert not {file.read_text(encoding="utf-8") for file in changed} & set(scanned)
+
+    def test_a_fix_s_edit_is_made_from_the_document_its_plan_read(
+        self, api: Api, root: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """As every plan's (above): the one finding of the project, Speed's producer stating no
+        id, whose fix gives it one."""
+        scanned: list[str] = []
+        planning: list[bool] = []
+        init = Document.__init__
+        real = api_module.planned
+
+        def scanning(document: Document, text: str) -> None:
+            if planning:
+                scanned.append(text)
+            init(document, text)
+
+        def planned(*arguments: Any) -> Any:
+            planning.append(True)
+            try:
+                return real(*arguments)
+            finally:
+                planning.pop()
+
+        monkeypatch.setattr(api_module, "planned", planned)
+        monkeypatch.setattr(Document, "__init__", scanning)
+        reply = get(
+            api,
+            "/api/fix",
+            file=posix(root, "a.ddd.json"),
+            pointer="component.interface[0].definition.name",
+            check="missing-id",
+        )
+        assert reply.status == 200, reply.body
+        (fix,) = reply.body["fixes"]
+        assert [Path(change["file"]).name for change in fix["changes"]] == ["a.ddd.json"]
+        assert scanned
+        assert (root / "a.ddd.json").read_text(encoding="utf-8") not in scanned
 
     @pytest.mark.parametrize("example", ["demo", "structures", "vocabulary"])
     def test_the_plan_stamps_are_each_files_fingerprint_by_resolved_path_as_they_were(

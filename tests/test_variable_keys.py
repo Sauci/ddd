@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from conftest import component, declare, project, scalar_type, types, write_tree
+from conftest import component, declare, project, run_analysis, scalar_type, types, write_tree
 from ddd.diagnostics import DiagnosticBag
 from ddd.loading import load_workspace
 from ddd.lsp.edits import PROPAGATED_KEYS
@@ -597,3 +597,209 @@ class TestAUnitWithSpacesAroundIt:
     @pytest.mark.parametrize("raw", ['"V"', '"m s"', '""', "5", "null"])
     def test_anything_else_is_no_spaces_refusal(self, raw: str) -> None:
         assert unit_refusal(raw) is None
+
+
+SPEED_T = types(scalar_type("Speed_t", "uint16", unit="rpm"))
+"""What a reader naming it states by name: ``uint16``, the identity and ``rpm``."""
+
+SPELLED = {"datatype": "uint16", "unit": "rpm", "conversion": {"kind": "identity"}}
+"""The same three, spelled out where a type would fix them."""
+
+
+def pair(**declarations: Any) -> dict[str, Any]:
+    """Files of a project: ``declarations`` maps a component's name to its declaration of ``V``."""
+    return {
+        "t.ddd.json": SPEED_T,
+        "x.ddd.json": types(scalar_type("Rate_t", "uint16", unit="rpm")),
+        "u.ddd.json": types(scalar_type("Torque_t", "uint8", unit="rpm")),
+        "e.ddd.json": types({"type": "external", "name": "Drv_t", "header": "drv.h"}),
+        **{f"c_{name}.ddd.json": component(name, entry) for name, entry in declarations.items()},
+    }
+
+
+# What the panel says of a key, held against what `ddd check` files about the same pair:
+# (panel's key, the word `definition-mismatch` names it by, the files, the panel's `disagrees`,
+# and the checks `ddd check` files). The panel's `typename` is what the check reads as `datatype`:
+# both are the question of which type a declaration is.
+PAIRS = {
+    "a producer spelling what a reader's type fixes": (
+        "typename",
+        "datatype",
+        pair(
+            W=declare("output", "V", **SPELLED),
+            R=declare("input", "V", typename="Speed_t"),
+        ),
+        False,
+        [],
+    ),
+    "a producer naming the type a reader spells": (
+        "typename",
+        "datatype",
+        pair(
+            W=declare("output", "V", typename="Speed_t"),
+            R=declare("input", "V", **SPELLED),
+        ),
+        False,
+        [],
+    ),
+    "a reader naming the type another spells, one producer": (
+        "typename",
+        "datatype",
+        pair(
+            W=declare("output", "V", **SPELLED),
+            R=declare("input", "V", typename="Speed_t"),
+            S=declare("input", "V", **SPELLED),
+            T=declare("input", "V", typename="Speed_t"),
+        ),
+        False,
+        [],
+    ),
+    "readers alone, one naming the type and one spelling it": (
+        "typename",
+        "datatype",
+        pair(
+            R=declare("input", "V", typename="Speed_t"),
+            S=declare("input", "V", **SPELLED),
+        ),
+        False,
+        [],
+    ),
+    "two types of one meaning": (
+        "typename",
+        "datatype",
+        pair(
+            W=declare("output", "V", typename="Speed_t"),
+            R=declare("input", "V", typename="Rate_t"),
+        ),
+        True,  # the names differ, and the panel's typename row settles which one
+        [],
+    ),
+    "two types of two meanings": (
+        "typename",
+        "datatype",
+        pair(
+            W=declare("output", "V", typename="Speed_t"),
+            R=declare("input", "V", typename="Torque_t"),
+        ),
+        True,
+        ["definition-mismatch"],
+    ),
+    "a type beside a datatype of another meaning": (
+        "datatype",
+        "datatype",
+        pair(
+            W=declare("output", "V", **{**SPELLED, "datatype": "uint8"}),
+            R=declare("input", "V", typename="Speed_t"),
+        ),
+        True,  # one name only, so the typename row is silent; the datatype row says what differs
+        ["definition-mismatch"],
+    ),
+    "a datatype beside the datatype a type fixes, spelled the same": (
+        "datatype",
+        "datatype",
+        pair(
+            W=declare("output", "V", **SPELLED),
+            R=declare("input", "V", typename="Speed_t"),
+        ),
+        False,
+        [],
+    ),
+    "an external type beside a scalar": (
+        "typename",
+        "datatype",
+        pair(
+            W=declare("output", "V", **SPELLED),
+            R=declare("input", "V", typename="Drv_t"),
+        ),
+        False,  # one name only; the check files `type-kind` for the external type instead
+        ["type-kind"],
+    ),
+    "a unit of no text beside none": (
+        "unit",
+        "unit",
+        pair(
+            W=declare("output", "V", unit=""),
+            R=declare("input", "V"),
+        ),
+        False,
+        [],
+    ),
+    "a unit beside none": (
+        "unit",
+        "unit",
+        pair(
+            W=declare("output", "V", unit="rpm"),
+            R=declare("input", "V"),
+        ),
+        True,
+        ["definition-mismatch"],
+    ),
+    "two units": (
+        "unit",
+        "unit",
+        pair(
+            W=declare("output", "V", unit="rpm"),
+            R=declare("input", "V", unit="%"),
+        ),
+        True,
+        ["definition-mismatch"],
+    ),
+    "limits past 2^53, one apart": (
+        "limits",
+        "limits",
+        pair(
+            W=declare("output", "V", "uint64", limits={"min": 0, "max": 2**53 + 1}),
+            R=declare("input", "V", "uint64", limits={"min": 0, "max": 2**53}),
+        ),
+        True,
+        ["definition-mismatch"],
+    ),
+    "limits spelled two ways": (
+        "limits",
+        "limits",
+        pair(
+            W=declare("output", "V", limits={"min": 0, "max": 100}),
+            R=declare("input", "V", limits={"min": 0.0, "max": 100.0}),
+        ),
+        False,
+        [],
+    ),
+}
+
+
+def filed_about(bag: Any, word: str) -> list[str]:
+    """What ``ddd check`` files about ``word`` of ``V``: a ``definition-mismatch`` naming it, and
+    ``type-kind``, which refuses a declaration of an external type whatever its neighbours say."""
+    return [
+        diagnostic.check
+        for diagnostic in bag
+        if diagnostic.check == "type-kind"
+        or (diagnostic.check == "definition-mismatch" and f"({word}:" in diagnostic.message)
+    ]
+
+
+class TestThePanelAgreesWithTheCheck:
+    @pytest.mark.parametrize("name", PAIRS)
+    def test_the_panels_word_is_the_checks(self, tmp_path: Path, name: str) -> None:
+        key, word, files, disagrees, filed = PAIRS[name]
+        _, bag = run_analysis(
+            tmp_path, {"p.ddd.json": project("P", *files), **files}, root="p.ddd.json"
+        )
+        assert filed_about(bag, word) == filed
+        idx = built(tmp_path, **files)
+        assert offered(idx, "V", key).disagrees is disagrees
+
+    def test_kind_has_no_row_though_the_check_names_it(self, tmp_path: Path) -> None:
+        """No edit carries ``kind``, so the panel offers no row to disagree on."""
+        files = pair(
+            W=declare("output", "V"),
+            R=declare("input", "V", kind="parameter"),
+        )
+        _, bag = run_analysis(
+            tmp_path, {"p.ddd.json": project("P", *files), **files}, root="p.ddd.json"
+        )
+        assert any(
+            diagnostic.check == "definition-mismatch" and "(kind:" in diagnostic.message
+            for diagnostic in bag
+        )
+        assert "kind" not in KEY_ORDER

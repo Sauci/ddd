@@ -134,6 +134,12 @@ class KeyOffer:
     """What that editor names, sorted: datatypes, types, constants or objects."""
 
 
+SILENCE_IS: Final = {"unit": json.dumps("")}
+"""What a declaration stating nothing for a key says, for a key the models default: ``unit`` is
+``""`` where it is left out, so a declaration stating that beside one stating nothing says the
+same thing twice, as ``definition-mismatch`` reads them."""
+
+
 def offers(built: Index, declared: Sequence[Declared]) -> tuple[KeyOffer, ...]:
     """What every key offers for these declarations of one variable, in :data:`KEY_ORDER`."""
     return tuple(_offer(built, declared, key) for key in KEY_ORDER)
@@ -183,10 +189,19 @@ def _disagrees(
     whoever states them, and the check compares limits only where both sides state them. A
     declaration whose kind cannot hold the key at all is not part of the question, and a key
     nobody states is not a disagreement but an interface nobody has written down yet.
+
+    Two exceptions, both where the checker reads what a declaration means rather than what it
+    spells. A ``typename`` disagrees only where two declarations name different types: a
+    declaration spelling what a type fixes names no type, and says the same as the declaration
+    naming it, which the ``datatype``, ``unit`` and ``conversion`` rows already read through the
+    type. And silence is the models' default for a key they default (:data:`SILENCE_IS`), so
+    that value alone beside silence is no disagreement.
     """
     if len(values) > 1:
         return True
-    if not values or key in DEFERRED_KEYS:
+    if not values or key in DEFERRED_KEYS or key == "typename":
+        return False
+    if key in SILENCE_IS and same_value(key, values[0].raw) == SILENCE_IS[key]:
         return False
     stating = sum(1 for entry in declared if key in entry.stated or key in entry.fixed)
     return stating < sum(1 for may in carried if may.allowed)

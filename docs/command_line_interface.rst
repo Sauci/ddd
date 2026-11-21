@@ -315,9 +315,11 @@ The commands
        Compare tab asking whether the open project can replace a baseline delivery the
        reader names, one tab away. A variable's panel shows every key its declarations
        share, says which of them they disagree about, and settles one on every declaration
-       at once. Limits that no declaration states are written on the producer - on each of
-       two, where two produce the variable - its readers leaving them to it as ``ddd check``
-       reads them; a variable no declaration produces is refused them, since none is the one
+       at once. A declaration naming a type and one spelling what that type fixes agree, as
+       ``ddd check`` reads them: the ``typename`` row disagrees only where two declarations
+       name different types, and a unit of no text beside none is no disagreement. Limits that no declaration states are written on the producer - on
+       each of two, where two produce the variable - its readers leaving them to it as
+       ``ddd check`` reads them; a variable no declaration produces is refused them, since none is the one
        to state them. A ``definition-mismatch`` finding carries that settlement as a button of
        its own, one per disagreeing key, reaching every declaration that disagrees, not only the
        one the finding names. Opened on a consumer it takes the producing component's

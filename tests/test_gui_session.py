@@ -47,6 +47,7 @@ from ddd.editing import (
     Operation,
     fingerprint,
 )
+from ddd.gui import queries
 from ddd.gui import session as module
 from ddd.gui.session import (
     MAX_UNDO,
@@ -322,6 +323,32 @@ class TestOpening:
         assert [info.identifier for info in revision.checks] == ["demo/tagged"]
         kinds = {f.path.name: f.kind for f in revision.files}
         assert kinds["demo_plugin.py"] == "plugin"
+
+    def test_a_record_naming_it_by_a_network_path_in_its_own_directory_feeds_its_analysis(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A project outside the start directory, on a share, its build record naming it by a
+        network path there: the record is read under every directory a request is served, the
+        project's own among them, and its severities apply. The project's directory is taken for
+        the share by its spelling, as Windows reads ``//server/share``: a network path is read
+        under a directory spelled as one, which no directory a test makes is elsewhere."""
+        start = tmp_path / "start"
+        far = tmp_path / "far"
+        write_tree(
+            far,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Unread")),
+            },
+        )
+        start.mkdir()
+        project_file = (far / "p.ddd.json").resolve()
+        build_record(start, project_file, strict=True)
+        monkeypatch.setattr(queries, "_NETWORK", re.compile(re.escape(far.resolve().as_posix())))
+        revision = first_revision(start, project_file)
+        assert [b.image for b in revision.builds] == ["firmware.elf"]
+        unused = [f.diagnostic for f in revision.findings if f.diagnostic.check == "unused-output"]
+        assert [d.severity.value for d in unused] == ["error"]
 
     @pytest.mark.parametrize("content", UNPARSED)
     def test_a_file_that_does_not_parse_is_listed_as_not_loaded(

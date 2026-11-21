@@ -354,22 +354,23 @@ def _readable_project(project: str, *served: Path) -> bool:
     network or device spelling would have the system open - and named ``*.ddd.json``. The one
     rule every reader of a record's ``project`` goes through, a network path allowed only under a
     directory of ``served``, which each reader gives. The start page's listing
-    (:func:`find_projects`), which an open asks as well, and the builds that feed the open
-    project's analysis (:meth:`Session._analysed`) read records through :func:`_offering`, under
-    the start directory alone - narrower than the directories a request is served, deliberately:
-    a record never names more than the start page needs. So a project whose build records name it
-    by a network path is fed by the builds those records describe only where that path lies under
-    the start directory, though a request may name a path in the open project's own directory.
-    The record beside the open project's description that says how it is generated
-    (:func:`_generated`) is read under the open project's own directory too."""
+    (:func:`find_projects`), which an open asks as well, reads records through :func:`_offering`
+    under the start directory alone - narrower than the directories a request is served,
+    deliberately: a record never names more than the start page needs. The builds that feed the
+    open project's analysis (:meth:`Session._analysed`) read records under every directory a
+    request is served (:attr:`Revision.served`), the open project's own directory among them, and
+    so does the record beside the open project's description that says how it is generated
+    (:func:`_generated`): a project whose build records name it by a network path in its own
+    directory is fed by the builds those records describe, as a request may name a path there."""
     directories = tuple(directory.as_posix() for directory in served)
     return project.endswith(DESCRIPTION_SUFFIX) and is_a_path(project, directories)
 
 
-def _offering(records: Iterable[BuildInfo], root: Path) -> list[BuildInfo]:
-    """The build records whose ``project`` is readable (:func:`_readable_project`). A record
-    naming anything else reads as no record, and nothing is read at the path it names."""
-    return [info for info in records if _readable_project(info.project, root)]
+def _offering(records: Iterable[BuildInfo], *served: Path) -> list[BuildInfo]:
+    """The build records whose ``project`` is readable under the directories ``served``
+    (:func:`_readable_project`). A record naming anything else reads as no record, and nothing is
+    read at the path it names."""
+    return [info for info in records if _readable_project(info.project, *served)]
 
 
 @dataclass(frozen=True, slots=True)
@@ -765,18 +766,6 @@ class Session:
         return self._revision
 
     def _analysed(self, project: Path) -> Revision:
-        ignored: dict[Path, str] = {}  # the start page is where a refused record is reported
-        # Every record found, apart from reading them: the revision watches each, the refused
-        # among them (`Revision.watched`).
-        found = build_files(self.root, self.build_directories)
-        builds = tuple(
-            info
-            for info in _offering(load_builds(found, ignored), self.root)
-            if Path(info.project).resolve() == project
-        )
-        runs = _runs(project, builds)
-        grouped, covered = _grouped(runs, project)
-        registered = {info.identifier: info for run in runs for info in run.bag.registered.values()}
         # The project's own directory as well, where it is not already inside the root: a
         # project named on the command line from elsewhere, or one a build record names there,
         # opened from the start page (`Revision.served` says what that guards). Two statements
@@ -785,6 +774,19 @@ class Session:
         served: tuple[Path, ...] = (self.root,)
         if not project.parent.is_relative_to(self.root):
             served = (self.root, project.parent)
+        ignored: dict[Path, str] = {}  # the start page is where a refused record is reported
+        # Every record found, apart from reading them: the revision watches each, the refused
+        # among them (`Revision.watched`). Read under every directory served, a request's rule
+        # (`_readable_project`).
+        found = build_files(self.root, self.build_directories)
+        builds = tuple(
+            info
+            for info in _offering(load_builds(found, ignored), *served)
+            if Path(info.project).resolve() == project
+        )
+        runs = _runs(project, builds)
+        grouped, covered = _grouped(runs, project)
+        registered = {info.identifier: info for run in runs for info in run.bag.registered.values()}
         # The run the index comes from, chosen once: its read is the one the files are described
         # by (`_files_read`).
         indexed = next((run for run in runs if run.index is not None), None)

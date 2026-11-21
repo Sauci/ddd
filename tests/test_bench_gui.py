@@ -12,7 +12,7 @@ from pathlib import Path
 
 import bench_gui
 import pytest
-from bench_gui import NAMES, main, measure
+from bench_gui import BUDGETS, NAMES, main, measure
 from generate_project import UNITS, generate
 
 from conftest import landed, stopped
@@ -61,6 +61,7 @@ def test_every_measure_is_taken_in_order_with_its_size(tmp_path: Path) -> None:
     assert all(each.milliseconds >= 0 for each in taken)
     sized = {each.name for each in taken if each.size is not None}
     assert sized == {
+        "open answered",
         "state",
         "graph",
         "units",
@@ -71,13 +72,17 @@ def test_every_measure_is_taken_in_order_with_its_size(tmp_path: Path) -> None:
         "findings of a file",
         "variable",
         "unit",
+        "plan in the largest file",
         "remove judged",
         "edit answered",
         "rename plan",
+        "applied rename",
         "state while analysing",
         "plan while analysing",
         "edit while analysing",
     }
+    posted = {each.name for each in taken if each.posted is not None}
+    assert posted == {"open answered", "edit answered", "applied rename", "edit while analysing"}
 
 
 def test_the_project_is_left_as_it_was_generated(tmp_path: Path) -> None:
@@ -96,7 +101,10 @@ def test_the_command_line_prints_one_row_per_measure(
     made = generate(tmp_path / "p", 600, "large")
     assert main([str(made.project)]) == 0
     lines = capsys.readouterr().out.splitlines()
-    assert lines[:2] == ["| project | measure | ms | bytes |", "| --- | --- | --- | --- |"]
+    assert lines[:2] == [
+        "| project | measure | ms | bytes | posted | budget |",
+        "| --- | --- | --- | --- | --- | --- |",
+    ]
     assert [line.split(" | ")[1] for line in lines[2:]] == list(NAMES)
 
 
@@ -218,8 +226,9 @@ def test_the_edit_moves_to_the_next_unit_of_the_projects_own_sorted_order(
 
     monkeypatch.setattr(Api, "handle", spying)
     measure(made.project)
-    assert len(edited) == 2  # once idle, and once while an analysis runs
-    for body in edited:
+    # Once idle, the applied rename, and once while an analysis runs.
+    assert len(edited) == 3
+    for body in (edited[0], edited[2]):
         operation = json.loads(body)["changes"][0]["operations"][0]
         assert json.loads(operation["raw"]) == expected
 
@@ -314,12 +323,13 @@ def test_open_the_analysis_and_the_edit_are_timed_until_their_analysis_has_lande
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The session analyses on a thread of its own, so a measure ending where its request
-    returns times the request alone: ``open``, ``analysis`` and ``edit analysed`` each end once
-    the session has settled - its analysis landed - and ``edit answered`` ends before. ``rename
-    plan`` is timed after the edit's analysis has landed and before the undo. Then, over the
-    second session, each measure under load is asked once an analysis has begun
-    (:func:`bench_gui._analysing`), and the session settles before the next one asks its own;
-    the edit is undone last.
+    returns times the request alone: ``open analysed``, ``analysis`` and ``edit analysed`` each
+    end once the session has settled - its analysis landed - and ``open answered`` and ``edit
+    answered`` end before. ``rename plan`` is timed after the edit's analysis has landed and
+    before the undo, and ``applied rename`` after it, the rename undone once its own analysis has
+    landed. Then, over the second session, each measure under load is asked once an analysis has
+    begun (:func:`bench_gui._analysing`), and the session settles before the next one asks its
+    own; the edit is undone last.
 
     Recorded on this thread alone: the second session's poller polls on a thread of its own,
     whenever its second comes round."""
@@ -352,12 +362,15 @@ def test_open_the_analysis_and_the_edit_are_timed_until_their_analysis_has_lande
     monkeypatch.setattr(bench_gui, "_analysing", recording("analysing", bench_gui._analysing))
     measure(made.project)
     assert happened == [
-        *("open", "settled", "timed"),  # open
-        *["timed"] * 11,  # each endpoint, the two of findings, the two panels, the judged removal
+        *("open", "/api/open", "timed", "settled", "timed"),  # open answered, then analysed
+        # Each endpoint, the two of findings, the two panels, the plan in the largest file and
+        # the judged removal.
+        *["timed"] * 12,
         *("poll", "settled", "timed"),  # analysis
         *("/api/edit", "timed"),  # edit answered
         *("settled", "timed"),  # edit analysed
         "timed",  # rename plan
+        *("/api/edit", "timed", "settled", "/api/undo", "settled"),  # applied rename, undone
         "/api/undo",
         *("open", "settled"),  # the second session, opened untimed
         *("poll", "analysing", "timed", "settled"),  # state while analysing
@@ -408,7 +421,8 @@ def test_the_plan_under_load_settles_the_middle_variables_unit_on_the_next_unit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The plan a variable's panel asks while a reader picks a unit: the edit's own change, the
-    next unit after the middle variable's own, previewed on every declaration of it."""
+    next unit after the middle variable's own, previewed on every declaration of it - the second
+    settlement the run asks, after the plan in the largest file."""
     made = generate(tmp_path / "p", 120, "many")
     session = Session(made.project.parent)
     session.open(made.project)
@@ -429,7 +443,8 @@ def test_the_plan_under_load_settles_the_middle_variables_unit_on_the_next_unit(
 
     monkeypatch.setattr(Api, "handle", spying)
     taken = {each.name: each for each in measure(made.project)}
-    assert asked == [{"name": [variable], "key": ["unit"], "raw": [json.dumps(expected)]}]
+    assert len(asked) == 2
+    assert asked[1] == {"name": [variable], "key": ["unit"], "raw": [json.dumps(expected)]}
     assert taken["plan while analysing"].size is not None
 
 
@@ -519,15 +534,19 @@ def test_a_rename_plan_that_raises_leaves_the_project_as_it_was(
 def test_a_refused_plan_under_load_ends_the_run(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A refusal is no plan, as for the rename: its time would read as one."""
+    """A refusal is no plan, as for the rename: its time would read as one. The plan under load
+    is the second settlement the run asks."""
     made = generate(tmp_path / "p", 120, "many")
     before = as_found(tmp_path / "p")
     original = Api.handle
     refusal = {"error": "unreadable", "message": "a refusal made up for the test"}
+    settled: list[object] = []
 
     def refusing(self, method, path, query, body):
         if path == "/api/settle":
-            return Reply(409, refusal)
+            settled.append(query)
+            if len(settled) == 2:
+                return Reply(409, refusal)
         return original(self, method, path, query, body)
 
     monkeypatch.setattr(Api, "handle", refusing)
@@ -541,7 +560,7 @@ def test_a_refused_edit_ends_the_run_with_nothing_written(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Refused while an analysis runs, as the first one could be idle: no edit, so nothing to
-    undo, and its time would read as an edit's."""
+    undo, and its time would read as an edit's. The applied rename is the second edit posted."""
     made = generate(tmp_path / "p", 120, "many")
     before = as_found(tmp_path / "p")
     original = Api.handle
@@ -551,7 +570,7 @@ def test_a_refused_edit_ends_the_run_with_nothing_written(
     def refusing(self, method, path, query, body):
         if path == "/api/edit":
             edits.append(body)
-            if len(edits) == 2:
+            if len(edits) == 3:
                 return Reply(409, refusal)
         return original(self, method, path, query, body)
 
@@ -559,26 +578,30 @@ def test_a_refused_edit_ends_the_run_with_nothing_written(
     with pytest.raises(RuntimeError) as raised:
         measure(made.project)
     assert str(raised.value) == f"the benchmark's own edit was refused: {refusal}"
-    assert len(edits) == 2
+    assert len(edits) == 3
     assert as_found(tmp_path / "p") == before
 
 
 def test_a_file_whose_edit_is_not_put_back_keeps_the_time_it_was_written_at(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The undo refused, the run ends saying so, and the file it leaves edited keeps the time of
-    its edit: given back the time it was found at, it would read as unchanged to whatever reads
-    times. Every other time is put back all the same - the component file's the run moved, the
-    directory's the edit was written in."""
+    """The edit's undo refused, the run ends saying so, and the file it leaves edited keeps the
+    time of its edit: given back the time it was found at, it would read as unchanged to whatever
+    reads times. Every other time is put back all the same - the component file's the run moved,
+    the directory's the edit was written in, and every file's the applied rename wrote, whose
+    undo, the first, is made."""
     made = generate(tmp_path / "p", 120, "many")
     edited = edited_by_the_bench(made.project)
     before = as_found(tmp_path / "p")
     original = Api.handle
     refusal = {"error": "stale", "message": "a refusal made up for the test"}
+    undone: list[object] = []
 
     def refusing(self, method, path, query, body):
         if path == "/api/undo":
-            return Reply(409, refusal)
+            undone.append(body)
+            if len(undone) == 2:
+                return Reply(409, refusal)
         return original(self, method, path, query, body)
 
     monkeypatch.setattr(Api, "handle", refusing)
@@ -718,7 +741,7 @@ def test_the_command_line_writes_a_refused_figure_as_its_sentence(
     )
     lines = capsys.readouterr().out.splitlines()
     assert [line for line in lines if "| plan while analysing |" in line] == [
-        f"| p | plan while analysing | {sentence} | |"
+        f"| p | plan while analysing | {sentence} | | | |"
     ]
     rows = json.loads(written.read_text(encoding="utf-8"))
     assert [row for row in rows if row["measure"] == "plan while analysing"] == [
@@ -727,6 +750,9 @@ def test_the_command_line_writes_a_refused_figure_as_its_sentence(
             "measure": "plan while analysing",
             "ms": None,
             "bytes": None,
+            "posted": None,
+            "budget": 1000,
+            "met": None,
             "refused": sentence,
         }
     ]
@@ -796,3 +822,220 @@ def test_a_sleep_outside_the_bench_is_not_counted_as_its_wait(
 
     taken = {each.name: each for each in measure(made.project)}
     assert waited == [taken["analysis"].milliseconds / 2_000] * 3
+
+
+def posted_to(monkeypatch: pytest.MonkeyPatch, route: str) -> list[bytes]:
+    """Every body ``measure`` posts to ``route`` from now on, as it is posted."""
+    bodies: list[bytes] = []
+    original = Api.handle
+
+    def spying(self, method, path, query, body):
+        if method == "POST" and path == route:
+            bodies.append(body)
+        return original(self, method, path, query, body)
+
+    monkeypatch.setattr(Api, "handle", spying)
+    return bodies
+
+
+def test_the_open_is_posted_as_the_start_page_posts_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``POST /api/open`` of the project named on the command line, in the page's own compact
+    json, its bytes recorded beside its time."""
+    made = generate(tmp_path / "p", 120, "many")
+    bodies = posted_to(monkeypatch, "/api/open")
+    taken = {each.name: each for each in measure(made.project)}
+    path = made.project.resolve().as_posix()
+    assert bodies == [json.dumps({"path": path}, separators=(",", ":")).encode("utf-8")]
+    assert taken["open answered"].posted == len(bodies[0])
+
+
+def test_a_refused_open_ends_the_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    made = generate(tmp_path / "p", 120, "many")
+    original = Api.handle
+    refusal = {"error": "not-found", "message": "a refusal made up for the test"}
+
+    def refusing(self, method, path, query, body):
+        if path == "/api/open":
+            return Reply(404, refusal)
+        return original(self, method, path, query, body)
+
+    monkeypatch.setattr(Api, "handle", refusing)
+    with pytest.raises(RuntimeError) as raised:
+        measure(made.project)
+    assert str(raised.value) == f"the benchmark's own open was refused: {refusal}"
+
+
+def test_the_plan_in_the_largest_file_settles_its_middle_variable_on_the_next_unit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The component file holding the most declarations - one of the mixed shape's large ones -
+    the middle of the variables it declares, and its unit there moved to the next of the
+    project's own, sorted: a variable's panel's plan, which writes nothing."""
+    made = generate(tmp_path / "p", 600, "mixed")
+    session = Session(made.project.parent)
+    session.open(made.project)
+    built = session.revision.index
+    assert built is not None
+    held: dict[Path, int] = {}
+    for sites in built.declarations.values():
+        for site in sites:
+            held[site.path] = held.get(site.path, 0) + 1
+    most = max(held.values())
+    largest = sorted((path for path in held if held[path] == most), key=Path.as_posix)[0]
+    assert most > min(held.values())
+    names = sorted(
+        n for n, sites in built.declarations.items() if largest in {s.path for s in sites}
+    )
+    variable = names[len(names) // 2]
+    there = next(d for d in declarations_of(built, variable, {}) if d.site.path == largest)
+    units = sorted(built.units)
+    expected = units[(units.index(json.loads(there.stated["unit"])) + 1) % len(units)]
+    asked = []
+    original = Api.handle
+
+    def spying(self, method, path, query, body):
+        if path == "/api/settle":
+            asked.append(dict(query))
+        return original(self, method, path, query, body)
+
+    monkeypatch.setattr(Api, "handle", spying)
+    before = as_found(tmp_path / "p")
+    taken = {each.name: each for each in measure(made.project)}
+    assert asked[0] == {"name": [variable], "key": ["unit"], "raw": [json.dumps(expected)]}
+    assert taken["plan in the largest file"].size is not None
+    assert as_found(tmp_path / "p") == before
+
+
+def test_a_refused_plan_in_the_largest_file_ends_the_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Asked before any edit: nothing to undo, and nothing written."""
+    made = generate(tmp_path / "p", 120, "many")
+    before = as_found(tmp_path / "p")
+    original = Api.handle
+    refusal = {"error": "unreadable", "message": "a refusal made up for the test"}
+
+    def refusing(self, method, path, query, body):
+        if path == "/api/settle":
+            return Reply(409, refusal)
+        return original(self, method, path, query, body)
+
+    monkeypatch.setattr(Api, "handle", refusing)
+    with pytest.raises(RuntimeError) as raised:
+        measure(made.project)
+    assert str(raised.value).startswith("the benchmark's own plan in the largest file, ")
+    assert str(raised.value).endswith(f", was refused: {refusal}")
+    assert as_found(tmp_path / "p") == before
+
+
+def test_a_declaration_in_the_largest_file_with_no_unit_of_its_own_is_refused(
+    tmp_path: Path,
+) -> None:
+    made = generate(tmp_path / "p", 600, "mixed")
+    session = Session(made.project.parent)
+    session.open(made.project)
+    built = session.revision.index
+    assert built is not None
+    largest, variable, _ = bench_gui._in_the_largest_file(built, sorted(built.units))
+    site = next(d for d in declarations_of(built, variable, {}) if d.site.path == largest).site
+    document = json.loads(site.path.read_text(encoding="utf-8"))
+    del node_at(document, site.pointer)["unit"]
+    site.path.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+    with pytest.raises(RuntimeError) as raised:
+        bench_gui._in_the_largest_file(built, sorted(built.units))
+    assert str(raised.value) == (
+        f"{variable!r}'s declaration in {largest} does not state its own unit, which the "
+        "benchmark needs to choose the plan in the largest file"
+    )
+
+
+def test_the_applied_rename_posts_the_rename_plan_as_the_page_s_apply_does(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each file's path, fingerprint and operations, the plan's lines left out, under the label
+    the page gives an undo of a rename; in the page's compact json, its bytes recorded beside its
+    time. Undone, the project is as it was generated: its bytes, and its files' times."""
+    made = generate(tmp_path / "p", 120, "many")
+    before = as_found(tmp_path / "p")
+    plans: list[Reply] = []
+    original = Api.handle
+
+    def spying(self, method, path, query, body):
+        answer = original(self, method, path, query, body)
+        if path == "/api/unit-plan":
+            plans.append(answer)
+        return answer
+
+    monkeypatch.setattr(Api, "handle", spying)
+    bodies = posted_to(monkeypatch, "/api/edit")
+    taken = {each.name: each for each in measure(made.project)}
+    (plan,) = plans
+    applied = json.loads(bodies[1])
+    assert applied == {
+        "changes": [
+            {key: change[key] for key in ("file", "fingerprint", "operations")}
+            for change in plan.body["changes"]
+        ],
+        "label": "the rename of 'A' to 'A2'",
+    }
+    assert len(applied["changes"]) == len(list((tmp_path / "p").rglob("*.ddd.json"))) - 1
+    assert bodies[1] == json.dumps(applied, separators=(",", ":")).encode("utf-8")
+    assert taken["applied rename"].posted == len(bodies[1])
+    assert as_found(tmp_path / "p") == before
+
+
+def test_a_refused_applied_rename_ends_the_run_once_the_edit_is_undone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    made = generate(tmp_path / "p", 120, "many")
+    before = as_found(tmp_path / "p")
+    original = Api.handle
+    refusal = {"error": "stale", "message": "a refusal made up for the test"}
+    edits: list[bytes | None] = []
+
+    def refusing(self, method, path, query, body):
+        if path == "/api/edit":
+            edits.append(body)
+            if len(edits) == 2:
+                return Reply(409, refusal)
+        return original(self, method, path, query, body)
+
+    monkeypatch.setattr(Api, "handle", refusing)
+    with pytest.raises(RuntimeError) as raised:
+        measure(made.project)
+    assert str(raised.value) == f"the benchmark's own applied rename was refused: {refusal}"
+    assert as_found(tmp_path / "p") == before
+
+
+def test_every_budget_is_a_measure_s_and_said_met_or_missed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A figure under its budget meets it and one as long misses it, in the table and in the
+    json alike; a measure held to no budget says nothing of one. The plans are held to a
+    panel's second, and the edits to an Apply's half second."""
+    assert set(BUDGETS) <= set(NAMES)
+    assert {name: BUDGETS[name] for name in ("plan in the largest file", "applied rename")} == {
+        "plan in the largest file": 1_000,
+        "applied rename": 500,
+    }
+    taken = [
+        bench_gui.Measure("plan in the largest file", 999.4, 10),
+        bench_gui.Measure("applied rename", 500.0, 20, posted=30),
+        bench_gui.Measure("analysis", 4000.0, None),
+    ]
+    monkeypatch.setattr(bench_gui, "measure", lambda project: taken)
+    written = tmp_path / "rows.json"
+    assert main([str(tmp_path / "p" / "project.ddd.json"), "--json", str(written)]) == 0
+    assert capsys.readouterr().out.splitlines()[2:] == [
+        "| p | plan in the largest file | 999 | 10 |  | 1000 met |",
+        "| p | applied rename | 500 | 20 | 30 | 500 missed |",
+        "| p | analysis | 4000 |  |  |  |",
+    ]
+    rows = json.loads(written.read_text(encoding="utf-8"))
+    assert [(row["budget"], row["met"], row["posted"]) for row in rows] == [
+        (1000, True, None),
+        (500, False, 30),
+        (None, None, None),
+    ]

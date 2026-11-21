@@ -91,13 +91,14 @@ class Document:
     diagnostic.
     """
 
-    def __init__(self, text: str, newline: str = "\n") -> None:
+    def __init__(self, text: str, newline: str | None = None) -> None:
         self.text = text
-        self.newline = newline
-        """How the file this document was read from ends its lines: ``text`` is read as python
-        reads a file, every ending a line feed (:func:`read`), and a client applies an edit to the
-        file as it stands, so an edit's line feeds are spelled so (:meth:`spelled`). A buffer a
-        client sent is its own text, line endings and all: the default."""
+        ending = _LINE_ENDING.search(text)
+        self.newline = newline or ("\n" if ending is None else ending.group())
+        """How the file this document stands for ends its lines, which a client applies an edit to
+        as it stands, so an edit's line endings are spelled so (:meth:`spelled`). A buffer a client
+        sent holds its own, the first its text uses; a closed file is read as python reads a file,
+        every ending a line feed (:func:`read`), and is given the one it was read with."""
         self._line_starts = _line_starts(text)
         try:
             self.data: Any = json.loads(text)
@@ -127,10 +128,12 @@ class Document:
             self._values = scanner.values
 
     def spelled(self, text: str) -> str:
-        """``text``, which an edit engine wrote over line feeds, ending its lines as the file
-        this document was read from does. Nothing a json text holds but a line break is a line
-        feed - a string spells one ``\\n`` - so none is changed that is not one."""
-        return text if self.newline == "\n" else text.replace("\n", self.newline)
+        """``text``, an edit's, with every line ending the one this document ends its lines with.
+        The engine wrote line feeds over a closed file's text, and a value copied from a buffer
+        holds that buffer's endings, so each of the three is rewritten: one rewritten only where
+        it was a line feed made ``\\r\\r\\n`` of ``\\r\\n``. Nothing else in a json text is a line
+        ending - a string spells a line feed ``\\n`` - so nothing else is changed."""
+        return _LINE_ENDING.sub(lambda _: self.newline, text)
 
     def range_of(self, pointer: str) -> dict[str, Any]:
         """The range to underline for a finding located at ``pointer``."""
@@ -370,13 +373,8 @@ class _Scanner:
     compares the two).
     """
 
-    def __init__(self, text: str, newline: str = "\n") -> None:
+    def __init__(self, text: str) -> None:
         self.text = text
-        self.newline = newline
-        """How the file this document was read from ends its lines: ``text`` is read as python
-        reads a file, every ending a line feed (:func:`read`), and a client applies an edit to the
-        file as it stands, so an edit's line feeds are spelled so (:meth:`spelled`). A buffer a
-        client sent is its own text, line endings and all: the default."""
         self.pos = 0
         self.spans: dict[str, tuple[int, int]] = {}
         self.texts: dict[str, tuple[int, int]] = {}

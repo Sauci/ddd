@@ -8774,6 +8774,71 @@ class TestAnEditCarriesTheFilesOwnNewline:
         assert written.replace(newline, "").count("\n") == 0
         assert written.replace(newline, "").count("\r") == 0
 
+    LINEAR: ClassVar[dict[str, Any]] = {"kind": "linear", "factor": 0.5, "offset": 1}
+
+    def conversion_taken(
+        self, tmp_path: Path, buffers: dict[str, str], newline: str, source: str, target: str
+    ) -> tuple[list[dict[str, Any]], Path]:
+        """The edits of "Use the conversion declared in ``source``" asked at ``target``, of two
+        files of which each in ``buffers`` is open with the text given (and written to the disk in
+        ``newline`` where it is not); the target's path."""
+        from ddd.lsp.edits import actions
+
+        texts = {
+            "a.ddd.json": spelled_with(
+                newline, component("A", declare("output", "Speed", conversion=self.LINEAR))
+            ),
+            "b.ddd.json": spelled_with(newline, component("B", declare("input", "Speed"))),
+        }
+        built = self.built(tmp_path, **{name: json.loads(text) for name, text in texts.items()})
+        for name, text in texts.items():
+            (tmp_path / name).write_text(text, encoding="utf-8", newline="")
+        cache = {tmp_path / name: Document(text) for name, text in buffers.items()}
+        path = tmp_path / target
+        offered = actions(
+            built,
+            path,
+            read(path, cache),
+            "component.interface[0].definition",
+            cache,
+            MISMATCH_REPORTED,
+        )
+        taking = next(
+            entry
+            for entry in offered
+            if entry["title"].startswith(f"Use the conversion declared in {source}")
+        )
+        (edits,) = taking["edit"]["changes"].values()
+        return edits, path
+
+    def test_a_value_copied_from_an_open_crlf_buffer_is_not_doubled_into_a_closed_file(
+        self, tmp_path: Path
+    ) -> None:
+        """The buffer holds the value over lines ended ``\\r\\n``, and the closed file ends its
+        lines so too: the lines of the value end once, each as the file's do."""
+        crlf = spelled_with(
+            "\r\n", component("A", declare("output", "Speed", conversion=self.LINEAR))
+        )
+        edits, path = self.conversion_taken(
+            tmp_path, {"a.ddd.json": crlf}, "\r\n", "a", "b.ddd.json"
+        )
+        written = apply_to_the_bytes(path, edits)
+        assert '"factor": 0.5' in written
+        assert "\r\r" not in written
+        assert written.replace("\r\n", "").count("\n") == 0
+        assert written.replace("\r\n", "").count("\r") == 0
+
+    def test_a_value_copied_into_an_open_crlf_buffer_ends_its_lines_as_the_buffer_does(
+        self, tmp_path: Path
+    ) -> None:
+        """The other way: the closed file's value is spelled over line feeds, and the buffer it
+        goes into ends its lines ``\\r\\n``."""
+        crlf = spelled_with("\r\n", component("B", declare("input", "Speed")))
+        edits, _ = self.conversion_taken(tmp_path, {"b.ddd.json": crlf}, "\n", "a", "b.ddd.json")
+        for edit in edits:
+            assert edit["newText"].replace("\r\n", "").count("\n") == 0
+        assert any("\r\n" in edit["newText"] for edit in edits)
+
     @pytest.mark.parametrize("newline", NEWLINES, ids=["crlf", "cr"])
     def test_a_unit_added_to_a_closed_units_file_ends_its_line_as_the_file_does(
         self, tmp_path: Path, newline: str

@@ -13,6 +13,7 @@ from ddd.ir import (
     ComponentDeclaration,
     DataDictionary,
     ResolvedComponent,
+    ResolvedInstance,
     ResolvedObject,
 )
 
@@ -56,11 +57,26 @@ def an_object(name: str, owner: str | None, *consumers: str, local: bool = False
     )
 
 
+def an_instance(
+    name: str, owner: str | None, *consumers: str, local: bool = False
+) -> ResolvedInstance:
+    """A structured variable naming its owner and its consumers, as ``an_object`` does."""
+    return ResolvedInstance(
+        name=name, type="Inlet_t", kind="measurement", owner=owner, consumers=consumers, local=local
+    )
+
+
 def a_dictionary(
-    components: tuple[ResolvedComponent, ...] = (), objects: tuple[ResolvedObject, ...] = ()
+    components: tuple[ResolvedComponent, ...] = (),
+    objects: tuple[ResolvedObject, ...] = (),
+    instances: tuple[ResolvedInstance, ...] = (),
 ) -> DataDictionary:
     return DataDictionary(
-        format=DICTIONARY_FORMAT, name="P", components=components, objects=objects
+        format=DICTIONARY_FORMAT,
+        name="P",
+        components=components,
+        objects=objects,
+        instances=instances,
     )
 
 
@@ -104,6 +120,26 @@ class TestFlows:
         graph = graph_of(dictionary, [a, b], [])
         assert len(graph.flows) == 1
         assert graph.flows[0].objects == ("Speed", "Torque")
+
+    def test_a_structured_variable_makes_a_flow_beside_the_scalars(self) -> None:
+        a, b = a_module("a.ddd.json", "A"), a_module("b.ddd.json", "B")
+        dictionary = a_dictionary(
+            objects=(an_object("Speed", "A", "B"),), instances=(an_instance("Inlet", "A", "B"),)
+        )
+        graph = graph_of(dictionary, [a, b], [])
+        assert [flow.objects for flow in graph.flows] == [("Inlet", "Speed")]
+
+    def test_a_local_structured_variable_makes_no_flow(self) -> None:
+        a, b = a_module("a.ddd.json", "A"), a_module("b.ddd.json", "B")
+        dictionary = a_dictionary(instances=(an_instance("Inlet", "A", "B", local=True),))
+        assert graph_of(dictionary, [a, b], []).flows == ()
+
+    def test_an_unowned_or_unread_structured_variable_makes_no_flow(self) -> None:
+        a, b = a_module("a.ddd.json", "A"), a_module("b.ddd.json", "B")
+        dictionary = a_dictionary(
+            instances=(an_instance("Orphan", None, "B"), an_instance("Unread", "A"))
+        )
+        assert graph_of(dictionary, [a, b], []).flows == ()
 
     def test_a_local_object_makes_no_flow(self) -> None:
         a, b = a_module("a.ddd.json", "A"), a_module("b.ddd.json", "B")
@@ -200,6 +236,22 @@ class TestDisagreements:
             Disagreement("Speed", "definition-mismatch", Severity.ERROR, "they disagree"),
         )
         assert graph.flows[0].severity is Severity.ERROR
+
+    def test_a_disagreement_on_a_structured_variable_colours_its_flow(self) -> None:
+        a, b = a_module("a.ddd.json", "A"), a_module("b.ddd.json", "B")
+        dictionary = a_dictionary(
+            components=(a_component("B", declared("Speed", "input"), declared("Inlet", "input")),),
+            objects=(an_object("Speed", "A", "B"),),
+            instances=(an_instance("Inlet", "A", "B"),),
+        )
+        findings = [
+            a_finding(
+                "b.ddd.json", "component.interface[1].volatile", notes=(a_note_at("a.ddd.json"),)
+            )
+        ]
+        (flow,) = graph_of(dictionary, [a, b], findings).flows
+        assert [d.object for d in flow.disagreements] == ["Inlet"]
+        assert flow.severity is Severity.ERROR
 
     def test_the_worst_severity_wins(self) -> None:
         a, b = a_module("a.ddd.json", "A"), a_module("b.ddd.json", "B")

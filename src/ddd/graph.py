@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 
 from ddd.diagnostics import Diagnostic, Location, Severity
-from ddd.ir import DataDictionary, ResolvedComponent, ResolvedObject
+from ddd.ir import DataDictionary, ResolvedComponent, ResolvedInstance, ResolvedObject
 from ddd.pointers import segments
 
 type _ModulePair = tuple[PurePosixPath, PurePosixPath]
@@ -80,7 +80,9 @@ def graph_of(
     # Assumes distinct names among loaded modules; two sharing one would collapse here, the
     # later one in path order silently winning.
     paths_by_component = {module.name: module.path for module in sorted_modules if module.loaded}
-    objects_by_pair = _objects_by_pair(dictionary.objects, paths_by_component)
+    objects_by_pair = _objects_by_pair(
+        (*dictionary.objects, *dictionary.instances), paths_by_component
+    )
     components_by_name = {component.name: component for component in dictionary.components}
     disagreements_by_pair = _disagreements_by_pair(
         components_by_name, paths_by_component, objects_by_pair, findings
@@ -99,9 +101,13 @@ def graph_of(
 
 
 def _objects_by_pair(
-    objects: tuple[ResolvedObject, ...], paths_by_component: dict[str, PurePosixPath]
+    objects: tuple[ResolvedObject | ResolvedInstance, ...],
+    paths_by_component: dict[str, PurePosixPath],
 ) -> dict[_ModulePair, set[str]]:
     """Every producing-consuming pair one of ``objects`` puts a flow between, and their names.
+
+    ``objects`` are the dictionary's objects and its instances alike: a structured variable
+    carries the same ``owner``, ``consumers`` and ``local`` as a scalar one.
 
     A local object contributes to no pair whatever its own ``consumers`` says: a component
     declaring a local object as ``input`` is the ``local-conflict`` the analysis reports for

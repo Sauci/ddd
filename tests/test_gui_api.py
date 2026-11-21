@@ -2288,6 +2288,20 @@ class TestGraph:
         }
         assert all(f["severity"] is None and f["disagreements"] == [] for f in body["flows"])
 
+    def test_a_structured_variable_draws_its_arrow(self, tmp_path: Path) -> None:
+        """examples/structures: ``Inlet`` is a structure owned by Sensing and read by Monitoring,
+        so it is among the dictionary's instances, and the flow carries it."""
+        root = copied_example(tmp_path, "structures")
+        session = Session(root)
+        session.open(root / "project.ddd.json")
+        body = get(Api(session, root / "project.ddd.json"), "/api/graph").body
+        (flow,) = body["flows"]
+        assert (flow["from"], flow["to"]) == (
+            (root / "sensing.ddd.json").resolve().as_posix(),
+            (root / "monitoring.ddd.json").resolve().as_posix(),
+        )
+        assert "Inlet" in flow["objects"]
+
     def test_a_revision_that_resolved_a_dictionary_says_so(self, demo: tuple[Api, Path]) -> None:
         api, _ = demo
         assert get(api, "/api/graph").body["dictionary"] is True

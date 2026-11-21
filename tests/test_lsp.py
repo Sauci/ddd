@@ -3889,6 +3889,15 @@ class TestPropagating:
             "Apply this datatype to 1 other declaration of 'Speed'": [bare],
             "Apply this unit to 1 other declaration of 'Speed'": [unit, bare],
         }
+        both_alone = actions(
+            built,
+            path,
+            read(path, cache),
+            "component.interface[0].definition",
+            cache,
+            [both],
+        )
+        assert [entry for entry in both_alone if "diagnostics" in entry] == []
 
     def test_a_reconcile_fix_says_the_readers_code_is_not_touched(self, tmp_path: Path) -> None:
         """The check goes green once the descriptions agree, and the readers keep the scale they

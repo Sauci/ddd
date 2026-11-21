@@ -1959,7 +1959,8 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   characters long, beside branch 7's entry on lines past 100 columns. Branch 15 lists the pages.
 - **The progress log's rows** (D0): branch 8's row names its ids by the headings of its tasks and
   may miss some, and says it is not merged, which #94 since was; that row and branch 9's are branch
-  10's D0's (R228).
+  10's D0's (R228). Corrected by branch 10's D0, which filled
+  both: row 8 is marked merged into master (`96900155`) and row 9 is added (#95, `c011143b`).
 - **A component two projects include, taken out of one** (the re-review of the final wave): a
   component that two projects include is taken out of one of them, which a save or a change behind
   the editor does, is not open, and no build record runs the other project: its findings are

@@ -22,7 +22,7 @@ from ddd.finding_routes import UNIT_CHECKS
 from ddd.findings_by_file import FindingsByFile, Pair
 from ddd.lsp.navigation import Index, Site, UnitSite
 from ddd.lsp.ranges import Document, read
-from ddd.lsp.units import UnitProject, adoption, listing_files
+from ddd.lsp.units import VocabularyProject, adoption, listing_files
 from ddd.plans import PlannedEdit, PlanRefusalError
 from ddd.variables import Planned, declarations_of, lines_replaced, planned, role_of
 
@@ -214,7 +214,7 @@ def _sites(built: Index, unit: str) -> tuple[Site, ...]:
     )
 
 
-def adoptable(built: Index | None, project: Callable[[], UnitProject]) -> int | None:
+def adoptable(built: Index | None, project: Callable[[], VocabularyProject]) -> int | None:
     """How many units adopting a vocabulary would list - every unit in use, none where the
     project states none - or ``None`` where adopting is refused.
 

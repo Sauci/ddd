@@ -36,14 +36,14 @@ from ddd.lsp.navigation import Index, index
 from ddd.lsp.ranges import Document
 from ddd.lsp.units import (
     ADOPTED,
-    UnitProject,
+    VocabularyProject,
     add_unit,
     adopt_units,
     created_beside,
     describe_unit,
     remove_unit,
     rename_unit,
-    unit_project,
+    vocabulary_project,
 )
 from ddd.plans import Plan, PlanRefusalError
 from ddd.project_units import adoptable
@@ -51,14 +51,16 @@ from ddd.project_units import adoptable
 
 def opened(
     tmp_path: Path, files: dict[str, Any], unread: Sequence[str] = ()
-) -> tuple[Index, UnitProject]:
+) -> tuple[Index, VocabularyProject]:
     """A project including the files given, in that order: its index as the language server
     builds it, and the project its plans are made in, with the files named in ``unread`` taken
     for files that did not load."""
     write_tree(tmp_path, {"p.ddd.json": project("P", *files), **files})
     workspace = load_workspace(tmp_path / "p.ddd.json", DiagnosticBag())
     assert workspace is not None
-    described = unit_project(tmp_path / "p.ddd.json", [tmp_path / name for name in unread], {})
+    described = vocabulary_project(
+        tmp_path / "p.ddd.json", "units", [tmp_path / name for name in unread], {}, skims=True
+    )
     return index(workspace), described
 
 
@@ -127,9 +129,9 @@ class TestTheProject:
                 "early.ddd.json": {"units": ["Nm"]},
             },
         )
-        found = unit_project(tmp_path / "p.ddd.json", (), {})
+        found = vocabulary_project(tmp_path / "p.ddd.json", "units", (), {}, skims=True)
         assert found.project == (tmp_path / "p.ddd.json").resolve()
-        assert found.units_files == (
+        assert found.files == (
             (tmp_path / "late.ddd.json").resolve(),
             (tmp_path / "early.ddd.json").resolve(),
         )
@@ -147,7 +149,7 @@ class TestTheProject:
                 "units/broken.ddd.json": '{"units": [',
             },
         )
-        assert unit_project(tmp_path / "p.ddd.json", (), {}).units_files == (
+        assert vocabulary_project(tmp_path / "p.ddd.json", "units", (), {}, skims=True).files == (
             (tmp_path / "units" / "b.ddd.json").resolve(),
             (tmp_path / "units" / "a.ddd.json").resolve(),
         )
@@ -168,18 +170,20 @@ class TestTheProject:
             },
         )
         monkeypatch.setattr(Path, "glob", refuse)
-        assert unit_project(tmp_path / "p.ddd.json", (), {}).units_files == (
+        assert vocabulary_project(tmp_path / "p.ddd.json", "units", (), {}, skims=True).files == (
             (tmp_path / "u.ddd.json").resolve(),
         )
 
     def test_a_description_including_nothing_has_no_units_file(self, tmp_path: Path) -> None:
         write_tree(tmp_path, {"p.ddd.json": {"project": {"name": "P"}}})
-        assert unit_project(tmp_path / "p.ddd.json", (), {}).units_files == ()
+        assert vocabulary_project(tmp_path / "p.ddd.json", "units", (), {}, skims=True).files == ()
 
     def test_the_files_that_did_not_load_are_sorted_and_named_once(self, tmp_path: Path) -> None:
         write_tree(tmp_path, {"p.ddd.json": project("P")})
         b, a = tmp_path / "b.ddd.json", tmp_path / "a.ddd.json"
-        assert unit_project(tmp_path / "p.ddd.json", [b, a, b], {}).unread == (
+        assert vocabulary_project(
+            tmp_path / "p.ddd.json", "units", [b, a, b], {}, skims=True
+        ).unread == (
             a.resolve(),
             b.resolve(),
         )
@@ -196,8 +200,8 @@ class TestTheProject:
             },
         )
         cache: dict[Path, Document] = {}
-        found = unit_project(tmp_path / "p.ddd.json", (), cache)
-        assert found.units_files == ((tmp_path / "units.ddd.json").resolve(),)
+        found = vocabulary_project(tmp_path / "p.ddd.json", "units", (), cache, skims=True)
+        assert found.files == ((tmp_path / "units.ddd.json").resolve(),)
         assert (tmp_path / "a.ddd.json").resolve() not in cache
 
     def test_a_units_key_spelled_with_an_escape_is_still_a_units_file(self, tmp_path: Path) -> None:
@@ -213,7 +217,7 @@ class TestTheProject:
                 "early.ddd.json": {"units": ["kPa"]},
             },
         )
-        assert unit_project(tmp_path / "p.ddd.json", (), {}).units_files == (
+        assert vocabulary_project(tmp_path / "p.ddd.json", "units", (), {}, skims=True).files == (
             (tmp_path / "late.ddd.json").resolve(),
             (tmp_path / "escaped.ddd.json").resolve(),
             (tmp_path / "early.ddd.json").resolve(),
@@ -227,7 +231,9 @@ class TestTheProject:
         write_tree(tmp_path, {"p.ddd.json": project("P", "units.ddd.json")})
         (tmp_path / "units.ddd.json").write_bytes(b'{"units": ["\xb5s"]}')
         cache: dict[Path, Document] = {}
-        assert unit_project(tmp_path / "p.ddd.json", (), cache).units_files == ()
+        assert (
+            vocabulary_project(tmp_path / "p.ddd.json", "units", (), cache, skims=True).files == ()
+        )
         assert (tmp_path / "units.ddd.json").resolve() not in cache
 
     def test_a_file_that_spells_the_key_and_does_not_parse_might_be_a_units_file(
@@ -254,8 +260,8 @@ class TestTheProject:
                 "also.ddd.json": '{"un\\u0069ts": [',
             },
         )
-        found = unit_project(tmp_path / "p.ddd.json", (), {})
-        assert found.units_files == ((tmp_path / "late.ddd.json").resolve(),)
+        found = vocabulary_project(tmp_path / "p.ddd.json", "units", (), {}, skims=True)
+        assert found.files == ((tmp_path / "late.ddd.json").resolve(),)
         assert found.untold == (
             (tmp_path / "cut.ddd.json").resolve(),
             (tmp_path / "also.ddd.json").resolve(),
@@ -267,7 +273,9 @@ class TestTheProject:
         write_tree(tmp_path, {"p.ddd.json": project("P", "units.ddd.json"), "units.ddd.json": {}})
         listed = (tmp_path / "units.ddd.json").resolve()
         cache = {listed: Document('{"units": ["rpm"]}')}
-        assert unit_project(tmp_path / "p.ddd.json", (), cache).units_files == (listed,)
+        assert vocabulary_project(
+            tmp_path / "p.ddd.json", "units", (), cache, skims=True
+        ).files == (listed,)
 
 
 class TestRename:
@@ -856,7 +864,7 @@ class TestAdopt:
     ],
 )
 def test_a_component_that_does_not_load_stops_no_addition_or_description_to_the_vocabulary(
-    tmp_path: Path, plan: Callable[[Index, UnitProject], Plan]
+    tmp_path: Path, plan: Callable[[Index, VocabularyProject], Plan]
 ) -> None:
     """Only the units file matters to these: a component that did not load may state units, and
     no entry of the vocabulary changes with what it states. A removal is not among them: it is
@@ -877,7 +885,7 @@ def test_a_component_that_does_not_load_stops_no_addition_or_description_to_the_
     ],
 )
 def test_a_refused_plan_has_read_no_file(
-    tmp_path: Path, plan: Callable[[Index, UnitProject, dict[Path, Document]], Plan]
+    tmp_path: Path, plan: Callable[[Index, VocabularyProject, dict[Path, Document]], Plan]
 ) -> None:
     """Every refusal is made from the index and the project alone, before a file is read."""
     idx, where = opened(tmp_path, drifted(["rpm", "kPa"]), unread=["units.ddd.json"])

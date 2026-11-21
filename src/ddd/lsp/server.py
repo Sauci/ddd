@@ -115,7 +115,7 @@ from ddd.lsp.units import (
     rename_unit,
     text_edits,
     unit_drift,
-    unit_project,
+    vocabulary_project,
 )
 from ddd.plans import Plan, PlanRefusalError
 
@@ -1546,7 +1546,7 @@ class Server:
             if moved:
                 drifted.update(moved)
                 continue
-            project = unit_project(loaded.path, loaded.unloaded, cache)
+            project = vocabulary_project(loaded.path, "units", loaded.unloaded, cache, skims=True)
             try:
                 plan = rename_unit(built, project, old, new, cache)
             except PlanRefusalError as unplanned:
@@ -1804,7 +1804,9 @@ class Server:
             loaded.path.resolve(): Asked(
                 loaded.path.resolve(),
                 index(loaded.workspace),
-                unit_project(loaded.path, loaded.unloaded, cache) if about_units else None,
+                vocabulary_project(loaded.path, "units", loaded.unloaded, cache, skims=True)
+                if about_units
+                else None,
             )
             for loaded in reach.projects
         }

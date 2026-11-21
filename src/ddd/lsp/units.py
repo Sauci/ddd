@@ -57,28 +57,33 @@ ADOPTED: Final = "units.ddd.json"
 
 
 @dataclass(frozen=True, slots=True)
-class UnitProject:
-    """What a plan has to know of the project besides its index: where its vocabulary is kept,
-    and which of its files did not load."""
+class VocabularyProject:
+    """What a vocabulary's plans have to know of the project besides its index - the units' plans
+    or the Shared files tab's (:func:`vocabulary_project`): where the vocabulary's own files are
+    kept, which files it includes might be one of them though nobody can tell, and which of its
+    files did not load."""
 
     project: Path
     """The project description, resolved."""
 
-    units_files: tuple[Path, ...]
-    """Its units files, in the order its ``project.includes`` lists them: the first is where a
-    unit added to the vocabulary goes."""
+    files: tuple[Path, ...]
+    """The vocabulary's own files, in the order its ``project.includes`` lists them, each listed
+    once: the first is where a new entry goes, so that it lands in the file a run of ``ddd check``
+    reads first."""
+
+    untold: tuple[Path, ...]
+    """The files it includes that are there, do not parse and might be the vocabulary's, in the
+    order they are found, each listed once: what each is cannot be told.
+
+    Kept apart from ``files`` because nothing is appended to a file nobody could read, and kept at
+    all because ``files`` being empty otherwise reads as "this project has none of this
+    vocabulary's files" - which a project whose one such file was cut short by a save has not
+    said: a unit added would be refused for having no units file to go into, and a shared entry
+    declared written into a second file beside the description, unasked, while the first sat
+    there mid-save."""
 
     unread: tuple[Path, ...]
     """The project's files that did not load, resolved and sorted."""
-
-    untold: tuple[Path, ...] = ()
-    """The files it includes that do not parse and might be units files - whose text can spell
-    ``units`` (:func:`_may_list_units`) - in the order they are found, each listed once: what each
-    is cannot be told.
-
-    Kept apart from ``units_files`` because a unit is never added to a file nobody could read, and
-    kept at all because ``units_files`` being empty otherwise reads as "this project has no units
-    file" - which a project whose one units file was cut short by a save has not said."""
 
 
 def appended_at(listed: object) -> int:
@@ -182,16 +187,35 @@ def created_beside(
     )
 
 
-def unit_project(project: Path, unread: Sequence[Path], cache: dict[Path, Document]) -> UnitProject:
-    """The project a unit's plans are made in: its description, its units files and the files of
-    it that did not load.
+def vocabulary_project(
+    project: Path, key: str, unread: Sequence[Path], cache: dict[Path, Document], *, skims: bool
+) -> VocabularyProject:
+    """The project one vocabulary's plans are made in - the units', whose files keep ``units`` at
+    their top, or one of the Shared files tab's, keeping its own container
+    (:attr:`ddd.project_shared.Vocabulary.containers`) as ``key`` - its description, the
+    vocabulary's own files, the files it includes whose kind cannot be told, and the files of it
+    that did not load.
 
-    The units files are read out of the description's own ``includes``, each entry expanded by
-    the loader's rule, so that the first of them is the first a run of ``ddd check`` reads. A
-    units file is a document with ``units`` at its top, which is how the loader tells one; a file
-    that does not parse is none, since what it is cannot be told - and is named in ``untold``
-    where its text spells the key, since it might be one. A file whose text cannot spell that key
-    is not parsed at all (:func:`_may_list_units`).
+    The vocabulary's files are read out of the description's own ``includes``, each entry
+    expanded by the loader's rule, so that the first of them is the first a run of ``ddd check``
+    reads. One of them is a document with ``key`` at its top, which is how the loader tells one.
+
+    What a file that does not parse means: it is none of the vocabulary's, since what it is cannot
+    be told, and nothing may be appended to a file nobody could read; and it might be one, so it
+    is named in ``untold``. A file the project includes and does not have is neither: it declares
+    nothing, and hides no name a new entry could collide with.
+
+    Where ``skims``, a file whose text cannot spell ``key`` - one that cannot be read as text
+    among them - is none, told by its text and never parsed (:func:`_may_hold`). The units'
+    plans skim: a unit is added only to a units file the project has (:func:`add_unit`), and
+    adopting refuses while any file did not load (:func:`adoption`). The Shared files tab's
+    vocabularies are read whole, since their ``add`` writes a new file of the vocabulary where the
+    project includes none (:func:`ddd.shared_plans.add_entry`): a file cut short before its key
+    is written spells none, and skimmed, a second file would be created beside the one being
+    saved.
+
+    One function for every vocabulary (2:I9), where one per family had read the same files the
+    same way, and only the units' had learnt to skim them.
     """
     path = resolve_path(project)
     listed = read(path, cache).value_at("project.includes")
@@ -199,26 +223,26 @@ def unit_project(project: Path, unread: Sequence[Path], cache: dict[Path, Docume
     untold: list[Path] = []
     for entry in listed if isinstance(listed, list) else ():
         for file in included_files(path, entry):
-            if not _may_list_units(file, cache):
+            if skims and not _may_hold(file, key, cache):
                 continue
             document = read(file, cache).data
-            if file not in found and isinstance(document, dict) and "units" in document:
+            if file not in found and isinstance(document, dict) and key in document:
                 found.append(file)
-            elif document is None and file not in untold:
+            elif document is None and file not in untold and file.exists():
                 untold.append(file)
-    return UnitProject(
+    return VocabularyProject(
         path,
         tuple(found),
-        tuple(sorted({resolve_path(file) for file in unread}, key=Path.as_posix)),
         tuple(untold),
+        tuple(sorted({resolve_path(file) for file in unread}, key=Path.as_posix)),
     )
 
 
-def _may_list_units(file: Path, cache: dict[Path, Document]) -> bool:
-    """Whether ``file`` can be a units file at all, asked before parsing it: a document with
-    ``units`` at its top spells that key in its text, as ``"units"`` or with an escape somewhere
-    in it. A file already parsed is left to the parse. ``GET /api/units`` spent 1.4 s of its
-    1.5 s parsing every file of a 1,200-component project to find its one units file - one run
+def _may_hold(file: Path, key: str, cache: dict[Path, Document]) -> bool:
+    """Whether ``file`` can be a file of the vocabulary keeping ``key`` at its top, asked before
+    parsing it: such a document spells the key in its text, as ``"key"`` or with an escape
+    somewhere in it. A file already parsed is left to the parse. ``GET /api/units`` spent 1.4 s of
+    its 1.5 s parsing every file of a 1,200-component project to find its one units file - one run
     profiled with cProfile, which roughly doubles a Python call's time, on the Linux development
     PC while this part was planned, over the 36,000-declaration "many" project of the spec's
     section 2 probe (66,005 findings); reading them for two strings is what is left of that."""
@@ -228,11 +252,11 @@ def _may_list_units(file: Path, cache: dict[Path, Document]) -> bool:
         text = file.read_text(encoding="utf-8-sig")
     except (OSError, UnicodeDecodeError):
         return False
-    return '"units"' in text or "\\u" in text
+    return f'"{key}"' in text or "\\u" in text
 
 
 def rename_unit(
-    built: Index, project: UnitProject, old: str, new: str, cache: dict[Path, Document]
+    built: Index, project: VocabularyProject, old: str, new: str, cache: dict[Path, Document]
 ) -> Plan:
     """Every place ``old`` is stated spelled ``new``, and the vocabulary brought along.
 
@@ -275,12 +299,14 @@ def rename_unit(
     return _plan(operations)
 
 
-def add_unit(built: Index, project: UnitProject, unit: str, cache: dict[Path, Document]) -> Plan:
+def add_unit(
+    built: Index, project: VocabularyProject, unit: str, cache: dict[Path, Document]
+) -> Plan:
     """``unit`` appended to the first units file the project description includes, in the form
     that file's entries take: the spelling alone where every entry is one, and an object with an
     empty description where any entry is written as an object."""
     _spelling(unit)
-    if not project.units_files:
+    if not project.files:
         if project.untold:
             raise PlanRefusalError(
                 "unreadable",
@@ -290,7 +316,7 @@ def add_unit(built: Index, project: UnitProject, unit: str, cache: dict[Path, Do
         raise PlanRefusalError(
             "invalid", f"{project.project.name} includes no units file to add '{unit}' to"
         )
-    file = project.units_files[0]
+    file = project.files[0]
     if file in project.unread:
         raise PlanRefusalError(
             "unreadable", f"{file.name} did not load, so '{unit}' cannot be added to it"
@@ -307,7 +333,11 @@ def add_unit(built: Index, project: UnitProject, unit: str, cache: dict[Path, Do
 
 
 def describe_unit(
-    built: Index, project: UnitProject, unit: str, description: str, cache: dict[Path, Document]
+    built: Index,
+    project: VocabularyProject,
+    unit: str,
+    description: str,
+    cache: dict[Path, Document],
 ) -> Plan:
     """The vocabulary's description of ``unit`` set to ``description``: an object entry's
     ``description``, added where it has none, and an entry that is the spelling alone turned into
@@ -334,7 +364,9 @@ def describe_unit(
     return _plan(operations)
 
 
-def remove_unit(built: Index, project: UnitProject, unit: str, cache: dict[Path, Document]) -> Plan:
+def remove_unit(
+    built: Index, project: VocabularyProject, unit: str, cache: dict[Path, Document]
+) -> Plan:
     """Every entry listing ``unit`` taken out of the vocabulary, each with exactly one comma.
 
     Only a unit nothing states: taking out one that is stated would turn every place stating it
@@ -369,11 +401,11 @@ def remove_unit(built: Index, project: UnitProject, unit: str, cache: dict[Path,
     return _plan(_taken_out(entries))
 
 
-def adopt_units(built: Index, project: UnitProject, cache: dict[Path, Document]) -> Plan:
+def adopt_units(built: Index, project: VocabularyProject, cache: dict[Path, Document]) -> Plan:
     """A vocabulary for a project whose units files list no unit: every unit in use,
     alphabetically, each with an empty description, where :func:`adoption` says it goes.
 
-    Which file that is follows from the project's units files, as :attr:`UnitProject.units_files`
+    Which file that is follows from the project's units files, as :attr:`VocabularyProject.files`
     reads them out of the description's own ``includes``:
 
     * none at all - :data:`ADOPTED` is written beside the description and its name appended to
@@ -440,7 +472,7 @@ class Adoption:
     """
 
 
-def adoption(built: Index, project: UnitProject) -> Adoption | None:
+def adoption(built: Index, project: VocabularyProject) -> Adoption | None:
     """What adopting a vocabulary would write; ``None`` where the project states no unit, so that
     there is nothing to adopt; or the refusal it meets.
 
@@ -462,8 +494,8 @@ def adoption(built: Index, project: UnitProject) -> Adoption | None:
     if not built.units:
         return None
     units = tuple(sorted(built.units))
-    if project.units_files:
-        return Adoption(units, project.units_files[0])
+    if project.files:
+        return Adoption(units, project.files[0])
     if (project.project.parent / ADOPTED).exists():
         raise PlanRefusalError(
             "invalid",
@@ -497,14 +529,16 @@ def _known(built: Index, unit: str) -> None:
         raise PlanRefusalError("not-found", f"no file of this project states or lists '{unit}'")
 
 
-def _vocabulary_loaded(built: Index, project: UnitProject, unit: str, consequence: str) -> None:
+def _vocabulary_loaded(
+    built: Index, project: VocabularyProject, unit: str, consequence: str
+) -> None:
     """Refuse to change the entries listing ``unit`` while a units file holding one did not load
     - or, for a unit no entry that loaded lists, while any units file did not, since that may be
     the one listing it: one that did not parse as much as one that did not load, which
-    :attr:`UnitProject.untold` names. A component that did not load is no concern of the
+    :attr:`VocabularyProject.untold` names. A component that did not load is no concern of the
     vocabulary's."""
     entries = built.vocabulary.get(unit)
-    files = _paths(entries) if entries is not None else [*project.units_files, *project.untold]
+    files = _paths(entries) if entries is not None else [*project.files, *project.untold]
     unread = [file for file in files if file in project.unread]
     if unread:
         raise PlanRefusalError("unreadable", f"{_names(unread)} did not load, so {consequence}")

@@ -14,16 +14,16 @@ is strict on both arms and refuses a whole number in the fractional one, so ``2`
 two different constants; a plan that parsed a value and wrote it back would retype one nobody
 asked it to.
 
-The four verbs below - and :func:`project_of`, which reads the context :func:`add_entry` needs -
-take a :class:`~ddd.project_shared.Vocabulary` first, the way part 13's read side already takes
-one, and everywhere a constant's own reach differed from a section's or a raster's - the settable
-keys, the required ones, the judge of a value, the file created, the noun a removal names, the
-sentence a name is refused with - now comes off the descriptor instead of being written into the
-verb. The constants-named bindings that carried the api across that change -
-``set_constant``, ``rename_constant``, ``add_constant``, ``remove_constant`` and
+The four verbs below take a :class:`~ddd.project_shared.Vocabulary` first, the way part 13's
+read side already takes one, and everywhere a constant's own reach differed from a section's or a
+raster's - the settable keys, the required ones, the judge of a value, the file created, the noun
+a removal names, the sentence a name is refused with - now comes off the descriptor instead of
+being written into the verb. The constants-named bindings that carried the api across that change
+- ``set_constant``, ``rename_constant``, ``add_constant``, ``remove_constant`` and
 ``shared_project`` - are gone: the api asks for the verb and the vocabulary it means, so a
-project's sections are planned by the same five functions and neither client can get a different
-answer for the two.
+project's sections are planned by the same four verbs and neither client can get a different
+answer for the two. The files :func:`add_entry` adds to are found by the one function that finds a
+unit's too (:func:`ddd.lsp.units.vocabulary_project`).
 
 Each verb answers a :class:`~ddd.plans.Plan`, one edit per file, sorted by path, as the interface
 applies them, or raises a :class:`~ddd.plans.PlanRefusalError`, in a sentence naming the file it
@@ -38,12 +38,10 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
 from ddd.editing import Operation
-from ddd.loading import included_files, resolve_path
 from ddd.lsp.navigation import (
     Index,
     Site,
@@ -54,7 +52,7 @@ from ddd.lsp.navigation import (
     word_spans,
 )
 from ddd.lsp.ranges import Document, read
-from ddd.lsp.units import appended_at, created_beside
+from ddd.lsp.units import VocabularyProject, appended_at, created_beside
 from ddd.plans import Plan, PlannedEdit, PlanRefusalError
 from ddd.pointers import parent_pointer
 from ddd.project_shared import CONSTANTS, Vocabulary, entry_in_place
@@ -72,78 +70,6 @@ name. :data:`~ddd.project_shared.CONSTANTS`'s own
 :attr:`~ddd.project_shared.Vocabulary.filename`, kept under its old name for the tests that still
 import it by it.
 """
-
-
-@dataclass(frozen=True, slots=True)
-class SharedProject:
-    """What a plan has to know of the project besides its index: where its vocabulary's own files
-    are kept, which of its files could not be told apart from a place they are kept, and which of
-    its files did not load."""
-
-    project: Path
-    """The project description, resolved."""
-
-    files: tuple[Path, ...]
-    """Its vocabulary's own files, in the order its ``project.includes`` lists them, each listed
-    once: the first is where a new entry goes, so that it lands in the file a run of ``ddd check``
-    reads first."""
-
-    untellable: tuple[Path, ...]
-    """The files it includes that are there and do not parse, in ``includes`` order, each listed
-    once: what each one is cannot be told, so each of them might be one of the vocabulary's own.
-
-    Kept apart from ``files`` because nothing may be appended to a file nobody could read, and
-    kept at all because ``files`` being empty otherwise reads as "this project has none of this
-    vocabulary's files" - and :func:`add_entry` would answer that by writing a second one beside
-    the description, unasked, while the first sat there mid-save.
-
-    A file the project includes and does not have is not one of them: it declares nothing, so it
-    hides no name a new file could collide with."""
-
-    unread: tuple[Path, ...]
-    """The project's files that did not load, resolved and sorted."""
-
-
-def project_of(
-    vocabulary: Vocabulary, project: Path, unread: Sequence[Path], cache: dict[Path, Document]
-) -> SharedProject:
-    """The project ``vocabulary``'s plans are made in: its description, its own files, the files
-    it includes whose kind cannot be told, and the files of it that did not load.
-
-    Its files come out of the description's own ``includes``, each entry expanded by the loader's
-    rule, so that the first of them is the first a run of ``ddd check`` reads. One of them is a
-    document with ``vocabulary.containers[0]`` at its top, which is how the loader tells one; a
-    file that does not parse is none, since what it is cannot be told - and a new entry must not
-    be appended to a file nobody could read.
-
-    That answer is not the whole of it, which is what this function used to leave unsaid: a file
-    whose kind cannot be told might be one of the vocabulary's, and counting it as none left
-    ``files`` empty - which :func:`add_entry` read as "this project has none of this vocabulary's
-    files" and answered by creating a second one. So such a file is named in ``untellable``
-    instead of being passed over in silence, and ``add`` refuses rather than creates while one is
-    there.
-    """
-    path = resolve_path(project)
-    found: list[Path] = []
-    untellable: list[Path] = []
-    listed = read(path, cache).value_at("project.includes")
-    for entry in listed if isinstance(listed, list) else ():
-        for file in included_files(path, entry):
-            document = read(file, cache).data
-            if (
-                file not in found
-                and isinstance(document, dict)
-                and vocabulary.containers[0] in document
-            ):
-                found.append(file)
-            elif document is None and file not in untellable and file.exists():
-                untellable.append(file)
-    return SharedProject(
-        path,
-        tuple(found),
-        tuple(untellable),
-        tuple(sorted({resolve_path(file) for file in unread}, key=Path.as_posix)),
-    )
 
 
 def set_entry(
@@ -251,7 +177,7 @@ def rename_entry(
 def add_entry(
     vocabulary: Vocabulary,
     built: Index,
-    project: SharedProject,
+    project: VocabularyProject,
     name: str,
     raws: Mapping[str, str],
     cache: dict[Path, Document],
@@ -309,10 +235,10 @@ def add_entry(
     if problem is not None:
         raise PlanRefusalError("invalid", problem)
     if not project.files:
-        if project.untellable:
+        if project.untold:
             raise PlanRefusalError(
                 "unreadable",
-                f"{_names(project.untellable)} did not parse, so whether this project already "
+                f"{_names(project.untold)} did not parse, so whether this project already "
                 f"keeps its {vocabulary.kind}s there is unknown and '{name}' cannot be declared "
                 "into a new file",
             )
@@ -610,7 +536,7 @@ def _reworded(document: Document, pointer: str, old: str, new: str) -> str:
 
 def _created(
     vocabulary: Vocabulary,
-    project: SharedProject,
+    project: VocabularyProject,
     name: str,
     raws: Mapping[str, str],
     cache: dict[Path, Document],

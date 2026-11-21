@@ -49,7 +49,7 @@ from ddd.editing import (
 from ddd.loading import load_workspace
 from ddd.lsp.navigation import index
 from ddd.lsp.ranges import Document
-from ddd.lsp.units import rename_unit, unit_project
+from ddd.lsp.units import rename_unit, vocabulary_project
 from ddd.variables import hunks, planned
 
 
@@ -828,7 +828,11 @@ class TestTheSameAnswer:
         assert workspace is not None
         cache: dict[Path, Document] = {}
         plan = rename_unit(
-            index(workspace), unit_project(made.project, (), cache), "A", "A2", cache
+            index(workspace),
+            vocabulary_project(made.project, "units", (), cache, skims=True),
+            "A",
+            "A2",
+            cache,
         )
         assert len(plan.edits) == 31
         assert sum(len(edit.operations) for edit in plan.edits) == 375

@@ -70,7 +70,7 @@ from ddd.loading import parse_json_text
 from ddd.lsp.navigation import Index, Site, renameable_at
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import (
-    UnitProject,
+    VocabularyProject,
     add_unit,
     engine_edit,
     rename_unit,
@@ -235,7 +235,7 @@ class Asked:
     came of, the document's path stands in: nothing else is told from it."""
 
     built: Index
-    project: UnitProject | None = None
+    project: VocabularyProject | None = None
     """Where a unit's plans are made in it, for a request about a unit; ``None`` otherwise, and
     for a project reached beyond the document's (:attr:`Elsewhere.holding`)."""
 
@@ -265,7 +265,7 @@ def actions(
     pointer: str,
     cache: dict[Path, Document],
     reported: Sequence[dict[str, Any]] = (),
-    project: UnitProject | None = None,
+    project: VocabularyProject | None = None,
 ) -> list[dict[str, Any]]:
     """What an editor may offer at this position, in one project, which reaches nothing beyond
     itself: :func:`actions_across` for that project alone.
@@ -607,7 +607,11 @@ def _sent_out(key: str, name: str, raw: str | None, elsewhere: int) -> str:
 
 
 def _renamed_in(
-    built: Index, project: UnitProject | None, cache: dict[Path, Document], unit: str, new: str
+    built: Index,
+    project: VocabularyProject | None,
+    cache: dict[Path, Document],
+    unit: str,
+    new: str,
 ) -> dict[str, list[dict[str, Any]]] | None:
     """``unit`` respelled ``new`` in one project alone, as ``ddd gui`` plans it in the project it
     has open; ``None`` where the plan is refused, would be made in a buffer that has moved what the

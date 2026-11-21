@@ -43,7 +43,7 @@ from ddd.gui.session import Revision, Session, findings_with
 from ddd.loading import included_files, load_workspace, resolve_path
 from ddd.lsp.diagnostics import finding_identity, run_project
 from ddd.lsp.navigation import Index, index
-from ddd.lsp.units import unit_project
+from ddd.lsp.units import vocabulary_project
 from ddd.plans import PlannedEdit, PlanRefusalError
 
 PROJECT = Path("/p/p.ddd.json")
@@ -979,7 +979,7 @@ def creating(
     """A file planned beside a project that loaded, of one component stating no unit: ``A``,
     in ``a.ddd.json``, whose name is taken."""
     built, root = built_of(base, **{"a.ddd.json": component("A")})
-    units = unit_project(root / "p.ddd.json", [], {})
+    units = vocabulary_project(root / "p.ddd.json", "units", [], {}, skims=True)
     return create_plan(
         root / "p.ddd.json", kind, name, called, ("A",), units, built, {}, checks_units=checks_units
     )
@@ -1175,7 +1175,7 @@ class TestCreate:
                 ),
             },
         )
-        units = unit_project(root / "p.ddd.json", [], {})
+        units = vocabulary_project(root / "p.ddd.json", "units", [], {}, skims=True)
         planned = create_plan(
             root / "p.ddd.json", "units", "units", None, (), units, built, {}, checks_units=False
         )
@@ -1193,7 +1193,7 @@ class TestCreate:
         built, root = built_of(
             tmp_path, **{"a.ddd.json": component("A", declare("output", "Heat", unit="°C"))}
         )
-        units = unit_project(root / "p.ddd.json", [], {})
+        units = vocabulary_project(root / "p.ddd.json", "units", [], {}, skims=True)
         planned = create_plan(
             root / "p.ddd.json", "units", "units", None, (), units, built, {}, checks_units=False
         )
@@ -1218,8 +1218,8 @@ class TestCreate:
         )
         root = tmp_path / "p.ddd.json"
         built = indexed(root)
-        units = unit_project(root, [], {})
-        assert (units.units_files, sorted(built.units)) == ((), ["rpm"])
+        units = vocabulary_project(root, "units", [], {}, skims=True)
+        assert (units.files, sorted(built.units)) == ((), ["rpm"])
         planned = create_plan(root, "units", "units", None, (), units, built, {}, checks_units=True)
         assert planned == (
             PlannedEdit(
@@ -1244,7 +1244,7 @@ class TestCreate:
                 ),
             },
         )
-        units = unit_project(root / "p.ddd.json", [], {})
+        units = vocabulary_project(root / "p.ddd.json", "units", [], {}, skims=True)
         planned = create_plan(
             root / "p.ddd.json", "units", "more", None, (), units, built, {}, checks_units=True
         )
@@ -1288,7 +1288,7 @@ class TestCreate:
         file is listed twice: once by what reached it already, once by its name."""
         write_tree(tmp_path, {"p.ddd.json": project("P", *listed), "a.ddd.json": component("A")})
         root = tmp_path / "p.ddd.json"
-        units = unit_project(root, [], {})
+        units = vocabulary_project(root, "units", [], {}, skims=True)
         planned = create_plan(
             root, "component", "pump", "Pump", ("A",), units, indexed(root), {}, checks_units=True
         )
@@ -1317,7 +1317,7 @@ class TestCreate:
         so the key is set to a list holding the new file alone."""
         write_tree(tmp_path, {"p.ddd.json": BARE})
         root = tmp_path / "p.ddd.json"
-        units = unit_project(root, [], {})
+        units = vocabulary_project(root, "units", [], {}, skims=True)
         planned = create_plan(
             root, "component", "pump", "Pump", (), units, indexed(root), {}, checks_units=False
         )
@@ -1346,7 +1346,7 @@ class TestCreate:
         ``includes`` name it: the list set is such an edit, and the project read again passes."""
         write_tree(tmp_path, {"p.ddd.json": BARE})
         root = tmp_path / "p.ddd.json"
-        units = unit_project(root, [], {})
+        units = vocabulary_project(root, "units", [], {}, skims=True)
         planned = create_plan(
             root, "component", "pump", "Pump", (), units, indexed(root), {}, checks_units=False
         )
@@ -1391,7 +1391,9 @@ class TestCreate:
                 "c.ddd.json": '{"component": ',
             },
         )
-        units = unit_project(root / "p.ddd.json", [root / name for name in unread], {})
+        units = vocabulary_project(
+            root / "p.ddd.json", "units", [root / name for name in unread], {}, skims=True
+        )
         with pytest.raises(PlanRefusalError) as refused:
             create_plan(
                 root / "p.ddd.json",
@@ -1413,7 +1415,7 @@ class TestCreate:
         write_tree(
             tmp_path, {"p.ddd.json": project("P", "a.ddd.json"), "a.ddd.json": component("A")}
         )
-        units = unit_project(tmp_path / "p.ddd.json", [], {})
+        units = vocabulary_project(tmp_path / "p.ddd.json", "units", [], {}, skims=True)
         with pytest.raises(PlanRefusalError) as refused:
             create_plan(
                 tmp_path / "p.ddd.json",
@@ -1443,7 +1445,9 @@ class TestCreate:
                 "b.ddd.json": '{"component": ',
             },
         )
-        units = unit_project(tmp_path / "p.ddd.json", [tmp_path / "b.ddd.json"], {})
+        units = vocabulary_project(
+            tmp_path / "p.ddd.json", "units", [tmp_path / "b.ddd.json"], {}, skims=True
+        )
         planned = create_plan(
             tmp_path / "p.ddd.json", "units", "more", None, (), units, None, {}, checks_units=True
         )
@@ -1580,7 +1584,7 @@ class TestCreate:
         """Both names lower-cased before they are compared, as the analysis groups components:
         neither ``PUMP`` nor ``Pump`` is lower case already."""
         built, root = built_of(tmp_path, **{"pump.ddd.json": component("Pump")})
-        units = unit_project(root / "p.ddd.json", [], {})
+        units = vocabulary_project(root / "p.ddd.json", "units", [], {}, skims=True)
         with pytest.raises(PlanRefusalError) as refused:
             create_plan(
                 root / "p.ddd.json",
@@ -1627,7 +1631,7 @@ class TestCreate:
         root = tmp_path / "p.ddd.json"
         before = first_revision(tmp_path, root)
         assert errors_of(before) == []
-        units = unit_project(root, [], {})
+        units = vocabulary_project(root, "units", [], {}, skims=True)
         planned = create_plan(
             root,
             "component",

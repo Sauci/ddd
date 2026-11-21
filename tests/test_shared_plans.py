@@ -17,14 +17,13 @@ from ddd.gui.session import Session
 from ddd.loading import included_files, load_workspace
 from ddd.lsp.navigation import Index, index
 from ddd.lsp.ranges import Document
+from ddd.lsp.units import VocabularyProject, vocabulary_project
 from ddd.plans import Plan, PlannedEdit, PlanRefusalError
 from ddd.project_shared import RASTERS, SECTIONS, Vocabulary
 from ddd.shared_plans import (
     CONSTANTS_FILE,
-    SharedProject,
     _raw,
     add_entry,
-    project_of,
     remove_entry,
     rename_entry,
     set_entry,
@@ -74,7 +73,9 @@ class TestTheProjectAPlanIsMadeIn:
             },
         )
         cache: dict[Path, Document] = {}
-        found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
+        found = vocabulary_project(
+            tmp_path / "p.ddd.json", project_shared.CONSTANTS.containers[0], (), cache, skims=False
+        )
         assert [file.name for file in found.files] == [
             "second.ddd.json",
             "first.ddd.json",
@@ -86,7 +87,16 @@ class TestTheProjectAPlanIsMadeIn:
         new constant must not be appended to it."""
         write_tree(tmp_path, {"p.ddd.json": project("P", "c.ddd.json"), "c.ddd.json": "{"})
         cache: dict[Path, Document] = {}
-        assert project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache).files == ()
+        assert (
+            vocabulary_project(
+                tmp_path / "p.ddd.json",
+                project_shared.CONSTANTS.containers[0],
+                (),
+                cache,
+                skims=False,
+            ).files
+            == ()
+        )
 
     def test_a_file_that_does_not_parse_is_named_among_the_ones_that_cannot_be_told(
         self, tmp_path: Path
@@ -97,8 +107,10 @@ class TestTheProjectAPlanIsMadeIn:
         one verb that would create a file can see what it does not know."""
         write_tree(tmp_path, {"p.ddd.json": project("P", "c.ddd.json"), "c.ddd.json": "{"})
         cache: dict[Path, Document] = {}
-        found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
-        assert [file.name for file in found.untellable] == ["c.ddd.json"]
+        found = vocabulary_project(
+            tmp_path / "p.ddd.json", project_shared.CONSTANTS.containers[0], (), cache, skims=False
+        )
+        assert [file.name for file in found.untold] == ["c.ddd.json"]
 
     def test_a_file_the_project_includes_and_does_not_have_cannot_hide_a_constant(
         self, tmp_path: Path
@@ -111,8 +123,10 @@ class TestTheProjectAPlanIsMadeIn:
         `includes`."""
         write_tree(tmp_path, {"p.ddd.json": project("P", "gone.ddd.json")})
         cache: dict[Path, Document] = {}
-        found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
-        assert (found.files, found.untellable) == ((), ())
+        found = vocabulary_project(
+            tmp_path / "p.ddd.json", project_shared.CONSTANTS.containers[0], (), cache, skims=False
+        )
+        assert (found.files, found.untold) == ((), ())
 
     def test_a_project_naming_no_constants_file_has_none(self, tmp_path: Path) -> None:
         write_tree(
@@ -123,7 +137,16 @@ class TestTheProjectAPlanIsMadeIn:
             },
         )
         cache: dict[Path, Document] = {}
-        assert project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache).files == ()
+        assert (
+            vocabulary_project(
+                tmp_path / "p.ddd.json",
+                project_shared.CONSTANTS.containers[0],
+                (),
+                cache,
+                skims=False,
+            ).files
+            == ()
+        )
 
     def test_one_file_named_twice_is_listed_once(self, tmp_path: Path) -> None:
         """A pattern and a literal entry can name the same file; the first is where a new constant
@@ -134,14 +157,29 @@ class TestTheProjectAPlanIsMadeIn:
         )
         cache: dict[Path, Document] = {}
         assert (
-            len(project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache).files) == 1
+            len(
+                vocabulary_project(
+                    tmp_path / "p.ddd.json",
+                    project_shared.CONSTANTS.containers[0],
+                    (),
+                    cache,
+                    skims=False,
+                ).files
+            )
+            == 1
         )
 
     def test_the_files_that_did_not_load_are_resolved_and_sorted(self, tmp_path: Path) -> None:
         write_tree(tmp_path, {"p.ddd.json": project("P")})
         cache: dict[Path, Document] = {}
         unread = [tmp_path / "z.ddd.json", tmp_path / "a.ddd.json", tmp_path / "z.ddd.json"]
-        found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", unread, cache)
+        found = vocabulary_project(
+            tmp_path / "p.ddd.json",
+            project_shared.CONSTANTS.containers[0],
+            unread,
+            cache,
+            skims=False,
+        )
         assert [file.name for file in found.unread] == ["a.ddd.json", "z.ddd.json"]
 
     def test_an_includes_that_is_not_a_list_names_nothing(self, tmp_path: Path) -> None:
@@ -149,7 +187,16 @@ class TestTheProjectAPlanIsMadeIn:
         answer no files rather than iterate a number."""
         write_tree(tmp_path, {"p.ddd.json": {"project": {"name": "P", "includes": 3}}})
         cache: dict[Path, Document] = {}
-        assert project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache).files == ()
+        assert (
+            vocabulary_project(
+                tmp_path / "p.ddd.json",
+                project_shared.CONSTANTS.containers[0],
+                (),
+                cache,
+                skims=False,
+            ).files
+            == ()
+        )
 
 
 def test_the_file_a_project_without_one_gets_is_named_for_what_it_holds() -> None:
@@ -789,7 +836,9 @@ class TestDeclaringOne:
     ) -> None:
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
-        found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
+        found = vocabulary_project(
+            tmp_path / "p.ddd.json", project_shared.CONSTANTS.containers[0], (), cache, skims=False
+        )
         plan = add_entry(
             project_shared.CONSTANTS,
             built,
@@ -808,9 +857,9 @@ class TestDeclaringOne:
         self, tmp_path: Path
     ) -> None:
         """Every other tree in this class has at most one constants file, so nothing above tells
-        `files[0]` apart from `files[-1]`. `SharedProject.files`' own docstring promises "the first
-        is where a new entry goes, so that it lands in the file a run of `ddd check` reads first" -
-        this is the test that holds `add_entry` to
+        `files[0]` apart from `files[-1]`. `VocabularyProject.files`' own docstring promises
+        "the first is where a new entry goes, so that it lands in the file a run of `ddd check`
+        reads first" - this is the test that holds `add_entry` to
         that promise. The file that is first in `includes` sorts *last* alphabetically, so an
         implementation that quietly sorted the files instead of trusting their `includes` order
         would also be caught here."""
@@ -820,7 +869,9 @@ class TestDeclaringOne:
         }
         built = _index(tmp_path, files)
         cache: dict[Path, Document] = {}
-        found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
+        found = vocabulary_project(
+            tmp_path / "p.ddd.json", project_shared.CONSTANTS.containers[0], (), cache, skims=False
+        )
         assert [f.name for f in found.files] == ["z_first.ddd.json", "a_second.ddd.json"]
         plan = add_entry(
             project_shared.CONSTANTS,
@@ -838,7 +889,9 @@ class TestDeclaringOne:
         reader asking for one would get the other."""
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
-        found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
+        found = vocabulary_project(
+            tmp_path / "p.ddd.json", project_shared.CONSTANTS.containers[0], (), cache, skims=False
+        )
         plan = add_entry(
             project_shared.CONSTANTS,
             built,
@@ -858,7 +911,9 @@ class TestDeclaringOne:
         tells a verbatim `raw` apart from a parsed-and-reprinted one."""
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
-        found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
+        found = vocabulary_project(
+            tmp_path / "p.ddd.json", project_shared.CONSTANTS.containers[0], (), cache, skims=False
+        )
         plan = add_entry(
             project_shared.CONSTANTS,
             built,
@@ -872,15 +927,15 @@ class TestDeclaringOne:
     def test_a_constants_file_whose_constants_is_not_a_list_still_gets_a_first_entry(
         self, tmp_path: Path
     ) -> None:
-        """`project_of` only asks whether a file's top level holds its vocabulary's own container
-        key, never
+        """`vocabulary_project` only asks whether a file's top level holds its vocabulary's own
+        container key, never
         whether that key is a list - so a file this broken can still be
         `project.files[0]`, and `add_entry` has to pick a pointer without crashing
         on it rather than assume every constants file loaded clean."""
         built = _index(tmp_path, TWO_HOMES)
         write_tree(tmp_path, {"weird.ddd.json": {"constants": "oops"}})
         cache: dict[Path, Document] = {}
-        broken = SharedProject(tmp_path / "p.ddd.json", (tmp_path / "weird.ddd.json",), (), ())
+        broken = VocabularyProject(tmp_path / "p.ddd.json", (tmp_path / "weird.ddd.json",), (), ())
         plan = add_entry(
             project_shared.CONSTANTS,
             built,
@@ -901,7 +956,9 @@ class TestDeclaringOne:
         files = {"a.ddd.json": component("A", declare("output", "Speed", unit="rpm"))}
         built = _index(tmp_path, files)
         cache: dict[Path, Document] = {}
-        found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
+        found = vocabulary_project(
+            tmp_path / "p.ddd.json", project_shared.CONSTANTS.containers[0], (), cache, skims=False
+        )
         plan = add_entry(
             project_shared.CONSTANTS,
             built,
@@ -931,7 +988,7 @@ class TestDeclaringOne:
         built = _index(tmp_path, TWO_HOMES)
         write_tree(tmp_path, {"solo.ddd.json": {"project": {"name": "P", "includes": 3}}})
         cache: dict[Path, Document] = {}
-        broken = SharedProject(tmp_path / "solo.ddd.json", (), (), ())
+        broken = VocabularyProject(tmp_path / "solo.ddd.json", (), (), ())
         plan = add_entry(
             project_shared.CONSTANTS,
             built,
@@ -955,7 +1012,9 @@ class TestDeclaringOne:
         built = _index(tmp_path, files)
         write_tree(tmp_path, {"constants.ddd.json": "not a description"})
         cache: dict[Path, Document] = {}
-        found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
+        found = vocabulary_project(
+            tmp_path / "p.ddd.json", project_shared.CONSTANTS.containers[0], (), cache, skims=False
+        )
         with pytest.raises(PlanRefusalError) as raised:
             add_entry(
                 project_shared.CONSTANTS,
@@ -984,7 +1043,9 @@ class TestDeclaringOne:
         write_tree(tmp_path, {"p.ddd.json": project("P", "sizes.ddd.json", "a.ddd.json")})
         (tmp_path / "sizes.ddd.json").write_text('{"constants": [{"name": "', encoding="utf-8")
         cache: dict[Path, Document] = {}
-        found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
+        found = vocabulary_project(
+            tmp_path / "p.ddd.json", project_shared.CONSTANTS.containers[0], (), cache, skims=False
+        )
         assert found.files == ()
         with pytest.raises(PlanRefusalError) as raised:
             add_entry(
@@ -1014,8 +1075,10 @@ class TestDeclaringOne:
         )
         (tmp_path / "sizes.ddd.json").write_text("{", encoding="utf-8")
         cache: dict[Path, Document] = {}
-        found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
-        assert [file.name for file in found.untellable] == ["sizes.ddd.json"]
+        found = vocabulary_project(
+            tmp_path / "p.ddd.json", project_shared.CONSTANTS.containers[0], (), cache, skims=False
+        )
+        assert [file.name for file in found.untold] == ["sizes.ddd.json"]
         plan = add_entry(
             project_shared.CONSTANTS,
             built,
@@ -1031,8 +1094,12 @@ class TestDeclaringOne:
         unknown - and an entry appended to it could collide with one of them."""
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
-        found = project_of(
-            project_shared.CONSTANTS, tmp_path / "p.ddd.json", [tmp_path / "c.ddd.json"], cache
+        found = vocabulary_project(
+            tmp_path / "p.ddd.json",
+            project_shared.CONSTANTS.containers[0],
+            [tmp_path / "c.ddd.json"],
+            cache,
+            skims=False,
         )
         with pytest.raises(PlanRefusalError) as raised:
             add_entry(
@@ -1049,7 +1116,9 @@ class TestDeclaringOne:
     def test_a_name_the_project_already_declares_is_refused(self, tmp_path: Path) -> None:
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
-        found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
+        found = vocabulary_project(
+            tmp_path / "p.ddd.json", project_shared.CONSTANTS.containers[0], (), cache, skims=False
+        )
         with pytest.raises(PlanRefusalError) as raised:
             add_entry(
                 project_shared.CONSTANTS,
@@ -1079,7 +1148,9 @@ class TestDeclaringOne:
         }
         built = _index(tmp_path, files)
         cache: dict[Path, Document] = {}
-        found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
+        found = vocabulary_project(
+            tmp_path / "p.ddd.json", project_shared.CONSTANTS.containers[0], (), cache, skims=False
+        )
         assert not found.files
         with pytest.raises(PlanRefusalError) as raised:
             add_entry(
@@ -1095,7 +1166,9 @@ class TestDeclaringOne:
     def test_a_value_the_format_would_refuse_is_refused(self, tmp_path: Path) -> None:
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
-        found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
+        found = vocabulary_project(
+            tmp_path / "p.ddd.json", project_shared.CONSTANTS.containers[0], (), cache, skims=False
+        )
         with pytest.raises(PlanRefusalError) as raised:
             add_entry(
                 project_shared.CONSTANTS,
@@ -1115,7 +1188,9 @@ class TestDeclaringOne:
         files = {"a.ddd.json": component("A", declare("output", "Speed", unit="rpm"))}
         built = _index(tmp_path, files)
         cache: dict[Path, Document] = {}
-        found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
+        found = vocabulary_project(
+            tmp_path / "p.ddd.json", project_shared.CONSTANTS.containers[0], (), cache, skims=False
+        )
         with pytest.raises(PlanRefusalError) as raised:
             add_entry(
                 project_shared.CONSTANTS,
@@ -1154,7 +1229,7 @@ class TestDeclaringOne:
         workspace = load_workspace(root, DiagnosticBag())
         assert workspace is not None
         cache: dict[Path, Document] = {}
-        found = project_of(vocabulary, root, (), cache)
+        found = vocabulary_project(root, vocabulary.containers[0], (), cache, skims=False)
         plan = add_entry(vocabulary, index(workspace), found, name, raws, cache)
         assert [edit for edit in plan.edits if not edit.creates] == [
             PlannedEdit(
@@ -1256,7 +1331,9 @@ class TestTheDescriptorsVerbs:
         # mistake.
         built, _root = built_of(tmp_path, **TWO_HOMES)
         cache: dict[Path, Document] = {}
-        found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
+        found = vocabulary_project(
+            tmp_path / "p.ddd.json", project_shared.CONSTANTS.containers[0], (), cache, skims=False
+        )
         with pytest.raises(PlanRefusalError) as raised:
             add_entry(
                 project_shared.CONSTANTS,
@@ -1409,16 +1486,18 @@ class TestSectionRefusals:
     ) -> None:
         """What `containers` and `name_key` are for, and the only test that can tell either of them
         has rotted: both are strings in the descriptor, and a descriptor's field values are data no
-        coverage gate can see. `containers[0]` is asked twice here - `project_of` tells a sections
-        file by that key at a document's top level, and the insert pointer is written from it - so
-        `("bogus",)` would leave `files` empty and answer a two-edit plan creating a *second*
-        sections file beside the project description. `name_key` is the first key of the entry text:
-        `"name"` would declare `{"name": ".fresh", ...}`, which `extra="forbid"` rejects, so the
-        file this wrote would no longer load. Latent until Task 5 wires the api, which is why it is
-        pinned now."""
+        coverage gate can see. `containers[0]` is asked twice here - `vocabulary_project` tells a
+        sections file by that key at a document's top level, and the insert pointer is written from
+        it - so `("bogus",)` would leave `files` empty and answer a two-edit plan creating a
+        *second* sections file beside the project description. `name_key` is the first key of the
+        entry text: `"name"` would declare `{"name": ".fresh", ...}`, which `extra="forbid"`
+        rejects, so the file this wrote would no longer load. Latent until Task 5 wires the api,
+        which is why it is pinned now."""
         built, _root = built_of(tmp_path, **PLACED)
         cache: dict[Path, Document] = {}
-        found = project_of(SECTIONS, tmp_path / "p.ddd.json", (), cache)
+        found = vocabulary_project(
+            tmp_path / "p.ddd.json", SECTIONS.containers[0], (), cache, skims=False
+        )
         assert [file.name for file in found.files] == ["s.ddd.json"]
         plan = add_entry(
             SECTIONS, built, found, ".fresh", {"access": '"read-write"', "alignment": "8"}, cache
@@ -1447,7 +1526,9 @@ class TestSectionRefusals:
         the one place `filename`, `containers[0]` and `name_key` are all three visible at once."""
         built = _index(tmp_path, {"a.ddd.json": component("A", declare("output", "Gain"))})
         cache: dict[Path, Document] = {}
-        found = project_of(SECTIONS, tmp_path / "p.ddd.json", (), cache)
+        found = vocabulary_project(
+            tmp_path / "p.ddd.json", SECTIONS.containers[0], (), cache, skims=False
+        )
         assert found.files == ()
         plan = add_entry(
             SECTIONS, built, found, ".fresh", {"access": '"read-write"', "alignment": "8"}, cache
@@ -1672,7 +1753,9 @@ class TestRasterRefusals:
         there being no entry yet for one to be exempt from."""
         built, _root = built_of(tmp_path, **TWO_RASTERS)
         cache: dict[Path, Document] = {}
-        found = project_of(RASTERS, tmp_path / "p.ddd.json", (), cache)
+        found = vocabulary_project(
+            tmp_path / "p.ddd.json", RASTERS.containers[0], (), cache, skims=False
+        )
         with pytest.raises(PlanRefusalError) as raised:
             add_entry(RASTERS, built, found, "5ms", {"event": "2"}, cache)
         assert raised.value.code == "invalid"
@@ -1765,7 +1848,9 @@ class TestRasterRefusals:
         panel draws them in."""
         built, _root = built_of(tmp_path, **TIMED)
         cache: dict[Path, Document] = {}
-        found = project_of(RASTERS, tmp_path / "p.ddd.json", (), cache)
+        found = vocabulary_project(
+            tmp_path / "p.ddd.json", RASTERS.containers[0], (), cache, skims=False
+        )
         assert [file.name for file in found.files] == ["r.ddd.json"]
         plan = add_entry(
             RASTERS,
@@ -1799,7 +1884,9 @@ class TestRasterRefusals:
         that was not written."""
         built = _index(tmp_path, {"a.ddd.json": component("A", declare("output", "Gain"))})
         cache: dict[Path, Document] = {}
-        found = project_of(RASTERS, tmp_path / "p.ddd.json", (), cache)
+        found = vocabulary_project(
+            tmp_path / "p.ddd.json", RASTERS.containers[0], (), cache, skims=False
+        )
         assert found.files == ()
         plan = add_entry(RASTERS, built, found, "5ms", {"event": "3"}, cache)
         assert [(edit.path.name, edit.creates) for edit in plan.edits] == [

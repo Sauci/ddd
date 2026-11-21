@@ -78,7 +78,7 @@ from ddd.lsp.protocol import (
 )
 from ddd.lsp.ranges import Document, differs_from_disk, read
 from ddd.lsp.server import Server, uri_to_path
-from ddd.lsp.units import rename_unit, text_edits, unit_drift, unit_project
+from ddd.lsp.units import rename_unit, text_edits, unit_drift, vocabulary_project
 from ddd.plans import Plan, PlannedEdit, PlanRefusalError
 from test_variable_keys import edited
 
@@ -3553,7 +3553,7 @@ class TestAUnitPlanRendersInLinearTime:
         cache: dict[Path, Document] = {}
         workspace = load_workspace(tmp_path / "p.ddd.json", DiagnosticBag())
         assert workspace is not None
-        project_of = unit_project(tmp_path / "p.ddd.json", (), cache)
+        project_of = vocabulary_project(tmp_path / "p.ddd.json", "units", (), cache, skims=True)
         plan = rename_unit(navigation.index(workspace), project_of, "rpm", "RPM", cache)
         read(a, cache)
         rendered: dict[str, list[dict[str, Any]]] = {}
@@ -6515,7 +6515,7 @@ class TestServer:
         """The plan's own refusal of this rename, which is what the server has to answer."""
         (loaded,) = navigation.workspaces([], document, document.parent)
         built = navigation.index(loaded.workspace)
-        project = unit_project(loaded.path, loaded.unloaded, {})
+        project = vocabulary_project(loaded.path, "units", loaded.unloaded, {}, skims=True)
         with pytest.raises(PlanRefusalError) as refused:
             rename_unit(built, project, old, new, {})
         return refused.value
@@ -9198,7 +9198,7 @@ class TestFixingAnUnknownUnit:
         assert workspace is not None
         built = navigation.index(workspace)
         path = root.parent / source
-        project = unit_project(root, (), cache)
+        project = vocabulary_project(root, "units", (), cache, skims=True)
         return actions(built, path, read(path, cache), pointer, cache, reported, project)
 
     def titles(self, offered: list[dict[str, Any]]) -> list[str]:

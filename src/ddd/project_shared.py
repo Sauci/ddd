@@ -94,7 +94,7 @@ class Vocabulary:
     alone.
 
     The first entry is what a file needs at its top level to be recognised as one of the
-    vocabulary's own (:func:`~ddd.shared_plans.project_of`) and what a newly created file wraps
+    vocabulary's own (:func:`~ddd.lsp.units.vocabulary_project`) and what a newly created file wraps
     its first entry in (:func:`~ddd.shared_plans._created`), so it must be a bare top-level key -
     ``"constants"``, not ``"component.constants"``. A later entry nests under a container of its
     own instead, the way ``component.constants`` does. :meth:`__post_init__` enforces the first

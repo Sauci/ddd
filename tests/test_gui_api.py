@@ -179,8 +179,9 @@ NO_DESCRIPTION = {
 # A constants file whose one entry fails the format - missing `value` - so the project as a
 # whole still opens (unlike a component, which loads nothing when invalid) but this one file
 # does not: measured with a scratch probe, `built` is not `None` and `c.ddd.json` is in both
-# `revision.files` (not loaded) and `project_of(CONSTANTS, ...).files` (still recognised as
-# a constants file, since that only asks whether its top level holds a `constants` key).
+# `revision.files` (not loaded) and `vocabulary_project(..., "constants", ...).files` (still
+# recognised as a constants file, since that only asks whether its top level holds a `constants`
+# key).
 UNREADABLE_CONSTANTS = {
     "p.ddd.json": project("P", "c.ddd.json"),
     "c.ddd.json": {"constants": [{"name": "BAD"}]},
@@ -259,8 +260,9 @@ SOLE_SECTION_IN_A_FILE = {
 
 # A sections file whose one entry fails the format - no `access` - so the project as a whole
 # still opens and this one file does not: measured, `built` is not `None` and `s.ddd.json` is in
-# both `revision.files` (not loaded) and `project_of(SECTIONS, ...).files` (still recognised as a
-# sections file, since that only asks whether its top level holds a `sections` key).
+# both `revision.files` (not loaded) and `vocabulary_project(..., "sections", ...).files` (still
+# recognised as a sections file, since that only asks whether its top level holds a `sections`
+# key).
 UNREADABLE_SECTIONS = {
     "p.ddd.json": project("P", "s.ddd.json"),
     "s.ddd.json": {"sections": [{"section": ".bad", "alignment": 4}]},
@@ -375,8 +377,8 @@ CALIBRATION_MEASURED = {
 
 # A rasters file whose one entry fails the format - no `event` - so the project as a whole still
 # opens and this one file does not: measured, `built` is not `None` and `r.ddd.json` is in both
-# `revision.files` (not loaded) and `project_of(RASTERS, ...).files`, the sections fixture's own
-# case at the third vocabulary.
+# `revision.files` (not loaded) and `vocabulary_project(..., "rasters", ...).files`, the sections
+# fixture's own case at the third vocabulary.
 UNREADABLE_RASTERS = {
     "p.ddd.json": project("P", "r.ddd.json"),
     "r.ddd.json": {"rasters": [{"raster": "50ms"}]},
@@ -5978,13 +5980,13 @@ class TestUnitsTab:
         which while an analysis runs took the request seconds at 100,000 declarations."""
         api = opened(tmp_path, LISTED)
         asked: list[object] = []
-        real = api_module.unit_project
+        real = api_module.vocabulary_project
 
         def counted(*arguments: Any) -> Any:
             asked.append(arguments)
             return real(*arguments)
 
-        monkeypatch.setattr(api_module, "unit_project", counted)
+        monkeypatch.setattr(api_module, "vocabulary_project", counted)
         assert get(api, "/api/units").body["adoptable"] is None
         assert asked == []
 
@@ -9145,7 +9147,7 @@ class TestAPlanWhileAFileDidNotLoad:
         def found(*_: object) -> None:
             raise AssertionError("the files of the project were found for a plan refused")
 
-        monkeypatch.setattr(api_module, "project_of", found)
+        monkeypatch.setattr(api_module, "vocabulary_project", found)
         for route, query in (
             ("/api/constant-plan", {"action": "rename", "name": "CELLS", "to": "SLOTS"}),
             ("/api/section-plan", {"action": "remove", "name": ".fast"}),

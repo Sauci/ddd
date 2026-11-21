@@ -47,7 +47,7 @@ from ddd.loading import included_files, resolve_path
 from ddd.lsp.diagnostics import finding_identity
 from ddd.lsp.navigation import Index
 from ddd.lsp.ranges import Document, read
-from ddd.lsp.units import UnitProject, created_beside, entry_appended
+from ddd.lsp.units import VocabularyProject, created_beside, entry_appended
 from ddd.models.common import Identifier
 from ddd.models.reserved import is_reserved_identifier
 from ddd.plans import PlannedEdit, PlanRefusalError
@@ -337,7 +337,7 @@ def create_plan(
     name: str,
     component: str | None,
     taken: Collection[str],
-    units: UnitProject,
+    units: VocabularyProject,
     built: Index | None,
     cache: dict[Path, Document],
     *,
@@ -374,7 +374,7 @@ def create_plan(
     :func:`ddd.lsp.units.adoption` refuses adopting.
 
     ``checks_units`` says whether a file of the project's tree is a units file already, and
-    :attr:`~ddd.lsp.units.UnitProject.units_files` cannot: it is read out of the description's
+    :attr:`~ddd.lsp.units.VocabularyProject.files` cannot: it is read out of the description's
     own ``includes``, where what opts a project in is a units file anywhere in its tree, a
     sub-project's included (:attr:`ddd.loading.Workspace.units_files`). A project whose one
     units file is a sub-project's is opted in already, and a root units file listing its units
@@ -412,7 +412,7 @@ def _content(
     kind: str,
     component: str | None,
     taken: Collection[str],
-    units: UnitProject,
+    units: VocabularyProject,
     built: Index | None,
     *,
     checks_units: bool,
@@ -488,7 +488,7 @@ def _component_name(component: str | None, taken: Collection[str]) -> str:
     return component
 
 
-def _stated_units(described: Path, units: UnitProject, built: Index | None) -> list[str]:
+def _stated_units(described: Path, units: VocabularyProject, built: Index | None) -> list[str]:
     """Every unit the project states, by code point, as :func:`ddd.lsp.units.adoption` lists
     them - or the refusal where the list could not be complete."""
     if units.unread:

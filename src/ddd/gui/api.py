@@ -159,13 +159,13 @@ from ddd.lsp.edits import settle, type_conversions
 from ddd.lsp.navigation import Index
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import (
-    UnitProject,
+    VocabularyProject,
     add_unit,
     adopt_units,
     describe_unit,
     remove_unit,
     rename_unit,
-    unit_project,
+    vocabulary_project,
 )
 from ddd.object_values import Grid, grid_of, limits_refusal, set_cell, set_cells, set_values
 from ddd.plans import Plan, PlannedEdit, PlanRefusalError
@@ -199,14 +199,7 @@ from ddd.project_units import (
     unit_findings,
     unit_rows,
 )
-from ddd.shared_plans import (
-    SharedProject,
-    add_entry,
-    project_of,
-    remove_entry,
-    rename_entry,
-    set_entry,
-)
+from ddd.shared_plans import add_entry, remove_entry, rename_entry, set_entry
 from ddd.type_plans import REQUIRED, rename_type, set_key
 from ddd.variable_keys import offer_for, offers, unit_refusal
 from ddd.variables import (
@@ -302,7 +295,7 @@ class _OfAnEntry(Protocol):
 
 
 type SharedPlanner[A] = Callable[
-    [A, Index, Callable[[], SharedProject], dict[Path, Document]], Plan
+    [A, Index, Callable[[], VocabularyProject], dict[Path, Document]], Plan
 ]
 """What :meth:`Api._shared_plan` asks for the plan itself: the action asked for, read as its own
 model (``A``), the index, what makes the project's own files - called by ``add`` alone - and the
@@ -849,10 +842,10 @@ class Api:
         built = revision.index
         unread = [file.path for file in revision.files if not file.loaded]
 
-        def project() -> UnitProject:
+        def project() -> VocabularyProject:
             # The project `_unit_plan` makes its plans in, built the same way: the offer asks the
             # plan's own guards of it, so an Adopt this answers is one the plan will not refuse.
-            return unit_project(revision.project, unread, cache)
+            return vocabulary_project(revision.project, "units", unread, cache, skims=True)
 
         used = () if built is None else units_in_use(built)
         derived = self._derive(revision)
@@ -934,8 +927,12 @@ class Api:
                 "so no unit of the project can be changed",
             )
         cache: dict[Path, Document] = {}
-        project = unit_project(
-            revision.project, [file.path for file in revision.files if not file.loaded], cache
+        project = vocabulary_project(
+            revision.project,
+            "units",
+            [file.path for file in revision.files if not file.loaded],
+            cache,
+            skims=True,
         )
         asked = query.root
         named = None
@@ -1338,8 +1335,8 @@ class Api:
         no file declares the entry is the panel's own answer where a file did not load
         (:func:`_refusal`).
 
-        Where the vocabulary's own files are (:func:`~ddd.shared_plans.project_of`) is found only
-        for ``add``, the one verb writing where they are: finding them reads the project
+        Where the vocabulary's own files are (:func:`~ddd.lsp.units.vocabulary_project`) is found
+        only for ``add``, the one verb writing where they are: finding them reads the project
         description and every file it includes, and a panel asks for a plan at each keystroke.
         """
         revision = self._opened()
@@ -1357,9 +1354,11 @@ class Api:
             return unseen
         cache: dict[Path, Document] = {}
 
-        def project() -> SharedProject:
+        def project() -> VocabularyProject:
             unread = [file.path for file in revision.files if not file.loaded]
-            return project_of(vocabulary, revision.project, unread, cache)
+            return vocabulary_project(
+                revision.project, vocabulary.containers[0], unread, cache, skims=False
+            )
 
         return self._answered(
             revision, lambda: plan_of(asked, built, project, cache), cache, named=asked.name
@@ -2229,7 +2228,7 @@ def _changed_since(file: SourceFile) -> bool:
 def _unit_plan_of(
     asked: RenameUnit | AddUnit | DescribeUnit | RemoveUnit | AdoptUnits,
     built: Index,
-    project: UnitProject,
+    project: VocabularyProject,
     cache: dict[Path, Document],
 ) -> Plan:
     """The plan ``asked`` names, over the parts its model read."""
@@ -2256,7 +2255,7 @@ def _type_plan_of(
 def _constant_plan_of(
     asked: SetConstantKey | RenameConstant | AddConstant | RemoveConstant,
     built: Index,
-    project: Callable[[], SharedProject],
+    project: Callable[[], VocabularyProject],
     cache: dict[Path, Document],
 ) -> Plan:
     """The plan ``asked`` names, over the parts its model read.
@@ -2286,7 +2285,7 @@ def _constant_plan_of(
 def _section_plan_of(
     asked: SetSectionKey | RenameSection | AddSection | RemoveSection,
     built: Index,
-    project: Callable[[], SharedProject],
+    project: Callable[[], VocabularyProject],
     cache: dict[Path, Document],
 ) -> Plan:
     """The plan ``asked`` names, over the parts its model read.
@@ -2311,7 +2310,7 @@ def _section_plan_of(
 def _raster_plan_of(
     asked: SetRasterKey | RenameRaster | AddRaster | RemoveRaster,
     built: Index,
-    project: Callable[[], SharedProject],
+    project: Callable[[], VocabularyProject],
     cache: dict[Path, Document],
 ) -> Plan:
     """The plan ``asked`` names, over the parts its model read.
@@ -2505,8 +2504,12 @@ def _creation(
         if file.name is None:
             continue
         taken.append(file.name)
-    units = unit_project(
-        revision.project, [file.path for file in revision.files if not file.loaded], cache
+    units = vocabulary_project(
+        revision.project,
+        "units",
+        [file.path for file in revision.files if not file.loaded],
+        cache,
+        skims=True,
     )
     return create_plan(
         revision.project,

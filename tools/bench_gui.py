@@ -431,9 +431,11 @@ def _answered(session: _Watched, taken: Measure) -> Measure:
 
 
 def _opening(api: Api, session: Session, project: Path) -> list[Measure]:
-    """Opening ``project`` as the start page opens one, through ``POST /api/open``: until its
-    reply, and from the same moment until its first analysis has landed. ``project`` is the one
-    ``api`` was given, the project named on the command line. A refusal ends the run."""
+    """Opening ``project`` through ``POST /api/open``, in the body the start page posts: until
+    its reply, and from the same moment until its first analysis has landed. ``project`` is the
+    one ``api`` was given, the project named on the command line, which the server answers before
+    any walk for the projects under its start directory: the open of a project the start page
+    lists, which may walk, is not one the bench times. A refusal ends the run."""
     body = _posted({"path": project.resolve().as_posix()})
     start = time.perf_counter()
     reply = api.handle("POST", "/api/open", {}, body)

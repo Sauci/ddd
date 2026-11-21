@@ -5982,9 +5982,9 @@ class TestUnitsTab:
         asked: list[object] = []
         real = api_module.vocabulary_project
 
-        def counted(*arguments: Any) -> Any:
+        def counted(*arguments: Any, **keywords: Any) -> Any:
             asked.append(arguments)
-            return real(*arguments)
+            return real(*arguments, **keywords)
 
         monkeypatch.setattr(api_module, "vocabulary_project", counted)
         assert get(api, "/api/units").body["adoptable"] is None
@@ -9144,7 +9144,7 @@ class TestAPlanWhileAFileDidNotLoad:
         session.open(root / "p.ddd.json")
         api = Api(session, root / "p.ddd.json", wait_seconds=0.05)
 
-        def found(*_: object) -> None:
+        def found(*_: object, **__: object) -> None:
             raise AssertionError("the files of the project were found for a plan refused")
 
         monkeypatch.setattr(api_module, "vocabulary_project", found)

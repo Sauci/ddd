@@ -4710,6 +4710,66 @@ class TestSettle:
         assert json.loads(raw) == {"min": 0, "max": 100}
         assert get(api, "/api/settle", name="Speed", key="limits", raw=raw).body["changes"] == []
 
+    def test_limits_nobody_states_are_planned_on_the_producer_and_applied(
+        self, tmp_path: Path
+    ) -> None:
+        """3:I2. A Min and a Max typed on a variable no declaration states limits of read "Nothing
+        to change", and no declaration made in the panel could ever be given any: the producer
+        states them now, the reader leaving them to it, and the project checks clean."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed")),
+                "b.ddd.json": component("B", declare("input", "Speed")),
+            },
+        )
+        before = contents(tmp_path)
+        sent = '{ "min": 0, "max": 100 }'
+        reply = get(api, "/api/settle", name="Speed", key="limits", raw=sent)
+        assert reply.status == 200
+        assert [change["file"] for change in reply.body["changes"]] == [
+            posix(tmp_path, "a.ddd.json")
+        ]
+        assert contents(tmp_path) == before, "a preview writes nothing"
+        assert applied(api, reply.body, "the limits of Speed").status == 200
+        stated = {
+            Path(declaration["path"]).name: declaration["stated"].get("limits")
+            for declaration in get(api, "/api/variable", name="Speed").body["declarations"]
+        }
+        assert stated == {"a.ddd.json": sent, "b.ddd.json": None}
+        bag = DiagnosticBag()
+        workspace = load_workspace(tmp_path / "p.ddd.json", bag)
+        assert workspace is not None
+        analyze(workspace, bag)
+        assert "definition-mismatch" not in [diagnostic.check for diagnostic in bag]
+
+    def test_limits_nobody_states_are_refused_where_nobody_produces_the_variable(
+        self, tmp_path: Path
+    ) -> None:
+        """Every declaration reads it, and a reader leaves its limits to the producer: no
+        declaration is the one to state them, which the refusal says, where it said there was
+        nothing to change."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("input", "Speed")),
+                "b.ddd.json": component("B", declare("input", "Speed")),
+            },
+        )
+        before = contents(tmp_path)
+        reply = get(api, "/api/settle", name="Speed", key="limits", raw='{ "min": 0, "max": 100 }')
+        assert reply == Reply(
+            409,
+            {
+                "error": "invalid",
+                "message": "no declaration of 'Speed' produces it, and a declaration reading it "
+                "leaves its limits to the one that does",
+            },
+        )
+        assert contents(tmp_path) == before
+
 
 class TestFix:
     def test_a_missing_id_is_previewed_and_applied(self, tmp_path: Path) -> None:

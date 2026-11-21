@@ -274,6 +274,16 @@ class TestRefusal:
             f"the declaration of 'Speed' in b.ddd.json {says}",
         )
 
+    def test_a_variable_nobody_produces_is_refused_limits_nobody_states(self) -> None:
+        """3:I2. Not one declaration's fault but the variable's: every one reads it, and a reader
+        leaves its limits to the declaration producing it, which none does."""
+        refused = Unsettled(Site(Path("/w/b.ddd.json"), DEFINITION), "unproduced")
+        assert refusal(refused, "Speed", "limits") == (
+            "invalid",
+            "no declaration of 'Speed' produces it, and a declaration reading it leaves its "
+            "limits to the one that does",
+        )
+
 
 class TestUnloadable:
     """What the panel says of a settlement its reader chose, which a button's is withheld for."""

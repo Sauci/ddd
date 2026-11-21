@@ -11396,3 +11396,18 @@ class TestWhatTheTypesTabAndTheRangeFieldsSend:
         said = flattened(text)
         for phrase in phrases:
             assert phrase in said, f"{page} no longer says: {phrase!r}"
+
+
+class TestWhereLimitsNobodyStatesAreWritten:
+    """3:I2. A reader leaves its limits to the producer, and a settlement of limits that no
+    declaration states left them to nobody: the panel said there was nothing to change. The
+    producer states them now, and a variable nobody produces is refused them. The command page
+    says so, on its gui row."""
+
+    def test_the_command_page_says_the_producer_takes_them(self) -> None:
+        assert (
+            "settles one on every declaration at once. Limits that no declaration states are "
+            "written on the producer - on each of two, where two produce the variable - its "
+            "readers leaving them to it as ``ddd check`` reads them; a variable no declaration "
+            "produces is refused them, since none is the one to state them."
+        ) in flattened(COMMAND_LINE_INTERFACE)

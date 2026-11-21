@@ -315,7 +315,10 @@ The commands
        Compare tab asking whether the open project can replace a baseline delivery the
        reader names, one tab away. A variable's panel shows every key its declarations
        share, says which of them they disagree about, and settles one on every declaration
-       at once. A ``definition-mismatch`` finding carries that settlement as a button of
+       at once. Limits that no declaration states are written on the producer - on each of
+       two, where two produce the variable - its readers leaving them to it as ``ddd check``
+       reads them; a variable no declaration produces is refused them, since none is the one
+       to state them. A ``definition-mismatch`` finding carries that settlement as a button of
        its own, one per disagreeing key, reaching every declaration that disagrees, not only the
        one the finding names. Opened on a consumer it takes the producing component's
        value; opened on the producer's own row, where the same disagreement is filed a

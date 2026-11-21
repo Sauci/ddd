@@ -144,6 +144,131 @@ class TestWhatChanges:
         assert settled(idx, "limits", raw).changes == (Settled(site_in(idx, "a.ddd.json"), raw),)
 
 
+class TestLimitsNobodyStates:
+    """3:I2. A reader may leave its limits to whoever states them, which the checker counts as
+    agreement - and where nobody states any, every declaration left them, so a range settled on the
+    variable reached none of them and the panel said there was nothing to change. The producer
+    states them then, every declaration of a producing scope, and the readers go on leaving them to
+    it; with nobody producing the variable, nobody is the one to state them (decision 3.3)."""
+
+    RANGE = json.dumps({"min": 0, "max": 100})
+
+    def test_a_variable_of_one_declaration_takes_them(self, tmp_path: Path) -> None:
+        idx = built(tmp_path, **{"a.ddd.json": component("A", declare("output", "Speed"))})
+        assert settled(idx, "limits", self.RANGE) == Settlement(
+            (Settled(site_in(idx, "a.ddd.json"), self.RANGE),), ()
+        )
+
+    def test_a_local_takes_them_where_it_is_kept(self, tmp_path: Path) -> None:
+        idx = built(tmp_path, **{"a.ddd.json": component("A", declare("local", "Speed"))})
+        assert settled(idx, "limits", self.RANGE).changes == (
+            Settled(site_in(idx, "a.ddd.json"), self.RANGE),
+        )
+
+    def test_the_producer_takes_them_and_its_readers_go_on_leaving_them_to_it(
+        self, tmp_path: Path
+    ) -> None:
+        idx = built(
+            tmp_path,
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed")),
+                "b.ddd.json": component("B", declare("input", "Speed")),
+                "c.ddd.json": component("C", declare("input", "Speed")),
+            },
+        )
+        assert settled(idx, "limits", self.RANGE) == Settlement(
+            (Settled(site_in(idx, "a.ddd.json"), self.RANGE),), ()
+        )
+
+    def test_two_producers_take_them_both(self, tmp_path: Path) -> None:
+        """Two components writing one variable is a finding of its own, and neither is *the*
+        producer: each states the range, so that whichever the project keeps has it."""
+        idx = built(
+            tmp_path,
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed")),
+                "b.ddd.json": component("B", declare("input", "Speed")),
+                "c.ddd.json": component("C", declare("output", "Speed")),
+            },
+        )
+        assert settled(idx, "limits", self.RANGE) == Settlement(
+            (
+                Settled(site_in(idx, "a.ddd.json"), self.RANGE),
+                Settled(site_in(idx, "c.ddd.json"), self.RANGE),
+            ),
+            (),
+        )
+
+    def test_with_nobody_producing_the_variable_nobody_takes_them(self, tmp_path: Path) -> None:
+        idx = built(
+            tmp_path,
+            **{
+                "a.ddd.json": component("A", declare("input", "Speed")),
+                "b.ddd.json": component("B", declare("input", "Speed")),
+            },
+        )
+        assert settled(idx, "limits", self.RANGE) == Settlement(
+            (),
+            (
+                Unsettled(site_in(idx, "a.ddd.json"), "unproduced"),
+                Unsettled(site_in(idx, "b.ddd.json"), "unproduced"),
+            ),
+        )
+
+    def test_a_producer_whose_type_fixes_them_refuses_them_as_before(self, tmp_path: Path) -> None:
+        idx = built(
+            tmp_path,
+            **{
+                "types.ddd.json": types(scalar_type("Speed_t")),
+                "a.ddd.json": component("A", declare("output", "Speed", typename="Speed_t")),
+                "b.ddd.json": component("B", declare("input", "Speed")),
+            },
+        )
+        assert settled(idx, "limits", self.RANGE) == Settlement(
+            (), (Unsettled(site_in(idx, "a.ddd.json"), "type", "Speed_t"),)
+        )
+
+    def test_a_reader_whose_type_states_them_states_them(self, tmp_path: Path) -> None:
+        """Read as the checks read it, through the type: the variable's limits are the type's, so
+        settling them on what the type states changes nothing, and the producer is not given a
+        range of its own."""
+        idx = built(
+            tmp_path,
+            **{
+                "types.ddd.json": types(scalar_type("Speed_t", limits={"min": 0, "max": 100})),
+                "a.ddd.json": component("A", declare("output", "Speed")),
+                "b.ddd.json": component("B", declare("input", "Speed", typename="Speed_t")),
+            },
+        )
+        raw = read(tmp_path / "types.ddd.json", {}).raw_at("types[0].limits")
+        assert raw is not None
+        assert settled(idx, "limits", raw) == Settlement((), ())
+
+    def test_a_declaration_whose_file_moved_is_not_known_to_state_none(
+        self, tmp_path: Path
+    ) -> None:
+        """A declaration its file no longer holds where the index found it may state them now: the
+        producer is not given a range on the strength of a silence nobody read, and the moved one
+        is refused as unreachable, as for any key."""
+        idx = built(
+            tmp_path,
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed")),
+                "b.ddd.json": component("B", declare("input", "Speed")),
+            },
+        )
+        write_tree(tmp_path, {"b.ddd.json": component("B", declare("input", "Torque"))})
+        assert settled(idx, "limits", self.RANGE) == Settlement(
+            (), (Unsettled(site_in(idx, "b.ddd.json"), "unreachable"),)
+        )
+
+    def test_taking_them_out_where_nobody_states_them_is_nothing_to_do(
+        self, tmp_path: Path
+    ) -> None:
+        idx = built(tmp_path, **{"a.ddd.json": component("A", declare("output", "Speed"))})
+        assert settled(idx, "limits", None) == Settlement((), ())
+
+
 class TestWhatRefuses:
     def test_a_declaration_whose_type_fixes_another_unit_refuses(self, tmp_path: Path) -> None:
         idx = built(

@@ -35,6 +35,7 @@ SETTLE_CODES: Final = {
     "kind": "invalid",
     "storage": "invalid",
     "load": "invalid",
+    "unproduced": "invalid",
 }
 """The code ``ddd gui`` refuses a settlement with, for each reason a declaration cannot take it."""
 
@@ -295,7 +296,9 @@ def _replaced_in_place(old: list[str], new: list[str]) -> tuple[Hunk, ...] | Non
 
 
 def refusal(unsettled: Unsettled, name: str, key: str) -> tuple[str, str]:
-    """The code and the sentence ``ddd gui`` refuses a settlement with, naming the declaration."""
+    """The code and the sentence ``ddd gui`` refuses a settlement with, naming the declaration -
+    or the variable, where every declaration of it reads it and none is the one to state a key a
+    reader leaves to its producer (``unproduced``)."""
     where = f"the declaration of '{name}' in {unsettled.site.path.name}"
     if unsettled.reason == "type":
         sentence = f"{where} names the type '{unsettled.type_name}', which fixes its {key}"
@@ -310,6 +313,11 @@ def refusal(unsettled: Unsettled, name: str, key: str) -> tuple[str, str]:
         )
     elif unsettled.reason == "load":
         sentence = _would_not_load(unsettled.site, name, key, unsettled.problem)
+    elif unsettled.reason == "unproduced":
+        sentence = (
+            f"no declaration of '{name}' produces it, and a declaration reading it leaves its "
+            f"{key} to the one that does"
+        )
     else:
         sentence = f"{where} is no longer where the last analysis found it"
     return SETTLE_CODES[unsettled.reason], sentence

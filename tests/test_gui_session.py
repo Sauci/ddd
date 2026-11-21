@@ -2032,6 +2032,155 @@ class TestWhatThePollWatches:
         assert session.poll() is False
 
 
+SAYING_PLUGIN = """
+from ddd.diagnostics import CheckInfo, Severity
+from ddd.plugins import CheckContext, Plugin
+
+
+def check(context: CheckContext) -> None:
+    context.bag.add("plug/say", "{words}")
+
+
+PLUGIN = Plugin(
+    name="plug",
+    checks=(CheckInfo("plug/say", Severity.WARNING, "says the words its file holds"),),
+    check=check,
+)
+"""
+"""A plugin filing ``plug/say`` in the words its file holds, ``{words}`` filled in: what a revision
+says of it tells which bytes of it the analysis ran."""
+
+
+def a_saying_plugin(base: Path, words: str) -> Path:
+    """A project naming ``plug.py`` by its path, which files ``plug/say`` in ``words``; returns the
+    plugin's file."""
+    write_tree(base, {"p.ddd.json": project("P", plugins=["plug.py"])})
+    plugin = base / "plug.py"
+    plugin.write_text(SAYING_PLUGIN.format(words=words), encoding="utf-8")
+    return plugin
+
+
+def said(session: Session) -> list[str]:
+    """What the newest revision's ``plug/say`` findings say."""
+    revision = session.revision
+    assert revision is not None
+    return [
+        filed.diagnostic.message
+        for filed in revision.findings
+        if filed.diagnostic.check == "plug/say"
+    ]
+
+
+def told_changed(session: Session) -> list[tuple[Path, Severity, str]]:
+    """The newest revision's ``plugin-changed`` findings: the file each is filed on, its severity
+    and its words."""
+    revision = session.revision
+    assert revision is not None
+    return [
+        (filed.file, filed.diagnostic.severity, filed.diagnostic.message)
+        for filed in revision.findings
+        if filed.diagnostic.check == "plugin-changed"
+    ]
+
+
+def changed_words(name: str) -> str:
+    """What ``plugin-changed`` says of the plugin file named ``name``."""
+    return (
+        f"'{name}' changed since ddd gui imported it: a module is imported once per process, so "
+        "ddd gui runs the old code until it is restarted"
+    )
+
+
+class TestAPluginChangedSinceItWasImported:
+    """A module is imported once per process (14:I4, decision 14.2): a plugin saved with other
+    bytes once the server imported it is noticed by the poll, which stamps its file, and the
+    revision that follows runs the module imported first. It carries ``plugin-changed`` on the
+    plugin's file, an error, saying the server has to be restarted."""
+
+    def test_a_plugin_edited_is_told_changed_on_its_file_as_an_error(self, tmp_path: Path) -> None:
+        """``plug.py`` files ``OLD WORDS``, then is saved filing ``NEW WORDS``: the next revision
+        still says the old words, its module being the one imported first, and says why, on the
+        plugin's own file, which counts the error."""
+        plugin = a_saying_plugin(tmp_path, "OLD WORDS")
+        session = opened_and_settled(tmp_path / "p.ddd.json")
+        assert (said(session), told_changed(session)) == (["OLD WORDS"], [])
+        plugin.write_text(SAYING_PLUGIN.format(words="NEW WORDS"), encoding="utf-8")
+        moved(plugin)
+        assert session.poll() is True
+        assert said(session) == ["OLD WORDS"]
+        assert told_changed(session) == [
+            (plugin.resolve(), Severity.ERROR, changed_words("plug.py"))
+        ]
+        revision = session.revision
+        assert revision is not None
+        assert [
+            (file.kind, file.errors) for file in revision.files if file.path.name == "plug.py"
+        ] == [("plugin", 1)]
+
+    def test_a_plugin_written_again_with_the_same_bytes_is_told_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        """Its stamp moves, so the poll asks for an analysis, and the module the server holds was
+        imported from the very bytes the file holds: no change."""
+        plugin = a_saying_plugin(tmp_path, "OLD WORDS")
+        session = opened_and_settled(tmp_path / "p.ddd.json")
+        plugin.write_bytes(plugin.read_bytes())
+        moved(plugin)
+        assert session.poll() is True
+        assert (said(session), told_changed(session)) == (["OLD WORDS"], [])
+
+    def test_a_plugin_whose_model_ended_the_read_is_told_changed_once_mended(
+        self, tmp_path: Path
+    ) -> None:
+        """A plugin whose own model raises on the project's block ends the read, and the run covers
+        the project description alone. Mended, its file is noticed, and the analysis runs the model
+        the server imported, which raises again: ``plugin-changed`` is filed on that file all the
+        same, no run having noted it."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project(
+                    "P", plugins=["modelled.py"], extensions={"modelled": {"level": 1}}
+                ),
+            },
+        )
+        plugin = tmp_path / "modelled.py"
+        plugin.write_text(MODELLED_PLUGIN, encoding="utf-8")
+        session = opened_and_settled(tmp_path / "p.ddd.json")
+        assert told_changed(session) == []
+        mended = MODELLED_PLUGIN.replace(
+            'raise RuntimeError("the model is broken")', "return value"
+        )
+        assert mended != MODELLED_PLUGIN
+        plugin.write_text(mended, encoding="utf-8")
+        moved(plugin)
+        assert session.poll() is True
+        assert checks_of(session)["plugin-invalid"] is Severity.ERROR
+        assert told_changed(session) == [
+            (plugin.resolve(), Severity.ERROR, changed_words("modelled.py"))
+        ]
+
+    def test_each_build_grades_it_as_it_grades_any_other_check(self, tmp_path: Path) -> None:
+        """``SEVERITY plugin-changed=warning`` in one build and nothing in the other: each build's
+        run files it under that build's severities, and both grades are told, as two builds
+        grading any finding apart are."""
+        plugin = a_saying_plugin(tmp_path, "OLD WORDS")
+        project_file = tmp_path / "p.ddd.json"
+        build_record(tmp_path, project_file, image="fw1", severity=["plugin-changed=warning"])
+        build_record(tmp_path, project_file, image="fw2")
+        session = opened_and_settled(project_file)
+        assert session.revision is not None and len(session.revision.builds) == 2
+        plugin.write_text(SAYING_PLUGIN.format(words="NEW WORDS"), encoding="utf-8")
+        moved(plugin)
+        assert session.poll() is True
+        told = told_changed(session)
+        assert len(told) == 2
+        assert set(told) == {
+            (plugin.resolve(), Severity.WARNING, changed_words("plug.py")),
+            (plugin.resolve(), Severity.ERROR, changed_words("plug.py")),
+        }
+
+
 class TestEachPathResolvedOnce:
     def test_a_revision_names_each_of_its_paths_resolved_by_the_loaders_rule(
         self, tmp_path: Path

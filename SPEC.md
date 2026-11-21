@@ -1200,7 +1200,10 @@ one on the project, and contributing checks, comparison rules and an artefact of
   saved, and whenever the server reads the project description to find out whether it
   includes an opened file
   ([section 7.2](#72-editor-integration)). A module is imported once per process; an edit
-  takes effect in the next run, and in the editor after the server is restarted. A module
+  takes effect in the next run, and in the editor and in `ddd gui` after the server is
+  restarted, which `ddd gui` says meanwhile with `plugin-changed` on the file of a plugin
+  named by its path. A module a plugin imports is not watched, and a plugin named as a
+  module is not compared, so an edit of either takes the restart unsaid. A module
   that cannot be found is `plugin-not-found`; one that raises or exits the interpreter
   during import, exposes no `PLUGIN`, exposes a malformed one, or claims a name another
   plugin already has is `plugin-invalid`. A plugin's `name` matches `[a-z][a-z0-9_]*` and
@@ -1209,8 +1212,8 @@ one on the project, and contributing checks, comparison rules and an artefact of
   `<check>` matching `[a-z][a-z0-9]*(-[a-z0-9]+)*`.
   Malformed means: no `PLUGIN`, a `PLUGIN` that is not a `Plugin`, a name outside the
   grammar or reserved, a check identifier outside its grammar, or a check registered twice.
-  Both checks have a fixed severity, because a project cannot be interpreted without the
-  plugins it names.
+  `plugin-not-found` and `plugin-invalid` have a fixed severity, because a project cannot be
+  interpreted without the plugins it names.
 - `"extensions"` (optional): the settings of each plugin, keyed by plugin name - a key
   outside the `[a-z][a-z0-9_]*` a plugin's `name` matches is one no plugin could claim, and
   is `schema` - validated
@@ -1392,6 +1395,12 @@ Errors:
   model of the plugin's own that raises or exits while a file is checked or while a project is
   read to find out whether it contains an open file, or while a block is validated
   ([section 3.11](#311-plugins)). Fixed severity, for the same reason.
+- `plugin-changed`: filed by `ddd gui` alone, on the file of a plugin named by its path
+  ([section 3.11](#311-plugins)) that holds other bytes than the server imported it from. A
+  module is imported once per process, so the server goes on running the old code until it
+  is restarted, and every finding of an analysis after the edit is that code's: an error for
+  that reason. The same bytes written again are no change, and `ddd check`, which imports
+  every plugin afresh, never files it.
 - `unknown-extension`: an `extensions` block names a plugin the project does not load. A block
   only means something to the plugin that owns it; relaxing the check is how a project
   deliberately carries a block no installed plugin interprets, which then reaches the

@@ -7,6 +7,7 @@ the api it is written against, with a plugin small enough to live in this file.
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 import types
@@ -50,6 +51,7 @@ from ddd.diagnostics import (
 from ddd.ir import DICTIONARY_FORMAT, DataDictionary
 from ddd.loading import load_dictionary, load_workspace
 from ddd.lsp import analyse_standalone
+from ddd.lsp.diagnostics import run_project
 from ddd.models import ComponentFile, ProjectFile
 from ddd.plugins import (
     CheckContext,
@@ -58,6 +60,7 @@ from ddd.plugins import (
     PluginInvalidError,
     PluginNotFoundError,
     backend_of,
+    changed_since_imported,
     load_plugin,
     settings_of,
 )
@@ -336,6 +339,142 @@ class TestLoading:
         write_plugin(tmp_path, "wrong.py", "PLUGIN = object()\n")
         with pytest.raises(PluginInvalidError, match="exposes no PLUGIN"):
             load_plugin("wrong.py", tmp_path)
+
+
+SAYING_PLUGIN = """
+from ddd.diagnostics import CheckInfo, Severity
+from ddd.plugins import CheckContext, Plugin
+
+
+def check(context: CheckContext) -> None:
+    context.bag.add("plug/say", "{words}")
+
+
+PLUGIN = Plugin(
+    name="plug",
+    checks=(CheckInfo("plug/say", Severity.WARNING, "says the words its file holds"),),
+    check=check,
+)
+"""
+"""A plugin filing ``plug/say`` in the words its file holds, ``{words}`` filled in."""
+
+
+def saying(words: str) -> str:
+    return SAYING_PLUGIN.format(words=words)
+
+
+def stamped_back(path: Path) -> None:
+    """``path``'s modification time moved back ten seconds: a stamp that moved, whatever the
+    clock's granularity."""
+    status = path.stat()
+    os.utime(path, ns=(status.st_atime_ns, status.st_mtime_ns - 10**10))
+
+
+class TestWhatAProcessImported:
+    """A module is imported once per process, and a plugin named by its path is one module object
+    per file, handed out again by every later load (14:I4): a file edited since holds other bytes
+    than the module was run from. What each was run from is kept as it is imported, for ``ddd
+    gui`` to tell such a plugin changed (:func:`ddd.plugins.changed_since_imported`)."""
+
+    def test_a_plugin_saved_with_other_bytes_since_is_changed(self, tmp_path: Path) -> None:
+        path = write_plugin(tmp_path, "plug.py", saying("OLD WORDS"))
+        load_plugin("plug.py", tmp_path)
+        assert changed_since_imported(path.resolve()) is False
+        path.write_text(saying("NEW WORDS"), encoding="utf-8")
+        assert changed_since_imported(path.resolve()) is True
+
+    def test_a_plugin_saved_with_the_same_bytes_since_is_not(self, tmp_path: Path) -> None:
+        """A stamp that moved over the same bytes is no change."""
+        path = write_plugin(tmp_path, "plug.py", saying("OLD WORDS"))
+        load_plugin("plug.py", tmp_path)
+        path.write_bytes(path.read_bytes())
+        stamped_back(path)
+        assert changed_since_imported(path.resolve()) is False
+
+    def test_a_file_no_plugin_was_imported_from_is_not(self, tmp_path: Path) -> None:
+        """Its first load runs what it holds, whatever that is."""
+        path = write_plugin(tmp_path, "plug.py", saying("OLD WORDS"))
+        assert changed_since_imported(path.resolve()) is False
+
+    def test_a_plugin_that_failed_to_import_is_not_once_mended(self, tmp_path: Path) -> None:
+        """Nothing of it is kept, so the next load imports the mended file afresh."""
+        path = write_plugin(tmp_path, "plug.py", "raise RuntimeError('boom')\n")
+        with pytest.raises(PluginInvalidError, match="boom"):
+            load_plugin("plug.py", tmp_path)
+        path.write_text(saying("NEW WORDS"), encoding="utf-8")
+        assert changed_since_imported(path.resolve()) is False
+        assert load_plugin("plug.py", tmp_path).name == "plug"
+
+    def test_a_plugin_removed_since_is_not(self, tmp_path: Path) -> None:
+        """A load reports the file gone, ``plugin-not-found``, and hands its module to nobody."""
+        path = write_plugin(tmp_path, "plug.py", saying("OLD WORDS"))
+        load_plugin("plug.py", tmp_path)
+        resolved = path.resolve()
+        path.unlink()
+        assert changed_since_imported(resolved) is False
+        with pytest.raises(PluginNotFoundError, match="does not exist"):
+            load_plugin("plug.py", tmp_path)
+
+    def test_a_plugin_that_cannot_be_read_since_is(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A load still hands its module out, where an import afresh would fail to read the file:
+        the bytes it was run from are not what the file gives now."""
+        path = write_plugin(tmp_path, "plug.py", saying("OLD WORDS"))
+        load_plugin("plug.py", tmp_path)
+        resolved = path.resolve()
+        real = Path.read_bytes
+
+        def refused(self: Path) -> bytes:
+            if self == resolved:
+                raise PermissionError(13, "Permission denied", str(self))
+            return real(self)
+
+        monkeypatch.setattr(Path, "read_bytes", refused)
+        assert changed_since_imported(resolved) is True
+        assert load_plugin("plug.py", tmp_path).name == "plug"
+
+    def test_the_bytes_it_was_run_from_are_read_before_it_runs(self, tmp_path: Path) -> None:
+        """A plugin whose body saves its own file again: the module holds what was there before,
+        and a save landing as the module is imported is a change, never one missed."""
+        body = (
+            "from pathlib import Path\n\n"
+            "from ddd.plugins import Plugin\n\n"
+            "Path(__file__).write_text('PLUGIN = None\\n', encoding='utf-8')\n"
+            "PLUGIN = Plugin(name='rewrites')\n"
+        )
+        path = write_plugin(tmp_path, "rewrites.py", body)
+        assert load_plugin("rewrites.py", tmp_path).name == "rewrites"
+        assert changed_since_imported(path.resolve()) is True
+
+    def test_ddd_check_never_files_it(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``plugin-changed`` is ``ddd gui``'s alone: ``ddd check`` imports every plugin afresh, in
+        a process of its own. Run in this one, which holds the module of the old bytes, neither it
+        nor the language server's analysis files it."""
+        path = write_plugin(tmp_path, "plug.py", saying("OLD WORDS"))
+        write_tree(tmp_path, {"p.ddd.json": project("P", plugins=["plug.py"])})
+        project_file = tmp_path / "p.ddd.json"
+        assert main(["check", str(project_file)]) == EXIT_OK
+        path.write_text(saying("NEW WORDS"), encoding="utf-8")
+        assert changed_since_imported(path.resolve()) is True
+        capsys.readouterr()
+        assert main(["check", str(project_file), "--format", "json"]) == EXIT_OK
+        reported = json.loads(capsys.readouterr().out)["diagnostics"]
+        assert [entry["check"] for entry in reported] == ["plug/say"]
+        assert [finding.check for finding in run_project(project_file.resolve()).bag] == [
+            "plug/say"
+        ]
+
+    def test_it_is_an_error_any_build_may_grade_otherwise(self) -> None:
+        """Every finding of an analysis after the edit is the old code's, so it is an error by
+        default; the project was read whole all the same, so a build may grade it as any other."""
+        info = CHECKS["plugin-changed"]
+        assert info.default_severity is Severity.ERROR
+        assert info.overridable
+        assert not info.needs_every_component
+        assert not info.comparison
 
 
 class TestTheSourcesOfAProject:

@@ -233,7 +233,10 @@ Every identifier a hook reports belongs in ``checks``: an undeclared one resolve
 name. Keep the module itself stateless - it is imported once per process and reused across
 every project and every run of the language server, so anything it accumulates in a global
 leaks between projects that have nothing to do with each other; editing the plugin file only
-takes effect the next time a process starts. A ``.py`` plugin is one module, loaded from the
+takes effect the next time a process starts. ``ddd gui`` says so until it is restarted, with
+``plugin-changed`` on the file of a plugin named by its path that changed since it imported
+it; a module a plugin imports is not watched, and a plugin named as a module is not compared,
+so editing either takes a restart unsaid. A ``.py`` plugin is one module, loaded from the
 location the project names rather than imported as part of a package: it has no package of
 its own, so ``from . import helper`` is "attempted relative import with no known parent
 package", and a plain ``import helper`` is resolved against ``sys.path`` like any other

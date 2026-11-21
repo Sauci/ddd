@@ -11443,3 +11443,104 @@ class TestLimitsAreOneValueExactly:
             "limits as the numbers they resolve to, compared exactly as ``definition-mismatch`` "
             "compares them and never as the doubles nearest them,"
         ) in flattened(PAGES["docs/developer_documentation.rst"])
+
+
+class TestAPluginChangedUnderDddGui:
+    """14:I4, decision 14.2. A module is imported once per process, so a plugin saved with other
+    bytes once ``ddd gui`` imported it was analysed as its old code, and nothing a reader of ``ddd
+    gui`` met said so. It files ``plugin-changed`` on the plugin's file until it is restarted, a
+    check of its own, and the pages say so: what it is, that ``ddd check`` never files it, and the
+    edits nothing tells - a module a plugin imports, and a plugin named as a module."""
+
+    SAID: ClassVar[dict[str, tuple[str, tuple[str, ...], tuple[str, ...]]]] = {
+        "SPEC.md": (
+            SPEC,
+            (
+                "A module is imported once per process; an edit takes effect in the next run, and "
+                "in the editor and in `ddd gui` after the server is restarted, which `ddd gui` "
+                "says meanwhile with `plugin-changed` on the file of a plugin named by its path. A "
+                "module a plugin imports is not watched, and a plugin named as a module is not "
+                "compared, so an edit of either takes the restart unsaid.",
+                "- `plugin-changed`: filed by `ddd gui` alone, on the file of a plugin named by "
+                "its path ([section 3.11](#311-plugins)) that holds other bytes than the server "
+                "imported it from. A module is imported once per process, so the server goes on "
+                "running the old code until it is restarted, and every finding of an analysis "
+                "after the edit is that code's: an error for that reason. The same bytes written "
+                "again are no change, and `ddd check`, which imports every plugin afresh, never "
+                "files it.",
+                "`plugin-not-found` and `plugin-invalid` have a fixed severity, because a project "
+                "cannot be interpreted without the plugins it names.",
+            ),
+            (
+                "an edit takes effect in the next run, and in the editor after the server is",
+                "Both checks have a fixed severity",
+            ),
+        ),
+        "docs/plugins.rst": (
+            PAGES["docs/plugins.rst"],
+            (
+                "editing the plugin file only takes effect the next time a process starts. ``ddd "
+                "gui`` says so until it is restarted, with ``plugin-changed`` on the file of a "
+                "plugin named by its path that changed since it imported it; a module a plugin "
+                "imports is not watched, and a plugin named as a module is not compared, so "
+                "editing either takes a restart unsaid.",
+            ),
+            ("only takes effect the next time a process starts. A ``.py`` plugin",),
+        ),
+        "docs/consistency_checks.rst": (
+            CONSISTENCY_CHECKS,
+            (
+                "* - ``plugin-changed`` - error - filed by ``ddd gui`` alone, on the file of a "
+                "plugin named by its path that holds other bytes than the server imported it "
+                "from. A module is imported once per process, so the server goes on running the "
+                "old code until it is restarted, and every finding of an analysis after the edit "
+                "is that code's. The same bytes written again are no change, and ``ddd check``, "
+                "which imports every plugin afresh, never files it. A module a plugin imports is "
+                "not watched, and a plugin named as a module is not compared (see "
+                ":doc:`plugins`).",
+            ),
+            (),
+        ),
+        "README.md": (
+            README,
+            (
+                "| error | `plugin-changed` | filed by `ddd gui` alone: a plugin named by its path "
+                "changed since the server imported it, so the server runs the old code until it is "
+                "restarted |",
+            ),
+            (),
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(SAID))
+    def test_the_page_says_ddd_gui_tells_it_and_what_nothing_tells(self, page: str) -> None:
+        text, phrases, stale = self.SAID[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"
+        for phrase in stale:
+            assert phrase not in said, f"{page} still says: {phrase!r}"
+
+    def test_the_registry_says_it_in_one_line(self) -> None:
+        """``ddd checks`` prints it, and the language server's and ``ddd gui``'s readers meet it
+        there first."""
+        assert CHECKS["plugin-changed"].description == (
+            "a plugin named by its path changed since ddd gui imported it, so ddd gui runs the "
+            "old code until it is restarted"
+        )
+
+    def test_the_check_reference_opens_on_the_listing_as_ddd_checks_prints_it(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The page shows the head of ``ddd checks``, in the registry's order, ``plugin-changed``
+        beside the two other checks a plugin's load files."""
+        assert main(["checks"]) == EXIT_OK
+        printed = capsys.readouterr().out.splitlines()
+        block = CONSISTENCY_CHECKS.split("   $ ddd checks\n", 1)[1].split("\n   ...\n", 1)[0]
+        shown = [line.removeprefix("   ") for line in block.splitlines()]
+        assert shown == printed[: len(shown)]
+        assert [line.split()[0] for line in shown[8:11]] == [
+            "plugin-not-found",
+            "plugin-invalid",
+            "plugin-changed",
+        ]

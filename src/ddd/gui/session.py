@@ -20,10 +20,14 @@ directory each wildcard include expands in, since creating or removing a file mo
 every file a ``plugins`` list names by its path, loaded or not; and every build record the search
 finds, a refused one among them, with the one beside the project description wherever it lies.
 So a component saved where a pattern matches, a plugin created or mended and a build record
-rewritten each make a new revision, as a file saved does. A build record written where none was,
-elsewhere than beside the project description - a new build tree's, or a new image's - and a
-plugin named as a module and installed since are noticed when something else changes, which is a
-limit of the preview.
+rewritten each make a new revision, as a file saved does. So does a plugin named by its path and
+edited once this process imported it, whose analysis runs the module of its old bytes, a module
+being imported once per process: the revision carries ``plugin-changed`` on the plugin's file, an
+error, until ``ddd gui`` is restarted (:func:`_tell_changed_plugins`). A build record written where
+none was, elsewhere than beside the project description - a new build tree's, or a new image's -
+and a plugin named as a module and installed since are noticed when something else changes, and
+an edit of a plugin named as a module, or of a module a plugin imports, is told by nothing, which
+are limits of the preview.
 
 The analysis is the language server's, run the way ``ddd lsp`` runs it: under the severities of
 every build record naming the project, or under the defaults when none does.
@@ -54,7 +58,7 @@ from typing import Any, Final
 
 from ddd.build_info import BUILD_INFO_FILENAME, BuildInfo
 from ddd.deliveries import Resolved
-from ddd.diagnostics import CheckInfo, Diagnostic, Severity
+from ddd.diagnostics import CheckInfo, Diagnostic, Location, Severity
 from ddd.editing import (
     INVALID,
     STALE,
@@ -82,7 +86,7 @@ from ddd.lsp.diagnostics import Run, group_findings, run_build, run_project
 from ddd.lsp.discovery import BUILD_DIRECTORY_PATTERNS, build_files, discover, load_builds
 from ddd.lsp.navigation import LOAD_CHECKS, Index
 from ddd.lsp.ranges import Document
-from ddd.plugins import plugin_files
+from ddd.plugins import changed_since_imported, plugin_files
 
 KINDS: Final = FILE_KINDS
 """The top-level keys that say what a description file is, as the loader reads them: the
@@ -785,20 +789,25 @@ class Session:
             if Path(info.project).resolve() == project
         )
         runs = _runs(project, builds)
-        grouped, covered = _grouped(runs, project)
-        registered = {info.identifier: info for run in runs for info in run.bag.registered.values()}
         # The run the index comes from, chosen once: its read is the one the files are described
         # by (`_files_read`).
         indexed = next((run for run in runs if run.index is not None), None)
         read = _files_read(runs, indexed)
-        files = tuple(
-            _described(path, grouped.get(path, ()), read.get(path)) for path in sorted(covered)
-        )
-        findings = _filed(grouped)
         # Each project description the analysis read, the project's own among them, whatever
         # the runs went on to cover: a plugin's model raising ends the read, and a run so ended
         # covers the project description alone.
         descriptions = [path for path, file in read.items() if file.kind == "project"]
+        # The record beside the description too, there or not, wherever the search looked: it
+        # says whether a build generates the project.
+        watched = _watched(descriptions, (*found, project.parent / BUILD_INFO_FILENAME))
+        # Before the findings are sorted onto their files, so that a plugin's file counts its own.
+        _tell_changed_plugins(runs, watched)
+        grouped, covered = _grouped(runs, project)
+        registered = {info.identifier: info for run in runs for info in run.bag.registered.values()}
+        files = tuple(
+            _described(path, grouped.get(path, ()), read.get(path)) for path in sorted(covered)
+        )
+        findings = _filed(grouped)
         return Revision(
             # Numbered when it is published (`_finished`): an analysis thrown away takes none.
             number=0,
@@ -816,9 +825,7 @@ class Session:
             served=served,
             resolved_paths=_resolved_paths(files, findings),
             generated=_generated(project, self.root),
-            # The record beside the description too, there or not, wherever the search looked:
-            # it says whether a build generates the project.
-            watched=_watched(descriptions, (*found, project.parent / BUILD_INFO_FILENAME)),
+            watched=watched,
         )
 
     def _request(self) -> None:
@@ -1567,6 +1574,31 @@ def _watched(descriptions: Iterable[Path], records: Iterable[Path]) -> tuple[Pat
             if spelling.endswith(".py"):
                 watched.update(plugin_files(spelling, described.parent))
     return tuple(sorted(watched))
+
+
+def _tell_changed_plugins(runs: Sequence[Run], watched: Iterable[Path]) -> None:
+    """File ``plugin-changed`` on each plugin of ``watched`` whose file changed since this process
+    imported it (:func:`ddd.plugins.changed_since_imported`), into each of ``runs``, which grades it
+    under its build's severities as it grades every other finding: a module is imported once per
+    process, so ``ddd gui`` runs the old code until it is restarted, and every finding of the
+    analysis is that code's. Several builds grading it alike file it once, as they file any
+    finding (:func:`~ddd.lsp.diagnostics.group_findings`).
+
+    Asked of every path the revision watches, which holds every file a ``plugins`` list names by
+    its path, loaded or not, rather than of the files the runs covered: a run its plugin's model
+    ended covers the project description alone, and that plugin is the one most in need of
+    telling, its mended model never having run. Only a file a module was run from can answer yes,
+    so a directory and a build record answer no, and so does the file of a plugin named as a
+    module, which the environment imports as it imports any other."""
+    changed = [path for path in watched if changed_since_imported(path)]
+    for run in runs:
+        for path in changed:
+            run.bag.add(
+                "plugin-changed",
+                f"'{path.name}' changed since ddd gui imported it: a module is imported once per "
+                "process, so ddd gui runs the old code until it is restarted",
+                Location(path),
+            )
 
 
 def _expanded_by(described: Path, data: Any) -> set[Path]:

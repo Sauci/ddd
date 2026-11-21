@@ -10994,6 +10994,20 @@ def extension_setting(name: str) -> str:
     return manifest["contributes"]["configuration"]["properties"][name]["markdownDescription"]
 
 
+def option_help(command: str, option: str) -> str:
+    """The help ``ddd <command> --help`` prints for ``option``, before argparse wraps it."""
+    commands = next(
+        action
+        for action in _build_parser()._actions
+        if isinstance(action, argparse._SubParsersAction)
+    )
+    return next(
+        action.help or ""
+        for action in commands.choices[command]._actions
+        if option in action.option_strings
+    )
+
+
 class TestTheExtensionStartsTheServerForADescription:
     """10:M7, B9-32. The extension is activated on any json document, since a description opened
     outside a folder, or created after the window opened, is announced by nothing else; and it
@@ -11228,6 +11242,33 @@ class TestTheFoldersAreFollowed:
                 "usual build directory names in each workspace folder.",
             ),
             ("where the server is started",),
+        ),
+        "ddd lsp --help": (
+            option_help("lsp", "-b"),
+            (
+                "A relative one is read against each workspace folder, and without one the usual "
+                "build directory names are searched in each, the directory the server is started "
+                "in standing for the folders while the editor names none",
+            ),
+            ("next to the workspace",),
+        ),
+        "docs/faq.rst": (
+            (ROOT / "docs" / "faq.rst").read_text(encoding="utf-8"),
+            (
+                "the ones named with ``-b`` (the ``ddd.buildDirectories`` setting in VS Code), a "
+                "relative one read against each workspace folder, or the conventional directory "
+                "names in each workspace folder.",
+            ),
+            ("conventional directory names next to the workspace",),
+        ),
+        "README.md": (
+            README,
+            (
+                "Point it at an out-of-tree build with `-b DIR`, a relative one read against each "
+                "workspace folder; without it the usual build directory names are searched in each "
+                "workspace folder.",
+            ),
+            ("directory names next to the workspace are searched",),
         ),
     }
 

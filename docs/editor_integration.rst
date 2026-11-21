@@ -27,8 +27,11 @@ wrong.
      -h, --help            show this help message and exit
      ...
                            directory holding a build of this project; repeatable.
-                           Without it the usual build directory names next to the
-                           workspace are searched
+                           A relative one is read against each workspace folder,
+                           and without one the usual build directory names are
+                           searched in each, the directory the server is started
+                           in standing for the folders while the editor names
+                           none
 
 The command is not meant to be run by hand: it speaks the Language Server Protocol on stdin
 and stdout and expects an editor on the other end. Editors that launch language servers

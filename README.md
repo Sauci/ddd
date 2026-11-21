@@ -254,11 +254,12 @@ record names one.
 
 Which project a file belongs to is not something the file can say, so the server reads the
 `ddd-build.json` that `ddd_generate` leaves in the build tree, and applies the same severities
-the build applies.  Point it at an out-of-tree build with `-b DIR`; without it the usual build
-directory names next to the workspace are searched.  The records it finds are listed in the
-editor's log, and so is a record it declines - one written by a newer DDD, naming a check this
-one has not got, or naming its project by a relative path - because a record nothing can use
-looks, in silence, exactly like a workspace nobody configured a build in.
+the build applies.  Point it at an out-of-tree build with `-b DIR`, a relative one read against
+each workspace folder; without it the usual build directory names are searched in each workspace
+folder.  The records it finds are listed in the editor's log, and so is a record it declines - one
+written by a newer DDD, naming a check this one has not got, or naming its project by a relative
+path - because a record nothing can use looks, in silence, exactly like a workspace nobody
+configured a build in.
 
 Everything published or edited is spelled the way your editor spelled it, so a workspace
 opened through a junction, a `subst` drive, a symlink or with a different case gets its

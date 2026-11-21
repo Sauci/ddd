@@ -7,11 +7,12 @@ the components that share a variable.
 
 This extension is a **launcher**. Everything you see comes from `ddd lsp`, the language server
 that ships with the DDD python package, and works the same in any editor that can start a
-language server - Neovim, Helix and Emacs need no extension at all. VS Code has no way to start
-one without an extension, which is the only reason this exists.
+language server and watch the files it asks for - Neovim, Helix and Emacs need no extension at
+all. VS Code has no way to start one without an extension, which is the only reason this exists.
 
 So nothing here adds a feature, and nothing here should grow one that could be served from the
-server instead.
+server instead. It watches nothing itself: the server asks VS Code to watch the descriptions
+and the build records, as it asks any editor.
 
 ## Installing it
 
@@ -57,10 +58,11 @@ trust (*Restricted Mode*): trust the workspace when you would run its build, and
 
 ## What it gives you
 
-Findings appear on open and on save, for **every** file of the project rather than only the one
-on screen: half of a disagreement is always in the other component. What a json schema cannot
-see is exactly what this reports - that an `axis` names an axis nobody declares, that two
-components disagree about a unit, that nobody produces an input.
+Findings appear on open, on save, and when a description or a build record changes on disk, for
+**every** file of the project rather than only the one on screen: half of a disagreement is
+always in the other component. What a json schema cannot see is exactly what this reports -
+that an `axis` names an axis nobody declares, that two components disagree about a unit, that
+nobody produces an input.
 
 Both sides of a conflict are marked. Two components declaring the same output are equally part
 of it, and a file with no finding on it would otherwise read as the correct one.
@@ -110,7 +112,7 @@ meaning.
 | setting | what it does |
 | --- | --- |
 | `ddd.executable` | the `ddd` command; a bare name is looked up on the PATH |
-| `ddd.buildDirectories` | directories holding a build, each searched for the `ddd-build.json` that `ddd_generate()` writes; a relative entry is relative to the workspace folder. Empty searches the usual names next to the workspace |
+| `ddd.buildDirectories` | directories holding a build, each searched for the `ddd-build.json` that `ddd_generate()` writes; a relative entry is relative to the workspace folder. Empty searches the usual names next to the workspace. A change takes a restart: **DDD: Restart Language Server** |
 
 Which project a file belongs to is not something the file can say - without `PROJECT`, CMake
 collects the project out of the link graph - so the server reads that build record and applies

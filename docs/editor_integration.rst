@@ -45,20 +45,19 @@ What the server offers
 ----------------------
 
 **Diagnostics.** The findings of the :doc:`consistency checks <consistency_checks>`, reported
-on open, on save, and when the editor reports that a description file it watches changed on
-disk - a build writes them and a branch switch rewrites them all, and neither is something
-a document event would report. Each is drawn over the key it is about rather than over the
-whole file. The findings are the disk's, and an open document's are drawn in its text as
-the editor holds it: over the key a finding is about where the unsaved buffer holds it,
-over the nearest key around it that the buffer holds where it does not, and at the top of a
-buffer that is not json. A finding names its key by its place in the file, so a declaration
-typed above the one it is about, in the same list, takes the finding's place until the file
-is saved. Opens, saves and watched changes that arrive together are checked together, each
-project once for all of them: the server checks the documents they name once it has handled
-every message already waiting behind the first of them, and before it answers a request that
-came after them, never waiting for a message not yet sent. A save and the change the editor's
-watcher reports for it, arriving together, are one analysis of the project however many of its
-documents are open. The
+on open, on save, and when a description file or a build record changes on disk - a build
+writes them and a branch switch rewrites them all, and neither is something a document event
+would report. Each is drawn over the key it is about rather than over the whole file. The
+findings are the disk's, and an open document's are drawn in its text as the editor holds it:
+over the key a finding is about where the unsaved buffer holds it, over the nearest key around
+it that the buffer holds where it does not, and at the top of a buffer that is not json. A
+finding names its key by its place in the file, so a declaration typed above the one it is
+about, in the same list, takes the finding's place until the file is saved. Opens, saves and
+watched changes that arrive together are checked together, each project once for all of them:
+the server checks the documents they name once it has handled every message already waiting
+behind the first of them, and before it answers a request that came after them, never waiting
+for a message not yet sent. A save and the change the editor's watcher reports for it,
+arriving together, are one analysis of the project however many of its documents are open. The
 server publishes for **every** file of the project rather than only the one on screen,
 because half of a disagreement is always in the other component, and each finding is also
 published at the locations of its notes - of two components declaring the same output,
@@ -66,6 +65,14 @@ neither is the innocent one, so both carry a mark. A component linked into two i
 checked under both, and one mistake in it is drawn once: two images reporting the same
 finding in the same words are not two mistakes. Where their severities differ they are
 saying two different things, and both are published.
+
+The server asks the editor to watch every description file and every build record of the
+workspace, once the editor has said it is initialized, where its client takes such a
+registration while the session runs, as VS Code's does; a client that does not is asked for
+nothing, and hears of a file changed behind it at the next open or save. A build record
+changing is a change of which projects there are and of their severities: the open documents
+are checked again under the records as they now read, or, while none is open, every file
+whose findings are on screen.
 
 Everything the server publishes, answers and edits is spelled the way the client spelled the
 document it opened, and resolved for every file it never opened. An editor matches a
@@ -344,7 +351,8 @@ VS Code
 VS Code cannot start a language server without an extension, so one is shipped in
 ``editors/vscode``. It is a launcher and deliberately nothing more - everything a reader
 sees is the server's answer, so an editor DDD ships nothing for is not at a disadvantage.
-It contributes two settings and one command:
+It watches nothing itself: the server asks for the watcher it needs, as it asks any other
+editor. It contributes two settings and one command:
 
 .. list-table::
    :header-rows: 1
@@ -360,10 +368,11 @@ It contributes two settings and one command:
      - the directories handed to the server as ``-b``, each searched for a
        ``ddd-build.json``; a relative entry is relative to the workspace folder, which is
        where the extension starts the server. Left empty, the conventional build directory
-       names next to the workspace are searched.
+       names next to the workspace are searched. A change takes effect once the server is
+       restarted.
 
-The command is **DDD: Restart Language Server**, for picking up a newly installed tool
-without reloading the window.
+The command is **DDD: Restart Language Server**, for picking up a newly installed tool, or a
+change of the settings, without reloading the window.
 
 Every release attaches a ``ddd-<version>.vsix`` to its `GitHub release
 <https://github.com/Sauci/ddd/releases>`_, which is a permanent link needing no account and

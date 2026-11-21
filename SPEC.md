@@ -3092,6 +3092,16 @@ given the thinner answer. Each file is published with the findings of one run of
 that a plugin defect stopped has already reported on every file it read, and those files are
 not read a second time on their own.
 
+The server asks the client to watch every description file and every build record of the
+workspace, `**/*.ddd.json` and `**/ddd-build.json`, once the client has said it is
+initialized, wherever the client announced that it takes such a registration while the
+session runs; a client that did not is asked for nothing, and hears of a file changed behind
+the editor's back at the next open or save. A change of a build record is a change of which
+projects there are and of their severities: the records are searched for again, and the open
+documents are checked again under them, or, while no document is open, every file whose
+findings are on screen. A record is never checked as a description, nor is any other file
+the client reports that is not one.
+
 A message body the server cannot parse is answered with the protocol's parse or
 invalid-request error and does not stop the server, and a request whose parameters are not
 the shape its method takes - a field of another type than the protocol gives it, a position
@@ -3103,7 +3113,9 @@ answered with the protocol's internal error, a notification with nothing, and th
 written to the server's standard error, which is its log. A frame header whose
 `Content-Length` is not a count of bytes written in decimal digits - after which no message
 boundary can be trusted - ends the session with a message rather than a failure trace, and a
-header block without a length is read as the end of the conversation.
+header block without a length is read as the end of the conversation. The client's answer to a
+request of the server's - a message carrying an `id` and no `method` - is answered with
+nothing.
 
 The session has a beginning and an end. A request arriving before `initialize` is answered
 with the protocol's server-not-initialized error and a notification is dropped, because until
@@ -3119,12 +3131,12 @@ shipped VS Code extension exposes them as the setting `ddd.buildDirectories`, an
 executable to launch as `ddd.executable`.
 
 An editor extension **shall** do no more than launch the server, point it at the build
-directories and offer to restart it: everything a reader sees is the tool's answer, so that
-an editor DDD ships nothing for is not at a disadvantage. It **shall** launch the server
-only in a workspace the reader has trusted, where the editor has such a notion: the server
-runs the plugins of every project it analyses ([section 3.11](#311-plugins)), so opening a
-repository is running its python, and that is a decision the reader makes, not the
-extension.
+directories and offer to restart it: everything a reader sees is the tool's answer, and the
+server asks the client itself for what it needs to hear of the files, so that an editor DDD
+ships nothing for is not at a disadvantage. It **shall** launch the server only in a workspace
+the reader has trusted, where the editor has such a notion: the server runs the plugins of
+every project it analyses ([section 3.11](#311-plugins)), so opening a repository is running
+its python, and that is a decision the reader makes, not the extension.
 
 ### 7.3 Toolbox
 

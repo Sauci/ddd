@@ -118,6 +118,9 @@ END: Final = (
 )
 """How a client ends a session it means to end, which ``run`` answers with 0."""
 
+INITIALIZED: Final = {"jsonrpc": "2.0", "method": "initialized", "params": {}}
+"""What a client says once it has the server's answer to ``initialize``."""
+
 UNSEEN_RENAME: Final = (
     "reader_two.ddd.json has unsaved changes this rename would not see; save it and rename again"
 )
@@ -10671,6 +10674,32 @@ class TestAMalformedFieldIsRefused:
                     "params.capabilities.workspace.workspaceEdit.changeAnnotationSupport", "dict"
                 ),
             ),
+            (
+                {"capabilities": {"workspace": {"didChangeWatchedFiles": "nonsense"}}},
+                NOT_A.format("params.capabilities.workspace.didChangeWatchedFiles", "dict"),
+            ),
+            (
+                {
+                    "capabilities": {
+                        "workspace": {"didChangeWatchedFiles": {"dynamicRegistration": "yes"}}
+                    }
+                },
+                NOT_A.format(
+                    "params.capabilities.workspace.didChangeWatchedFiles.dynamicRegistration",
+                    "bool",
+                ),
+            ),
+            (
+                {
+                    "capabilities": {
+                        "workspace": {"didChangeWatchedFiles": {"dynamicRegistration": None}}
+                    }
+                },
+                NOT_A.format(
+                    "params.capabilities.workspace.didChangeWatchedFiles.dynamicRegistration",
+                    "bool",
+                ),
+            ),
         ],
         ids=[
             "params-a-list",
@@ -10685,6 +10714,9 @@ class TestAMalformedFieldIsRefused:
             "document-changes-text",
             "document-changes-null",
             "annotations-a-number",
+            "watching-text",
+            "registration-text",
+            "registration-null",
         ],
     )
     def test_the_handshake(
@@ -10740,19 +10772,31 @@ class TestAMalformedFieldIsRefused:
             {"capabilities": {}},
             {"capabilities": {"workspace": {}}},
             {"capabilities": {"workspace": {"workspaceEdit": {}}}},
+            {"capabilities": {"workspace": {"didChangeWatchedFiles": {}}}},
         ],
-        ids=["empty", "nulls", "empty-folders", "no-workspace", "no-edit", "nothing-announced"],
+        ids=[
+            "empty",
+            "nulls",
+            "empty-folders",
+            "no-workspace",
+            "no-edit",
+            "nothing-announced",
+            "no-registration",
+        ],
     )
     def test_a_handshake_may_leave_out_what_the_protocol_lets_it(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str], params: dict[str, Any]
     ) -> None:
         """The control: what the protocol lets a client leave out, or send as null, takes its
-        default - the folder the server was started with, and edits in the plain form."""
+        default - the folder the server was started with, edits in the plain form, and no watcher
+        asked for."""
         writer = io.BytesIO()
-        server = Server(framed(self.initialized(params), *END), writer, root=tmp_path)
+        server = Server(framed(self.initialized(params), INITIALIZED, *END), writer, root=tmp_path)
         assert server.run() == 0
         assert capsys.readouterr().err == ""
-        assert sent(writer)[0]["result"]["serverInfo"]["name"] == "ddd"
+        answer, ended = sent(writer)
+        assert answer["result"]["serverInfo"]["name"] == "ddd"
+        assert ended == response(99, None)
         assert server.roots == [tmp_path]
         assert not server._versioned_edits
         assert not server._annotated_edits
@@ -12836,3 +12880,271 @@ class TestAFindingIsDrawnInTheBuffer:
         a = (tmp_path / "a.ddd.json").resolve()
         buffered = {a: Document(json.dumps(project("P", "a.ddd.json"), indent=2))}
         assert service.collect([], [a], tmp_path, buffered) == {a: []}
+
+
+REGISTRATION: Final = {
+    "jsonrpc": "2.0",
+    "id": "ddd-watch",
+    "method": "client/registerCapability",
+    "params": {
+        "registrations": [
+            {
+                "id": "ddd-watch",
+                "method": "workspace/didChangeWatchedFiles",
+                "registerOptions": {
+                    "watchers": [
+                        {"globPattern": "**/*.ddd.json"},
+                        {"globPattern": "**/ddd-build.json"},
+                    ]
+                },
+            }
+        ]
+    },
+}
+"""What the server asks of a client that takes registrations while the session runs: to watch
+every description and every build record of the workspace."""
+
+
+def opening(*folders: Path, **workspace: Any) -> dict[str, Any]:
+    """An ``initialize`` naming ``folders``, from a client announcing ``workspace`` of the workspace
+    capabilities."""
+    return {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "workspaceFolders": [{"uri": folder.as_uri()} for folder in folders],
+            "capabilities": {"workspace": workspace},
+        },
+    }
+
+
+def changed_on_disk(*paths: Path, kind: int = 2) -> dict[str, Any]:
+    """The watch event a client sends for ``paths``: changed, or created (1) or deleted (3)."""
+    return {
+        "jsonrpc": "2.0",
+        "method": "workspace/didChangeWatchedFiles",
+        "params": {"changes": [{"uri": path.as_uri(), "type": kind} for path in paths]},
+    }
+
+
+def closing(path: Path) -> dict[str, Any]:
+    return {
+        "jsonrpc": "2.0",
+        "method": "textDocument/didClose",
+        "params": {"textDocument": {"uri": path.as_uri()}},
+    }
+
+
+class TestTheServerRegistersTheWatcher:
+    """10:M8, decision 10.6. The watcher was the extension's, so a client launching the server
+    itself - Neovim, Helix, Emacs - heard of no file changed behind the editor, and the extension's
+    watched the descriptions alone: a configure that rewrote only a build record left the old
+    severities on screen until the next save. The server asks the client to watch both, where the
+    client takes registrations while the session runs, once it has said it is initialized."""
+
+    def registrations(self, writer: io.BytesIO) -> list[dict[str, Any]]:
+        return [
+            message
+            for message in sent(writer)
+            if message.get("method") == "client/registerCapability"
+        ]
+
+    def test_the_server_asks_to_watch_the_descriptions_and_the_records(
+        self, tmp_path: Path
+    ) -> None:
+        writer = io.BytesIO()
+        hello = opening(tmp_path, didChangeWatchedFiles={"dynamicRegistration": True})
+        assert Server(framed(hello, INITIALIZED, *END), writer, root=tmp_path).run() == 0
+        answer, *rest = sent(writer)
+        assert answer["id"] == 1
+        assert rest == [REGISTRATION, response(99, None)]
+
+    def test_nothing_is_asked_before_the_client_is_initialized(self, tmp_path: Path) -> None:
+        """The protocol's moment for a registration is the client's ``initialized``: until it,
+        the client may not have taken the answer to ``initialize`` in yet."""
+        writer = io.BytesIO()
+        hello = opening(tmp_path, didChangeWatchedFiles={"dynamicRegistration": True})
+        assert Server(framed(hello, *END), writer, root=tmp_path).run() == 0
+        assert self.registrations(writer) == []
+
+    @pytest.mark.parametrize(
+        "workspace",
+        [
+            {},
+            {"didChangeWatchedFiles": {}},
+            {"didChangeWatchedFiles": {"dynamicRegistration": False}},
+        ],
+        ids=["no-watching", "no-registration", "declined"],
+    )
+    def test_a_client_that_takes_no_registration_is_asked_for_none(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], workspace: dict[str, Any]
+    ) -> None:
+        """It gets no watch events from the server, as it got none before, and a request it did
+        not say it takes is one it may refuse."""
+        writer = io.BytesIO()
+        stream = framed(opening(tmp_path, **workspace), INITIALIZED, *END)
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        assert self.registrations(writer) == []
+        assert capsys.readouterr().err == ""
+
+    def test_the_watcher_is_asked_for_once(self, tmp_path: Path) -> None:
+        """Two watchers send every change twice: a client saying ``initialized`` a second time is
+        not asked again."""
+        writer = io.BytesIO()
+        hello = opening(tmp_path, didChangeWatchedFiles={"dynamicRegistration": True})
+        stream = framed(hello, INITIALIZED, INITIALIZED, *END)
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        assert self.registrations(writer) == [REGISTRATION]
+
+
+class TestAnAnswerFromTheClient:
+    """10:M8. A message carrying an ``id`` and no ``method`` is the client's answer to a request of
+    the server's - its registration of the watcher - and is answered nothing. It was answered as a
+    request naming no method: an error in the client's log about a message it had sent right."""
+
+    @pytest.mark.parametrize(
+        "answer",
+        [{"result": None}, {"error": {"code": METHOD_NOT_FOUND, "message": "not here"}}],
+        ids=["a-result", "an-error"],
+    )
+    @pytest.mark.parametrize("when", ["before-initialize", "in-session", "after-shutdown"])
+    def test_it_is_answered_nothing(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        answer: dict[str, Any],
+        when: str,
+    ) -> None:
+        reply = {"jsonrpc": "2.0", "id": "ddd-watch", **answer}
+        hello = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}
+        shutdown, leave = END
+        messages = {
+            "before-initialize": (reply, hello, shutdown, leave),
+            "in-session": (hello, reply, shutdown, leave),
+            "after-shutdown": (hello, shutdown, reply, leave),
+        }[when]
+        writer = io.BytesIO()
+        assert Server(framed(*messages), writer, root=tmp_path).run() == 0
+        assert [message["id"] for message in sent(writer)] == [1, 99]
+        assert capsys.readouterr().err == ""
+
+    def test_an_answer_queued_between_two_opens_does_not_part_their_check(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Only a message the server answers is waited on by a check (:meth:`Server._serve`): an
+        answer arriving between two opens queued together left the first checked on its own, and
+        the second in a check of its own."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("input", "X")),
+                "b.ddd.json": component("B", declare("input", "Y")),
+            },
+        )
+        build_record(tmp_path, tmp_path / "p.ddd.json")
+        a, b = tmp_path / "a.ddd.json", tmp_path / "b.ddd.json"
+        reply = {"jsonrpc": "2.0", "id": "ddd-watch", "result": None}
+        writer = io.BytesIO()
+        together = [
+            opening(tmp_path),
+            holding(a, a.read_text(encoding="utf-8")),
+            reply,
+            holding(b, b.read_text(encoding="utf-8")),
+        ]
+        inbox = Arrivals(writer, together, END)
+        ran: list[int] = []
+        original = service.analyze
+
+        def counted(*args: Any, **kwargs: Any) -> Any:
+            ran.append(1)
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(service, "analyze", counted)
+        assert Server(io.BytesIO(), writer, root=tmp_path)._serve(inbox) == 0
+        assert len(ran) == 1
+        assert sorted(published(writer)) == sorted([a.as_uri(), b.as_uri()])
+
+
+class TestABuildRecordChangingOnDisk:
+    """10:M8, B9-30. A build record is watched as the descriptions are, and its change is a change
+    of which projects there are and of their severities: what was found is forgotten, and what is
+    open is checked again, or what is on screen where nothing is open. A record is never checked
+    as a description: reached as one, it was read as a component and given a finding of its own,
+    and so was any json of another name."""
+
+    def workspace(self, tmp_path: Path, *severities: str) -> tuple[Path, Path]:
+        """``r`` stating another unit than ``w``, which writes ``V``: a ``definition-mismatch``,
+        reported at both and an error unless the record's ``severities`` say otherwise. Returns
+        ``r`` and the record."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "w.ddd.json", "r.ddd.json"),
+                "w.ddd.json": component("W", declare("output", "V", unit="rpm", id="k7m2q9xr4t8w")),
+                "r.ddd.json": component("R", declare("input", "V", unit="krpm")),
+            },
+        )
+        record = build_record(tmp_path, tmp_path / "p.ddd.json", severity=list(severities))
+        return tmp_path / "r.ddd.json", record
+
+    def graded(self, writer: io.BytesIO) -> dict[str, list[tuple[str, int]]]:
+        """Each file last published, by its name, with the check and severity of each finding."""
+        return {
+            uri_to_path(uri).name: [(entry["code"], entry["severity"]) for entry in findings]
+            for uri, findings in published(writer).items()
+        }
+
+    def started(self, tmp_path: Path) -> tuple[Server, io.BytesIO]:
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(opening(tmp_path))
+        return server, writer
+
+    def test_an_open_document_is_checked_again_under_the_record_as_it_reads_now(
+        self, tmp_path: Path
+    ) -> None:
+        """The record rewritten by a configure that lowers the mismatch to a warning."""
+        r, record = self.workspace(tmp_path)
+        server, writer = self.started(tmp_path)
+        assert server._handle(holding(r, r.read_text(encoding="utf-8")))
+        assert self.graded(writer)["r.ddd.json"] == [("definition-mismatch", 1)]
+        build_record(tmp_path, tmp_path / "p.ddd.json", severity=["definition-mismatch=warning"])
+        writer = server.writer = io.BytesIO()
+        assert server._handle(changed_on_disk(record))
+        assert self.graded(writer) == {
+            "r.ddd.json": [("definition-mismatch", 2)],
+            "w.ddd.json": [("definition-mismatch", 2)],
+        }
+
+    def test_with_nothing_open_what_is_on_screen_is_checked_again(self, tmp_path: Path) -> None:
+        """The record deleted, with ``r`` closed and its findings on screen: they are the build's
+        no longer, and ``r`` is checked through the project above it, under the default severities.
+        Checked from the record's path, nothing was: the path is gone."""
+        r, record = self.workspace(tmp_path, "definition-mismatch=warning")
+        server, writer = self.started(tmp_path)
+        assert server._handle(holding(r, r.read_text(encoding="utf-8")))
+        assert server._handle(closing(r))
+        assert self.graded(writer)["r.ddd.json"] == [("definition-mismatch", 2)]
+        record.unlink()
+        writer = server.writer = io.BytesIO()
+        assert server._handle(changed_on_disk(record, kind=3))
+        assert self.graded(writer) == {
+            "r.ddd.json": [("definition-mismatch", 1)],
+            "w.ddd.json": [("definition-mismatch", 1)],
+        }
+
+    @pytest.mark.parametrize("named", [BUILD_INFO_FILENAME, "notes.json"])
+    def test_with_nothing_open_a_file_that_is_no_description_is_not_checked_as_one(
+        self, tmp_path: Path, named: str
+    ) -> None:
+        """Nothing on screen and nothing open: there is nothing to check again, and the file the
+        event names is checked as nothing - a record is read as a record, at the next search for
+        them, and a json of another name is none of this server's."""
+        _, record = self.workspace(tmp_path)
+        changed = record if named == BUILD_INFO_FILENAME else tmp_path / named
+        changed.write_text('{"format": 1}', encoding="utf-8")
+        server, writer = self.started(tmp_path)
+        assert server._handle(changed_on_disk(changed))
+        assert published(writer) == {}

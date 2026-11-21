@@ -10779,3 +10779,113 @@ class TestWhereAnOpenDocumentsFindingsAreDrawn:
     def test_the_page_says_where_an_open_document_s_findings_are_drawn(self, page: str) -> None:
         text, phrase = self.SAID[page]
         assert phrase in flattened(text), f"{page} no longer says: {phrase!r}"
+
+
+EXTENSION = ROOT / "editors" / "vscode"
+"""The VS Code extension: a launcher for the server, its manifest beside its sources."""
+
+
+def extension_setting(name: str) -> str:
+    """The description the extension's manifest gives the setting ``name``, as VS Code shows it."""
+    manifest = json.loads((EXTENSION / "package.json").read_text(encoding="utf-8"))
+    return manifest["contributes"]["configuration"]["properties"][name]["markdownDescription"]
+
+
+class TestTheServerWatchesWhatItReads:
+    """10:M8, decision 10.6. The watcher was the extension's, so an editor launching the server
+    itself heard of no file changed behind it, and it watched the descriptions alone, so a configure
+    rewriting only a build record left the old severities on screen. The server asks the client to
+    watch both, and the extension watches nothing of its own: two watchers send every change
+    twice."""
+
+    SAID: ClassVar[dict[str, tuple[str, tuple[str, ...], tuple[str, ...]]]] = {
+        "SPEC.md": (
+            SPEC,
+            (
+                "The server asks the client to watch every description file and every build record "
+                "of the workspace, `**/*.ddd.json` and `**/ddd-build.json`, once the client has "
+                "said it is initialized, wherever the client announced that it takes such a "
+                "registration while the session runs; a client that did not is asked for nothing, "
+                "and hears of a file changed behind the editor's back at the next open or save.",
+                "A change of a build record is a change of which projects there are and of their "
+                "severities: the records are searched for again, and the open documents are "
+                "checked again under them, or, while no document is open, every file whose "
+                "findings are on screen. A record is never checked as a description, nor is any "
+                "other file the client reports that is not one.",
+                "The client's answer to a request of the server's - a message carrying an `id` and "
+                "no `method` - is answered with nothing.",
+                "everything a reader sees is the tool's answer, and the server asks the client "
+                "itself for what it needs to hear of the files,",
+            ),
+            (),
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            (
+                "reported on open, on save, and when a description file or a build record changes "
+                "on disk - a build writes them and a branch switch rewrites them all, and neither "
+                "is something a document event would report.",
+                "The server asks the editor to watch every description file and every build record "
+                "of the workspace, once the editor has said it is initialized, where its client "
+                "takes such a registration while the session runs, as VS Code's does; a client "
+                "that does not is asked for nothing, and hears of a file changed behind it at the "
+                "next open or save. A build record changing is a change of which projects there "
+                "are and of their severities: the open documents are checked again under the "
+                "records as they now read, or, while none is open, every file whose findings are "
+                "on screen.",
+                "watches nothing itself: the server asks for the watcher it needs, as it asks any "
+                "other editor.",
+            ),
+            ("when the editor reports that a description file it watches changed",),
+        ),
+        "README.md": (
+            README,
+            (
+                "it is a launcher and nothing more, which is why everything below works the same "
+                "either way, in any editor that watches the files the server asks it to.",
+                "The server reports on open, on save, and when a description file or a build "
+                "record changes on disk behind your back - a build writes them, a branch switch "
+                "rewrites them all - which it asks the editor to watch, and it publishes for",
+            ),
+            ("when the editor tells it a description file changed",),
+        ),
+        "editors/vscode/README.md": (
+            (EXTENSION / "README.md").read_text(encoding="utf-8"),
+            (
+                "Findings appear on open, on save, and when a description or a build record "
+                "changes on disk, for **every** file of the project",
+                "watches nothing itself: the server asks VS Code to watch the descriptions and the "
+                "build records, as it asks any editor.",
+                "works the same in any editor that can start a language server and watch the files "
+                "it asks for",
+            ),
+            ("Findings appear on open and on save,",),
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(SAID))
+    def test_the_page_says_what_the_server_watches(self, page: str) -> None:
+        text, phrases, stale = self.SAID[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"
+        for phrase in stale:
+            assert phrase not in said, f"{page} still says: {phrase!r}"
+
+    def test_the_extension_watches_nothing_of_its_own(self) -> None:
+        """The server registers the watcher with the client; one the extension made as well would
+        send every change twice."""
+        source = (EXTENSION / "src" / "extension.ts").read_text(encoding="utf-8")
+        assert not re.search(r"createFileSystemWatcher\s*\(", source)
+        assert not re.search(r"fileEvents\s*:", source)
+
+    def test_a_change_of_the_build_directories_takes_a_restart(self) -> None:
+        """The settings are read once, when the server is started, and nothing said so."""
+        assert (
+            "A change takes effect once the server is restarted: **DDD: Restart Language Server**."
+            in extension_setting("ddd.buildDirectories")
+        )
+        assert (
+            "The command is **DDD: Restart Language Server**, for picking up a newly installed "
+            "tool, or a change of the settings, without reloading the window."
+        ) in flattened(EDITOR_INTEGRATION)

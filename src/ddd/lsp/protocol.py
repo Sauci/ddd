@@ -158,3 +158,8 @@ def error(request_id: Any, code: int, message: str) -> dict[str, Any]:
 def notification(method: str, params: Any) -> dict[str, Any]:
     """A message the server sends without being asked and expects no answer to."""
     return {"jsonrpc": "2.0", "method": method, "params": params}
+
+
+def request(request_id: Any, method: str, params: Any) -> dict[str, Any]:
+    """A message the server sends the client and that the client answers, under ``request_id``."""
+    return {"jsonrpc": "2.0", "id": request_id, "method": method, "params": params}

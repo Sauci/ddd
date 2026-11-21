@@ -5,7 +5,9 @@
  * reason this exists: everything a user sees - the findings, going to a definition, finding
  * references - comes from `ddd lsp` and would work in any editor that can start it. Nothing
  * here adds a feature, so nothing here should grow one without a reason that could not be
- * served from the server instead.
+ * served from the server instead. That holds for the files the server has to hear of changing
+ * on disk too: the server asks the client to watch them, as it asks any editor, and a watcher
+ * made here as well would send every change twice.
  *
  * Only `*.ddd.json` is claimed. Those files are json and the json language service keeps
  * working on them: the published schemas go on doing structure while the server does meaning.
@@ -45,13 +47,10 @@ async function start(): Promise<void> {
     command: settings.executable,
     args: serverArguments(settings),
   };
+  // No `synchronize.fileEvents`: the server registers the watcher it needs, the descriptions and
+  // the build records, and acts on what the client sends for it.
   const options: LanguageClientOptions = {
     documentSelector: [{ scheme: "file", language: "json", pattern: DOCUMENTS }],
-    // The server reads the description files from disk rather than from the editor, so it is
-    // the saves it has to hear about; watching them also covers a file changed by a build or
-    // by a branch switch, which no document event would report. The server acts on the
-    // notification this sends: `workspace/didChangeWatchedFiles` checks the project again.
-    synchronize: { fileEvents: vscode.workspace.createFileSystemWatcher(DOCUMENTS) },
   };
   const starting = new LanguageClient(SECTION, "DDD", server, options);
   client = starting;

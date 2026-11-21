@@ -50,7 +50,7 @@ from urllib.parse import urlparse
 from urllib.request import url2pathname
 
 from ddd import __version__
-from ddd.build_info import BuildInfo
+from ddd.build_info import BUILD_INFO_FILENAME, BuildInfo
 from ddd.ir import DataDictionary
 from ddd.lsp.diagnostics import collect
 from ddd.lsp.discovery import build_files, load_builds
@@ -95,6 +95,7 @@ from ddd.lsp.protocol import (
     error,
     notification,
     read_message,
+    request,
     response,
     write_message,
 )
@@ -108,12 +109,25 @@ _DID_SAVE: Final = "textDocument/didSave"
 """A save is the moment the text on disk is known to be the text on screen."""
 
 _DID_CHANGE_WATCHED: Final = "workspace/didChangeWatchedFiles"
-"""A description changed on disk without passing through the editor.
+"""A description or a build record changed on disk without passing through the editor.
 
 The other half of "the findings are the disk's": a build writes description files, a branch
-switch rewrites all of them, and neither is a document event. The extension registers the
-watcher and says exactly this in its own comment; the notification simply had nowhere to land.
+switch rewrites all of them, a configure rewrites the record, and none of them is a document
+event. The server asks the client to watch them (:meth:`Server._watch`).
 """
+
+_INITIALIZED: Final = "initialized"
+"""The client has the answer to ``initialize``: the protocol's moment to register a capability."""
+
+_REGISTER: Final = "client/registerCapability"
+_WATCHER: Final = "ddd-watch"
+"""The id of the server's one registration, the watcher, and of the request that asks for it."""
+
+_WATCHED: Final = ("**/*.ddd.json", f"**/{BUILD_INFO_FILENAME}")
+"""What the watcher watches: every description of the workspace, and every build record."""
+
+_DESCRIPTION: Final = ".ddd.json"
+"""How the name of a description ends."""
 
 _DEFINITION: Final = "textDocument/definition"
 _NAVIGATING: Final = frozenset({_DEFINITION, "textDocument/references"})
@@ -253,6 +267,13 @@ def _reported(context: dict[str, Any]) -> list[dict[str, Any]]:
     return reported
 
 
+def _answered(message: dict[str, Any]) -> bool:
+    """Whether the server answers a message: a request carries an ``id`` and a ``method``. One
+    carrying an ``id`` and no ``method`` is the client's answer to a request of the server's, and
+    is answered nothing (:meth:`Server._act`)."""
+    return "id" in message and "method" in message
+
+
 type _Span = tuple[tuple[int, int], tuple[int, int]]
 """Where a text edit lies: its start and its end, each a line and a character."""
 
@@ -388,6 +409,13 @@ class Server:
         from the other and counts only beside it (:meth:`_workspace_edit`).
         """
 
+        self._registers = False
+        """Whether the client takes the registration of a watcher while the session runs, which it
+        announces as ``workspace.didChangeWatchedFiles.dynamicRegistration``."""
+
+        self._watching = False
+        """Whether the server has asked the client for its watcher (:meth:`_watch`)."""
+
         self._initialised = False
         """Whether the client has said what the workspace is, which it does exactly once.
 
@@ -478,13 +506,15 @@ class Server:
         check, and so are the ``didOpen`` an editor sends for each file it opens to apply a
         rename. Two things come first: a message that is answered, and the end of the run, since
         an answer may be about what the check finds, and a check due when the run ends is still
-        owed. Nothing waits for a message that has not arrived: a check held until the queue
-        empties would wait for as long as a client sends ``didChange`` at every keystroke.
+        owed - the client's answer to a request of the server's is answered nothing, and does not
+        come first (:func:`_answered`). Nothing waits for a message that has not arrived: a check
+        held until the queue empties would wait for as long as a client sends ``didChange`` at
+        every keystroke.
         """
         behind = 0  # the messages queued behind the first marked document, not handled yet
         while True:
             read = inbox.get()
-            if not isinstance(read, dict) or "id" in read:
+            if not isinstance(read, dict) or _answered(read):
                 self._settle()
             if read is None:
                 return 0
@@ -622,7 +652,15 @@ class Server:
 
     def _act(self, message: dict[str, Any]) -> bool:
         """Act on one message, marking the documents it asks to be checked rather than checking
-        them; ``False`` means the client asked the server to exit."""
+        them; ``False`` means the client asked the server to exit.
+
+        A message naming no method is answered nothing: carrying an ``id``, it is the client's
+        answer to a request of the server's (:meth:`_watch`). It was refused - as a request of a
+        method named ``None``, or as one arriving before ``initialize`` or after ``shutdown`` -
+        and the client showed an error in its log about a message it had sent right.
+        """
+        if "method" not in message:
+            return True
         method = message.get("method")
         request_id = message.get("id")
         if method == "exit":
@@ -638,6 +676,8 @@ class Server:
             self._initialise(_field(message.get("params", {}), dict, "params"))
             self._initialised = True
             write_message(self.writer, response(request_id, self._capabilities()))
+        elif method == _INITIALIZED:
+            self._watch()
         elif method == "shutdown":
             self._shutting_down = True
             write_message(self.writer, response(request_id, None))
@@ -735,8 +775,13 @@ class Server:
         Every open document, rather than the files that changed: a document is published
         through the project above it, so a change in a file nobody has open is precisely the
         case that moves a finding onto one somebody does. With nothing open there is still a
-        Problems list on screen describing the project as it was, and the changed files are
-        the only roots there are to check it from, but for one deleted (:meth:`_refresh_marked`).
+        Problems list on screen describing the project as it was. The descriptions that changed
+        are roots to check it from, but for one deleted (:meth:`_refresh_marked`); a build record
+        that changed changes which projects there are and their severities, so every file whose
+        findings are on screen is checked again, under the records the next check searches for
+        (:meth:`_mark` forgets what was found). A record is never checked as a description, nor is
+        anything else the client reports that is none: so checked, it was read as a component and
+        given a finding of its own.
 
         Marked, and checked together: checked one at a time, ten open documents of one project
         were ten analyses of it, at every save the editor's watcher reports.
@@ -753,8 +798,34 @@ class Server:
             )
             for change in changes
         ]
-        self._mark(_DID_CHANGE_WATCHED, *(sorted(self._open) or touched))
+        documents = sorted(self._open)
+        if not documents:
+            documents = [path for path in touched if path.name.endswith(_DESCRIPTION)]
+            if any(path.name == BUILD_INFO_FILENAME for path in touched):
+                documents.extend(sorted(self._published))
+        self._mark(_DID_CHANGE_WATCHED, *documents)
         self._withdraw_deleted()
+
+    def _watch(self) -> None:
+        """Ask the client to watch every description and every build record, once, where it takes
+        a registration while the session runs (:attr:`_registers`).
+
+        The watcher was the extension's, so a client launching the server itself heard of no file
+        changed behind the editor, and the extension's watched the descriptions alone: a
+        configure rewriting only a build record left the old severities on screen until the next
+        save. A client that takes no registration is asked for nothing and gets no watch events,
+        as it got none from the server before. Asked again, a client would watch twice, and send
+        every change twice.
+        """
+        if not self._registers or self._watching:
+            return
+        self._watching = True
+        registration = {
+            "id": _WATCHER,
+            "method": _DID_CHANGE_WATCHED,
+            "registerOptions": {"watchers": [{"globPattern": glob} for glob in _WATCHED]},
+        }
+        write_message(self.writer, request(_WATCHER, _REGISTER, {"registrations": [registration]}))
 
     def _mark(self, method: str, *documents: Path) -> None:
         """Mark documents for the next check, which checks them together, and drop at once what
@@ -1618,8 +1689,8 @@ class Server:
         return withheld
 
     def _initialise(self, params: dict[str, Any]) -> None:
-        """Take the workspace folders from whichever of the two ways the client offers them, and
-        the shapes of edit it says it applies.
+        """Take the workspace folders from whichever of the two ways the client offers them, the
+        shapes of edit it says it applies, and whether it takes a watcher while the session runs.
 
         Every field is read before any is kept, so a handshake refused for one of them leaves the
         session as it was: the folders of one were taken before its capabilities were refused,
@@ -1646,16 +1717,22 @@ class Server:
         capabilities = _field(params.get("capabilities", {}), dict, "params.capabilities")
         named = "params.capabilities.workspace"
         workspace = _field(capabilities.get("workspace", {}), dict, named)
-        named = f"{named}.workspaceEdit"
-        edit = _field(workspace.get("workspaceEdit", {}), dict, named)
-        versioned = _field(edit.get("documentChanges", False), bool, f"{named}.documentChanges")
+        editing = f"{named}.workspaceEdit"
+        edit = _field(workspace.get("workspaceEdit", {}), dict, editing)
+        versioned = _field(edit.get("documentChanges", False), bool, f"{editing}.documentChanges")
         annotated = "changeAnnotationSupport" in edit
         if annotated:
-            _field(edit["changeAnnotationSupport"], dict, f"{named}.changeAnnotationSupport")
+            _field(edit["changeAnnotationSupport"], dict, f"{editing}.changeAnnotationSupport")
+        watching = f"{named}.didChangeWatchedFiles"
+        watched = _field(workspace.get("didChangeWatchedFiles", {}), dict, watching)
+        registers = _field(
+            watched.get("dynamicRegistration", False), bool, f"{watching}.dynamicRegistration"
+        )
         if roots:
             self.roots = roots
         self._versioned_edits = versioned
         self._annotated_edits = annotated
+        self._registers = registers
 
     def _capabilities(self) -> dict[str, Any]:
         return {

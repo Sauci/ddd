@@ -305,8 +305,8 @@ class TestWhatTheWalkFindsAskedOfOnePath:
         """The description reached through the link included, whichever way the platform's
         walk takes the link: a symbolic link is passed over, and so is Windows' junction, which
         ``directory_link`` makes there (``Path.walk`` on 3.13 and later takes it for a file;
-        the walk states the rule itself for the 3.12 that would go into it). A path through a file is one no
-        walk lists on any platform."""
+        the walk states the rule itself for the 3.12 that would go into it). A path through a
+        file is one no walk lists on any platform."""
         root = self.linked(tmp_path)
         walked = {found.path for found in find_projects(root).projects}
         paths = {path for path in root.rglob("*") if path.is_file()}

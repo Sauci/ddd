@@ -3351,6 +3351,28 @@ class TestAUnitPlanAsTextEdits:
                 ),
                 id="replaced-and-removed",
             ),
+            pytest.param(
+                (
+                    Operation("set", "units[3]", '"bar"'),
+                    Operation("set", "units[0]", '"1/min"'),
+                    Operation("set", "units[1].unit", '"N.m"'),
+                ),
+                id="three-replaced",
+            ),
+            pytest.param(
+                (
+                    Operation("set", "units[0]", '"1/min"'),
+                    Operation("set", "units[1].description", '"torque"'),
+                ),
+                id="replaced-and-member-added",
+            ),
+            pytest.param(
+                (
+                    Operation("remove", "units[3]"),
+                    Operation("set", "units[1].description", '"torque"'),
+                ),
+                id="removed-and-member-added-in-turn",
+            ),
         ],
     )
     def test_a_client_applying_the_edits_writes_what_the_engine_writes(
@@ -3438,6 +3460,120 @@ class TestAUnitPlanAsTextEdits:
         some = {**dict.fromkeys(files, held), files[0]: moved, files[3]: moved}
         assert navigation.drift(sites, "X", some) == (files[3], files[0])
         assert navigation.drift(sites, "X", dict.fromkeys(files, held)) == ()
+
+
+def stating(base: Path, statings: int, *vocabulary: str) -> Path:
+    """A project whose one component declares ``statings`` locals, each stating ``rpm``, beside
+    a units file listing ``vocabulary`` where it lists anything. Returns the component."""
+    files: dict[str, Any] = {
+        "a.ddd.json": component(
+            "A", *(declare("local", f"V{position}", unit="rpm") for position in range(statings))
+        )
+    }
+    if vocabulary:
+        files["units.ddd.json"] = {"units": list(vocabulary)}
+    write_tree(base, {"p.ddd.json": project("P", *files), **files})
+    return base / "a.ddd.json"
+
+
+def documents_built(monkeypatch: pytest.MonkeyPatch, act: Callable[[], object]) -> int:
+    """How many documents ``act`` builds, each a scan of a whole text."""
+    built = 0
+    scanned = Document.__init__
+
+    def counted(document: Document, text: str) -> None:
+        nonlocal built
+        built += 1
+        scanned(document, text)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Document, "__init__", counted)
+        act()
+    return built
+
+
+class TestAUnitPlanRendersInLinearTime:
+    """10:M11. A unit's plan was rendered as text edits by making its operations one after another,
+    a document built of the whole file after each: a rename over one file stating the unit 1,000
+    times built 1,000 documents of it, and answered four times slower for each doubling, and a code
+    action at an unknown unit rendered each rename it offered so. A batch of sets none of which can
+    depend on another is made against the text as it was read, as the edit engine makes it for
+    ``ddd gui``; the vocabulary's removals are still made in turn. Pinned by the documents built,
+    the same for a plan of N statings and of 4N."""
+
+    @pytest.mark.parametrize("statings", [10, 40])
+    def test_a_plan_of_sets_builds_no_document_of_its_file(
+        self, tmp_path: Path, monkeypatch, statings: int
+    ) -> None:
+        """The edits rendered are the engine's, and no document is built for them: the file is
+        read once, before, into the cache."""
+        a = stating(tmp_path, statings)
+        cache: dict[Path, Document] = {}
+        workspace = load_workspace(tmp_path / "p.ddd.json", DiagnosticBag())
+        assert workspace is not None
+        project_of = unit_project(tmp_path / "p.ddd.json", (), cache)
+        plan = rename_unit(navigation.index(workspace), project_of, "rpm", "RPM", cache)
+        read(a, cache)
+        rendered: dict[str, list[dict[str, Any]]] = {}
+        assert documents_built(monkeypatch, lambda: rendered.update(text_edits(plan, cache))) == 0
+        (planned,) = plan.edits
+        assert apply_edits(a, rendered[a.as_uri()]) == edit_text(
+            a.read_text(encoding="utf-8"), planned.operations
+        )
+
+    def answered(self, tmp_path: Path, monkeypatch, request: dict[str, Any]) -> tuple[int, Any]:
+        """The documents a server that has read nothing yet builds while it answers ``request``,
+        and its answer."""
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle({"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {}})
+        built = documents_built(monkeypatch, lambda: server._handle(request))
+        return built, next(m for m in sent(writer) if m.get("id") == request["id"])
+
+    def test_a_rename_builds_as_many_documents_for_n_statings_as_for_4n(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        counted = []
+        for statings in (10, 40):
+            a = stating(tmp_path / str(statings), statings)
+            at = Document(a.read_text(encoding="utf-8")).text_range_of(
+                "component.interface[0].definition.unit"
+            )
+            assert at is not None
+            rename = {
+                "jsonrpc": "2.0",
+                "id": 16,
+                "method": "textDocument/rename",
+                "params": {
+                    "textDocument": {"uri": a.as_uri()},
+                    "position": at["start"],
+                    "newName": "RPM",
+                },
+            }
+            built, answer = self.answered(a.parent, monkeypatch, rename)
+            assert (
+                rewritten_by(answer["result"]["changes"])["a.ddd.json"].count('"RPM"') == statings
+            )
+            counted.append(built)
+        assert counted[0] == counted[1], counted
+
+    def test_a_code_action_at_an_unknown_unit_builds_as_many_for_n_statings_as_for_4n(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """Each rename onto a spelling the finding suggests is a plan of every stating, and every
+        one of them is rendered for the lightbulb."""
+        counted = []
+        for statings in (10, 40):
+            a = stating(tmp_path / str(statings), statings, "RPM", "rpms", "Nm")
+            request = fixes_request(a, UNLISTED, "component.interface[0].definition.unit", 17)
+            built, answer = self.answered(a.parent, monkeypatch, request)
+            assert [action["title"] for action in answer["result"]] == [
+                "Add 'rpm' to the vocabulary",
+                "Rename 'rpm' to 'RPM' everywhere",
+                "Rename 'rpm' to 'rpms' everywhere",
+            ]
+            counted.append(built)
+        assert counted[0] == counted[1], counted
 
 
 class TestPropagating:

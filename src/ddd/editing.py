@@ -467,8 +467,8 @@ def edit_text(text: str, operations: Sequence[Operation]) -> str:
     before it starts: when they were not, an operation that passed its checks on the text reached
     into the document for a value it did not hold.
 
-    A batch none of whose operations can depend on another (:func:`_independent`) is made from
-    the one reading instead, and the text it leaves is read once and compared as the text one
+    A batch none of whose operations can depend on another is made from the one reading instead
+    (:func:`edits_at_once`), and the text it leaves is read once and compared as the text one
     operation leaves is. A unit is renamed by a set at every declaration stating it, hundreds of
     places in one component file of a large project, and ``ddd id`` gives every declaration of a
     file an id, thousands of members added to one file; the file was read again after each of
@@ -480,10 +480,9 @@ def edit_text(text: str, operations: Sequence[Operation]) -> str:
     """
     unreadable = "the file is not json DDD reads, so no pointer names a place in it"
     document = _read(text, UNREADABLE, unreadable)
-    if _independent(document, operations):
-        made = _made_at_once(document, operations)
-        if made is not None:
-            return made
+    made = _made_at_once(document, operations)
+    if made is not None:
+        return made
     return _made_in_turn(document, operations)
 
 
@@ -559,33 +558,49 @@ def _gaining(document: Document, pointer: str) -> str | None:
     return parent if isinstance(members, dict) and members else None
 
 
-def _made_at_once(document: Document, operations: Sequence[Operation]) -> str | None:
-    """The operations made on the text as it was read, and the text they leave read once - or
-    ``None`` when one of them is refused, or that text does not read back as the document every
-    operation was meant to leave, for :func:`_made_in_turn` to answer as it answers any batch.
+def edits_at_once(document: Document, operations: Sequence[Operation]) -> list[TextEdit] | None:
+    """The edits of a batch none of whose operations can depend on another, each made against the
+    text as it was read, in the order of the operations; ``None`` for any other batch
+    (:func:`_independent`), which is made one operation at a time. An operation the engine refuses
+    is refused here as it is made in turn: a value that is not one json value, in the same words.
 
-    Only for a batch :func:`_independent` lets through, each of whose edits is a literal as
-    spelled, over where the value it replaces sits, or a member added to an object the way
-    :func:`member_addition` adds one to the text as it was read - which no other edit of the batch
-    changes where the member reads it. :func:`replacement` measures the lines around the value
-    first, which a literal never reads, copying the text from the value's line to its end for
-    every operation.
+    Each edit is a literal as spelled, over where the value it replaces sits, or a member added to
+    an object the way :func:`member_addition` adds one to the text as it was read - which no other
+    edit of the batch changes where the member reads it. :func:`replacement` measures the lines
+    around the value first, which a literal never reads, copying the text from the value's line to
+    its end for every operation.
+
+    What :func:`edit_text` makes such a batch from for ``ddd gui``, and what the language server
+    renders a unit's plan with (:func:`ddd.lsp.units.text_edits`), so that the two make one batch
+    the same way: neither builds a document of the file for each of its operations.
     """
-    expected = copy.deepcopy(document.data)
+    if not _independent(document, operations):
+        return None
     edits: list[TextEdit] = []
+    for operation in operations:
+        raw = _raw_of(operation)
+        if _holds(document, operation.pointer):
+            start, end = _span(document.value_span_of(operation.pointer))
+            # A literal is the one token it is spelled as, so the layout given is never read.
+            literal = lay_out(raw, one_line=True, indent="", unit=DEFAULT_INDENT_UNIT, newline="\n")
+            edits.append(TextEdit(start, end, literal))
+        else:
+            edits.append(_set_edit(document, operation.pointer, raw))
+    return edits
+
+
+def _made_at_once(document: Document, operations: Sequence[Operation]) -> str | None:
+    """The operations made on the text as it was read (:func:`edits_at_once`), and the text they
+    leave read once - or ``None`` where they are not a batch made so, one of them is refused, or
+    that text does not read back as the document every operation was meant to leave, for
+    :func:`_made_in_turn` to answer as it answers any batch."""
     try:
+        edits = edits_at_once(document, operations)
+        if edits is None:
+            return None
+        expected = copy.deepcopy(document.data)
         for operation in operations:
-            raw = _raw_of(operation)
-            if _holds(document, operation.pointer):
-                start, end = _span(document.value_span_of(operation.pointer))
-                # A literal is the one token it is spelled as, so the layout given is never read.
-                literal = lay_out(
-                    raw, one_line=True, indent="", unit=DEFAULT_INDENT_UNIT, newline="\n"
-                )
-                edits.append(TextEdit(start, end, literal))
-            else:
-                edits.append(_set_edit(document, operation.pointer, raw))
-            expected = _set_value(expected, operation.pointer, parse_raw(raw))
+            expected = _set_value(expected, operation.pointer, parse_raw(operation.raw))
         made = _read(
             _all_applied(document.text, edits), UNVERIFIED, "an edit left the file unreadable"
         )

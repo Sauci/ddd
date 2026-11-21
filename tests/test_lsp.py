@@ -4004,6 +4004,82 @@ class TestPropagating:
 
         assert not _settles(key, self.spelled_by_the_checks(clause))
 
+    def test_the_fixes_settle_the_findings_in_the_words_the_analysis_publishes(
+        self, tmp_path: Path
+    ) -> None:
+        """The findings above are written in the test, as ``ddd check`` words them; these are the
+        analysis's own, published through a check and sent back with the request as a client sends
+        them. ``Speed`` differs in its unit alone, and the unit's fixes carry its finding; ``Rate``
+        differs in its datatype and its unit, and no fix carries its finding, which either leaves in
+        place. Which fix settles which finding is read out of the sentence the analysis words, so a
+        rewording of it would otherwise change the answer in silence."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("output", "Speed", unit="rpm"),
+                    declare("output", "Rate", unit="Hz"),
+                ),
+                "b.ddd.json": component(
+                    "B",
+                    declare("input", "Speed", unit="1/min"),
+                    declare("input", "Rate", unit="kHz", datatype="uint16"),
+                ),
+            },
+        )
+        b = tmp_path / "b.ddd.json"
+        document = Document(b.read_text(encoding="utf-8"))
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(opening(tmp_path))
+        assert server._handle(holding(b, document.text))
+        findings = published(writer)[b.as_uri()]
+        tail = " (the code of the readers is not touched)"
+
+        def carried(position: int) -> tuple[str, dict[str, list[dict[str, Any]]]]:
+            """The message of the mismatch drawn over ``b``'s declaration at ``position``, and the
+            findings each fix asked there carries, by its title."""
+            drawn = document.range_of(f"component.interface[{position}].definition")
+            (reported,) = [
+                entry
+                for entry in findings
+                if entry["code"] == "definition-mismatch" and entry["range"] == drawn
+            ]
+            asked = {
+                "textDocument": {"uri": b.as_uri()},
+                "range": drawn,
+                "context": {"diagnostics": [reported]},
+            }
+            request_id = 20 + position
+            assert server._handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "method": "textDocument/codeAction",
+                    "params": asked,
+                }
+            )
+            (answer,) = [message for message in sent(writer) if message.get("id") == request_id]
+            assert answer["result"], "no fix was offered at all"
+            return reported["message"], {
+                entry["title"].removesuffix(tail): entry["diagnostics"]
+                for entry in answer["result"]
+                if "diagnostics" in entry
+            }
+
+        one_key, settled = carried(0)
+        assert ("unit: " in one_key, "datatype: " in one_key) == (True, False)
+        reported = [entry for entry in findings if entry["message"] == one_key]
+        assert settled == {
+            "Use the unit declared in a": reported,
+            "Apply this unit to 1 other declaration of 'Speed'": reported,
+        }
+        two_keys, settled = carried(1)
+        assert ("unit: " in two_keys, "datatype: " in two_keys) == (True, True)
+        assert settled == {}
+
     def test_a_reconcile_fix_says_the_readers_code_is_not_touched(self, tmp_path: Path) -> None:
         """The check goes green once the descriptions agree, and the readers keep the scale they
         were written with: the editor's titles say so after what they change, as the page's do."""

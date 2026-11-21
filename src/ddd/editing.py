@@ -467,22 +467,23 @@ def edit_text(text: str, operations: Sequence[Operation]) -> str:
     before it starts: when they were not, an operation that passed its checks on the text reached
     into the document for a value it did not hold.
 
-    A batch none of whose operations can depend on another is made from the one reading instead
-    (:func:`edits_at_once`), and the text it leaves is read once and compared as the text one
-    operation leaves is. A unit is renamed by a set at every declaration stating it, hundreds of
-    places in one component file of a large project, and ``ddd id`` gives every declaration of a
-    file an id, thousands of members added to one file; the file was read again after each of
-    them. One reading compares the whole document every operation was meant to leave, so an
-    operation whose edit wrote what it was not meant to fails it as the reading after that
-    operation would have. A batch made at once that is refused, or does not read back as the
-    document it was meant to leave, is made again one operation at a time, which answers what it
-    always has: the same text, or the same refusal.
+    A batch none of whose operations can depend on another (:func:`_independent`) is made from
+    the one reading instead (:func:`edits_at_once`), and the text it leaves is read once and
+    compared as the text one operation leaves is. A unit is renamed by a set at every
+    declaration stating it, hundreds of places in one component file of a large project, and
+    ``ddd id`` gives every declaration of a file an id, thousands of members added to one file;
+    the file was read again after each of them. One reading compares the whole document every
+    operation was meant to leave, so an operation whose edit wrote what it was not meant to
+    fails it as the reading after that operation would have. A batch made at once that is
+    refused, or does not read back as the document it was meant to leave, is made again one
+    operation at a time, which answers what it always has: the same text, or the same refusal.
     """
     unreadable = "the file is not json DDD reads, so no pointer names a place in it"
     document = _read(text, UNREADABLE, unreadable)
-    made = _made_at_once(document, operations)
-    if made is not None:
-        return made
+    if _independent(document, operations):
+        made = _made_at_once(document, operations)
+        if made is not None:
+            return made
     return _made_in_turn(document, operations)
 
 
@@ -576,6 +577,12 @@ def edits_at_once(document: Document, operations: Sequence[Operation]) -> list[T
     """
     if not _independent(document, operations):
         return None
+    return _at_once(document, operations)
+
+
+def _at_once(document: Document, operations: Sequence[Operation]) -> list[TextEdit]:
+    """The edits of a batch :func:`_independent` lets through, each against the text as it was
+    read (:func:`edits_at_once`)."""
     edits: list[TextEdit] = []
     for operation in operations:
         raw = _raw_of(operation)
@@ -591,14 +598,12 @@ def edits_at_once(document: Document, operations: Sequence[Operation]) -> list[T
 
 def _made_at_once(document: Document, operations: Sequence[Operation]) -> str | None:
     """The operations made on the text as it was read (:func:`edits_at_once`), and the text they
-    leave read once - or ``None`` where they are not a batch made so, one of them is refused, or
-    that text does not read back as the document every operation was meant to leave, for
-    :func:`_made_in_turn` to answer as it answers any batch."""
+    leave read once - or ``None`` when one of them is refused, or that text does not read back as
+    the document every operation was meant to leave, for :func:`_made_in_turn` to answer as it
+    answers any batch. Only for a batch :func:`_independent` lets through."""
+    expected = copy.deepcopy(document.data)
     try:
-        edits = edits_at_once(document, operations)
-        if edits is None:
-            return None
-        expected = copy.deepcopy(document.data)
+        edits = _at_once(document, operations)
         for operation in operations:
             expected = _set_value(expected, operation.pointer, parse_raw(operation.raw))
         made = _read(

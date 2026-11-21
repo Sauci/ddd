@@ -3380,11 +3380,16 @@ class TestAUnitPlanAsTextEdits:
     ) -> None:
         """The engine makes a file's operations in turn, each on the text the last one left; a
         client applies a file's edits at once, to the text as it stands. The file has to come
-        out the same, or the editor and ddd gui would write two different things."""
+        out the same, or the editor and ddd gui would write two different things. The edits come
+        in the order of the text, whichever order the operations are in."""
         path = self.vocabulary(tmp_path)
         plan = UnitPlan((PlannedEdit(path, operations),))
         (edits,) = text_edits(plan, {}).values()
         assert apply_edits(path, edits) == edit_text(path.read_text(encoding="utf-8"), operations)
+        starts = [
+            (edit["range"]["start"]["line"], edit["range"]["start"]["character"]) for edit in edits
+        ]
+        assert starts == sorted(starts)
 
     def test_neighbouring_entries_taken_out_are_one_edit(self, tmp_path: Path) -> None:
         """Each removal takes one comma, and against the text as it stands the two would both

@@ -11487,6 +11487,12 @@ class TestAPluginChangedUnderDddGui:
                 "``plugin-changed`` stands it is one of them, so the verdict is a refusal until "
                 "the server is restarted, where ``ddd compare``, which imports every plugin "
                 "afresh, never files it.",
+                "A plugin named by its path that changed since the server imported it is reported "
+                "with ``plugin-changed`` on its file, an error: a module is imported once per "
+                "process, so the server goes on running the old code until it is restarted. A "
+                "module a plugin imports is not watched, and a plugin named as a module is not "
+                "compared, so editing either takes a restart unsaid. Large projects stay "
+                "responsive.",
             ),
             (),
         ),

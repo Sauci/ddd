@@ -724,6 +724,11 @@ The commands
        by a build: the build record beside it, /home/you/project/build/ddd/fw/ddd-build.json,
        does not read as one, so nothing under /home/you/project/build is written from here
        until it does``.
+       A plugin named by its path that changed since the server imported it is reported with
+       ``plugin-changed`` on its file, an error: a module is imported once per process, so the
+       server goes on running the old code until it is restarted. A module a plugin imports is
+       not watched, and a plugin named as a module is not compared, so editing either takes a
+       restart unsaid.
        Large projects stay responsive. An edit is answered once its files are written, before
        it is analysed, and the change shows where it was made; its findings follow once the
        project has been analysed again, the heading saying ``Updating the findings…`` until

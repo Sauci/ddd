@@ -1811,14 +1811,17 @@ class Server:
         session as it was: the folders of one were taken before its capabilities were refused,
         and the session stayed in them. The protocol lets a client send both ways of naming the
         folders as null and leave out any step of its capabilities, and requires ``rootUri`` and
-        the capabilities themselves all the same: a handshake without them is served, naming no
-        folder and announcing nothing (:func:`_field`).
+        the capabilities themselves all the same: a handshake without the capabilities announces
+        nothing, and one with neither way of naming folders names none (:func:`_field`).
         """
         folders = params.get("workspaceFolders")
         roots = _named_folders([] if folders is None else folders, "params.workspaceFolders")
         root = params.get("rootUri")
-        if root is not None and _field(root, str, "params.rootUri") and not roots:
-            roots = [uri_to_path(root)]
+        if root is not None and _field(root, str, "params.rootUri"):
+            # Read for its path whether or not it is the folder taken: a uri no file system takes
+            # is refused beside named folders as it is alone.
+            rooted = uri_to_path(root)
+            roots = roots or [rooted]
         capabilities = _field(params.get("capabilities", {}), dict, "params.capabilities")
         named = "params.capabilities.workspace"
         workspace = _field(capabilities.get("workspace", {}), dict, named)

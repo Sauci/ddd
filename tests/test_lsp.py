@@ -11616,6 +11616,20 @@ class TestAMalformedFieldIsRefused:
         assert capsys.readouterr().err == ""
         assert sent(writer)[0] == error(7, INVALID_PARAMS, NO_FILE.format(uri))
 
+    def test_a_root_uri_no_file_system_takes_is_refused_beside_named_folders(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Beside folders the client names, the root is no folder taken: it is read for its shape
+        all the same, as every other field is, and a path holding a null character is refused."""
+        uri = a_null_in(tmp_path / "w.ddd.json").removesuffix(".ddd.json")
+        params = {"workspaceFolders": [{"uri": tmp_path.as_uri()}], "rootUri": uri}
+        writer = io.BytesIO()
+        hello = {"jsonrpc": "2.0", "id": 8, "method": "initialize", "params": {}}
+        stream = framed(self.initialized(params), hello, *END)
+        assert Server(stream, writer, root=tmp_path).run() == 0
+        assert capsys.readouterr().err == ""
+        assert sent(writer)[0] == error(7, INVALID_PARAMS, NO_FILE.format(uri))
+
     def test_a_handshake_refused_after_a_field_it_had_read_changes_nothing(
         self, tmp_path: Path
     ) -> None:

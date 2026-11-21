@@ -430,10 +430,11 @@ def find_projects(root: Path, build_directories: Sequence[Path] = ()) -> Found:
 def walk_finds(root: Path, path: Path) -> bool:
     """Whether the walk :func:`find_projects` makes finds ``path``, resolved, among the project
     descriptions under ``root``, asked of that one path rather than walked for: it lies under
-    ``root`` by directories the walk goes into - real ones, none of them left out, no deeper than
-    :data:`SEARCH_DEPTH` - it is named ``*.ddd.json``, and it is a project description as it
-    stands now. A project a build record offers is not asked about: the walk finds it by reading
-    the records, and one outside ``root`` only a record offers.
+    ``root`` by directories the walk goes into - real ones it can list, ``root`` among them, none
+    of them left out, no deeper than :data:`SEARCH_DEPTH` - it is named ``*.ddd.json``, and it
+    is a project description as it stands now. A project a build record offers is not asked
+    about: the walk finds it by reading the records, and one outside ``root`` only a record
+    offers.
 
     What ``POST /api/open`` asks of a path it holds already - the open project, or one the last
     listing found - before it walks (:meth:`ddd.gui.api.Api._open`), the walk parsing every
@@ -444,12 +445,25 @@ def walk_finds(root: Path, path: Path) -> bool:
     *directories, name = path.relative_to(base).parts or ("",)
     if not name.endswith(DESCRIPTION_SUFFIX) or len(directories) > SEARCH_DEPTH:
         return False
-    reached = base
+    if any(_skipped(directory) for directory in directories):
+        return False
+    on_the_way = [base]
     for directory in directories:
-        reached = reached / directory
-        if _skipped(directory) or reached.is_symlink() or not reached.is_dir():
-            return False
+        on_the_way.append(on_the_way[-1] / directory)
+    if any(place.is_symlink() or not _listable(place) for place in on_the_way):
+        return False
     return _is_project(path)
+
+
+def _listable(directory: Path) -> bool:
+    """Whether the walk lists ``directory``: it opens it to list it, and passes over what it
+    cannot open so - a file, or a directory this process may go through and not list, whose
+    descriptions a path through it reads all the same (``Path.walk``)."""
+    try:
+        with os.scandir(directory):
+            return True
+    except OSError:
+        return False
 
 
 @dataclass(frozen=True, slots=True)

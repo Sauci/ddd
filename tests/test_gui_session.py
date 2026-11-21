@@ -304,11 +304,17 @@ class TestWhatTheWalkFindsAskedOfOnePath:
     def test_it_finds_what_the_walk_finds_and_nothing_else(self, tmp_path: Path) -> None:
         """The description reached through the link included, whichever way the platform's
         walk takes the link: a symbolic link is passed over, and Windows' junction, which
-        ``directory_link`` makes there, is a directory to it."""
+        ``directory_link`` makes there, is a directory to it. A path through a file is one no
+        walk lists on any platform."""
         root = self.linked(tmp_path)
         walked = {found.path for found in find_projects(root).projects}
         paths = {path for path in root.rglob("*") if path.is_file()}
-        paths |= {root / "linked" / "e.ddd.json", root, root.parent / "p.ddd.json"}
+        paths |= {
+            root / "linked" / "e.ddd.json",
+            root / "a.ddd.json" / "x.ddd.json",
+            root,
+            root.parent / "p.ddd.json",
+        }
         asked = {path for path in paths if walk_finds(root, path)}
         assert asked == walked
         assert sorted(
@@ -330,6 +336,26 @@ class TestWhatTheWalkFindsAskedOfOnePath:
             found.path for found in find_projects(root).projects
         }
         assert not walk_finds(root, (tmp_path / "far" / "f.ddd.json").resolve())
+
+    def test_a_description_in_a_directory_the_walk_cannot_list_is_not_one_it_finds(
+        self, tmp_path: Path
+    ) -> None:
+        """A directory its owner may go through and not list: the walk cannot list it and passes
+        it over, though a path through it reads the description, so neither finds what it holds.
+        Windows keeps no mode that stops its owner listing a directory, and there the two find it
+        alike; so does a process no mode binds."""
+        root = tmp_path / "root"
+        write_tree(root, {"p.ddd.json": project("P"), "locked/l.ddd.json": project("Locked")})
+        locked = root / "locked"
+        locked.chmod(0o311)
+        try:
+            walked = {found.path for found in find_projects(root).projects}
+            asked = walk_finds(root, locked / "l.ddd.json")
+        finally:
+            locked.chmod(0o755)
+        assert asked is (locked / "l.ddd.json" in walked)
+        if os.name != "nt" and os.geteuid() != 0:
+            assert not asked
 
 
 class TestOpening:

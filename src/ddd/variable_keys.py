@@ -16,12 +16,14 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Final
 
 from ddd.lsp.edits import DEFERRED_KEYS
 from ddd.lsp.navigation import Index
 from ddd.models import definition_keys
 from ddd.models.common import Datatype
+from ddd.models.component import Scope
 from ddd.models.objects import ObjectKind, storage_keys
 from ddd.value_identity import same_value
 from ddd.variables import Declared
@@ -171,7 +173,7 @@ def _offer(built: Index, declared: Sequence[Declared], key: str) -> KeyOffer:
         values=values,
         disagrees=_disagrees(declared, carried, values, key),
         editor=EDITORS[key],
-        choices=_choices(built, key),
+        choices=_choices(built, key, declared),
     )
 
 
@@ -274,8 +276,9 @@ def _in_play(declared: Sequence[Declared], key: str) -> tuple[InPlay, ...]:
     )
 
 
-def _choices(built: Index, key: str) -> tuple[str, ...]:
-    """What the key's editor names, for the editors that name something."""
+def _choices(built: Index, key: str, declared: Sequence[Declared] | None = None) -> tuple[str, ...]:
+    """What the key's editor names, for the editors that name something, for these declarations,
+    or for a declaration no file holds yet when ``declared`` is ``None``."""
     if key == "datatype":
         return DATATYPES
     if key == "typename":
@@ -283,17 +286,42 @@ def _choices(built: Index, key: str) -> tuple[str, ...]:
     if key == "size":
         return tuple(sorted(built.constants))
     if key in ("axis", "x_axis", "y_axis"):
-        return _objects(built, ObjectKind.AXIS)
+        return _objects(built, ObjectKind.AXIS, declared)
     if key == "input":
-        return _objects(built, ObjectKind.MEASUREMENT)
+        return _objects(built, ObjectKind.MEASUREMENT, declared)
     return ()
 
 
-def _objects(built: Index, kind: ObjectKind) -> tuple[str, ...]:
-    """Every object of that kind the project declares, by name.
+def _objects(
+    built: Index, kind: ObjectKind, declared: Sequence[Declared] | None
+) -> tuple[str, ...]:
+    """Every object of that kind the project declares, by name, that these declarations may name.
 
     A measurement that is an instance of a declared structure is listed with the rest, although
     an ``input`` may not name one: what a name may refer to beyond its kind is the loader's
     answer, and it gives it on the next analysis, exactly as it does for a file edited by hand.
+
+    A name some component declares ``local`` is that component's alone, so it is left out unless
+    every declaration is in the component that keeps it: named from any other, it is a
+    ``local-conflict``. Its owner is read off the index, as :func:`ddd.declaration_plans.scopes_for`
+    reads it, which this module cannot import. A form for a declaration no file holds yet
+    (``declared`` of ``None``) has no component to compare, and lists them all.
     """
-    return tuple(sorted(name for name, stated in built.kinds.items() if stated == kind.value))
+    here = None if declared is None else {entry.site.path for entry in declared}
+    return tuple(
+        sorted(
+            name
+            for name, stated in built.kinds.items()
+            if stated == kind.value
+            and (here is None or not (owners := _owners(built, name)) or here <= owners)
+        )
+    )
+
+
+def _owners(built: Index, name: str) -> set[Path]:
+    """The files of the components declaring ``name`` ``local``: none where nothing does."""
+    return {
+        site.path
+        for site in built.declarations.get(name, ())
+        if built.scopes[site] == Scope.LOCAL.value
+    }

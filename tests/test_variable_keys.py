@@ -19,6 +19,7 @@ from ddd.variable_keys import (
     KEY_ORDER,
     Carried,
     InPlay,
+    offer_for,
     offers,
     unit_refusal,
 )
@@ -541,6 +542,83 @@ class TestWhatAnEditorOffers:
             assert offered(idx, "Torque", key).editor == "name"
             assert offered(idx, "Torque", key).choices == ("Points",)
         assert offered(idx, "Points", "input").choices == ("Speed",)
+
+    def test_another_components_local_is_not_offered_to_an_axis_or_an_input(
+        self, tmp_path: Path
+    ) -> None:
+        """13:I6. A local is the owner's alone: chosen from another component's declaration, the
+        offer wrote a ``local-conflict``."""
+        files = {
+            "a.ddd.json": component(
+                "A",
+                declare("local", "Mine", kind="axis", size=4),
+                declare("local", "Hidden"),
+            ),
+            "b.ddd.json": component(
+                "B",
+                declare("output", "Points", kind="axis", size=4),
+                declare("output", "Speed"),
+                declare("output", "Torque", kind="curve", axis="Points"),
+                declare("output", "Gain", kind="axis", size=4, input="Speed"),
+            ),
+        }
+        idx = built(tmp_path, **files)
+        assert offered(idx, "Torque", "axis").choices == ("Gain", "Points")
+        assert offered(idx, "Gain", "input").choices == ("Speed",)
+
+    def test_what_was_offered_beside_the_local_was_what_the_check_refuses(
+        self, tmp_path: Path
+    ) -> None:
+        files = {
+            "a.ddd.json": component("A", declare("local", "Mine", kind="axis", size=4)),
+            "b.ddd.json": component("B", declare("output", "Torque", kind="curve", axis="Mine")),
+        }
+        _, bag = run_analysis(
+            tmp_path, {"p.ddd.json": project("P", *files), **files}, root="p.ddd.json"
+        )
+        assert "local-conflict" in [diagnostic.check for diagnostic in bag]
+
+    def test_a_form_for_a_declaration_no_file_holds_yet_lists_every_object(
+        self, tmp_path: Path
+    ) -> None:
+        """It has no component to compare the owner of a local with."""
+        idx = built(
+            tmp_path,
+            **{"a.ddd.json": component("A", declare("local", "Mine", kind="axis", size=4))},
+        )
+        assert offer_for(idx, "axis", None, required=False).choices == ("Mine",)
+
+    def test_a_component_is_offered_its_own_locals(self, tmp_path: Path) -> None:
+        idx = built(
+            tmp_path,
+            **{
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "Mine", kind="axis", size=4),
+                    declare("output", "Torque", kind="curve", axis="Mine"),
+                ),
+            },
+        )
+        assert offered(idx, "Torque", "axis").choices == ("Mine",)
+
+    def test_a_variable_the_owner_shares_with_another_is_not_offered_the_local(
+        self, tmp_path: Path
+    ) -> None:
+        idx = built(
+            tmp_path,
+            **{
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "Mine", kind="axis", size=4),
+                    declare("output", "Points", kind="axis", size=4),
+                    declare("output", "Torque", kind="curve", axis="Points"),
+                ),
+                "b.ddd.json": component(
+                    "B", declare("input", "Torque", kind="curve", axis="Points")
+                ),
+            },
+        )
+        assert offered(idx, "Torque", "axis").choices == ("Points",)
 
     def test_a_typename_is_chosen_from_the_types_the_project_declares(self, tmp_path: Path) -> None:
         idx = built(

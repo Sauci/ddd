@@ -3899,6 +3899,90 @@ class TestPropagating:
         )
         assert [entry for entry in both_alone if "diagnostics" in entry] == []
 
+    @staticmethod
+    def spelled_by_the_checks(*clauses: str) -> dict[str, Any]:
+        """A ``definition-mismatch`` as ``ddd check`` words it, over the clauses of the fields it
+        found different, in their order."""
+        return {
+            "code": "definition-mismatch",
+            "message": "'Speed' is declared differently by component 'B' than by 'A' "
+            f"({', '.join(clauses)})",
+        }
+
+    @pytest.mark.parametrize(
+        ("clause", "key"),
+        [
+            ("datatype: uint16 != uint8", "datatype"),
+            ("datatype: Speed_t != uint8", "typename"),
+            ("unit: '1/min' != 'rpm'", "unit"),
+            ("shape: [3] != scalar", "dimensions"),
+            ("shape: [3] != scalar", "size"),
+            ("conversion: identity != linear(0.5)", "conversion"),
+            ("volatile: true != false", "volatile"),
+            ("limits: [0, 5] != [0, 9]", "limits"),
+            ("references: axis=X != axis=Y", "axis"),
+            ("references: input=X != none", "input"),
+            ("references: x_axis=A, y_axis=B != x_axis=C, y_axis=B", "x_axis"),
+            ("references: x_axis=A, y_axis=B != x_axis=A, y_axis=D", "y_axis"),
+        ],
+    )
+    def test_a_fix_settles_the_finding_naming_its_key_alone(self, clause: str, key: str) -> None:
+        """Each compared field, and each key a field is written by where that is not its own name:
+        the finding naming it alone is the fix's."""
+        from ddd.lsp.edits import _settles
+
+        assert _settles(key, self.spelled_by_the_checks(clause))
+
+    @pytest.mark.parametrize(
+        "clause",
+        [
+            "kind: measurement != curve",
+            "datatype: uint16 != uint8",
+            "shape: [3] != scalar",
+            "conversion: identity != linear(0.5)",
+            "references: axis=X != axis=Y",
+            "volatile: true != false",
+            "limits: [0, 5] != [0, 9]",
+        ],
+    )
+    def test_a_fix_leaves_a_finding_that_names_another_key_beside_its_own(
+        self, clause: str
+    ) -> None:
+        """Whichever the other field is: the finding stays after the fix of the unit, which
+        writes the one key, and the fix of the other key leaves the unit in place."""
+        from ddd.lsp.edits import _settles
+
+        assert not _settles("unit", self.spelled_by_the_checks(clause, "unit: '1/min' != 'rpm'"))
+        assert not _settles("unit", self.spelled_by_the_checks("unit: '1/min' != 'rpm'", clause))
+
+    def test_a_fix_of_the_datatype_leaves_a_finding_naming_the_unit_beside_it(self) -> None:
+        from ddd.lsp.edits import _settles
+
+        both = self.spelled_by_the_checks("datatype: uint16 != uint8", "unit: '1/min' != 'rpm'")
+        assert not _settles("datatype", both)
+        assert not _settles("typename", both)
+
+    @pytest.mark.parametrize(
+        ("clause", "key"),
+        [
+            ("references: axis=X, input=Z != axis=Y, input=W", "axis"),
+            ("references: axis=X, input=Z != axis=Y, input=W", "input"),
+            ("references: x_axis=A, y_axis=B != x_axis=C, y_axis=D", "x_axis"),
+            ("references: x_axis=A, y_axis=B != x_axis=C, y_axis=D", "y_axis"),
+            ("references: axis=X != axis=Y", "input"),
+            ("references: axis=X != axis=Y", "x_axis"),
+            ("references: axis=X", "axis"),
+        ],
+    )
+    def test_a_fix_leaves_a_finding_naming_other_references_or_none_it_can_read(
+        self, clause: str, key: str
+    ) -> None:
+        """A map's two axes, or a curve's axis and its input, are one field the checks compare: the
+        finding carries both where both differ, and either fix leaves the other in place."""
+        from ddd.lsp.edits import _settles
+
+        assert not _settles(key, self.spelled_by_the_checks(clause))
+
     def test_a_reconcile_fix_says_the_readers_code_is_not_touched(self, tmp_path: Path) -> None:
         """The check goes green once the descriptions agree, and the readers keep the scale they
         were written with: the editor's titles say so after what they change, as the page's do."""

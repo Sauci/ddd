@@ -391,9 +391,32 @@ it: ``(datatype: uint8 != uint16, unit: 'V' != 'Hz')``."""
 _KEYS_OF_A_COMPARED_ONE: Final = {
     "datatype": frozenset({"datatype", "typename"}),
     "shape": frozenset({"dimensions", "size"}),
-    "references": frozenset({"axis", "x_axis", "y_axis", "input"}),
 }
-"""The keys one of the compared fields is written by, where it is not the one key of its name."""
+"""The keys one of the compared fields is written by, where it is not the one key of its name.
+``references`` is not here: it names each reference that differs (:data:`_REFERENCES`)."""
+
+_REFERENCES: Final = re.compile(
+    r"references: (.*?) != (.*?)(?=, (?:kind|datatype|unit|shape|conversion|volatile|limits): |\)$)"
+)
+"""The two sides of the ``references`` of a message, as ``axis=Speed, input=Raw`` or ``none``."""
+
+
+def _references_that_differ(message: str) -> frozenset[str] | None:
+    """The keys among ``axis``, ``x_axis``, ``y_axis`` and ``input`` whose target a message says
+    two declarations spell differently, or ``None`` where it does not say.
+
+    The checks compare them as one field, so a message names a map's two axes together, and a
+    curve's axis with its input; the fix of one key leaves the others' difference in place."""
+    found = _REFERENCES.search(message)
+    if found is None:
+        return None
+    sides = [
+        {} if side == "none" else dict(item.split("=", 1) for item in side.split(", "))
+        for side in found.groups()
+    ]
+    return frozenset(
+        key for key in {*sides[0], *sides[1]} if sides[0].get(key) != sides[1].get(key)
+    )
 
 
 def _settles(key: str, finding: dict[str, Any]) -> bool:
@@ -406,9 +429,15 @@ def _settles(key: str, finding: dict[str, Any]) -> bool:
     as it was before the message was read.
     """
     message = finding.get("message")
-    named = set(_COMPARED.findall(message if isinstance(message, str) else ""))
+    spelled = message if isinstance(message, str) else ""
+    named = set(_COMPARED.findall(spelled))
     if not named:
         return True
+    if "references" in named:
+        named.discard("references")
+        differing = _references_that_differ(spelled)
+        if differing is None or differing != {key}:
+            return False
     return all(key in _KEYS_OF_A_COMPARED_ONE.get(compared, {compared}) for compared in named)
 
 

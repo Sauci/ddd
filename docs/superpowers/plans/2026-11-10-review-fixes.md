@@ -1856,6 +1856,111 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   Dependabot's first proposals come with its weekly runs. The dry run among the steps of a
   release shows the first and the third before a tag exists. The maintainer's, at 0.12.0.
 
+**Branch 9:**
+- **The panel's check of a type's key** (task 7, `10:I8`; R199): `variables._fixed` takes the key a
+  type states from wherever the index points, not checking that the entry there still names the
+  type. Branch 14 moves `variables.py` and keeps what it does, and no branch takes it for
+  behaviour, so it is the maintainer's.
+- **A condition's use on the Shared files tab** (task 7, `14:M13`; R201): the panel calls a
+  condition's use of a constant a shape, the comment of `gui/src/lib/shared.ts` still counts
+  shapes alone, and a declaration whose dimension spells the constant, and whose condition spells
+  it too, appears twice in the Used by table; the count, the uses `GET /api/constant` answers and
+  the refusal to remove are right. Branch 11 lists `gui/src/components/*`, where the panel and the
+  table live; the comment is branch 14's task 10's, branch 11 not listing `shared`.
+- **What the editor reads of a condition beyond a rename** (task 7, `10:I10`): the conditions a
+  constant's rename rewrites are missing from the references found from that constant; a rename
+  onto a name the build defines as a macro, which a condition spells, is not refused, as before the
+  branch; and the word a rename rewrites is matched inside a condition's string literal or header
+  name too. No branch after this one changes what `lsp/navigation.py` does, so they are the
+  maintainer's.
+- **A fix taking another image's answer, and a unit added** (task 10, `10:M3`; R208): a fix taking
+  another declaration's answer in is offered by the images that offer it alone, so it may unsettle
+  the declaration in an image that offers no such fix; and adding a unit to the vocabulary is not
+  checked beyond the document's own projects. They are branch 10's, whose Files list takes the
+  settlement in `lsp/edits.py`, or else the maintainer's.
+- **The hover's summary across images** (task 10, `10:M4`; R211): where several projects hold the
+  document, the shape and the limits are the first project's, so a hover in two images whose types
+  disagree shows the first's. No later branch lists `lsp/hover.py`, so it is the maintainer's.
+- **Two images' writers in one hover** (the final wave; R227): a reader linked into two images,
+  whose input a producer of each image writes, hovers with both producers named as its writers in
+  one sentence, which reads like two components writing one variable of one image. Naming each
+  writer's image, where two images' writers differ, would tell them apart; behaviour beyond the
+  plan, so the maintainer's.
+- **Components of one name in two images** (task 10, `10:M4`): the hover knows a component by its
+  name alone, so where two images each hold a component of one name it names that name once, where
+  find references lists both files. The maintainer's.
+- **A finding over the item its place holds** (task 10, `10:M6`): a finding names its key by its
+  place in the file, so with a declaration typed above another in one list, unsaved, it is drawn
+  over the item at that place until the save, as the pages say. Matching a buffer's declarations
+  to the file's by their names would draw it over its own. The maintainer's.
+- **A one-line description in quadratic time** (task 10, `10:M11`; R219): `Document.position`
+  encodes a line's prefix for each position on it, so every range on a long line costs that line's
+  length: a unit's rename over a component of 8,000 statings written on one line took 1.90 s,
+  where the pretty-printed file took 0.30 s, as task 10's fourth part measured it on the Linux
+  development PC. A position counted on from the last one, offsets ascending, or each line's
+  UTF-16 offsets kept by the document, would answer it. The maintainer's, unless a later branch
+  changes what `ranges.py` does first; branch 14's task 3 only moves it.
+- **The keys of a mismatch in its data** (the final wave; R227): which fix settles which
+  `definition-mismatch` is read out of the sentence the analysis writes, which a test now holds to
+  the analysis's own words; the server, which writes both, could carry the keys in the finding's
+  `data`, which a client sends back with a code action's request. The maintainer's.
+- **The orchestration in `server.py`** (tasks 3 and 10; R227): the module holds the session, the
+  withdrawal of what is on screen, the folders, and a rename's and the fixes' reach over projects
+  with the order of their refusals, near 2,000 lines. Moving that orchestration into a module a
+  test reaches directly, `units.engine_edit` to a home of its own, and `word_spans` with the
+  helpers mapping json text into `ranges.py` are branch 14's, which moves code across `src/ddd/`;
+  so is one closure passed to both of a code action's questions, which share one read of the
+  descriptions safely by the order of the two calls alone. Its task 10 takes the docstrings the
+  code has outgrown, `_withheld`'s and `_holding`'s among them, which name a file that did not load
+  where one that loaded with an error withholds the fixes too.
+- **The language server's tests** (`10:M12`; R224): `tests/test_lsp.py` runs past 14,000 lines and
+  could be split by class into modules; and nothing checks that the tests use nothing newer than
+  python 3.12, the oldest CI runs, mypy checking `src/ddd` and `tools` alone - a parameter python
+  3.13 added broke the 3.12 legs. A notification whose uri has a host part no file system takes is
+  tested as a `didOpen` alone, no test asserts that find references still lists the reader of an
+  image a plugin stops, `edit_answers` relies on a rename's answer carrying id 11 without saying so,
+  and task 2's probe runs `ddd check` after the server where, run first, it would say the tree is
+  clean before the server answers. Branch 16 lists `tests/*`.
+- **The extension manifest's version for a candidate** (R189): the maintainer's, as branch 8's
+  entry says; branch 9 changed the manifest's activation and its settings, not its version.
+- **A VS Code session end to end** (task 10, `10:M7`, `10:M8`, `10:M10`; R188): CI's `extension`
+  job compiles the extension and runs `config.ts`'s tests, and nothing runs VS Code: its
+  activation by a description, its registration of the watcher, the folder changes it sends and
+  the preview `needsConfirmation` opens were seen by no test. The maintainer's.
+- **An interrupt on a Windows console** (task 9; R204): a server started there by hand takes Ctrl-C
+  only once another message arrives; an editor ends the run with `exit`. The maintainer's, through
+  the pull request.
+- **A rename and a broken plugin** (task 5; R196, R226): a rename of anything but a local cannot go
+  on while any recorded image's description fails to read, the refusal naming the one a plugin
+  stops. The maintainer's, through the pull request.
+- **Two folders' project files in a refusal** (task 3): in a workspace of several folders, two
+  folders each holding a `project.ddd.json` at their root name it alike in a refusal; naming the
+  folder as well would tell them apart. The maintainer's.
+- **What a rename reads of the open documents** (task 4): at every rename, `differs_from_disk`
+  parses each open document of the projects reached, and reads and parses its file, a cost bounded
+  by the documents open. The maintainer's.
+- **What the log of withheld fixes keeps** (task 6): a project the log was told of is kept until it
+  reads whole, though its description is deleted or no longer parses - at most a repeat line held
+  back, and one cheap read per check - and `navigation._named_at` reads the description again for
+  each error of an include entry. The maintainer's.
+- **A rename's label in the preview** (task 8): the annotation of an edit reaching several files is
+  labelled "Rename" alone, where it could name what is renamed. The maintainer's.
+- **A refused watch registration** (task 10, `10:M8`): a client's refusal of the watcher's
+  registration is dropped without a line in the log; no client is known to refuse it. The
+  maintainer's.
+- **A new file closed unsaved** (task 1): a document closed without ever being saved, so on no
+  disk, has its findings withdrawn at the next check rather than as it closes. The maintainer's.
+- **A record whose project is gone** (the final wave): a build record still naming a project
+  description that was moved or deleted is announced and not analysed, so a file only its build
+  reported on keeps its findings until a check reaches it, or a record changes and everything on
+  screen is checked again (R225). The maintainer's.
+- **Lines past the wrap** (tasks 2 and 10): a line of `editors/vscode/README.md` runs past the wrap,
+  pins of the page tests split phrases mid-way, and the editor page has two lines a hundred
+  characters long, beside branch 7's entry on lines past 100 columns. Branch 15 lists the pages.
+- **The progress log's rows** (D0): branch 8's row names its ids by the headings of its tasks and
+  may miss some, and says it is not merged, which #94 since was; that row and branch 9's are branch
+  10's D0's (R228).
+
 ## Rulings taken
 
 Every departure from a task's text, with its reason, numbered `R1`, `R2`, and so on.
@@ -2622,6 +2727,305 @@ Every departure from a task's text, with its reason, numbered `R1`, `R2`, and so
   release: Publish dispatched from master to TestPyPI before the tag exists, which runs most of
   the release path and spends the version on TestPyPI alone. The pull request recommends it
   before 0.12.0's tag.
+
+**Branch 9:**
+- **R153.** Branch 9 runs a D0 first, then tasks 1 to 10 in order, 7 and 10 in parts (R174), then
+  its changelog as D1 (R4), then the whole-branch review and one final wave, the order of branches
+  2 to 8 (R127; ruling B9-1). Every order its tasks need between them is their numbering's
+  already.
+- **R154.** D0 carries what branch 8 left it (ruling B9-2): `docs.yml`'s comment on a tag a
+  dispatch names, beyond the Files list; R141 and R143 marked as corrected by R149 and R151, as
+  R131 is by R138; the wording of branch 7's entry on the directories a record is read under,
+  which branch 8's entry handed to it; and the progress log's rows for #93 and #94.
+- **R155.** Each task brings the rule it changes to every home, `README.md` and
+  `editors/vscode/README.md` among them, beyond the Files list, by R100's rule as R136 applied it
+  (ruling B9-3): until branch 15 the README is one of a rule's homes, and left as it was it would
+  have contradicted SPEC from this branch's merge on. Both READMEs change in an editor branch,
+  and branch 15 rewrites them anyway.
+- **R156.** The probes of tasks 3 and 4 are ported without their early return on an error answer
+  (ruling B9-4): task 3's asserts an edit reaching the second image's reader, task 4's a refusal
+  naming the unsaved document. Each probe took either of two answers, decisions 10.2 and 10.4
+  chose one, and once task 6 answers a defect with an error, the early return would pass a crash.
+- **R157.** A task's probe, in the briefs of tasks 1 to 4, is the last function of the excerpt the
+  brief carries, ported with the helpers it calls and with the suite's own `published` (ruling
+  B9-5): each excerpt ran from the probe module's fixture through every probe above the one named.
+- **R158.** Task 1 withdraws a file that was deleted, once, with an empty list, and checks nothing
+  from its path (ruling B9-6): once a check withdraws only what its run reported on, no run
+  reports on a deleted file again, and a run started from its path is what published a finding
+  about a file that does not exist.
+- **R159.** Task 1's test checks one document per message, and task 9's review ablates task 1's
+  rule again (ruling B9-7): once task 9 checks together two opens that arrive together, the probe
+  reports on both projects in one check, and passes without the rule.
+- **R160.** Task 2 rewords the pages' sentence on a project file (ruling B9-8): it is searched for
+  above like any file, and checked as the project it is where no description above includes it,
+  as the code always did and as decision 10.3 has the outermost description answer.
+- **R161.** Task 3's closure serves every kind of rename - a variable's, a type's, a constant's, a
+  section's, a raster's, and a unit's through its own plan - and every project it reaches is asked
+  each refusal a rename asks before anything is answered (ruling B9-9). A quick fix reaching
+  across images goes to task 10's first part, which makes one fix of several images' offers; until
+  it, a fix pressed at a reader still reached its own image alone.
+- **R162.** Task 3's closure reads no description twice in one rename (ruling B9-10): it keeps the
+  projects it has read by their descriptions, asks their sources which of the touched files they
+  hold, and reads only a build or a candidate it has not read yet, where the search asked file by
+  file read every image once per touched file, the cost `10:I12` is about.
+- **R163.** Task 4's open document of the project is any open document that is a source of a
+  project the rename reaches through task 3's closure, a unit's rename included (ruling B9-11): an
+  unsaved mention in an image the document is not in is the half-rename `10:I4` is about. A rename
+  may then be refused for a tab of another image.
+- **R164.** Task 4 tells a buffer that differs from its file by what the two parse to, the file read
+  from the disk apart from any buffer, a buffer that does not parse differing (ruling B9-12):
+  compared as text, a CRLF file read through universal newlines would differ from every buffer an
+  editor sends for it, and every rename on Windows would be refused. A buffer changed only in
+  whitespace refuses no rename, which is harmless, positions being read from the buffer.
+- **R165.** Task 4 also refuses a rename that would rewrite nothing, a variable's and a unit's
+  alike, saying that nothing on disk spells the name (ruling B9-13): `10:I4`'s change asks it,
+  though the task's text leaves it out, and an empty edit is applied without a word.
+- **R166.** Task 5's case of no project known is a component read on its own: one that no build
+  record claims, that no description at or above it includes, and that declares no project itself
+  (ruling B9-14). A project file read alone is a project known, and renames as before; a component
+  whose description above could not be read is refused, naming that description and why; a local's
+  rename goes on, and every other kind is refused, a unit's too. R196 reads its refusal for a
+  description that could not be read as reaching every kind, and R226 takes a local out of it.
+- **R167.** Task 6's net wraps every message, the notifications included (ruling B9-15): a request
+  the server fails on is answered with the internal error, `-32603`, a code beside the protocol's
+  others, and a notification with nothing; each writes its trace to stderr, and the session reads
+  on; only `Exception` is caught, so an interrupt still ends the run. The relative record ended the
+  session on a `didOpen`, which a net round the requests alone would have left outside it.
+- **R168.** Task 6 skips a build record naming its project by a relative path where the server takes
+  the records, announcing why as for any record this version cannot use; a uri is built from a
+  resolved path, and only where the client gave none; and `discovery.py` and `BuildInfo`, which
+  `ddd gui` reads too, stay as they are (ruling B9-16). A hand-made relative record is ignored,
+  the log saying why.
+- **R169.** The log says why the quick fixes are withheld once per reason while it stands (ruling
+  B9-17): at the first request a project's unread file empties, and again only once a check has
+  read the project whole and a later one finds it broken. Said once a session it would hide a
+  second break, and once a request it is the flood the error notifications were.
+- **R170.** Task 6 keeps `window/logMessage` alone, as the task says, and SPEC and the editor page
+  say where the reason is: in the unread file's own finding, and in the log (ruling B9-18). A
+  reader asking for a fix in another file meets an empty lightbulb, and the reason in the
+  Problems list.
+- **R171.** Decision 10.1's `-32603` stands, and the editor page says that a client shows a request
+  the server fails on as a failed request, with the trace in the server's log (ruling B9-19): VS
+  Code shows a notification per failed request, so a defect in the hover shows one per hover while
+  it stands, and the session and the findings outlive it.
+- **R172.** Task 7 indexes a condition's use of a constant apart from the constant's shapes, in a
+  field of its own (ruling B9-20), and takes beyond the Files list `src/ddd/project_shared.py`,
+  `src/ddd/shared_plans.py`, the command line page's sentence on a constant's uses, and their
+  tests: the Shared files tab counts and lists a condition among a constant's uses, renames its
+  word with the constant, and refuses to remove a constant a condition still spells. Modules of
+  the page's server and their tests change in an editor branch; no file under `gui/src` does.
+- **R173.** Task 7's first part takes three *Left open* entries in the code it rewrites (ruling
+  B9-21): the preferred mark goes to the fix the ownership rule orders first, and to none where
+  that one is withheld; `_fixed_by` reads a type's key only where the entry still names the type;
+  and the editor's reconcile titles end with the page's sentence on the readers' code, which a
+  test holds equal to the page's. Where the owner's way is withheld the lightbulb applies nothing
+  by itself.
+- **R174.** Task 7 runs as 7a (`10:I8`) and 7b (`10:I9`, `10:I10`, `14:M13`), and task 10 as 10a to
+  10e, by its five groups, each part with its own brief, commits and review (ruling B9-22), as
+  branch 4 split two of its tasks. The cost: seven more dispatches, and one commit per task read
+  as one per part.
+- **R175.** Task 8 marks an edit `needsConfirmation` only for a client that announced both
+  `documentChanges` and `changeAnnotationSupport`, one annotation named by every text edit of an
+  edit reaching two files or more, a rename's or a fix's (ruling B9-23): an annotated edit exists
+  only inside `documentChanges`, and an annotation is outside what another client negotiated. A
+  client that previews without announcing it is not asked.
+- **R176.** SPEC 7.2 and the editor page say that the preview decision 10.5 opens lets the reader
+  leave a file out, which applies the edit in part, by the reader's choice (ruling B9-24).
+- **R177.** Task 9 reads the stream on a thread of its own into a queue, and handles one message at
+  a time on the server's thread (ruling B9-25): an open, a save and a watch event mark their
+  documents and drop what was read, and the documents marked are checked together once every
+  message already queued is handled, before the next request is answered, never waiting for one
+  that has not arrived. Broken framing still ends the run with 1. Its test pins one analysis per
+  project for a save and its watch event queued together, and one per check when they come
+  apart. The cost: a thread in the server, and a publication a batch later than its message.
+- **R178.** The hover's dictionary is kept per description until what was read is dropped, resolved
+  as the hover resolves it rather than taken from a check (ruling B9-26): a check resolves nothing
+  for a project whose read reported an error, where a hover resolves what loaded.
+- **R179.** Task 10's tests of a request of another shape assert the invalid-parameters error,
+  `-32602`, naming the field, and nothing on stderr (ruling B9-27): after task 6 any exception is
+  answered and the session goes on, so a test of the session's survival alone passes without the
+  checks.
+- **R180.** A quick fix that `10:M2` refuses whole under a moved buffer is not offered, and SPEC 7.2
+  says not offered where it said refused (ruling B9-28): an error answer to a code action is the
+  notification task 6 took away. The cost: a shorter lightbulb, with no
+  sentence, until the buffer is saved.
+- **R181.** Task 10's second part reads `10:M4` as its four cases: the readers named across every
+  project holding the document, both writers named where two write, and a line naming a reader's
+  file, or a writer's, that did not load (ruling B9-29).
+- **R182.** A build record's watch event goes to the search for records - what was found is dropped,
+  and the open documents, or what is on screen while none is open, are checked again under the
+  records - and never to a check as a document, the branch for nothing open taking descriptions
+  alone (ruling B9-30): checked as one, a record was read as a component and given a finding of its
+  own. R225 checks what is on screen at a record's change whatever is open.
+- **R183.** Task 10 registers the watcher once the client says it is initialized, and only where it
+  announced the dynamic registration of watched files, for `**/*.ddd.json` and `**/ddd-build.json`,
+  the extension dropping its own file events in the same commit; a message carrying an `id` and no
+  `method` is a client's answer, and is answered nothing; and the description of
+  `ddd.buildDirectories` says a change takes a restart (ruling B9-31). A client without dynamic
+  registration gets no watch events, as it got none from the server before.
+- **R184.** Task 10 narrows when the extension starts the server, not when it is activated (ruling
+  B9-32): it starts it once a `*.ddd.json` is open or a workspace folder holds one, deciding so in
+  `config.ts`, which imports no `vscode` and is tested by node, a file beyond the Files list's
+  names. Activated only by a workspace holding a description, the extension would start nothing
+  for a description opened outside a folder or created after the window opened.
+- **R185.** Task 10 reads a relative `-b` against each workspace folder, in the server, the
+  extension's arguments unchanged, and its migration is the changelog entry written with it (ruling
+  B9-33): it was read against the working directory, and an option's meaning is the interface the
+  changelog's preamble names. An editor starting `ddd lsp -b build` from a directory that is none of
+  its folders finds another build tree.
+- **R186.** Task 10 refuses an external type's rename by one check over the index, which the server
+  and `type_plans.rename_type` both ask, `type_plans.py` and its test joining the Files list (ruling
+  B9-34): the page's Types tab renamed an external type through the same sites, and the two clients
+  are not to disagree about what a rename refuses. One module of the page's server and its test
+  change in an editor branch. R220 corrects what the index was taken to hold.
+- **R187.** Task 10 renders a unit's rename in linear time, a batch of independent sets made against
+  the text as it was read, the entries a merge takes out still made in turn (ruling B9-35):
+  `editing.py` joins the list, its helpers for edits made at once being shared. A document built
+  after each operation was the quadratic part.
+- **R188.** A change of the extension is proved by CI's `extension` job on the pushed commit, as the
+  Windows legs prove theirs; here a node test that imports no `vscode` may be compiled in scratch
+  with the page's TypeScript (ruling B9-36): `editors/vscode` has no installed packages on this PC,
+  and installing them is a registry download. A compile error in `extension.ts` is first seen on
+  CI.
+- **R189.** Of the *Left open* entries naming branch 9's files (ruling B9-37), the editor's own id
+  fix joins task 10's last part beside `10:M12`'s line endings, both an editor fix writing other
+  bytes than the engine; the naming of unread files joins task 6, in the server's sentence and in
+  `units._names` where two files share a name, the page's halves staying branch 10's; the three
+  entries of R173 join 7a; the wording of branch 7's record entry is D0's (R154); and a candidate's
+  version in the extension's manifest stays the maintainer's.
+- **R190.** At the maintainer's word to continue, branch 9 runs from task 3 to its pull request, and
+  the controller pauses once the pull request is open, as the maintainer first asked.
+- **R191.** cc003bc5's message stays as committed, and the pull request says what it got wrong:
+  commits are never amended.
+- **R192.** A description the closure meets and cannot read refuses the rename too, rather than
+  being skipped: task 5's refusal covers every description a rename's search or its closure meets
+  and cannot read, naming the image where a record names one. Until task 5, a rename half-applied to
+  an image whose description a plugin stops, as before task 3.
+- **R193.** Only a refusal from a project the document is not in names that project's image; a
+  refusal from the document's own projects keeps its words, which earlier tests pin, and the pages
+  say both. A refusal from one of two images the document is in names neither.
+- **R194.** Task 4 asks for the open documents that differ once the closure's loop is done, before
+  the answer (R163).
+- **R195.** A rename's round trip on Windows is proved by CI's Windows legs on the pushed commit.
+- **R196.** A rename is refused where a description it needs could not be read, whatever is renamed:
+  a build record holds no list of the files its image reads, so a rename cannot tell whether an
+  image whose description a plugin stops holds a file it rewrites without reading that description;
+  the refusal names the description and why, and the pull request tells the maintainer that a rename
+  cannot go on while any recorded image's description fails to read. R226 revises it for a local.
+- **R197.** Task 6's round carries R189's item for task 6, which its dispatch left out: two unread
+  files of one name told apart, in the server's sentence and in `units._names`, and the refusal
+  for an include that names no file naming the file it names, not the project description.
+- **R198.** Task 7's first part mends in its own round a fix reading a types entry that a types
+  buffer has moved, rather than leaving it to task 10: `10:M2` is about a buffer that moved a
+  declaration an edit touches, not a types file a decision only reads, so no later task held it.
+- **R199.** `variables._fixed` taking a type's key from wherever the index points, with no check of
+  the name there, goes to *Left open*: no branch owns `variables.py`.
+- **R200.** The journeys of `/api/fix` and of the settle route, whose answers task 7's first part
+  changes, are proved by CI's journeys on the pushed commit.
+- **R201.** The Shared files tab's word for a condition's use goes to *Left open*, for branch 11:
+  R172 keeps every file under `gui/src` out of the editor branch, and a change of the page brings
+  its gates, journeys and screenshots. The count and the refusal are right meanwhile.
+- **R202.** Task 7's second part is read by CI's journeys and other legs on the pushed commit: no
+  journey or example spells a declared constant in a condition.
+- **R203.** Where a pin of task 8's page sentences was not red first, its ablation killing it stands
+  for the red.
+- **R204.** On a Windows console, Ctrl-C reaches a server started by hand only once another message
+  arrives: the pull request names it for the maintainer, and CI runs the subprocess test on
+  Windows. An editor ends the run with `exit`.
+- **R205.** Task 9's tests of the standard input on python 3.12 and 3.13, and on Windows, are proved
+  by CI's six legs.
+- **R206.** A save and its watch event are one analysis when the event is queued behind the save,
+  and two when it comes later; both stand (R177), and a run against a real client's timing is the
+  maintainer's.
+- **R207.** The handshake refuses a client capability of another shape than the protocol's, naming
+  it, rather than reading it as not announced: every field the server reads is checked alike, and
+  VS Code sends well-formed capabilities. A client sending another shape for an optional
+  capability cannot start the server until it is read as not announced, a few lines; the changelog
+  and the pull request say so, since it reverses task 8's tolerance.
+- **R208.** A fix taking another declaration's answer in is offered by the images that offer it
+  alone, and adding a unit to the vocabulary is not checked beyond the document's projects: both
+  were so before the branch, and neither is one of `10:M3`'s cases, so they go to *Left open*.
+- **R209.** The quick fix that respells an unknown unit is withheld wherever Rename Symbol refuses
+  that rename, an unsaved document a rename reaches among the reasons: it is `10:M2`'s not
+  offering at its widest, on the safe side, and the changelog says so; R227 names the step it asks
+  as a migration.
+- **R210.** f1433c26's message, untrue of a producer opened through a link and corrected by
+  8dfe9ffd's docstring, stays as committed, and the pull request names it beside R191's.
+- **R211.** The hover's summary facts, the shape and the limits, stay the first project's where
+  several hold the document: the line naming the files that did not load is for `10:M4`'s cases
+  (R181), and the facts are none of them, so they go to *Left open*.
+- **R212.** A unit's rename renders in linear time, and `codeAction/resolve` is not built: `10:M11`
+  names it as one way, and linear rendering answers the cost with no capability for a client to
+  announce. A code action still renders its plans as it is answered, each in linear time.
+- **R213.** `type_plans.rename_type` refuses an external type, and the page shows that refusal as it
+  shows any other; no code under `gui/` changes in branch 9, the page's own controls being branch
+  11's. Until then the page offers a rename of an external type that it then refuses.
+- **R214.** Where a project holding the document does not resolve, a plugin stopping it, the hover
+  says so in one line naming that project as a rename's refusals name an image, wherever it names
+  readers and writers, and the pages say so: a project left out makes every name the hover gives
+  partial, and answering nothing would drop what the other projects say.
+- **R215.** A part split into several commits runs the whole gate at its last commit, each earlier
+  one its focused suites, ruff and mypy: CI runs on the head. An earlier commit may hold a red gate,
+  met only by a bisect (R218, R222).
+- **R216.** Two corners of task 10's third part go to *Left open* at first: a file also under a
+  nested folder that stays kept what the outer folder's project alone had said of it, once that
+  folder was removed, and a record's change while documents are open checked those alone. R217
+  settles the first, and R225 the second.
+- **R217.** A change of the workspace folders checks again every file whose findings are on screen,
+  as well as the open documents, and a test removes a folder with nothing open, in task 10's last
+  part: a file whose findings only the removed folder's checks gave is checked again, so the
+  pages' answer as if the folder had never been named holds. One more check of every file on
+  screen at a folder change, which is rare.
+- **R218.** 6850c998 and acd2f6c3 leave `tests/test_editing_at_once.py` red, and b4a5339a mends it:
+  the five commits of task 10's fourth part stay as they are, and the pull request names the two
+  and the one mending them, so the maintainer can squash them at the merge; rewriting history
+  needs the rebase the plan forbids its workers.
+- **R219.** On a description written on one line, a plan's rendering and every range the server
+  sends still take time quadratic in the line's length, and go to *Left open*: the quadratic part
+  `10:M11` names, a document built per operation, is gone, and what is left is what
+  `Document.position` costs on a long line, which every range on such a line pays, a fix of
+  `Document` for every caller.
+- **R220.** R186's premise is `Index.externals`, an external type's name and its header: the index
+  recorded no type's kind, and the external's is the one kind the check needs.
+- **R221.** As R45 kept one of branch 1's commits that failed a gate, branch 9's middle commits that
+  leave one red stay as they are: the pull request names 6850c998 and acd2f6c3 as leaving failures
+  in `tests/test_editing_at_once.py`, b4a5339a as mending it and 6850c998's message as superseded,
+  and task 10's last part runs that suite whenever it changes `editing.py`. A bisect stopping at
+  either needs a skip, and the maintainer can squash them at the merge.
+- **R222.** 6b31f399 to cb5b6e95 each fall one branch short of the coverage gate, which 93be303c's
+  test covers: they stay as they are, and the pull request names them beside R221's two.
+- **R223.** A `definition-mismatch` naming two keys is carried by neither key's fix, both fixes
+  still offered at the declaration: each action carries the findings it settles, and one claiming a
+  finding it leaves in place is worse than one silent about it; applying one fix leaves a finding
+  naming the other key, which that key's fix carries. A declaration differing in two keys settles in
+  two steps.
+- **R224.** The branch's head failing two of CI's python versions, 3.12 and 3.13, in test code, goes
+  to the final wave rather than to a round of task 10's last part, the whole-branch review reading
+  the checkout: the tests read a file's bytes, and `Document` is built with its text alone, a closed
+  file's line ending set by `read` after it, so that it is called as the tests' copy of the old walk
+  is. CI on the pushed head proves both.
+- **R225.** The final wave withdraws a file whose findings no run reports on any more, superseding
+  R182's checks of what is open and R216's second corner: a check withdraws a file that a run from
+  the same place reported on the last time and that no run reports on now, and a watched
+  description whose findings are on screen is checked whatever is open, as is every file on screen
+  at a record's change. The cost: an analysis per project with findings on screen that a pull
+  touches, and what each run reported on, kept by where it ran from.
+- **R226.** A local's rename is not refused for a description that could not be read, revising R196
+  as it reaches a local: a local is spelled in its own file alone, whichever image holds that file,
+  so no description, read or not, changes what its rename reaches. A local may be renamed while a
+  plugin is broken in an image holding its file, which changes nothing that image's description
+  says.
+- **R227.** The final wave also takes six of the whole-branch review's Minors, each a few lines of
+  the branch's own code, tests or sentences: a document closed unsaved is checked again where its
+  buffer drew its findings; two changelog entries name their migrations, each with its item in the
+  opening; a test settles the fixes against the analysis's own wording; `server.py`'s docstring says
+  what the module holds; the pages say that a reached project's unread file may have loaded with an
+  error; and `ddd lsp`'s help, the README and the FAQ say where `-b` is read and the usual names
+  searched. Naming two images' writers apart in a hover, and the keys of a mismatch carried in the
+  finding's data, go to the maintainer, and moving the orchestration out of `server.py` to branch 14
+  (*Left open*, branch 9).
+- **R228.** The final wave writes branch 9's rulings from R153 and its *Left open* entries; the
+  progress log's rows are branch 10's D0's.
 
 ## Progress log
 

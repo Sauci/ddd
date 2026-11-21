@@ -356,10 +356,11 @@ VS Code
 -------
 
 VS Code cannot start a language server without an extension, so one is shipped in
-``editors/vscode``. It is a launcher and deliberately nothing more - everything a reader
-sees is the server's answer, so an editor DDD ships nothing for is not at a disadvantage.
-It watches nothing itself: the server asks for the watcher it needs, as it asks any other
-editor. It contributes two settings and one command:
+``editors/vscode``. It is a launcher and deliberately nothing more - everything a reader sees
+is the server's answer, so an editor DDD ships nothing for is not at a disadvantage. It starts
+the server once a description file is open or the workspace holds one, so that a json file of
+another name starts nothing, and it watches nothing itself: the server asks for the watcher it
+needs, as it asks any other editor. It contributes two settings and one command:
 
 .. list-table::
    :header-rows: 1

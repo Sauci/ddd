@@ -10791,6 +10791,47 @@ def extension_setting(name: str) -> str:
     return manifest["contributes"]["configuration"]["properties"][name]["markdownDescription"]
 
 
+class TestTheExtensionStartsTheServerForADescription:
+    """10:M7, B9-32. The extension is activated on any json document, since a description opened
+    outside a folder, or created after the window opened, is announced by nothing else; and it
+    started the server at once, so every trusted workspace that opened a json file ran ``ddd lsp``,
+    and showed the error of a ``ddd`` not installed. It starts the server once a description is
+    open or the workspace holds one, and not before."""
+
+    SAID: ClassVar[dict[str, tuple[str, str]]] = {
+        "SPEC.md": (
+            SPEC,
+            "It starts the server once a description file is open or the workspace holds one, so "
+            "that a json file of another name starts nothing.",
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            "It starts the server once a description file is open or the workspace holds one, so "
+            "that a json file of another name starts nothing,",
+        ),
+        "editors/vscode/README.md": (
+            (EXTENSION / "README.md").read_text(encoding="utf-8"),
+            "It starts the server once a `*.ddd.json` is open or the workspace holds one, so a "
+            "json file of another name starts nothing,",
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(SAID))
+    def test_the_page_says_when_the_extension_starts_the_server(self, page: str) -> None:
+        text, phrase = self.SAID[page]
+        assert phrase in flattened(text), f"{page} no longer says: {phrase!r}"
+
+    def test_the_manifest_keeps_both_ways_of_being_activated(self) -> None:
+        """Activated by the workspace alone, the extension would not start for a description
+        opened outside a folder, or created after the window opened: which document is a
+        description is the extension's to decide once it runs (``config.ts``)."""
+        manifest = json.loads((EXTENSION / "package.json").read_text(encoding="utf-8"))
+        assert manifest["activationEvents"] == [
+            "workspaceContains:**/*.ddd.json",
+            "onLanguage:json",
+        ]
+
+
 class TestTheServerWatchesWhatItReads:
     """10:M8, decision 10.6. The watcher was the extension's, so an editor launching the server
     itself heard of no file changed behind it, and it watched the descriptions alone, so a configure

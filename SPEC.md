@@ -3129,6 +3129,8 @@ The server speaks the protocol on stdin and stdout, and takes the build director
 repeatable `-b` arguments, a relative one read against each workspace folder, or against the
 server's working directory while the client names none; the shipped VS Code extension exposes
 them as the setting `ddd.buildDirectories`, and the executable to launch as `ddd.executable`.
+It starts the server once a description file is open or the workspace holds one, so that a
+json file of another name starts nothing.
 
 The workspace folders are those the client names at `initialize`, and those it adds and
 removes while the session runs, which the server says it follows: a folder added is searched

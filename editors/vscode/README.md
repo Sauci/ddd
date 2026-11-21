@@ -11,8 +11,9 @@ language server and watch the files it asks for - Neovim, Helix and Emacs need n
 all. VS Code has no way to start one without an extension, which is the only reason this exists.
 
 So nothing here adds a feature, and nothing here should grow one that could be served from the
-server instead. It watches nothing itself: the server asks VS Code to watch the descriptions
-and the build records, as it asks any editor.
+server instead. It starts the server once a `*.ddd.json` is open or the workspace holds one, so
+a json file of another name starts nothing, and it watches nothing itself: the server asks VS
+Code to watch the descriptions and the build records, as it asks any editor.
 
 ## Installing it
 

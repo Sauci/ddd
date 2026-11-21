@@ -10384,12 +10384,12 @@ EXTERNAL_REFUSED: Final = (
 """What a rename of ``examples/structures``' external ``DriverStatus_t`` is refused with."""
 
 
-def renamed_at(root: Path, path: Path, pointer: str, name: str, *before: dict[str, Any]) -> Any:
-    """The server's answer to ``F2`` on the string at ``pointer`` of ``path``, renaming it onto
-    ``name``, in a session over ``root`` that sent ``before`` first."""
+def rename_at(path: Path, pointer: str, name: str) -> dict[str, Any]:
+    """``F2`` on the string at ``pointer`` of ``path`` as the disk holds it, renaming it onto
+    ``name``."""
     at = Document(path.read_text(encoding="utf-8")).text_range_of(pointer)
     assert at is not None
-    request = {
+    return {
         "jsonrpc": "2.0",
         "id": 15,
         "method": "textDocument/rename",
@@ -10399,7 +10399,13 @@ def renamed_at(root: Path, path: Path, pointer: str, name: str, *before: dict[st
             "newName": name,
         },
     }
+
+
+def renamed_at(root: Path, path: Path, pointer: str, name: str, *before: dict[str, Any]) -> Any:
+    """The server's answer to ``F2`` on the string at ``pointer`` of ``path``, renaming it onto
+    ``name``, in a session over ``root`` that sent ``before`` first."""
     writer = io.BytesIO()
+    request = rename_at(path, pointer, name)
     assert Server(session(*before, request, *END), writer, root=root).run() == 0
     return next(message for message in sent(writer) if message.get("id") == 15)
 
@@ -10481,6 +10487,121 @@ class TestAnExternalTypeIsNotRenamed:
                 "name foo.h defines, so a rename here would leave that header defining the old one"
             ),
         }
+
+
+POINTER_SPELLED: Final = '{"units": ["rpm", "RPM", "rpm"], "units[2]": 0}'
+"""A units file listing ``rpm`` twice and ``RPM`` once, with a key after the list spelling the
+pointer of its third entry: the parse reads ``rpm`` there, and the scan records that member there,
+which is where the edit engine cuts. No file the loader takes holds such a key."""
+
+UNSEEN_UNITS: Final = (
+    "u.ddd.json has unsaved changes this rename would not see; save it and rename again"
+)
+
+
+class TestAUnitPlanTheEngineCannotMakeInAText:
+    """Renaming ``rpm`` onto ``RPM`` where a units file lists both is a merge, which takes the
+    entries of ``rpm`` out one after the other, each at the pointer the index found. In a text
+    spelling one of those pointers as a key, the unit is still there as the parse reads it, so the
+    rename was planned; the engine took the member out with the entry, across the list's end, and
+    then found nothing at the next one. Its refusal ended Rename Symbol in an error answer, and the
+    whole lightbulb with it, since a quick fix renaming a unit is planned as Rename Symbol plans
+    it. The rename is refused instead, and its fix not offered, as for any text the index no
+    longer describes: an open document that differs from its file, or a file changed on disk since
+    it was read."""
+
+    def single(self, tmp_path: Path) -> Path:
+        """One project stating ``rpm`` in ``a.ddd.json`` and listing it twice, beside ``RPM``, in
+        ``u.ddd.json``. Returns ``a.ddd.json``."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "u.ddd.json", "a.ddd.json"),
+                "u.ddd.json": {"units": ["rpm", "RPM", "rpm"]},
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        return tmp_path / "a.ddd.json"
+
+    def test_the_rename_merges_both_entries_while_the_file_holds_no_such_key(
+        self, tmp_path: Path
+    ) -> None:
+        """The control: the same rename, nothing open."""
+        answer = renamed_at(tmp_path, self.single(tmp_path), AT_THE_UNIT, "RPM")
+        assert json.loads(rewritten_by(answer["result"]["changes"])["u.ddd.json"]) == {
+            "units": ["RPM"]
+        }
+
+    def test_rename_symbol_is_refused_for_a_buffer_the_engine_cannot_make_it_in(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        a = self.single(tmp_path)
+        opened = holding(tmp_path / "u.ddd.json", POINTER_SPELLED)
+        answer = renamed_at(tmp_path, a, AT_THE_UNIT, "RPM", opened)
+        assert answer["error"] == {"code": REQUEST_FAILED, "message": UNSEEN_UNITS}
+        assert capsys.readouterr().err == ""
+
+    def test_a_closed_file_changed_on_disk_before_its_event_is_refused_as_one_that_moved(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """No buffer differs: the text was saved into the closed file from elsewhere after the
+        project was read, and the rename asked before the event that makes the server read it
+        again. Refused naming that file alone, as a place the index found that has moved, and not
+        answered with the edits of the files the engine could make them in."""
+        a = self.single(tmp_path)
+        server = Server(io.BytesIO(), io.BytesIO(), root=tmp_path)
+        assert server._handle({"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {}})
+        assert server._handle(fixes_request(a, (), AT_THE_UNIT))  # the project read and kept
+        (tmp_path / "u.ddd.json").write_text(POINTER_SPELLED, encoding="utf-8")
+        writer = io.BytesIO()
+        server.writer = writer
+        assert server._handle(rename_at(a, AT_THE_UNIT, "RPM"))
+        (answer,) = sent(writer)
+        assert answer["error"] == {
+            "code": REQUEST_FAILED,
+            "message": "u.ddd.json has unsaved changes that moved or respelled a unit this "
+            "rename would touch; save it and rename again",
+        }
+        assert capsys.readouterr().err == ""
+
+    def across(self, tmp_path: Path) -> Path:
+        """Image one holds ``c.ddd.json`` and ``d.ddd.json``, both stating ``rpm``, and lists
+        ``RPM``; image three holds ``d.ddd.json`` and lists ``rpm`` twice beside ``RPM``. Returns
+        ``c.ddd.json``, at whose unit image one reports ``unknown-unit``."""
+        imaged(
+            tmp_path,
+            {
+                "one": ["c.ddd.json", "d.ddd.json", "u1.ddd.json"],
+                "three": ["d.ddd.json", "u.ddd.json"],
+            },
+            {
+                "c.ddd.json": component("C", declare("output", "Speed", unit="rpm")),
+                "d.ddd.json": component("D", declare("input", "Speed", unit="rpm")),
+                "u1.ddd.json": {"units": ["RPM", "Nm"]},
+                "u.ddd.json": {"units": ["rpm", "RPM", "rpm"]},
+            },
+        )
+        return tmp_path / "c.ddd.json"
+
+    def test_the_lightbulb_offers_the_rename_while_nothing_is_open(self, tmp_path: Path) -> None:
+        """The control: the rename fix reaches image three through ``d.ddd.json``."""
+        c = self.across(tmp_path)
+        offered, _ = fixes_asked(tmp_path, c, reported=UNKNOWN_REPORTED, pointer=AT_THE_UNIT)
+        (renaming,) = [a for a in offered if a["title"] == "Rename 'rpm' to 'RPM' everywhere"]
+        assert touched(renaming) == {"c.ddd.json", "d.ddd.json", "u.ddd.json"}
+
+    def test_the_lightbulb_offers_the_other_fixes_and_not_the_rename(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The rename is planned beyond the document's own images, in image three, whose units file
+        is open on the text: the lightbulb is answered, without the rename it would be refused."""
+        c = self.across(tmp_path)
+        opened = holding(tmp_path / "u.ddd.json", POINTER_SPELLED)
+        offered, _ = fixes_asked(
+            tmp_path, c, opened, reported=UNKNOWN_REPORTED, pointer=AT_THE_UNIT
+        )
+        assert [action["title"] for action in offered] == ["Add 'rpm' to the vocabulary"]
+        assert capsys.readouterr().err == ""
 
 
 class TestMessagesTheClientGetsWrong:

@@ -51,6 +51,7 @@ from urllib.request import url2pathname
 
 from ddd import __version__
 from ddd.build_info import BUILD_INFO_FILENAME, BuildInfo
+from ddd.editing import EditError
 from ddd.ir import DataDictionary
 from ddd.lsp.diagnostics import collect
 from ddd.lsp.discovery import build_files, load_builds
@@ -101,7 +102,14 @@ from ddd.lsp.protocol import (
     write_message,
 )
 from ddd.lsp.ranges import Document, differs_from_disk, read
-from ddd.lsp.units import UnitRefusalError, rename_unit, text_edits, unit_drift, unit_project
+from ddd.lsp.units import (
+    UnitPlan,
+    UnitRefusalError,
+    rename_unit,
+    text_edits,
+    unit_drift,
+    unit_project,
+)
 
 _DID_OPEN: Final = "textDocument/didOpen"
 _DID_CHANGE: Final = "textDocument/didChange"
@@ -1458,7 +1466,8 @@ class Server:
         is in the index, and a unit its units file lists twice is renamed at both entries. A
         buffer that no longer holds the unit where the index found it refuses the rename before
         the plan is made: the plan's pointers are the disk's, and made in that buffer they would
-        respell whatever sits there now.
+        respell whatever sits there now. So does a text the engine cannot make the plan in
+        (:meth:`_rendered`).
 
         Two projects planning one place of a file they share differently refuse it, both named
         (:meth:`_two_ways`): two images sharing a units file, of which one lists the unit renamed
@@ -1486,7 +1495,10 @@ class Server:
                 return self._in_image(reach, loaded, unplanned.message)
             if new in built.vocabulary:
                 listing.add(loaded.path.resolve())
-            edits = text_edits(plan, cache)
+            edits, unmade = self._rendered(plan, cache)
+            if unmade:
+                drifted.update(unmade)
+                continue
             clash = self._gather(changes, made, edits, loaded)
             if clash is not None:
                 file, first = clash
@@ -1498,6 +1510,33 @@ class Server:
         if drifted:
             return self._drifted(drifted, "moved or respelled a unit")
         return self._empty_refusal(changes) or changes
+
+    @staticmethod
+    def _rendered(
+        plan: UnitPlan, cache: dict[Path, Document]
+    ) -> tuple[dict[str, list[dict[str, Any]]], set[Path]]:
+        """A unit's plan as text edits by file uri, made file by file, and the files whose text the
+        edit engine cannot make it in.
+
+        The plan's places held the unit as the parse reads them (:func:`~ddd.lsp.units.unit_drift`),
+        and the engine cuts where the scan records them. A text spelling one of those pointers as
+        a key - ``"units[2]"`` after the list - records that member there: a merge taking two
+        entries of one units file out took the member with the first, across the list's end, and
+        found nothing at the second. The loader takes no file holding such a key, so the text is
+        not the one the project was read from - an open document that differs from its file, or a
+        file changed on disk since it was read - and the rename is refused for it as for a text
+        that moved what the index found. Raised, the engine's refusal answered Rename Symbol with
+        an error, and the whole lightbulb with it, where a quick fix renaming a unit is this
+        rename (:meth:`_renamed`).
+        """
+        edits: dict[str, list[dict[str, Any]]] = {}
+        unmade: set[Path] = set()
+        for planned in plan.edits:
+            try:
+                edits.update(text_edits(UnitPlan((planned,)), cache))
+            except EditError:
+                unmade.add(planned.path)
+        return edits, unmade
 
     @staticmethod
     def _in_image(reach: Reach, loaded: Loaded, refusal: str) -> str:

@@ -347,6 +347,18 @@ def differs_from_disk(path: Path, text: str) -> bool:
     return typed != saved
 
 
+def lines_differ(path: Path, text: str) -> bool:
+    """Whether a buffer open on ``path`` holds other lines than the file on disk, each line ending
+    read as a line feed, as a client counts lines: where it does, a finding drawn over its key in
+    the buffer may sit at another line, or column, than the key has in the file.
+
+    Compared as text, where :func:`differs_from_disk` compares what the two parse to: blank lines
+    typed above a key parse to the document the file holds, and move the key down all the same.
+    A file that cannot be read holds no lines, so any buffer differs from it but an empty one.
+    """
+    return _LINE_ENDING.sub("\n", text) != read(path, {}).text
+
+
 def _decoded(key: str) -> str:
     """A member's key as json means it, from the source text that spells it.
 

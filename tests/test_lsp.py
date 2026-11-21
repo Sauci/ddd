@@ -13933,6 +13933,48 @@ class TestAFindingIsDrawnInTheBuffer:
         assert preferred(offered) == ["Use the unit declared in w"]
         assert offered[0]["diagnostics"] == [finding]
 
+    @pytest.mark.parametrize("typed", ["a-description-and-four-blank-lines", "five-blank-lines"])
+    def test_a_buffer_closed_unsaved_has_its_findings_drawn_where_the_file_holds_them(
+        self, tmp_path: Path, typed: str
+    ) -> None:
+        """Lines typed above the interface of ``r``, and the document closed without saving: its
+        findings, drawn in the buffer, stayed at its lines, five below their keys in the file, until
+        the next check that reported on ``r``. Closed, it is checked again, and they are drawn where
+        the disk holds them, whether the lines hold a key or are blank and parse as the file."""
+        write_tree(tmp_path, self.FILES)
+        r = tmp_path / "r.ddd.json"
+        disk = r.read_text(encoding="utf-8")
+        if typed == "five-blank-lines":
+            buffer = disk.replace('"name": "R",\n', '"name": "R",\n\n\n\n\n\n', 1)
+        else:
+            buffer = self.typed_above(disk)
+        server, writer = self.started(tmp_path)
+        assert server._handle(holding(r, buffer))
+        assert self.drawn(writer, r) == self.where(buffer) != self.where(disk)
+        assert server._handle(closing(r))
+        assert self.drawn(writer, r) == self.where(disk)
+
+    @pytest.mark.parametrize("closed", ["its-own-lines-in-crlf", "no-finding-on-screen"])
+    def test_a_buffer_whose_findings_sit_where_the_file_has_them_is_closed_unchecked(
+        self, tmp_path: Path, closed: str
+    ) -> None:
+        """Closing a document costs no check where nothing it drew can be elsewhere in the file: a
+        buffer holding the file's lines, its line endings aside, which a client counts alike; or a
+        document with no finding on screen, ``p``, whatever its buffer holds."""
+        write_tree(tmp_path, self.FILES)
+        path = tmp_path / ("r.ddd.json" if closed == "its-own-lines-in-crlf" else "p.ddd.json")
+        disk = path.read_text(encoding="utf-8")
+        if closed == "its-own-lines-in-crlf":
+            buffer = disk.replace("\n", "\r\n")
+        else:
+            buffer = disk.replace("{\n", "{\n\n\n\n\n\n", 1)
+        server, writer = self.started(tmp_path)
+        assert server._handle(holding(path, buffer))
+        assert (path.as_uri() in published(writer)) == (closed == "its-own-lines-in-crlf")
+        writer = server.writer = io.BytesIO()
+        assert server._handle(closing(path))
+        assert sent(writer) == []
+
     def test_what_a_document_declares_itself_is_read_from_the_disk(self, tmp_path: Path) -> None:
         """A component no project holds, read on its own, whose buffer is a project description: it
         is checked as the component the disk holds, under the checks one file can settle, whatever

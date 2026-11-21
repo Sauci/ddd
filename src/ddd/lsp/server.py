@@ -102,7 +102,7 @@ from ddd.lsp.protocol import (
     response,
     write_message,
 )
-from ddd.lsp.ranges import Document, differs_from_disk, read
+from ddd.lsp.ranges import Document, differs_from_disk, lines_differ, read
 from ddd.lsp.units import (
     UnitPlan,
     UnitRefusalError,
@@ -717,7 +717,7 @@ class Server:
         elif method == _DID_CHANGE:
             self._remember(message)
         elif method == _DID_CLOSE:
-            self._open.pop(self._document(message).resolve(), None)
+            self._closed(self._document(message))
         elif method == _DID_SAVE:
             self._mark(_DID_SAVE, self._document(message))
         elif method == _DID_CHANGE_WATCHED:
@@ -798,6 +798,21 @@ class Server:
             text = changes[-1].get("text")
         if isinstance(text, str):
             self._open[path] = (text, version if isinstance(version, int) else None)
+
+    def _closed(self, path: Path) -> None:
+        """Forget the buffer of a document the client closed, and mark the document for a check
+        where its findings are on screen and were drawn in a buffer whose lines are not its file's.
+
+        An open document's findings are drawn in its buffer (:func:`collect`), and closed without
+        saving, the buffer is gone: lines typed above a key, unsaved, kept the key's finding that
+        many lines below it on the disk, until the next check that reported on the file. Checked
+        again, the findings are drawn in the disk's text. A buffer holding the file's lines drew
+        them where the disk has them, and costs no check (:func:`~ddd.lsp.ranges.lines_differ`).
+        """
+        resolved = path.resolve()
+        closed = self._open.pop(resolved, None)
+        if closed is not None and resolved in self._published and lines_differ(resolved, closed[0]):
+            self._mark(_DID_CLOSE, path)
 
     def _watched(self, message: dict[str, Any]) -> None:
         """Mark for a check again, because what was read from disk is no longer what is on it.

@@ -10936,7 +10936,9 @@ class TestWhereAnOpenDocumentsFindingsAreDrawn:
             "that text, and never from the file on disk. A finding names its key by its place in "
             "the file, so where unsaved changes put another item at that place of a list - a "
             "declaration typed above the one it is about - the finding is drawn over that item "
-            "until the file is saved.",
+            "until the file is saved. A document closed without saving, its findings drawn in a "
+            "text whose lines are not its file's, is checked again, and they are drawn where the "
+            "file holds their keys.",
         ),
         "docs/editor_integration.rst": (
             EDITOR_INTEGRATION,
@@ -10945,7 +10947,14 @@ class TestWhereAnOpenDocumentsFindingsAreDrawn:
             "over the nearest key around it that the buffer holds where it does not, and at the "
             "top of a buffer that is not json. A finding names its key by its place in the file, "
             "so a declaration typed above the one it is about, in the same list, takes the "
-            "finding's place until the file is saved.",
+            "finding's place until the file is saved. A document closed without saving, its "
+            "findings drawn in a buffer whose lines are not its file's, is checked again, and they "
+            "are drawn where the file holds their keys.",
+        ),
+        "CHANGELOG.md": (
+            CHANGELOG,
+            "A document closed without saving, its findings drawn in a buffer whose lines are not "
+            "its file's, is checked again, so that they are drawn where the file holds their keys,",
         ),
     }
 

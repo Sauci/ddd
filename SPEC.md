@@ -3071,7 +3071,9 @@ nearest key around it that the text holds where it does not, and at the top of a
 is not json - the place read from that text, and never from the file on disk. A finding
 names its key by its place in the file, so where unsaved changes put another item at that
 place of a list - a declaration typed above the one it is about - the finding is drawn
-over that item until the file is saved. Opens, saves and watched changes that arrive
+over that item until the file is saved. A document closed without saving, its findings drawn
+in a text whose lines are not its file's, is checked again, and they are drawn where the file
+holds their keys. Opens, saves and watched changes that arrive
 together are checked together, each project once for all of them: the server checks the
 documents they name once it has handled every message already waiting behind the first of them,
 and before it answers a request that came after them, never waiting for a message not yet sent.

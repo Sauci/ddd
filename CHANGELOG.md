@@ -1484,7 +1484,9 @@ A build of DDD from its sources, and a release of it:
   that is not json.  What a document declares itself to be, which decides how it is checked, is
   still read from the disk.  A finding names its key by its place in the file, so a declaration
   typed above the one it is about, in the same list, takes the finding's place until the file is
-  saved.  Nothing to migrate.
+  saved.  A document closed without saving, its findings drawn in a buffer whose lines are not its
+  file's, is checked again, so that they are drawn where the file holds their keys, where they
+  stayed at the buffer's lines.  Nothing to migrate.
 
 * **The hover speaks for every project holding the file, and names the ones it cannot.**  It said
   who writes a variable and who reads it from the first project holding the document alone: a writer

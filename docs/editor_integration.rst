@@ -52,7 +52,9 @@ findings are the disk's, and an open document's are drawn in its text as the edi
 over the key a finding is about where the unsaved buffer holds it, over the nearest key around
 it that the buffer holds where it does not, and at the top of a buffer that is not json. A
 finding names its key by its place in the file, so a declaration typed above the one it is
-about, in the same list, takes the finding's place until the file is saved. Opens, saves and
+about, in the same list, takes the finding's place until the file is saved. A document closed
+without saving, its findings drawn in a buffer whose lines are not its file's, is checked
+again, and they are drawn where the file holds their keys. Opens, saves and
 watched changes that arrive together are checked together, each project once for all of them:
 the server checks the documents they name once it has handled every message already waiting
 behind the first of them, and before it answers a request that came after them, never waiting

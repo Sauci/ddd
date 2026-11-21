@@ -827,11 +827,13 @@ class Server:
 
         Every open document: a document is published through the project above it, so a change
         in a file nobody has open is precisely the case that moves a finding onto one somebody
-        does. And every description that changed whose findings are on screen, open or not: with
-        a document of another project open, and none of its own, a description a pull fixed went
-        on showing what the pull had fixed. With nothing open the Problems list on screen still
-        describes the project as it was, and every description that changed is a root to check
-        it from, but for one deleted (:meth:`_refresh_marked`). A build record that changed
+        does. And every description that changed whose findings are on screen or that a check
+        ran from (:attr:`_reported`), open or not: with a document of another project open, and
+        none of its own, a description a pull fixed went on showing what the pull had fixed, and
+        one that had no findings of its own on screen went on showing those of the components it
+        included, though it included them no more. With nothing open the Problems list on screen
+        still describes the project as it was, and every description that changed is a root to
+        check it from, but for one deleted (:meth:`_refresh_marked`). A build record that changed
         changes which projects there are and their severities, so every file whose findings are
         on screen is checked again, whatever is open, under the records the next check searches
         for (:meth:`_mark` forgets what was found): a file only the build of a record gone since
@@ -857,7 +859,11 @@ class Server:
         descriptions = [path for path in touched if path.name.lower().endswith(DDD_SUFFIX)]
         documents = sorted(self._open)
         if documents:
-            documents.extend(path for path in descriptions if path.resolve() in self._published)
+            documents.extend(
+                path
+                for path in descriptions
+                if path.resolve() in self._published or path.resolve() in self._reported
+            )
         else:
             documents = descriptions
         if any(path.name == BUILD_INFO_FILENAME for path in touched):

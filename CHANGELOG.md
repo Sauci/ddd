@@ -1466,8 +1466,8 @@ A build of DDD from its sources, and a release of it:
   finds nothing wrong with, and the files a run from the same project or document reported on the
   last time and no run reports on now: a component taken out of its project's `includes` leaves the
   screen, as it leaves what `ddd check` reports.  Any other file keeps its findings.  A description
-  the editor reports changed is checked again where its findings are on screen, whatever is open,
-  so a pull that mends a project nobody has open mends what is shown of it.  A file that was deleted
+  the editor reports changed is checked again where its findings are on screen or a check ran from
+  it, whatever is open, so a pull that mends a project nobody has open mends what is shown of it.  A file that was deleted
   has its findings emptied once and is not refreshed from its path, and an open document that is not
   on disk, a new file not yet saved, keeps its findings.  Nothing to migrate.
 

@@ -12683,6 +12683,38 @@ class TestWhatNoRunReportsOnLeavesTheScreen:
         assert "definition-mismatch" not in self.last_codes(writer, a1)
         assert "definition-mismatch" not in self.last_codes(writer, b1)
 
+    def test_a_description_a_check_ran_from_is_checked_again_with_none_of_its_own_on_screen(
+        self, tmp_path: Path
+    ) -> None:
+        """Project one has been opened and closed, and a document of project two is open: one's
+        components show findings, and one itself shows none. It is rewritten behind the editor to
+        include one component no more, and the watcher reports it: a check ran from it and
+        reported on those components, so the findings its change removed are withdrawn."""
+        write_tree(
+            tmp_path,
+            {
+                "one/p1.ddd.json": project("One", "a1.ddd.json", "b1.ddd.json"),
+                **self.disagreeing(Path("one/a1.ddd.json"), Path("one/b1.ddd.json")),
+                "two/p2.ddd.json": project("Two", "a2.ddd.json"),
+                "two/a2.ddd.json": component("A2", declare("output", "Rate")),
+            },
+        )
+        p1, p2 = tmp_path / "one" / "p1.ddd.json", tmp_path / "two" / "p2.ddd.json"
+        a1, b1 = tmp_path / "one" / "a1.ddd.json", tmp_path / "one" / "b1.ddd.json"
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(opening(tmp_path))
+        assert server._handle(holding(p1, p1.read_text(encoding="utf-8")))
+        assert server._handle(closing(p1))
+        assert server._handle(holding(p2, p2.read_text(encoding="utf-8")))
+        assert "definition-mismatch" in self.last_codes(writer, a1)
+        assert "definition-mismatch" in self.last_codes(writer, b1)
+        assert p1.resolve() not in server._published, "p1 has nothing of its own on screen"
+        write_tree(tmp_path, {"one/p1.ddd.json": project("One", "a1.ddd.json")})
+        assert server._handle(changed_on_disk(p1))
+        assert published(writer)[b1.as_uri()] == [], "b1 kept what p1's run no longer says"
+        assert "definition-mismatch" not in self.last_codes(writer, a1)
+
     def test_a_component_inside_a_folder_inside_the_removed_one_keeps_nothing_it_gave(
         self, tmp_path: Path
     ) -> None:

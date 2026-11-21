@@ -3113,13 +3113,13 @@ The server asks the client to watch every description file and every build recor
 `**/*.ddd.json` and `**/ddd-build.json`, once the client has said it is initialized, wherever the
 client announced that it takes such a registration while the session runs; a client that did not is
 asked for nothing, and a file changed behind the editor's back is read again at the next open or
-save. A description the client reports changed is checked again where its findings are on screen,
-whatever is open, and while no document is open whether they are or not: with a document of another
-project open, a pull that mended a project nobody had open left its findings on screen as they were.
-A change of a build record is a change of which projects there are and of their severities: the
-records are searched for again, and the open documents and every file whose findings are on screen
-are checked again under them. A record is never checked as a description, nor is any other file the
-client reports that is not one.
+save. A description the client reports changed is checked again where its findings are on screen
+or a check ran from it, whatever is open, and while no document is open whether they are or not:
+with a document of another project open, a pull that mended a project nobody had open left its
+findings on screen as they were. A change of a build record is a change of which projects there are
+and of their severities: the records are searched for again, and the open documents and every file
+whose findings are on screen are checked again under them. A record is never checked as a
+description, nor is any other file the client reports that is not one.
 
 A message body the server cannot parse is answered with the protocol's parse or
 invalid-request error and does not stop the server, and a request whose parameters are not

@@ -11121,8 +11121,8 @@ class TestTheServerWatchesWhatItReads:
                 "and a file changed behind the editor's back is read again at the next open or "
                 "save.",
                 "A description the client reports changed is checked again where its findings are "
-                "on screen, whatever is open, and while no document is open whether they are or "
-                "not:",
+                "on screen or a check ran from it, whatever is open, and while no document is "
+                "open whether they are or not:",
                 "A change of a build record is a change of which projects there are and of their "
                 "severities: the records are searched for again, and the open documents and every "
                 "file whose findings are on screen are checked again under them. A record is never "
@@ -11149,7 +11149,8 @@ class TestTheServerWatchesWhatItReads:
                 "takes such a registration while the session runs, as VS Code's does; a client "
                 "that does not is asked for nothing, and a file changed behind it is read again at "
                 "the next open or save. A description changing is checked again where its findings "
-                "are on screen, whatever is open, and while none is open whether they are or not:",
+                "are on screen or a check ran from it, whatever is open, and while none is open "
+                "whether they are or not:",
                 "A build record changing is a change of which projects there are and of their "
                 "severities: the open documents and every file whose findings are on screen are "
                 "checked again under the records as they now read.",

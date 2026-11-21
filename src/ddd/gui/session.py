@@ -357,11 +357,11 @@ def _readable_project(project: str, *served: Path) -> bool:
     (:func:`find_projects`), which an open asks as well, and the builds that feed the open
     project's analysis (:meth:`Session._analysed`) read records through :func:`_offering`, under
     the start directory alone - narrower than the directories a request is served, deliberately:
-    a record never names more than the start page needs. So a project whose records name it by
-    a network path is fed by their builds only where that path lies under the start directory,
-    though a request may name a path in its own directory. The record beside the open project
-    that says how it is generated (:func:`_generated`) is read under the project's own directory
-    too."""
+    a record never names more than the start page needs. So a project whose build records name it
+    by a network path is fed by the builds those records describe only where that path lies under
+    the start directory, though a request may name a path in the open project's own directory.
+    The record beside the open project's description that says how it is generated
+    (:func:`_generated`) is read under the open project's own directory too."""
     directories = tuple(directory.as_posix() for directory in served)
     return project.endswith(DESCRIPTION_SUFFIX) and is_a_path(project, directories)
 

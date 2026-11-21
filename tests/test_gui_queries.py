@@ -313,7 +313,7 @@ def test_a_device_is_opened_for_its_name_on_windows_alone() -> None:
 )
 def test_case_is_folded_as_windows_folds_a_path(monkeypatch, served, asked) -> None:
     """One letter in one case, ``lower()``, as pathlib's Windows comparison folds it - the one
-    ``ddd.gui.session._served`` and compare.py ask. Folding with ``casefold()`` would match two
+    ``ddd.gui.session.served_path`` and compare.py ask. Folding with ``casefold()`` would match two
     spellings Windows tells apart: a sharp s with ``ss``, a long s (``\\u017f``) with ``s``."""
     monkeypatch.setattr(queries_module, "_CASELESS", True)
     assert not PureWindowsPath(asked).is_relative_to(PureWindowsPath(served))

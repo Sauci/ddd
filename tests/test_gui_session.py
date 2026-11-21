@@ -1917,13 +1917,13 @@ class TestWhatThePollWatches:
         project_file = a_pattern_of_writers(tmp_path, "comps/*.ddd.json", "comps/w.ddd.json")
         session = opened_and_settled(project_file)
         read: list[str] = []
-        real = module._read_json
+        real = module.read_json
 
         def recorded(path: Path) -> Any:
             read.append(path.name)
             return real(path)
 
-        monkeypatch.setattr(module, "_read_json", recorded)
+        monkeypatch.setattr(module, "read_json", recorded)
         (tmp_path / "comps" / "w.ddd.json").write_text(
             json.dumps(component("W", declare("output", "Speed", unit="Hz"))), encoding="utf-8"
         )
@@ -2541,8 +2541,8 @@ class TestNothingIsReadHoldingTheLock:
         session = Session(shared.parent)
         session.open(shared)
         before = session.snapshot()
-        held = Held(module._named_by, "opening")
-        monkeypatch.setattr(module, "_named_by", held)
+        held = Held(module.named_by, "opening")
+        monkeypatch.setattr(module, "named_by", held)
         opening = threading.Thread(target=lambda: session.open(shared), name="opening", daemon=True)
         opening.start()
         try:

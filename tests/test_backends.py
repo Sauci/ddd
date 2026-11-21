@@ -41,6 +41,18 @@ def imported_modules(path: Path) -> set[str]:
     return modules
 
 
+def _private(name: str) -> bool:
+    """Whether ``name`` is one its module keeps to itself: one leading underscore, not a
+    dunder."""
+    return name.startswith("_") and not name.startswith("__")
+
+
+def _a_module(dotted: str) -> bool:
+    """Whether ``dotted`` names a module or a package of ``ddd`` rather than a name inside one."""
+    path = SOURCE.parent.joinpath(*dotted.split("."))
+    return path.with_suffix(".py").is_file() or (path / "__init__.py").is_file()
+
+
 def runtime_imported_modules(path: Path) -> set[str]:
     """Every ``ddd.*`` module a source file imports outside an ``if TYPE_CHECKING:`` block."""
     tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -160,6 +172,40 @@ class TestLayering:
                 if module.startswith(("ddd.backends", "ddd.cli"))
             )
             assert not leaked, f"{path.name} reaches into {leaked}"
+
+    def test_no_module_reaches_a_private_name_of_another(self) -> None:
+        """A name a module keeps private is one it may change without asking anyone, and reached
+        from another module it is a rule two modules share and neither has named: the session's
+        rules the api and the comparison asked - a path allowed, a document read, the files a
+        project's own includes name - were reached so. Every import of the package is read, and
+        every attribute read off a module of it that an import binds."""
+        reached: list[str] = []
+        for path in sorted(SOURCE.rglob("*.py")):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            where = path.relative_to(SOURCE.parent).as_posix()
+            bound: set[str] = set()
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom) and (node.module or "").startswith("ddd"):
+                    for alias in node.names:
+                        if _private(alias.name):
+                            reached.append(f"{where}:{node.lineno} {node.module}.{alias.name}")
+                        elif _a_module(f"{node.module}.{alias.name}"):
+                            bound.add(alias.asname or alias.name)
+                elif isinstance(node, ast.Import):
+                    bound.update(
+                        alias.asname
+                        for alias in node.names
+                        if alias.name.startswith("ddd.") and alias.asname is not None
+                    )
+            for node in ast.walk(tree):
+                if (
+                    isinstance(node, ast.Attribute)
+                    and isinstance(node.value, ast.Name)
+                    and node.value.id in bound
+                    and _private(node.attr)
+                ):
+                    reached.append(f"{where}:{node.lineno} {node.value.id}.{node.attr}")
+        assert not reached, f"private names reached from another module: {reached}"
 
 
 class TestContract:

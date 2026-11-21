@@ -83,7 +83,7 @@ from ddd.diagnostics import (
     SeverityPolicy,
     where,
 )
-from ddd.gui.session import Filed, Revision, _named_by, stamped
+from ddd.gui.session import Filed, Revision, named_by, stamped
 from ddd.lsp.diagnostics import group_findings
 from ddd.plugins import PluginError
 
@@ -445,11 +445,11 @@ def _resolved_baseline(
     ):
         # Stamped before the read, by the files the last read of it was made of - an entry that
         # was not kept still says which - and, for a first read, by the files the description
-        # names itself (:func:`~ddd.gui.session._named_by`, as the session opens a project), so
+        # names itself (:func:`~ddd.gui.session.named_by`, as the session opens a project), so
         # that a flat project is kept from its first read. Compared with the stamps after it by
         # equality, as the session compares a revision's: no window and no clock, so a write
         # that moves the time or the size, an older time and a file dated ahead included, is told.
-        known = tuple(_named_by(resolved)) if hit is None else tuple(hit.stamps)
+        known = tuple(named_by(resolved)) if hit is None else tuple(hit.stamps)
         hit = _read(resolved, relaxed, known)
         # Taken out and put back rather than assigned in place, so that the entry dropped below
         # is the one read longest ago: updating a key leaves it where it first went in.
@@ -465,7 +465,7 @@ def _read(path: Path, relaxed: dict[str, Severity], known: tuple[Path, ...]) -> 
 
     ``known`` are the files stamped with ``path`` before this read begins
     (:attr:`Cached.verified`): those the last read of it was made of, or, for a first read, those
-    the file names itself (:func:`~ddd.gui.session._named_by`).
+    the file names itself (:func:`~ddd.gui.session.named_by`).
 
     The open is a probe and reads nothing: it answers *unreadable* - a file that is not there,
     a directory, one whose permissions refuse, a path no file can bear - before
@@ -475,7 +475,7 @@ def _read(path: Path, relaxed: dict[str, Severity], known: tuple[Path, ...]) -> 
     (:func:`_resolved_baseline`): refused here as unreadable all the same, the route's ``400``
     (12:M1). Reading the bytes here as well, which is what the fingerprint key used to need,
     meant the 45 MB dump of a thousand object project went through twice on every read. A first
-    read still parses it twice, once to learn what it names (:func:`~ddd.gui.session._named_by`)
+    read still parses it twice, once to learn what it names (:func:`~ddd.gui.session.named_by`)
     and once in ``read_baseline``, a cost paid once per baseline the cache does not hold.
     """
     try:

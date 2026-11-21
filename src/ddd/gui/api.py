@@ -144,15 +144,15 @@ from ddd.gui.session import (
     Snapshot,
     SourceFile,
     Undoable,
-    _name_in,
-    _read_json,
-    _refuse_plugins,
-    _served,
-    _source,
     find_projects,
     findings_with,
     generated_refusal,
     kind_of,
+    name_in,
+    read_json,
+    refuse_plugins,
+    served_path,
+    source_path,
     walk_finds,
 )
 from ddd.gui.session import KINDS as DESCRIPTION_KINDS
@@ -1298,7 +1298,7 @@ class Api:
         description, so where a build generates it each is refused ``generated`` once the plan's
         own refusals are asked, and before anything is judged - and where it would change which
         plugins the project's descriptions name, ``plugins``, by the edit's own check
-        (:func:`ddd.gui.session._refuse_plugins`), so an add or a creation the Apply would refuse
+        (:func:`ddd.gui.session.refuse_plugins`), so an add or a creation the Apply would refuse
         is refused here too, before the reader presses.
         """
         revision = self._opened()
@@ -1314,7 +1314,7 @@ class Api:
             self._refuse_unanalysed(revision, (edit.path for edit in edits))
             derived = self._derive(revision)
             try:
-                _refuse_plugins(
+                refuse_plugins(
                     revision,
                     [
                         FileChange(
@@ -1534,7 +1534,7 @@ class Api:
     def _declarable(self, query: DeclarableQuery, body: None) -> Reply:
         revision = self._opened()
         try:
-            file = _source(revision, Path(query.file))
+            file = source_path(revision, Path(query.file))
         except NotInProjectError as outside:
             return _error(404, "not-found", str(outside))
         built = revision.index
@@ -1585,7 +1585,7 @@ class Api:
         asked = query.root
         revision = self._opened()
         try:
-            file = _source(revision, Path(asked.file))
+            file = source_path(revision, Path(asked.file))
         except NotInProjectError as outside:
             return _error(404, "not-found", str(outside))
         built = revision.index
@@ -1627,7 +1627,7 @@ class Api:
     def _description_plan(self, query: DescriptionPlanQuery, body: None) -> Reply:
         revision = self._opened()
         try:
-            file = _source(revision, Path(query.file))
+            file = source_path(revision, Path(query.file))
         except NotInProjectError as outside:
             return _error(404, "not-found", str(outside))
         built = revision.index
@@ -1999,7 +1999,7 @@ class Api:
         snapshot = self.session.snapshot()
         project = None
         if snapshot.project is not None:
-            name = _name_in(_read_json(snapshot.project), "project")
+            name = name_in(read_json(snapshot.project), "project")
             project = {"path": snapshot.project.as_posix(), "name": name}
         revision = snapshot.revision
         return written(
@@ -2225,7 +2225,7 @@ def _declaring_refusal(
 
 
 def _file_of(revision: Revision, file: Path) -> SourceFile:
-    """The revision's record of ``file``, a path :func:`_source` resolved and allowed: a file of
+    """The revision's record of ``file``, a path :func:`source_path` resolved and allowed: a file of
     the revision's, so one is found."""
     return next(entry for entry in revision.files if entry.path == file)
 
@@ -2636,7 +2636,7 @@ def _addition(
     previewed, never refused for them.
 
     Refused, in this order: a file outside what the session serves, decided by
-    :func:`ddd.gui.session._served` itself so that adding a file and reading it never disagree;
+    :func:`ddd.gui.session.served_path` itself so that adding a file and reading it never disagree;
     then :func:`ddd.file_plans.add_plan`'s own, which the disk and the description answer;
     then a file :func:`ddd.gui.session.kind_of` - the rule ``State.files`` shows a kind by -
     finds no kind of description in: a python file, which a project names among its plugins,
@@ -2657,12 +2657,12 @@ def _addition(
     typed = spelled_with_slashes(entry)
     added = resolve_path(revision.project.parent / typed)
     try:
-        _served(revision, added)
+        served_path(revision, added)
     except NotInProjectError:
         serves = (directory.as_posix() for directory in revision.served)
         raise FileRefusalError("invalid", outside_served(entry, serves)) from None
     plan = add_plan(revision.project, entry, cache)
-    kind = kind_of(added, _read_json(added))
+    kind = kind_of(added, read_json(added))
     if kind == "plugin":
         raise FileRefusalError(
             "invalid",
@@ -2830,10 +2830,10 @@ def _planned_changes(
     root having made it part of the project.
 
     An undo's own preview needs no such check: opening a project empties the stack, and no edit
-    made since can have written a file outside, being resolved through :func:`_source`.
+    made since can have written a file outside, being resolved through :func:`source_path`.
     """
     for entry in planned:
-        _served(revision, derived.resolve(entry.path))
+        served_path(revision, derived.resolve(entry.path))
     return [
         {
             "file": derived.resolve(entry.path).as_posix(),

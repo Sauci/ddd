@@ -142,7 +142,7 @@ def _serving(info: ValidationInfo) -> Serving:
 def _folded(text: str) -> str:
     """``text`` as a path is compared with another as text: every separator a ``/``, and on
     Windows (:data:`_CASELESS`) every letter in one case - ``str.lower()``'s, which pathlib's own
-    comparison of two Windows paths folds both with, and so :func:`ddd.gui.session._served` and
+    comparison of two Windows paths folds both with, and so :func:`ddd.gui.session.served_path` and
     :mod:`ddd.gui.compare`. ``casefold()`` would match spellings Windows tells apart: a sharp s
     with ``ss``, a long s with ``s``."""
     folded = text.replace("\\", "/")

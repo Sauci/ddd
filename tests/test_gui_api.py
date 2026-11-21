@@ -10037,7 +10037,7 @@ class TestWhatAComponentMayAdd:
 
     def test_a_project_that_did_not_load_has_nothing_to_add_to(self, tmp_path) -> None:
         # Measured: `unloaded` leaves one file in the revision, p.ddd.json, kind "project", with
-        # `index is None` - so it passes `_source` and is refused for the missing index before
+        # `index is None` - so it passes `source_path` and is refused for the missing index before
         # the component check ever runs, the same answer `/api/declaration-plan` gives for the
         # same project.
         api = unloaded(tmp_path)
@@ -10193,7 +10193,7 @@ class TestPlanningAChangeOfAnInterface:
 
     def test_a_project_that_did_not_load_has_nothing_to_plan_against(self, tmp_path) -> None:
         # The answer /api/type-plan already gives: measured, `unloaded`'s revision has
-        # `index is None` and one file, p.ddd.json, which `_source` accepts - so the guard that
+        # `index is None` and one file, p.ddd.json, which `source_path` accepts - so the guard that
         # answers here is the missing index, not the missing file.
         api = unloaded(tmp_path)
         reply = get(

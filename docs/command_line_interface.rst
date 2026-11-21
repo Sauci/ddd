@@ -454,7 +454,8 @@ The commands
        own digits, and read a bound as a cell of the datatype the declarations state reads a
        number: a float's as the double it is, written as a float, and any other's refused past
        2^53 however it is spelled, and wherever the double would send another number than the
-       one typed. Under
+       one typed. A bound is sent in the digits it was typed in, ``1e3`` as ``1e3`` and
+       ``12.50`` as ``12.50``, a float's given a point where it was typed whole. Under
        the grid, the object's values are drawn as a picture too: a marker at each point
        and a line joining them where a row holds more than one, laid against its axis's
        own breakpoints - unevenly spaced, exactly as those breakpoints are - or over
@@ -472,7 +473,11 @@ The commands
        what each fixes and what names it;
        what a scalar type fixes is changed there, and renaming a type rewrites every
        declaration and member naming it in one edit, but an external type is refused,
-       its name being the one the header defining it spells.
+       its name being the one the header defining it spells. A value the type's entry
+       would not load with - a datatype that is none, a maximum below its minimum, a
+       factor of 0 - is refused there before it is planned, in the words ``ddd check``
+       files it in, since a types file that does not load takes every type it declares
+       with it.
        Every change is written into the files in their own layout and checked
        the way ``ddd check`` checks them. A change is refused as a whole, every file
        left as it was, where a file it changes was saved from elsewhere since it was

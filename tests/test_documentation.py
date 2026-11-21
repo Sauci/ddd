@@ -11358,3 +11358,41 @@ class TestTheFoldersAreFollowed:
         }
         missing = [what for what, claim in claims.items() if claim not in said]
         assert not missing, f"the changelog no longer says {missing}"
+
+
+class TestWhatTheTypesTabAndTheRangeFieldsSend:
+    """3:I1. A change of a type is asked of the models as the entry would be left, and refused in
+    their words where the loader would refuse the file; and the two fields of a range send the
+    digits typed, where they sent the doubles the page read. The command page and the developer
+    page say so."""
+
+    SAID: ClassVar[dict[str, tuple[str, tuple[str, ...]]]] = {
+        "docs/command_line_interface.rst": (
+            COMMAND_LINE_INTERFACE,
+            (
+                "A value the type's entry would not load with - a datatype that is none, a "
+                "maximum below its minimum, a factor of 0 - is refused there before it is planned, "
+                "in the words ``ddd check`` files it in, since a types file that does not load "
+                "takes every type it declares with it.",
+                "A bound is sent in the digits it was typed in, ``1e3`` as ``1e3`` and ``12.50`` "
+                "as ``12.50``, a float's given a point where it was typed whole.",
+            ),
+        ),
+        "docs/developer_documentation.rst": (
+            PAGES["docs/developer_documentation.rst"],
+            (
+                "A key set is asked of the models as the entry would be left, as ``settled_at`` "
+                "asks of a definition: ``ddd.models.type_problem`` validates the entry by its "
+                "``type`` and, for a scalar type, holds the limits its datatype and conversion "
+                "derive finite, as the analysis does, and ``set_key`` refuses what it refuses, "
+                "``invalid``, in the models' words.",
+            ),
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(SAID))
+    def test_the_page_says_what_a_type_s_plan_refuses_and_a_range_sends(self, page: str) -> None:
+        text, phrases = self.SAID[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"

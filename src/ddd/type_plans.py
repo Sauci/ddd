@@ -16,6 +16,12 @@ A rename is refused then, and so is setting a key, the entry asked as its panel 
 (:func:`~ddd.project_types.type_in_place`), rather than planned at places now holding another
 type, or none; the fingerprint the edit carries, of the bytes that analysis read, refuses its
 Apply as well.
+
+What a key is set to is asked of the models as the entry would be left
+(:func:`ddd.models.type_problem`), the question a variable's settlement asks of a definition
+(:func:`ddd.lsp.edits.loading_problem`): a value the loader would refuse is refused before it is
+planned, in the models' words, rather than written into a types file that would then take every
+type it declares with it.
 """
 
 from __future__ import annotations
@@ -27,6 +33,7 @@ from pathlib import Path
 from typing import Final, Literal
 
 from ddd.editing import Operation
+from ddd.loading import parse_json_text
 from ddd.lsp.navigation import (
     Index,
     Site,
@@ -38,6 +45,7 @@ from ddd.lsp.navigation import (
 )
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import PlannedEdit
+from ddd.models import type_problem
 from ddd.project_types import kind_of, type_in_place
 
 SETTABLE: Final[Mapping[str, frozenset[str]]] = {
@@ -57,7 +65,8 @@ class TypeRefusalError(Exception):
 
     code: Literal["invalid", "not-found", "stale"]
     """``invalid``: the change cannot be made - a key this kind has not, a required key left out,
-    a name that may not be used. ``not-found``: the project declares no type of that name.
+    a value the entry would not load with, a name that may not be used. ``not-found``: the
+    project declares no type of that name.
     ``stale``: a file the change points into no longer names the type where the index found it,
     having changed since the analysis read it."""
 
@@ -92,6 +101,11 @@ def set_key(
     recorded for it no longer names it (:func:`~ddd.project_types.type_in_place`): an entry put
     in above it or taken out moves it, and both the kind that decides which keys may be set and
     the key set would be another type's.
+
+    Refused ``invalid`` where the entry, as the change would leave it, is one the project refuses
+    (:func:`_loading_problem`): a datatype that is none, a range whose maximum is below its
+    minimum, a conversion that cannot be undone, limits derived past the largest float - in the
+    sentence ``ddd check`` files it in, naming the type and its file.
     """
     site = _entry(built, name)
     if not type_in_place(built, name, cache):
@@ -104,12 +118,38 @@ def set_key(
         raise TypeRefusalError("invalid", f"'{key}' is required, so it cannot be left out")
     if raw is None and document.value_at(f"{site.pointer}.{key}") is None:
         return TypePlan(())
+    problem = _loading_problem(document, site.pointer, key, raw)
+    if problem is not None:
+        raise TypeRefusalError(
+            "invalid",
+            f"the type '{name}' in {site.path.name} would not load with that {key}: {problem}",
+        )
     operation = (
         Operation("remove", f"{site.pointer}.{key}")
         if raw is None
         else Operation("set", f"{site.pointer}.{key}", raw)
     )
     return TypePlan((PlannedEdit(site.path, (operation,)),))
+
+
+def _loading_problem(document: Document, entry: str, key: str, raw: str | None) -> str | None:
+    """What the project would refuse of the type's entry at ``entry`` once ``key`` states ``raw`` -
+    or states nothing, for ``None`` - or ``None`` where it still loads.
+
+    The entry as the key would leave it, asked of :func:`ddd.models.type_problem` as
+    :func:`ddd.lsp.edits.loading_problem` asks a definition of the models: a copy of its members,
+    so that the document asked of is left as it was. ``raw`` read as json the loader does not take
+    - a key written twice - is that problem, in the loader's words, and not raised.
+    ``set_key`` asks it only of an entry still in place (:func:`~ddd.project_types.type_in_place`),
+    which is an object.
+    """
+    left = {member: value for member, value in document.value_at(entry).items() if member != key}
+    if raw is not None:
+        try:
+            left[key] = parse_json_text(raw)
+        except ValueError as refused:
+            return str(refused)
+    return type_problem(left)
 
 
 def rename_type(built: Index, name: str, to: str, cache: dict[Path, Document]) -> TypePlan:

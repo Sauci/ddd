@@ -30,6 +30,7 @@ from ddd.models import (
     is_reserved_identifier,
     physical_range,
     round_physical,
+    type_problem,
 )
 from ddd.models.conversion import TAIL_ULPS, is_above, is_below
 
@@ -1510,3 +1511,87 @@ class TestWhatAScalarTypeFixes:
         from ddd.models import scalar_conversion
 
         assert scalar_conversion(entry) is None
+
+
+class TestWhatTheLoaderWouldRefuseOfATypeEntry:
+    """``type_problem`` asks the model of an entry's ``type`` about one written like this, and
+    then what the analysis files of a scalar type alone: what ``ddd check`` would file as
+    ``schema`` of it, in a sentence, or nothing where it loads.
+
+    What a plan of the Types tab asks of the entry as it would leave it, as a variable's settlement
+    asks :func:`definition_problem` of a definition: ``definition_problem`` is discriminated by a
+    ``kind`` no type entry states, and asked of one it refuses every plan.
+    """
+
+    SCALAR: ClassVar[dict[str, Any]] = {
+        "type": "scalar",
+        "name": "Speed_t",
+        "datatype": "uint16",
+        "conversion": {"kind": "identity"},
+    }
+
+    def test_an_entry_the_loader_takes_has_no_problem(self) -> None:
+        member = {
+            "name": "a",
+            "member": "value",
+            "datatype": "uint8",
+            "conversion": {"kind": "identity"},
+        }
+        assert type_problem(self.SCALAR) is None
+        assert type_problem({"type": "struct", "name": "Frame_t", "members": [member]}) is None
+        assert type_problem({"type": "external", "name": "Os_t", "header": "os.h"}) is None
+
+    @pytest.mark.parametrize(
+        ("changed", "says"),
+        [
+            ({"limits": {"min": 10, "max": 1}}, "min (10) is greater than max (1)"),
+            ({"conversion": {"kind": "linear", "factor": 0}}, "factor must not be zero"),
+            (
+                {
+                    "datatype": "float32",
+                    "conversion": {
+                        "kind": "enum",
+                        "name": "Mode_t",
+                        "enumerators": [{"name": "OFF", "value": 0}],
+                    },
+                },
+                "enum conversion 'Mode_t' requires an integer datatype, got 'float32'",
+            ),
+        ],
+        ids=["an-empty-range", "a-conversion-of-factor-0", "an-enumeration-in-a-float"],
+    )
+    def test_a_rule_between_keys_is_said_in_its_own_sentence(
+        self, changed: dict[str, Any], says: str
+    ) -> None:
+        assert type_problem({**self.SCALAR, **changed}) == says
+
+    def test_a_datatype_that_is_none_is_said_as_pydantic_says_it(self) -> None:
+        assert type_problem({**self.SCALAR, "datatype": "uint7"}) == (
+            "Input should be 'boolean', 'uint8', 'sint8', 'uint16', 'sint16', 'uint32', 'sint32', "
+            "'uint64', 'sint64', 'float32' or 'float64'"
+        )
+
+    def test_a_header_the_inclusion_cannot_spell_is_refused_in_its_own_sentence(self) -> None:
+        external = {"type": "external", "name": "Os_t", "header": "os types.h"}
+        assert type_problem(external) == "a header spelling cannot contain whitespace"
+
+    def test_a_scalar_whose_derived_limits_are_not_finite_is_refused(self) -> None:
+        """What the analysis files as ``schema`` of the type alone, after the models took it:
+        stated limits or none, as it holds every declaration's datatype and conversion."""
+        doubled = {**self.SCALAR, "datatype": "float64", "conversion": {"factor": 2}}
+        says = "the limits derived from 'float64' and this conversion are not finite"
+        assert type_problem(doubled) == says
+        assert type_problem({**doubled, "limits": {"min": 0, "max": 1}}) == says
+        assert type_problem({**doubled, "conversion": {"factor": 0.5}}) is None
+
+    def test_the_models_are_asked_first(self) -> None:
+        doubled = {**self.SCALAR, "datatype": "float64", "conversion": {"factor": 2}}
+        assert type_problem({**doubled, "limits": {"min": 1, "max": 0}}) == (
+            "min (1) is greater than max (0)"
+        )
+
+    def test_an_entry_is_not_changed_by_being_asked_about(self) -> None:
+        written = {**self.SCALAR, "limits": {"min": 0, "max": 5}}
+        before = {**written}
+        type_problem(written)
+        assert written == before

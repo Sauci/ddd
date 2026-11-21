@@ -88,6 +88,69 @@ class TestSettingAKey:
             set_key(built, "Nothing_t", "unit", '"K"', cache)
         assert refused.value.code == "not-found"
 
+    @pytest.mark.parametrize(
+        ("key", "raw", "says"),
+        [
+            (
+                "datatype",
+                '"uint7"',
+                "Input should be 'boolean', 'uint8', 'sint8', 'uint16', 'sint16', 'uint32', "
+                "'sint32', 'uint64', 'sint64', 'float32' or 'float64'",
+            ),
+            ("limits", '{"min": 10, "max": 1}', "min (10) is greater than max (1)"),
+            ("conversion", '{"kind": "linear", "factor": 0}', "factor must not be zero"),
+        ],
+        ids=["a-datatype-that-is-none", "an-empty-range", "a-conversion-of-factor-0"],
+    )
+    def test_a_value_the_entry_would_not_load_with_is_refused_in_the_models_words(
+        self, built, cache, key, raw, says
+    ) -> None:
+        """3:I1. Planned and applied, each of these left a types file the loader refuses, and every
+        type it declares went with it: the entry as the plan would leave it is asked of the models
+        (``type_problem``), as a variable's settlement asks them of a definition."""
+        with pytest.raises(TypeRefusalError) as refused:
+            set_key(built, "Temperature_t", key, raw, cache)
+        assert (refused.value.code, refused.value.message) == (
+            "invalid",
+            f"the type 'Temperature_t' in types.ddd.json would not load with that {key}: {says}",
+        )
+
+    def test_a_conversion_whose_derived_limits_are_not_finite_is_refused(
+        self, tmp_path, cache
+    ) -> None:
+        """What the analysis files as ``schema`` of a scalar type alone, the models having taken
+        it: a double scaled by two runs past the largest float."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "types.ddd.json"),
+                "types.ddd.json": types(scalar_type("Wide_t", "float64")),
+            },
+        )
+        built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
+        with pytest.raises(TypeRefusalError) as refused:
+            set_key(built, "Wide_t", "conversion", '{"kind": "linear", "factor": 2}', cache)
+        assert (refused.value.code, refused.value.message) == (
+            "invalid",
+            "the type 'Wide_t' in types.ddd.json would not load with that conversion: the limits "
+            "derived from 'float64' and this conversion are not finite",
+        )
+        assert set_key(built, "Wide_t", "conversion", '{"factor": 0.5}', cache).edits
+
+    def test_a_value_the_loader_would_not_read_as_json_is_refused_in_its_words(
+        self, built, cache
+    ) -> None:
+        """Json the loader refuses - a key written twice - is said as the loader says it, as a
+        variable's settlement says it (``loading_problem``), and never raised."""
+        with pytest.raises(TypeRefusalError) as refused:
+            set_key(built, "Temperature_t", "limits", '{"min": 0, "min": 1, "max": 5}', cache)
+        assert (refused.value.code, refused.value.message) == (
+            "invalid",
+            "the type 'Temperature_t' in types.ddd.json would not load with that limits: key "
+            "'min' appears twice in one object; json would silently keep the last spelling, so "
+            "decide which one stays",
+        )
+
     def test_a_type_its_file_no_longer_holds_where_the_index_found_it_is_stale(
         self, tmp_path, cache
     ) -> None:

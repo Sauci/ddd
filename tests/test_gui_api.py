@@ -6121,6 +6121,30 @@ class TestTheTypesTab:
         assert applied(api, preview, "the unit of Temperature_t").status == 200
         assert '"unit": "K"' in (root / "types.ddd.json").read_text(encoding="utf-8")
 
+    @pytest.mark.parametrize(
+        ("key", "raw", "says"),
+        [
+            ("datatype", '"uint7"', "Input should be 'boolean', 'uint8', 'sint8', 'uint16'"),
+            ("limits", '{"min": 10, "max": 1}', "min (10) is greater than max (1)"),
+            ("conversion", '{"kind": "linear", "factor": 0}', "factor must not be zero"),
+        ],
+        ids=["a-datatype-that-is-none", "an-empty-range", "a-conversion-of-factor-0"],
+    )
+    def test_a_value_the_type_would_not_load_with_is_refused_before_anything_is_written(
+        self, structures, key: str, raw: str, says: str
+    ) -> None:
+        """3:I1. The plan was previewed and its Apply wrote a types file the loader refuses, which
+        took every type of the file with it: refused instead, in the models' words, as the Shared
+        files tab refuses a value its vocabulary's model would not take."""
+        api, root = structures
+        before = contents(root)
+        reply = get(api, "/api/type-plan", action="set", name="Temperature_t", key=key, raw=raw)
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert reply.body["message"].startswith(
+            f"the type 'Temperature_t' in types.ddd.json would not load with that {key}: {says}"
+        )
+        assert contents(root) == before
+
     def test_renaming_rewrites_the_type_and_every_name_reaching_it(self, structures) -> None:
         api, root = structures
         preview = get(api, "/api/type-plan", action="rename", name="Sensor_t", to="Probe_t").body

@@ -4,7 +4,7 @@ import type {
   VariableKeyOffer,
   VariableReply,
 } from "../api/types";
-import { type CommaMeaning, decimalText, readNumber, typedComma } from "./numbers";
+import { type CommaMeaning, decimalText, readNumber, spelledNumber, typedComma } from "./numbers";
 import { boundRead, wholePast } from "./objectValues";
 import { hrefOf } from "./route";
 import { unsettledNote } from "./typing";
@@ -608,12 +608,12 @@ export function typeDatatype(keys: readonly VariableKeyOffer[]): string {
   return rangeDatatype([textOf(keys.find((key) => key.key === "datatype")?.values[0]?.raw)]);
 }
 
-/** A bound as a range's json writes it: a float's as a float (task 1's n2) - `1e19` was written
- * `10000000000000000000`, a whole number past 2^53 that a float holds as no other - and any
- * other's as the shortest spelling of its double, which is the number typed. */
-function boundText(value: number, datatype: string): string {
-  const text = String(value);
-  return datatype.startsWith("float") && !/[.e]/.test(text) ? `${text}.0` : text;
+/** A bound as a range's json writes it: in the digits typed, as `jsonNumber` spells a number
+ * field's (3:I1) - where it was the shortest spelling of the double the page weighed it as - and a
+ * float's as a float (task 1's n2), given a point where it was typed whole: a float64's bound typed
+ * `10000000000000000000` was a whole number past 2^53, which a float holds as no other. */
+function boundText(json: string, datatype: string): string {
+  return datatype.startsWith("float") && !/[.e]/.test(json) ? `${json}.0` : json;
 }
 
 /** What a key's chooser field reads while nothing is being typed into it (decision 15.3), by one
@@ -653,12 +653,14 @@ export function settleNote(
  * A range is two numbers with the maximum at least the minimum (spec 5.2), which is what
  * `Limits` itself allows: a pair the models refuse would be written into every declaration
  * and stop each of those files loading, so it never becomes a value to settle on. `datatype` is
- * what it is read by (`rangeDatatype`).
+ * what it is read by (`rangeDatatype`). Each bound travels as the text typed (`boundText`),
+ * weighed first as the double the page holds of it, which is not what is sent.
  */
 export function limitsRaw(min: string, max: string, datatype = ""): string | null {
   const range = rangeOf(min, max, datatype);
   if (range === null || "note" in range) return null;
-  return `{ "min": ${boundText(range.low, datatype)}, "max": ${boundText(range.high, datatype)} }`;
+  const { low, high } = range;
+  return `{ "min": ${boundText(low.json, datatype)}, "max": ${boundText(high.json, datatype)} }`;
 }
 
 /** What the chooser says is wrong with the two fields, or `null` while they say something the
@@ -682,7 +684,7 @@ function rangeOf(
   min: string,
   max: string,
   datatype: string,
-): { note: string } | { low: number; high: number } | null {
+): { note: string } | { low: Bound; high: Bound } | null {
   if (min.trim() === "" && max.trim() === "") return null;
   const meaning = typedComma([min, max]);
   const low = fieldBound("Min", min, meaning, datatype);
@@ -690,7 +692,14 @@ function rangeOf(
   const high = fieldBound("Max", max, meaning, datatype);
   if ("note" in high) return high;
   if (high.value < low.value) return { note: "The maximum is below the minimum" };
-  return { low: low.value, high: high.value };
+  return { low, high };
+}
+
+/** One bound of a range: the double the page weighs it as, and the json text it is sent as, the
+ * digits typed (`spelledNumber`). */
+interface Bound {
+  value: number;
+  json: string;
 }
 
 /** The number one of the two fields holds, read as every field reads one (`numbers.ts`) and
@@ -702,10 +711,11 @@ function fieldBound(
   text: string,
   meaning: CommaMeaning | undefined,
   datatype: string,
-): { note: string } | { value: number } {
+): { note: string } | Bound {
   if (text.trim() === "") return { note: `${field} is empty` };
-  const read = readNumber(text, meaning);
+  const read = spelledNumber(text, meaning);
   if (!("decimal" in read)) return { note: `${field}: ${read.refusal}` };
   const bound = boundRead(read.decimal, text, datatype);
-  return "refusal" in bound ? { note: `${field}: ${bound.refusal}` } : bound;
+  if ("refusal" in bound) return { note: `${field}: ${bound.refusal}` };
+  return { value: bound.value, json: read.json };
 }

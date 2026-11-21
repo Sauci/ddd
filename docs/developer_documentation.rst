@@ -1400,7 +1400,11 @@ a name may not be used, so the tab and the editor cannot disagree - planned as e
 operations rather than the text edits ``rename_edits`` answers, the way the identity fix
 does. ``GET /api/types`` lists them, ``GET /api/type`` answers one with its uses and its
 members, and ``GET /api/type-plan`` previews a change of either kind as ``PlanReply``, which
-the page applies through ``POST /api/edit`` and the undo puts back.
+the page applies through ``POST /api/edit`` and the undo puts back. A key set is asked of the
+models as the entry would be left, as ``settled_at`` asks of a definition:
+``ddd.models.type_problem`` validates the entry by its ``type`` and, for a scalar type, holds the
+limits its datatype and conversion derive finite, as the analysis does, and ``set_key`` refuses
+what it refuses, ``invalid``, in the models' words.
 
 ``ddd.declaration_plans`` sits beside ``ddd.type_plans`` and ``ddd.project_units``: a
 component may add a declaration of a variable the project already declares or of a new

@@ -3076,7 +3076,13 @@ together are checked together, each project once for all of them: the server che
 documents they name once it has handled every message already waiting behind the first of them,
 and before it answers a request that came after them, never waiting for a message not yet sent.
 A save and the change the client's watcher reports for it, arriving together, are one analysis
-of the project however many of its documents are open. Each finding is also published at the
+of the project however many of its documents are open. A check withdraws the findings of every
+file a run of it reports on and finds nothing wrong with, and of every file that a run from the
+same place - a build's project, a description above a document, a document read alone - reported
+on the last time and that no run reports on now: a component taken out of its project's
+`includes` is no longer the project's, and `ddd check` no longer reports on it. Any other file
+keeps its findings: a check from a file of another project says nothing of it, which is not
+saying it is fine. Each finding is also published at the
 locations of its notes - a note stating no place of its own being published at the first line
 of the file its finding is on, the protocol having no way to say "here". The build records a
 search discovers are announced as log messages, and a record written by a newer DDD - its
@@ -3102,10 +3108,13 @@ The server asks the client to watch every description file and every build recor
 `**/*.ddd.json` and `**/ddd-build.json`, once the client has said it is initialized, wherever the
 client announced that it takes such a registration while the session runs; a client that did not is
 asked for nothing, and a file changed behind the editor's back is read again at the next open or
-save. A change of a build record is a change of which projects there are and of their severities:
-the records are searched for again, and the open documents are checked again under them, or, while
-no document is open, every file whose findings are on screen. A record is never checked as a
-description, nor is any other file the client reports that is not one.
+save. A description the client reports changed is checked again where its findings are on screen,
+whatever is open, and while no document is open whether they are or not: with a document of another
+project open, a pull that mended a project nobody had open left its findings on screen as they were.
+A change of a build record is a change of which projects there are and of their severities: the
+records are searched for again, and the open documents and every file whose findings are on screen
+are checked again under them. A record is never checked as a description, nor is any other file the
+client reports that is not one.
 
 A message body the server cannot parse is answered with the protocol's parse or
 invalid-request error and does not stop the server, and a request whose parameters are not

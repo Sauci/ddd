@@ -1454,9 +1454,14 @@ A build of DDD from its sources, and a release of it:
   empty list for every file it had published before and its run did not name, so opening a file of
   another project, or a watched change with several documents open, erased findings that `ddd check`
   still reports; and a file deleted since was read again from its path, which published a finding
-  about a file that does not exist.  A run now withdraws only the files it reported on.  A file that
-  was deleted has its findings emptied once and is not refreshed from its path, and an open document
-  that is not on disk, a new file not yet saved, keeps its findings.  Nothing to migrate.
+  about a file that does not exist.  A check now withdraws the files a run of it reports on and
+  finds nothing wrong with, and the files a run from the same project or document reported on the
+  last time and no run reports on now: a component taken out of its project's `includes` leaves the
+  screen, as it leaves what `ddd check` reports.  Any other file keeps its findings.  A description
+  the editor reports changed is checked again where its findings are on screen, whatever is open,
+  so a pull that mends a project nobody has open mends what is shown of it.  A file that was deleted
+  has its findings emptied once and is not refreshed from its path, and an open document that is not
+  on disk, a new file not yet saved, keeps its findings.  Nothing to migrate.
 
 * **A file reached through a junction or a link has its findings under one spelling.**  A file has
   two spellings, the one the client opens it under and the resolved one the loader reads it by, and
@@ -1731,15 +1736,15 @@ A build of DDD from its sources, and a release of it:
   announced `workspace.didChangeWatchedFiles.dynamicRegistration`, the server now registers a
   watcher for `**/*.ddd.json` and `**/ddd-build.json`; a client that did not is asked for nothing,
   and a file changed behind it is read again at the next open or save.  A change of a build record
-  forgets what was found and checks again the open documents under the records as they now read, or,
-  while none is open, every file whose findings are on screen; a record, or any other file that is
-  no description, is never checked as one, which had given it a finding of its own.  A change
-  reported for a description named in capitals, which the loader reads, is checked with nothing open
-  as well.  The client's answer to the registration, a message carrying an id and no method, is
-  answered with nothing, where it was refused as a request of a method named `None`.  The extension
-  makes no watcher of its own any more.  Migrating costs a client author one thing: a client that
-  announces the dynamic registration needs no watcher of its own for the server, and one that keeps
-  its own sends every change twice.
+  forgets what was found and checks again, under the records as they now read, the open documents
+  and every file whose findings are on screen; a record, or any other file that is no description,
+  is never checked as one, which had given it a finding of its own.  A change reported for a
+  description named in capitals, which the loader reads, is checked with nothing open as well.  The
+  client's answer to the registration, a message carrying an id and no method, is answered with
+  nothing, where it was refused as a request of a method named `None`.  The extension makes no
+  watcher of its own any more.  Migrating costs a client author one thing: a client that announces
+  the dynamic registration needs no watcher of its own for the server, and one that keeps its own
+  sends every change twice.
 
 * **The workspace folders the client adds or removes while the session runs are followed.**  The
   server announced no support for workspace folders, so a client sent no change of them: a document
@@ -1747,9 +1752,9 @@ A build of DDD from its sources, and a release of it:
   project was there to be found.  It now announces that it follows them.  A folder added is searched
   as one named at initialize, its build records found and the open documents checked again; a folder
   removed is answered as if it had never been named: what was published under it alone is withdrawn,
-  and the open documents, or what is on screen while none is open, are checked again, so a file
-  outside it keeps no finding only its checks gave.  With every folder removed the server answers in
-  the directory it was started in, as for a session that named none.  Nothing to migrate.
+  and the open documents and what is on screen are checked again, so a file outside it keeps no
+  finding only its checks gave.  With every folder removed the server answers in the directory it
+  was started in, as for a session that named none.  Nothing to migrate.
 
 * **A relative `ddd lsp -b` is read against each workspace folder.**  It was read against the
   directory the server was started in, which VS Code makes the first workspace folder: in a

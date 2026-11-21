@@ -12424,6 +12424,162 @@ class TestAWatchedFileChanging:
         assert published(writer) == {}
 
 
+class TestWhatNoRunReportsOnLeavesTheScreen:
+    """10:I1's converse. A check withdraws the findings of a file its run reported on, and keeps
+    those of a file no run of it looked at; but a file a run reported on before, which no run
+    reports on now - a component taken out of its project's ``includes`` - kept its findings for
+    the session, though ``ddd check`` no longer reports them. And a description a pull rewrote, in
+    a project no open document belongs to, was not checked again while a document of another
+    project was open, so its findings went on describing it as it was.
+
+    Each message is handled on its own, one check per message that marks a document, and the
+    findings are read as the last word published for each file."""
+
+    def saved(self, path: Path) -> list[dict[str, Any]]:
+        """The client typing ``path``'s text as the disk now holds it, and saving it."""
+        uri = path.as_uri()
+        return [
+            {
+                "jsonrpc": "2.0",
+                "method": "textDocument/didChange",
+                "params": {
+                    "textDocument": {"uri": uri, "version": 2},
+                    "contentChanges": [{"text": path.read_text(encoding="utf-8")}],
+                },
+            },
+            {
+                "jsonrpc": "2.0",
+                "method": "textDocument/didSave",
+                "params": {"textDocument": {"uri": uri}},
+            },
+        ]
+
+    @staticmethod
+    def disagreeing(producer: Path, consumer: Path) -> dict[str, Any]:
+        """A writer and a reader of ``Speed`` that disagree on its unit, as files of a tree."""
+        return {
+            producer.as_posix(): component("W", declare("output", "Speed", unit="rpm")),
+            consumer.as_posix(): component("R", declare("input", "Speed", unit="1/min")),
+        }
+
+    @staticmethod
+    def last_codes(writer: io.BytesIO, path: Path) -> list[str]:
+        """The checks of the last findings published for ``path``, sorted."""
+        return sorted(entry["code"] for entry in published(writer).get(path.as_uri(), []))
+
+    def test_a_component_taken_out_of_its_project_is_withdrawn(self, tmp_path: Path) -> None:
+        """The project file is open, and the component is taken out of its ``includes`` and the
+        project saved: the project's run no longer reports on it, and no other run does."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                **self.disagreeing(Path("a.ddd.json"), Path("b.ddd.json")),
+            },
+        )
+        p, a, b = (tmp_path / name for name in ("p.ddd.json", "a.ddd.json", "b.ddd.json"))
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(opening(tmp_path))
+        assert server._handle(holding(p, p.read_text(encoding="utf-8")))
+        assert "definition-mismatch" in self.last_codes(writer, a)
+        assert "definition-mismatch" in self.last_codes(writer, b)
+        write_tree(tmp_path, {"p.ddd.json": project("P", "a.ddd.json")})
+        for message in self.saved(p):
+            assert server._handle(message)
+        assert published(writer)[b.as_uri()] == [], "b kept what p's run no longer says"
+        assert "definition-mismatch" not in self.last_codes(writer, a)
+
+    def test_a_description_fixed_behind_the_editor_is_checked_while_another_project_is_open(
+        self, tmp_path: Path
+    ) -> None:
+        """Project one's findings are on screen with nothing of it open, kept while project two's
+        document is: the reader of one is fixed on disk, by a pull, and the watcher reports it."""
+        write_tree(
+            tmp_path,
+            {
+                "one/p1.ddd.json": project("One", "a1.ddd.json", "b1.ddd.json"),
+                **self.disagreeing(Path("one/a1.ddd.json"), Path("one/b1.ddd.json")),
+                "two/p2.ddd.json": project("Two", "a2.ddd.json"),
+                "two/a2.ddd.json": component("A2", declare("output", "Rate")),
+            },
+        )
+        p1, p2 = tmp_path / "one" / "p1.ddd.json", tmp_path / "two" / "p2.ddd.json"
+        a1, b1 = tmp_path / "one" / "a1.ddd.json", tmp_path / "one" / "b1.ddd.json"
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(opening(tmp_path))
+        assert server._handle(holding(p1, p1.read_text(encoding="utf-8")))
+        assert server._handle(closing(p1))
+        assert server._handle(holding(p2, p2.read_text(encoding="utf-8")))
+        assert "definition-mismatch" in self.last_codes(writer, a1), "kept, as 10:I1 asks"
+        write_tree(
+            tmp_path, {"one/b1.ddd.json": component("R", declare("input", "Speed", unit="rpm"))}
+        )
+        assert server._handle(changed_on_disk(b1))
+        assert "definition-mismatch" not in self.last_codes(writer, a1)
+        assert "definition-mismatch" not in self.last_codes(writer, b1)
+
+    def test_a_component_inside_a_folder_inside_the_removed_one_keeps_nothing_it_gave(
+        self, tmp_path: Path
+    ) -> None:
+        """The outer folder holds the project, the nested one its two components and no project of
+        its own, and nothing is open: the outer folder removed, the components are checked again
+        from the folder that stays, each on its own, and keep none of the project's findings."""
+        outer, nested = tmp_path / "outer", tmp_path / "outer" / "nested"
+        write_tree(
+            outer,
+            {
+                "p.ddd.json": project("P", "nested/a.ddd.json", "nested/b.ddd.json"),
+                **self.disagreeing(Path("nested/a.ddd.json"), Path("nested/b.ddd.json")),
+            },
+        )
+        a, b = nested / "a.ddd.json", nested / "b.ddd.json"
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(opening(outer, nested))
+        assert server._handle(holding(a, a.read_text(encoding="utf-8")))
+        assert server._handle(closing(a))
+        assert "definition-mismatch" in self.last_codes(writer, b)
+        assert server._handle(folders_changed(removed=[outer]))
+        assert "definition-mismatch" not in self.last_codes(writer, a)
+        assert "definition-mismatch" not in self.last_codes(writer, b)
+        assert server.roots == [nested]
+
+    def test_what_a_removed_records_build_reported_is_checked_with_a_document_open(
+        self, tmp_path: Path
+    ) -> None:
+        """A build record turns the project's mismatches into warnings, and a document of another
+        project is open: the record deleted, the project's files on screen are checked again, as
+        the project above them says under the default severities, where they kept the record's."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                **self.disagreeing(Path("a.ddd.json"), Path("b.ddd.json")),
+                "other/q.ddd.json": project("Q", "c.ddd.json"),
+                "other/c.ddd.json": component("C", declare("output", "Rate")),
+            },
+        )
+        record = build_record(
+            tmp_path, tmp_path / "p.ddd.json", severity=["definition-mismatch=warning"]
+        )
+        a, c = tmp_path / "a.ddd.json", tmp_path / "other" / "c.ddd.json"
+
+        def mismatch(writer: io.BytesIO) -> list[int]:
+            last = published(writer).get(a.as_uri(), [])
+            return [entry["severity"] for entry in last if entry["code"] == "definition-mismatch"]
+
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(opening(tmp_path))
+        assert server._handle(holding(c, c.read_text(encoding="utf-8")))
+        assert mismatch(writer) == [2]
+        record.unlink()
+        assert server._handle(changed_on_disk(record, kind=3))
+        assert mismatch(writer) == [1], "a kept the severity of a record that is gone"
+
+
 class Arrivals:
     """An inbox handing :meth:`Server._serve` what was read off the stream, arrival by arrival.
 

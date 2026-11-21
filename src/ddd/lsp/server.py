@@ -361,6 +361,11 @@ class Server:
         under: a file goes out under its resolved spelling until the client opens it under another,
         and its findings are then withdrawn under the first, where nothing would publish again
         (:meth:`_publish`)."""
+        self._reported: dict[Path, frozenset[Path]] = {}
+        """What each run a check made last reported on, by the resolved path it ran from - a
+        build's project, a description found above a document, a document (:func:`collect`): what
+        tells a file that run no longer reports on, whose findings are withdrawn, from one no run
+        looked at this time, which keeps them (:meth:`refresh`)."""
         self._announced: tuple[str, ...] | None = None
         """What was last said about the configured projects, so it is not said every save."""
 
@@ -797,16 +802,19 @@ class Server:
     def _watched(self, message: dict[str, Any]) -> None:
         """Mark for a check again, because what was read from disk is no longer what is on it.
 
-        Every open document, rather than the files that changed: a document is published
-        through the project above it, so a change in a file nobody has open is precisely the
-        case that moves a finding onto one somebody does. With nothing open there is still a
-        Problems list on screen describing the project as it was. The descriptions that changed
-        are roots to check it from, but for one deleted (:meth:`_refresh_marked`); a build record
-        that changed changes which projects there are and their severities, so every file whose
-        findings are on screen is checked again, under the records the next check searches for
-        (:meth:`_mark` forgets what was found). A record is never checked as a description, nor is
-        anything else the client reports that is none: so checked, it was read as a component and
-        given a finding of its own.
+        Every open document: a document is published through the project above it, so a change
+        in a file nobody has open is precisely the case that moves a finding onto one somebody
+        does. And every description that changed whose findings are on screen, open or not: with
+        a document of another project open, and none of its own, a description a pull fixed went
+        on showing what the pull had fixed. With nothing open the Problems list on screen still
+        describes the project as it was, and every description that changed is a root to check
+        it from, but for one deleted (:meth:`_refresh_marked`). A build record that changed
+        changes which projects there are and their severities, so every file whose findings are
+        on screen is checked again, whatever is open, under the records the next check searches
+        for (:meth:`_mark` forgets what was found): a file only the build of a record gone since
+        reported on is then checked as what it is now. A record is never checked as a
+        description, nor is anything else the client reports that is none: so checked, it was
+        read as a component and given a finding of its own.
 
         Marked, and checked together: checked one at a time, ten open documents of one project
         were ten analyses of it, at every save the editor's watcher reports.
@@ -823,11 +831,14 @@ class Server:
             )
             for change in changes
         ]
+        descriptions = [path for path in touched if path.name.lower().endswith(DDD_SUFFIX)]
         documents = sorted(self._open)
-        if not documents:
-            documents = [path for path in touched if path.name.lower().endswith(DDD_SUFFIX)]
-            if any(path.name == BUILD_INFO_FILENAME for path in touched):
-                documents.extend(sorted(self._published))
+        if documents:
+            documents.extend(path for path in descriptions if path.resolve() in self._published)
+        else:
+            documents = descriptions
+        if any(path.name == BUILD_INFO_FILENAME for path in touched):
+            documents.extend(sorted(self._published))
         self._mark(_DID_CHANGE_WATCHED, *documents)
         self._withdraw_deleted()
 
@@ -1091,6 +1102,11 @@ class Server:
         answers for (:func:`~ddd.lsp.diagnostics.collect`), each searched for above within the
         workspace folder holding it. What is found is the disk's, and an open document's
         findings are drawn in its buffer, as it stands on screen.
+
+        A file is withdrawn by a check that reported on it and found nothing, and by one whose
+        run from where it ran last time no longer reports on it, while no other run of the check
+        does: a component taken out of its project's ``includes`` is no longer the project's,
+        and the build no longer reports on it either (:attr:`_reported`).
         """
         self._forget()
         builds = self._builds_now()
@@ -1098,19 +1114,27 @@ class Server:
         # A record naming a project that is not there is dropped rather than analysed. Running
         # it produces one finding, "file does not exist", published against a file nobody can
         # open - and the thing actually wrong is the record, which the log has just said.
+        ran: dict[Path, set[Path]] = {}
         reports = collect(
             [info for info in builds if Path(info.project).is_file()],
             documents,
             self._root_for,
             self._cache(),
+            ran,
         )
-        # Only files with something to say, plus the ones this run reported on that had
-        # something to say last time and no longer do - those need an empty list to withdraw
-        # what is on screen. A file this run never reported on keeps what it has: with no record
-        # covering it, a run looks at the document and the project above it, and says nothing
-        # of another project, which is not the same as saying it is fine.
+        # What a run of this check reported on last time and no run of it reports on now.
+        dropped: set[Path] = set()
+        for origin, files in ran.items():
+            dropped |= self._reported.get(origin, frozenset()) - reports.keys()
+            self._reported[origin] = frozenset(files)
+        # Only files with something to say, plus the ones on screen that this check reported on
+        # and that have nothing to say any more, or that a run of it no longer reports on - those
+        # need an empty list to withdraw what is on screen. A file no run of this check reported
+        # on before or now keeps what it has: with no record covering it, a run looks at the
+        # document and the project above it, and says nothing of another project, which is not
+        # the same as saying it is fine.
         current = {path for path, findings in reports.items() if findings}
-        for path in sorted(current | (self._published.keys() & set(reports))):
+        for path in sorted(current | (self._published.keys() & (reports.keys() | dropped))):
             self._publish(path, reports.get(path, []))
         self._withdraw_deleted()
         self._mended()

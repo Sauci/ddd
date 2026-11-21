@@ -235,6 +235,7 @@ def collect(
     documents: Iterable[Path] = (),
     root: Path | Callable[[Path], Path] | None = None,
     buffers: Mapping[Path, Document] | None = None,
+    reported: dict[Path, set[Path]] | None = None,
 ) -> dict[Path, list[dict[str, Any]]]:
     """Findings for every file the given builds cover, plus any document they do not.
 
@@ -275,6 +276,13 @@ def collect(
     nearest key around it that the text holds where it does not, and at the top of a text that is
     not json (:meth:`~ddd.lsp.ranges.Document.range_of`). Drawn at the disk's place, a squiggle
     landed on whatever the text held there once lines were typed above it, unsaved.
+
+    ``reported``, where given, takes which files each run reported on, by the resolved path of
+    what it ran from: a build's project description, a description found above a document, or a
+    document - what its search named that could not be read, and its run on its own where it had
+    one; a document searched for is there whatever its search found. What a caller needs to tell
+    a file no run reported on this time from one that a run from the same place no longer
+    reports on, as the server does between two checks (:meth:`~ddd.lsp.server.Server.refresh`).
     """
     cache: dict[Path, Document] = {}
     """The files as the disk holds them, for what each declares itself."""
@@ -282,9 +290,17 @@ def collect(
     """The text each finding is drawn in: an open document's buffer, and any other file's disk."""
     grouped: dict[Path, list[Diagnostic]] = {}
     covered: set[Path] = set()
+    ran: dict[Path, set[Path]] = {} if reported is None else reported
+
+    def spoken(origin: Path, files: Iterable[Path]) -> None:
+        """What one run reported on, from ``origin``: covered, and kept under it in ``ran``."""
+        said = set(files)
+        covered.update(said)
+        ran.setdefault(origin.resolve(), set()).update(said)
+
     for info in builds:
         bag, sources = analyse(info)
-        covered |= sources | group_findings(bag, Path(info.project), grouped)
+        spoken(Path(info.project), sources | group_findings(bag, Path(info.project), grouped))
     claimed = frozenset(covered)
     descriptions = Descriptions()
     analysed: set[Path] = set()
@@ -304,7 +320,7 @@ def collect(
         unreadable = DiagnosticBag()
         for path in sorted(set(containing.failed) - covered):
             unreadable.add("plugin-invalid", containing.failed[path], Location(path))
-        covered |= group_findings(unreadable, resolved, grouped)
+        spoken(resolved, group_findings(unreadable, resolved, grouped))
         if not containing.projects:
             alone.append(resolved)
         for loaded in containing.projects:
@@ -312,11 +328,11 @@ def collect(
             if description not in analysed:
                 analysed.add(description)
                 bag, sources = _analysed(loaded)
-                covered |= sources | group_findings(bag, loaded.path, grouped)
+                spoken(description, sources | group_findings(bag, loaded.path, grouped))
     for resolved in alone:
         if resolved not in covered:
             bag, sources = _analyse_root(resolved, cache)
-            covered |= sources | group_findings(bag, resolved, grouped)
+            spoken(resolved, sources | group_findings(bag, resolved, grouped))
 
     return {
         path: [_as_lsp(finding, drawn, path) for finding in grouped.get(path, ())]

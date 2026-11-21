@@ -10882,6 +10882,46 @@ class TestWhichSpellingAFilesFindingsGoOutUnder:
         assert phrase in flattened(text), f"{page} no longer says: {phrase!r}"
 
 
+class TestWhatACheckWithdraws:
+    """10:I1. A check withdraws the findings of a file it reports on and finds nothing wrong with,
+    and of a file a run from the same place reported on the last time and no run reports on now:
+    a component taken out of its project's ``includes`` kept its findings for the session. Any
+    other file keeps its own, since a check of another project says nothing of it."""
+
+    SAID: ClassVar[dict[str, tuple[str, str]]] = {
+        "SPEC.md": (
+            SPEC,
+            "A check withdraws the findings of every file a run of it reports on and finds nothing "
+            "wrong with, and of every file that a run from the same place - a build's project, a "
+            "description above a document, a document read alone - reported on the last time and "
+            "that no run reports on now: a component taken out of its project's `includes` is no "
+            "longer the project's, and `ddd check` no longer reports on it. Any other file keeps "
+            "its findings:",
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            "A check withdraws the findings of every file a run of it reports on and finds nothing "
+            "wrong with, and of every file that a run from the same place - a build's project, a "
+            "description above a document, a document read alone - reported on the last time and "
+            "that no run reports on now: a component taken out of its project's ``includes`` is no "
+            "longer the project's, and ``ddd check`` no longer reports on it. Any other file keeps "
+            "its findings:",
+        ),
+        "CHANGELOG.md": (
+            CHANGELOG,
+            "A check now withdraws the files a run of it reports on and finds nothing wrong with, "
+            "and the files a run from the same project or document reported on the last time and "
+            "no run reports on now: a component taken out of its project's `includes` leaves the "
+            "screen, as it leaves what `ddd check` reports.",
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(SAID))
+    def test_the_page_says_what_a_check_withdraws(self, page: str) -> None:
+        text, phrase = self.SAID[page]
+        assert phrase in flattened(text), f"{page} no longer says: {phrase!r}"
+
+
 class TestWhereAnOpenDocumentsFindingsAreDrawn:
     """10:M6. The findings are the disk's, and an open document's are drawn in its text as the
     client holds it, around the key where that text no longer holds it, and over the item a list
@@ -10983,17 +11023,23 @@ class TestTheServerWatchesWhatItReads:
                 "registration while the session runs; a client that did not is asked for nothing, "
                 "and a file changed behind the editor's back is read again at the next open or "
                 "save.",
+                "A description the client reports changed is checked again where its findings are "
+                "on screen, whatever is open, and while no document is open whether they are or "
+                "not:",
                 "A change of a build record is a change of which projects there are and of their "
-                "severities: the records are searched for again, and the open documents are "
-                "checked again under them, or, while no document is open, every file whose "
-                "findings are on screen. A record is never checked as a description, nor is any "
-                "other file the client reports that is not one.",
+                "severities: the records are searched for again, and the open documents and every "
+                "file whose findings are on screen are checked again under them. A record is never "
+                "checked as a description, nor is any other file the client reports that is not "
+                "one.",
                 "The client's answer to a request of the server's - a message carrying an `id` and "
                 "no `method` - is answered with nothing.",
                 "everything a reader sees is the tool's answer, and the server asks the client "
                 "itself for what it needs to hear of the files,",
             ),
-            ("and hears of a file changed behind the editor's back",),
+            (
+                "and hears of a file changed behind the editor's back",
+                "or, while no document is open, every file whose findings are on screen",
+            ),
         ),
         "docs/editor_integration.rst": (
             EDITOR_INTEGRATION,
@@ -11005,11 +11051,11 @@ class TestTheServerWatchesWhatItReads:
                 "of the workspace, once the editor has said it is initialized, where its client "
                 "takes such a registration while the session runs, as VS Code's does; a client "
                 "that does not is asked for nothing, and a file changed behind it is read again at "
-                "the next open or save. A build record changing is a change of which projects "
-                "there "
-                "are and of their severities: the open documents are checked again under the "
-                "records as they now read, or, while none is open, every file whose findings are "
-                "on screen.",
+                "the next open or save. A description changing is checked again where its findings "
+                "are on screen, whatever is open, and while none is open whether they are or not:",
+                "A build record changing is a change of which projects there are and of their "
+                "severities: the open documents and every file whose findings are on screen are "
+                "checked again under the records as they now read.",
                 "watches nothing itself: the server asks for the watcher it needs, as it asks any "
                 "other editor that announced it takes such a registration while the session runs.",
             ),
@@ -11017,6 +11063,7 @@ class TestTheServerWatchesWhatItReads:
                 "when the editor reports that a description file it watches changed",
                 "and hears of a file changed behind it",
                 "as it asks any other editor.",
+                "or, while none is open, every file whose findings are on screen",
             ),
         ),
         "README.md": (

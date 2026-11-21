@@ -57,7 +57,13 @@ watched changes that arrive together are checked together, each project once for
 the server checks the documents they name once it has handled every message already waiting
 behind the first of them, and before it answers a request that came after them, never waiting
 for a message not yet sent. A save and the change the editor's watcher reports for it,
-arriving together, are one analysis of the project however many of its documents are open. The
+arriving together, are one analysis of the project however many of its documents are open. A check
+withdraws the findings of every file a run of it reports on and finds nothing wrong with, and of
+every file that a run from the same place - a build's project, a description above a document, a
+document read alone - reported on the last time and that no run reports on now: a component taken
+out of its project's ``includes`` is no longer the project's, and ``ddd check`` no longer reports
+on it. Any other file keeps its findings: a check from a file of another project says nothing of
+it, which is not saying it is fine. The
 server publishes for **every** file of the project rather than only the one on screen,
 because half of a disagreement is always in the other component, and each finding is also
 published at the locations of its notes - of two components declaring the same output,
@@ -69,10 +75,12 @@ saying two different things, and both are published.
 The server asks the editor to watch every description file and every build record of the
 workspace, once the editor has said it is initialized, where its client takes such a
 registration while the session runs, as VS Code's does; a client that does not is asked for
-nothing, and a file changed behind it is read again at the next open or save. A build record
-changing is a change of which projects there are and of their severities: the open documents
-are checked again under the records as they now read, or, while none is open, every file
-whose findings are on screen.
+nothing, and a file changed behind it is read again at the next open or save. A description
+changing is checked again where its findings are on screen, whatever is open, and while none is
+open whether they are or not: with a document of another project open, a pull that mended a
+project nobody had open left its findings on screen as they were. A build record changing is a
+change of which projects there are and of their severities: the open documents and every file
+whose findings are on screen are checked again under the records as they now read.
 
 Everything the server publishes, answers and edits is spelled the way the client spelled the
 document it opened, and resolved for every file it never opened. An editor matches a

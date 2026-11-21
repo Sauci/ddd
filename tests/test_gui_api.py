@@ -9686,6 +9686,35 @@ class TestWhatAComponentMayAdd:
         # Every one of them is produced by something, so reading is all any of them may be.
         assert names["ValueC"]["scopes"] == ["input"]
 
+    def test_no_producer_s_file_is_read_to_name_its_component(
+        self, demo, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """14:M12. Each producer is named as the analysis loaded its component, which the index
+        holds. Read off each producer's file instead, the panel of the largest component of a
+        generated project of 100,000 declarations, offering 46,666 names, took 1.60 to 1.96 s to
+        answer (Linux development PC)."""
+        api, root = demo
+        read: list[Path] = []
+        as_bytes, as_text = Path.read_bytes, Path.read_text
+
+        def reading_bytes(path: Path) -> bytes:
+            read.append(path)
+            return as_bytes(path)
+
+        def reading_text(path: Path, *arguments: Any, **keywords: Any) -> str:
+            read.append(path)
+            return as_text(path, *arguments, **keywords)
+
+        monkeypatch.setattr(Path, "read_bytes", reading_bytes)
+        monkeypatch.setattr(Path, "read_text", reading_text)
+        body = get(api, "/api/declarable", file=self.controller(root)).body
+        assert {entry["producer"] for entry in body["names"]} == {
+            "SensorHub",
+            "UserInterface",
+            "EventLogger",
+        }
+        assert read == []
+
     def test_a_name_another_component_keeps_local_is_neither_offered_nor_planned(
         self, tmp_path: Path
     ) -> None:

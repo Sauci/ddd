@@ -1515,7 +1515,6 @@ class Api:
                     f"{file.name} did not load, so it cannot be told whether it is a component",
                 )
             return _error(409, "invalid", f"{file.name} is not a component of the open project")
-        cache: dict[Path, Document] = {}
         return Reply(
             200,
             written(
@@ -1529,7 +1528,7 @@ class Api:
                             producer=entry.producer,
                             scopes=scopes_for(built, entry.name),
                         )
-                        for entry in declarable(built, file, cache)
+                        for entry in declarable(built, file)
                     ),
                     kinds=tuple(
                         # `asdict`, exactly as `_variable` already converts its offers: the

@@ -28,7 +28,6 @@ from ddd.models.component import Scope
 from ddd.models.objects import definition_keys, definition_problem
 from ddd.pointers import parent_pointer
 from ddd.variable_keys import KEY_ORDER, KeyOffer, offer_for
-from ddd.variables import component_of
 
 KINDS: Final = ("measurement", "parameter", "value_block", "curve", "map", "axis")
 """The six kinds a declaration may be, in the order the form offers them."""
@@ -77,15 +76,20 @@ class Declarable:
     """``measurement`` … ``axis``, or ``""`` when no declaration of it states one."""
 
     producer: str | None
-    """The component producing it; ``None`` when nothing does."""
+    """The component producing it, as the analysis loaded it; ``None`` when nothing does."""
 
 
-def declarable(built: Index, file: Path, cache: dict[Path, Document]) -> tuple[Declarable, ...]:
+def declarable(built: Index, file: Path) -> tuple[Declarable, ...]:
     """Every name the project declares that ``file`` does not and a scope may take there, sorted
-    by name.
+    by name, each with the component producing it.
 
     A name some component declares ``local`` is left out: :func:`scopes_for` answers it no scope,
-    and the name field is not offered a name the form has no scope to write it with.
+    and the name field is not offered a name the form has no scope to write it with. A producer is
+    named as the analysis loaded its component, which the index holds
+    (:attr:`~ddd.lsp.navigation.Index.components`), and no file is read: read off each producer's
+    file instead, every one of them parsed, the panel of the largest component of a generated
+    project of 100,000 declarations, offering 46,666 names, took 1.60 to 1.96 s to answer, and
+    takes 0.35 to 0.49 s (Linux development PC, three askings each).
     """
     here = file.resolve()
     return tuple(
@@ -93,8 +97,8 @@ def declarable(built: Index, file: Path, cache: dict[Path, Document]) -> tuple[D
             name=name,
             kind=built.kinds.get(name, ""),
             producer=(
-                component_of(read(produced[0].path, cache), produced[0].path)
-                if (produced := built.producers.get(name) or [])
+                built.components[produced[0].path]
+                if (produced := built.producers.get(name))
                 else None
             ),
         )

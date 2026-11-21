@@ -110,23 +110,19 @@ def checks_after(base: Path, plan: DeclarationPlan, root: str = "p.ddd.json") ->
 
 
 class TestWhatMayBeRead:
-    def test_every_name_the_project_shares_that_this_file_has_not(
-        self, demo: Index, cache: dict[Path, Document]
-    ) -> None:
+    def test_every_name_the_project_shares_that_this_file_has_not(self, demo: Index) -> None:
         # Measured against examples/demo as it stands: Controller declares 14 of the project's
         # 23 names, and of the 9 it does not, five are another component's locals - BlockA,
         # CurveB, Diagnosis, ValueD and ValueK - which no other component may declare. These 4
         # are what it could read, each with the component producing it.
-        assert declarable(demo, CONTROLLER, cache) == (
+        assert declarable(demo, CONTROLLER) == (
             Declarable("FlagA", "measurement", "SensorHub"),
             Declarable("ValueC", "measurement", "SensorHub"),
             Declarable("ValueI", "measurement", "UserInterface"),
             Declarable("ValueJ", "measurement", "EventLogger"),
         )
 
-    def test_a_name_nothing_produces_names_no_producer(
-        self, tmp_path: Path, cache: dict[Path, Document]
-    ) -> None:
+    def test_a_name_nothing_produces_names_no_producer(self, tmp_path: Path) -> None:
         # Its own project, because every name of examples/demo is produced by something.
         write_tree(
             tmp_path,
@@ -139,23 +135,19 @@ class TestWhatMayBeRead:
         workspace = load_workspace(tmp_path / "p.ddd.json", DiagnosticBag())
         assert workspace is not None
         built = index(workspace)
-        assert declarable(built, tmp_path / "b.ddd.json", cache) == (
+        assert declarable(built, tmp_path / "b.ddd.json") == (
             Declarable("Orphan", "measurement", None),
         )
 
-    def test_a_name_another_component_keeps_local_is_not_offered(
-        self, tmp_path: Path, cache: dict[Path, Document]
-    ) -> None:
+    def test_a_name_another_component_keeps_local_is_not_offered(self, tmp_path: Path) -> None:
         # Review finding: `Loc` is W's `local`, which keeps it from every other component, and
         # it was offered to R with the one scope `input` - which is `local-conflict` exactly, a
         # local beside another declaration. What W *outputs* is still R's to read.
         built, root = built_of(tmp_path, **LOCAL_BESIDE_OUTPUT)
-        assert declarable(built, root / "r.ddd.json", cache) == (
-            Declarable("Out", "measurement", "W"),
-        )
+        assert declarable(built, root / "r.ddd.json") == (Declarable("Out", "measurement", "W"),)
 
     def test_a_local_another_component_already_reads_is_not_offered_either(
-        self, tmp_path: Path, cache: dict[Path, Document]
+        self, tmp_path: Path
     ) -> None:
         # A project already holding a reader beside the local reports `local-conflict`, and the
         # analysis files it again for each further declaration beside the local: a third
@@ -168,7 +160,32 @@ class TestWhatMayBeRead:
                 "r.ddd.json": component("R"),
             },
         )
-        assert declarable(built, root / "r.ddd.json", cache) == ()
+        assert declarable(built, root / "r.ddd.json") == ()
+
+    def test_a_producer_is_named_as_the_analysis_loaded_it_and_its_file_is_not_read(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """14:M12. By the index, which holds each component's name as the analysis loaded it:
+        renamed in its file since, the producer is named as it was loaded until the next analysis
+        reads the file again, and no file is read to answer."""
+        built, root = built_of(
+            tmp_path,
+            **{
+                "w.ddd.json": component("W", declare("output", "Out")),
+                "r.ddd.json": component("R"),
+            },
+        )
+        write_tree(root, {"w.ddd.json": component("Renamed", declare("output", "Out"))})
+        read: list[Path] = []
+        as_bytes = Path.read_bytes
+
+        def reading(path: Path) -> bytes:
+            read.append(path)
+            return as_bytes(path)
+
+        monkeypatch.setattr(Path, "read_bytes", reading)
+        assert declarable(built, root / "r.ddd.json") == (Declarable("Out", "measurement", "W"),)
+        assert read == []
 
 
 class TestWhichScopesANameMayTake:
@@ -504,7 +521,7 @@ class TestReadingWhatTheProjectHas:
         original = controller.read_text(encoding="utf-8")
         offered = [
             (entry.name, scope)
-            for entry in declarable(built, controller, cache)
+            for entry in declarable(built, controller)
             for scope in scopes_for(built, entry.name)
         ]
         assert ("ValueC", "input") in offered

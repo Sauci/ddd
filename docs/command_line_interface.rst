@@ -704,6 +704,10 @@ The commands
        ``CMakeLists.txt`` beside it, with the line that registers it there: ``; create
        newcomp.ddd.json beside /home/you/project/src/pump/pump.ddd.json instead, and add
        ddd_add_component(<target> JSON newcomp.ddd.json) to the CMakeLists.txt there, replacing
+       <target> with your component's target`` - and an existing description Add a file names
+       offered the same line in the ``CMakeLists.txt`` beside it, where it lies outside the
+       build tree: ``; add ddd_add_component(<target> JSON spare.ddd.json) to the
+       CMakeLists.txt beside /home/you/project/src/spare/spare.ddd.json instead, replacing
        <target> with your component's target``. The record beside the description is what says
        so, read for the project it names whatever its format and its severities, and whether or
        not ``-b`` names the build directory. A project given to ``ddd_generate()`` with

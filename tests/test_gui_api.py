@@ -40,6 +40,7 @@ from conftest import (
     messages,
     offered_beside,
     project,
+    registered_beside,
     scalar_type,
     stopped,
     struct_type,
@@ -9332,12 +9333,25 @@ class TestAProjectTheBuildCollected:
         self, opened: tuple[Api, Path]
     ) -> None:
         """Add a file: a description of the source tree that no target registers, appended to
-        the includes, an entry the next configure would drop."""
+        the includes, an entry the next configure would drop. Offered instead the line that
+        registers it, as a new file is offered it, in the CMakeLists.txt beside it."""
         api, root = opened
+        spare = posix(root, "src/spare/spare.ddd.json")
+        reply = get(api, "/api/files-plan", action="add", path=spare)
+        assert reply == refused_as_generated(registered_beside(root, spare))
+
+    def test_a_description_of_its_build_tree_added_is_offered_no_line(self, tmp_path: Path) -> None:
+        """One a custom command writes into the build tree goes with that tree, and is no file a
+        CMakeLists.txt beside it registers: the refusal says the build's membership alone."""
+        described = self.collected(tmp_path)
+        write_tree(tmp_path / "b" / "gen", {"gauge.ddd.json": component("Gauge")})
+        session = Session(tmp_path, [tmp_path / "b"])
+        session.open(described)
+        api = Api(session, described)
         reply = get(
-            api, "/api/files-plan", action="add", path=posix(root, "src/spare/spare.ddd.json")
+            api, "/api/files-plan", action="add", path=posix(tmp_path, "b/gen/gauge.ddd.json")
         )
-        assert reply == refused_as_generated(membership(root))
+        assert reply == refused_as_generated(membership(tmp_path))
 
     def test_taking_an_include_out_is_refused_the_same_way(self, opened: tuple[Api, Path]) -> None:
         """A component the build collects is taken out where it is registered: an entry taken
@@ -9507,10 +9521,9 @@ class TestAProjectTheBuildCollected:
         session.open(described)
         api = Api(session, described)
         assert get(api, "/api/session").body["builds"] == []
-        reply = get(
-            api, "/api/files-plan", action="add", path=posix(tmp_path, "src/spare/spare.ddd.json")
-        )
-        assert reply == refused_as_generated(membership(tmp_path))
+        spare = posix(tmp_path, "src/spare/spare.ddd.json")
+        reply = get(api, "/api/files-plan", action="add", path=spare)
+        assert reply == refused_as_generated(registered_beside(tmp_path, spare))
 
 
 class TestAPlanWritingBesideAProjectTheBuildCollected:

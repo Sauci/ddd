@@ -1273,11 +1273,12 @@ class Api:
         revision = self._opened()
         cache: dict[Path, Document] = {}
 
-        def refuse(edits: Sequence[PlannedEdit]) -> None:
+        def refuse(edits: Sequence[PlannedEdit], added: Sequence[Path]) -> None:
             self._refuse_generated(
                 revision,
                 (edit.path for edit in edits),
                 (edit.path for edit in edits if edit.creates),
+                added,
             )
             self._refuse_unanalysed(revision, (edit.path for edit in edits))
             derived = self._derive(revision)
@@ -1853,14 +1854,19 @@ class Api:
             )
 
     def _refuse_generated(
-        self, revision: Revision, written: Iterable[Path], created: Iterable[Path] = ()
+        self,
+        revision: Revision,
+        written: Iterable[Path],
+        created: Iterable[Path] = (),
+        added: Iterable[Path] = (),
     ) -> None:
         """Refuse a plan writing under the build tree a build generates the open project in
         (:func:`ddd.gui.session.generated_refusal`): its description, a file created beside it,
         or any other file the tree holds, each the build's, and undone or lost when the build
         writes it again. ``written`` is every file the plan changes, ``created`` the ones of them it
         creates, which only a plan making a file - New file, adopting a vocabulary, a first
-        shared file - has.
+        shared file - has, and ``added`` the existing descriptions it brings into the includes,
+        resolved, which Add a file alone has: each offered the line that registers it instead.
 
         The session refuses the same edit on arrival; asked here, the reader reads why before
         choosing it, and before :meth:`_refuse_unanalysed`, since no analysis landing changes this
@@ -1870,6 +1876,7 @@ class Api:
             revision,
             (derived.resolve(path) for path in written),
             (derived.resolve(path) for path in created),
+            added,
         )
         if refused is not None:
             raise EditError(GENERATED, refused)
@@ -2513,7 +2520,7 @@ def _files_plan_of(
     asked: CreateFile | AddFile | RemoveFile,
     revision: Revision,
     cache: dict[Path, Document],
-    refuse: Callable[[Sequence[PlannedEdit]], None],
+    refuse: Callable[[Sequence[PlannedEdit], Sequence[Path]], None],
 ) -> _FilesPlanned:
     """The plan ``asked`` names, over the parts its model read. A row's key is passed on as it
     arrived: :func:`ddd.file_plans.remove_plan` resolves it to compare, as
@@ -2521,15 +2528,16 @@ def _files_plan_of(
     instead, a key ending in a link would be named by what the link leads to, which may lie
     outside what is served.
 
-    ``refuse`` is asked of each plan's edits, once the plan's own refusals have been asked and
-    before anything is judged: a description a build generates is refused there
-    (:meth:`Api._refuse_generated`), and judging it would run the analysis again for a change
+    ``refuse`` is asked of each plan's edits, with the existing description an add brings in,
+    once the plan's own refusals have been asked and before anything is judged: a description a
+    build generates is refused there (:meth:`Api._refuse_generated`), the file added offered the
+    line that registers it instead, and judging it would run the analysis again for a change
     that cannot be made; and judged, a description an edit wrote and no analysis has read yet
     would be refused ``stale`` instead, for the very write the reader made
     (:meth:`Api._refuse_unanalysed`)."""
     if isinstance(asked, CreateFile):
         edits = _creation(revision, asked.kind, asked.name, asked.component, cache)
-        refuse(edits)
+        refuse(edits, ())
         return _FilesPlanned(edits)
     if isinstance(asked, AddFile):
         return _addition(revision, asked.path, cache, refuse)
@@ -2580,7 +2588,7 @@ def _addition(
     revision: Revision,
     entry: str,
     cache: dict[Path, Document],
-    refuse: Callable[[Sequence[PlannedEdit]], None],
+    refuse: Callable[[Sequence[PlannedEdit], Sequence[Path]], None],
 ) -> _FilesPlanned:
     """An existing file appended to the includes, and the errors it is counted to bring -
     previewed, never refused for them.
@@ -2626,7 +2634,7 @@ def _addition(
             f"top level holds none of {', '.join(DESCRIPTION_KINDS[:-1])} and "
             f"{DESCRIPTION_KINDS[-1]}",
         )
-    refuse(plan.edits)
+    refuse(plan.edits, (added,))
     if not revision.analysed:
         return _FilesPlanned(
             plan.edits,
@@ -2640,7 +2648,7 @@ def _removal(
     revision: Revision,
     path: Path,
     cache: dict[Path, Document],
-    refuse: Callable[[Sequence[PlannedEdit]], None],
+    refuse: Callable[[Sequence[PlannedEdit], Sequence[Path]], None],
 ) -> _FilesPlanned:
     """Every entry whose key ``path`` resolves to taken out, refused where the project without
     them would have an error more than it has now at its place.
@@ -2666,7 +2674,7 @@ def _removal(
     link to a directory, a path no entry spells."""
     plan = remove_plan(revision.project, path, cache)
     removing = plan.removed[0]
-    refuse(plan.edits)
+    refuse(plan.edits, ())
     if not revision.analysed:
         return _FilesPlanned(
             plan.edits,

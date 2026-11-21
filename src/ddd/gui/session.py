@@ -18,11 +18,12 @@ is why a round holds no lock while it stamps (:meth:`Session.poll`). Beside the 
 stamps what can change the analysis though none of them changed (:attr:`Revision.watched`): the
 directory each wildcard include expands in, since creating or removing a file moves its time;
 every file a ``plugins`` list names by its path, loaded or not; and every build record the search
-finds, a refused one among them. So a component saved where a pattern matches, a plugin created
-or mended and a build record rewritten each make a new revision, as a file saved does. A build
-record the search had not found - a new build tree's, or a new image's - and a plugin named as a
-module and installed since are noticed when something else changes, which is a limit of the
-preview.
+finds, a refused one among them, with the one beside the project description wherever it lies.
+So a component saved where a pattern matches, a plugin created or mended and a build record
+rewritten each make a new revision, as a file saved does. A build record written where none was,
+elsewhere than beside the project description - a new build tree's, or a new image's - and a
+plugin named as a module and installed since are noticed when something else changes, which is a
+limit of the preview.
 
 The analysis is the language server's, run the way ``ddd lsp`` runs it: under the severities of
 every build record naming the project, or under the defaults when none does.
@@ -34,8 +35,9 @@ writes it again at every configure: which files belong to it is the build's. A r
 says so, and which tree the build owns (:attr:`Revision.generated`), and nothing under that tree
 is written - the description, a file created beside it, any file the tree holds - each such
 change refused :data:`GENERATED`, in a sentence saying where membership is decided
-(:func:`generated_refusal`). The components it collects from the source tree are edited as in any
-other project.
+(:func:`generated_refusal`). A record beside a description that does not read as one, a write of
+it cut short among them, is taken for the build's until it reads. The components it collects from
+the source tree are edited as in any other project.
 """
 
 from __future__ import annotations
@@ -108,7 +110,7 @@ GENERATED: Final = "generated"
 """The refusal of a change writing under the build tree a build generates the open project in
 (:func:`generated_refusal`): its description, a file created beside it, or any other file the
 tree holds, every one the build's. Answered 409, and refused again for as long as the build record
-beside the description names it."""
+beside the description names it, or does not read as one (:attr:`Generated.unread`)."""
 
 PLUGINS: Final = "plugins"
 """The refusal of an edit after which the project's descriptions would name plugins other than
@@ -162,6 +164,12 @@ class Generated:
     """Resolved: the build tree the description is generated in, every file under which is the
     build's (:func:`_build_tree`) - the description's own directory, where no CMake build tree is
     known to hold it apart from the source tree."""
+
+    unread: Path | None = None
+    """The record beside the description, where it does not read as one: whether a build writes
+    the description cannot be told then, and it is taken for the build's, the refusal naming the
+    record (:func:`generated_refusal`), until the record reads. ``None`` for a record that reads,
+    the build it names being the one :attr:`image` names."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -299,9 +307,10 @@ class Revision:
     descriptions expands in, every directory a ``**`` walks among them - creating or removing an
     entry moves a directory's modification time, so a component saved on a pattern is noticed by
     that time; every file a ``plugins`` list names by its path, loaded or not, so a plugin created
-    or mended is noticed whatever the run read of it; and every build record the search found, a
-    refused one among them, whose rewrite changes the severities. Empty for a revision made any
-    other way - a test's."""
+    or mended is noticed whatever the run read of it; every build record the search found, a
+    refused one among them, whose rewrite changes the severities; and the record beside the
+    project description, there or not, which says whether a build generates it
+    (:attr:`generated`). Empty for a revision made any other way - a test's."""
 
     @property
     def dictionary(self) -> DataDictionary | None:
@@ -508,6 +517,7 @@ class Session:
             raise ValueError(f"{project} is not a project description")
         named = _named_by(path) | _expanded_by(path, _read_json(path))
         named.update(build_files(self.root, self.build_directories))
+        named.add(path.parent / BUILD_INFO_FILENAME)
         with self._lock:
             self._project = path
             self._revision = None
@@ -799,7 +809,9 @@ class Session:
             served=served,
             resolved_paths=_resolved_paths(files, findings),
             generated=_generated(project, self.root),
-            watched=_watched(descriptions, found),
+            # The record beside the description too, there or not, wherever the search looked:
+            # it says whether a build generates the project.
+            watched=_watched(descriptions, (*found, project.parent / BUILD_INFO_FILENAME)),
         )
 
     def _request(self) -> None:
@@ -1108,6 +1120,10 @@ def generated_refusal(
     both are about - and otherwise the first file it writes under the tree, which the reader asked
     to change. Where it creates one, it offers the file in the source tree instead
     (:func:`_instead`).
+
+    Where the record beside the description does not read as one (:attr:`Generated.unread`),
+    whether the build writes it is not known: every such change is refused in one sentence naming
+    the record and the tree, and offering nothing, until the record reads.
     """
     generated = revision.generated
     if generated is None:
@@ -1118,13 +1134,19 @@ def generated_refusal(
             there.append(path)
     if not there:
         return None
+    name = revision.project.name
+    tree = generated.tree.as_posix()
+    if generated.unread is not None:
+        return (
+            f"{name} may be generated by a build: the build record beside it, "
+            f"{generated.unread.as_posix()}, does not read as one, so nothing under {tree} is "
+            "written from here until it does"
+        )
     # Two statements rather than a conditional expression, which coverage.py counts no branch in:
     # a record written without --image names no image.
     build = "the build"
     if generated.image:
         build = f"the build of {generated.image}"
-    name = revision.project.name
-    tree = generated.tree.as_posix()
     membership = "which files belong to it is ddd_add_component's to say"
     said = (
         f"{name} is generated by {build} at every configure, so {membership}, and nothing under "
@@ -1596,11 +1618,20 @@ def _generated(project: Path, root: Path) -> Generated | None:
     reads a record. That reader asks whether this version can apply the record's severities, and
     declines one written by a newer DDD, in a format past its own, or naming a check it has not
     got; the description beside such a record, unless it says it was given, is written again at
-    every configure all the same. A record that does not read as json, or names no project by a
-    path, names nothing here."""
-    record = _read_json(project.parent / BUILD_INFO_FILENAME)
+    every configure all the same. A record naming no project by a path names nothing here.
+
+    A record there that does not read as one - not json, a write of it cut short among them, or
+    no object - cannot say whether the build writes the description, and the refusal fails
+    closed: the description is taken for the build's, naming the record (:attr:`Generated.unread`),
+    until it reads, which its revision watches for (:attr:`Revision.watched`). Read as no record,
+    a write that died left a generated description open to edits the next configure undoes."""
+    beside = project.parent / BUILD_INFO_FILENAME
+    record = _read_json(beside)
     if not isinstance(record, dict):
-        return None
+        # Asked with os.path.isfile, which answers false for a path it cannot look at.
+        if not os.path.isfile(beside):  # noqa: PTH113
+            return None
+        return Generated("", _build_tree(project.parent), unread=beside)
     named = record.get("project")
     if not isinstance(named, str) or not _readable_project(named, root, project.parent):
         return None
@@ -1644,14 +1675,19 @@ def _build_tree(directory: Path) -> Path:
 def _source_tree(cache: Path) -> Path | None:
     """The source tree the CMake cache ``cache`` was configured from - its
     ``CMAKE_HOME_DIRECTORY``, resolved - or ``None`` where the cache cannot be read or does not
-    say."""
+    say, an entry spelling nothing among them."""
     try:
         text = cache.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return None
     for line in text.splitlines():
         if line.startswith(_HOME_DIRECTORY):
-            return resolve_path(Path(line.removeprefix(_HOME_DIRECTORY)))
+            named = line.removeprefix(_HOME_DIRECTORY)
+            # An entry spelling nothing says nothing: read as a path, it was the directory the
+            # process was started in.
+            if not named:
+                return None
+            return resolve_path(Path(named))
     return None
 
 

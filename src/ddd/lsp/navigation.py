@@ -176,6 +176,11 @@ class Index:
     types: dict[str, Site] = field(default_factory=dict)
     """Type name -> where it is declared: a structure, a scalar type or an external type."""
 
+    externals: dict[str, str] = field(default_factory=dict)
+    """External type name -> the header that defines it, spelled as its entry spells it: the types
+    whose name is that header's rather than the project's, which no rename of a description may
+    change (:func:`named_by_a_header`)."""
+
     type_uses: dict[str, list[Site]] = field(default_factory=dict)
     """Structure name -> every member that nests it."""
 
@@ -331,6 +336,8 @@ def index(workspace: Workspace) -> Index:
     for entry in workspace.types:
         built.types[entry.name] = Site(entry.path, entry.location().pointer)
         built.occupied[entry.name] = f"the name of the type '{entry.name}'"
+        if entry.external is not None:
+            built.externals[entry.name] = entry.external.header
         declared = entry.declared
         if isinstance(declared, ScalarType):
             _occupy(built, declared.conversion)
@@ -1178,6 +1185,34 @@ def changed_since(files: Iterable[Path], consequence: str) -> str:
     return (
         f"{names} changed since the project was analysed, so {consequence} until the project is "
         "analysed again"
+    )
+
+
+def named_by_a_header(built: Index, kind: str, name: str) -> str | None:
+    """Why what is of this ``kind`` and called ``name`` may not be renamed at all, whatever it
+    would be renamed onto: an external type's name is the one the header beside it defines. Nothing
+    for anything else.
+
+    DDD generates no typedef for an external type, only the include of its header, so the name
+    its entry spells is the vendor's: a rename of the descriptions left the header defining the
+    old name and the generated types header spelling the new one, ``ddd check`` said nothing, and
+    the build stopped at the first compile. The one check both clients ask, the editor's ``F2`` of
+    every project it reaches (:meth:`ddd.lsp.server.Server._name_rename`) and the page's Types tab
+    (:func:`ddd.type_plans.rename_type`), so that the two cannot disagree about it; asked before
+    :func:`rename_problem`, which judges the new name, since no new name would do.
+
+    A variable, a constant or anything else spelled as an external type is the project's own, and
+    renaming it is how the collision of the two is mended. Two early returns rather than one
+    ``or``, which coverage.py counts as a single branch whichever operand decided it.
+    """
+    if kind != "type":
+        return None
+    header = built.externals.get(name)
+    if header is None:
+        return None
+    return (
+        f"'{name}' is an external type whose name {header} defines, so a rename here would leave "
+        "that header defining the old one"
     )
 
 

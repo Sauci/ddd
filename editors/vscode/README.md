@@ -102,7 +102,8 @@ from is in, as long as the server finds both images for it: through their build 
 without records, through a project description above it. A name c reserves, one that is not a
 usable identifier, or one a project it reaches already declares is refused with the reason
 rather than half applied, naming the image it comes from - or its project description, without
-a build record - when that is not yours. Free text is left alone, so a `description`
+a build record - when that is not yours. An external type is not renamed at all, its name
+being the one the header defining it spells. Free text is left alone, so a `description`
 mentioning the old name still mentions it.
 
 The published json schemas keep working alongside this: they do structure, the server does

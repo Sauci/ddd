@@ -124,7 +124,11 @@ identifier, or one a project it reaches already uses - for another object, an en
 enumerator, a type or a declared constant - is refused with the reason before anything is
 written, because a rename that silently merges two objects compiles, links, and shares
 storage nobody intended to share; a type may not take the spelling of a base datatype
-either, which the loader would refuse. A memory section is renamed from its entry in a
+either, which the loader would refuse. An external type is not renamed at all, from its entry or
+from any ``typename``: its name is the one the header defining it spells, which no edit of a
+description reaches, so a rename would leave that header defining the old name and stop the build
+at its first compile. It is refused, naming the header, wherever a project the rename reaches
+declares the type so. A memory section is renamed from its entry in a
 :doc:`sections file <file_formats/sections>`, or from the ``section`` key of any definition
 placing its data there, and both ends are rewritten together: a rename reaching the entry
 alone would leave every one of those definitions naming a section nothing declares. A

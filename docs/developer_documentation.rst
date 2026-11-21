@@ -1391,15 +1391,16 @@ gone, the rule read from ``ddd.lsp.edits.settle`` alone now.
 
 The types a project declares are read by ``ddd.project_types`` and changed by
 ``ddd.type_plans``, the pair ``ddd.project_units`` and ``ddd.lsp.units`` already make for
-units. Neither indexes anything new: ``ddd.lsp.navigation.Index`` records every type's
-entry, every declaration and member naming one, and every c identifier the project has
-spent, and what a type *says* is read from the document at its entry. A rename is the
-editor's rename - ``rename_sites`` says which strings it rewrites and ``rename_problem``
-why a name may not be used, so the tab and the editor cannot disagree - planned as
-edit-engine operations rather than the text edits ``rename_edits`` answers, the way the
-identity fix does. ``GET /api/types`` lists them, ``GET /api/type`` answers one with its
-uses and its members, and ``GET /api/type-plan`` previews a change of either kind as
-``PlanReply``, which the page applies through ``POST /api/edit`` and the undo puts back.
+units. Neither indexes anything new: ``ddd.lsp.navigation.Index`` records every type's entry
+and the header of each external one, every declaration and member naming one, and every c
+identifier the project has spent, and what a type *says* is read from the document at its
+entry. A rename is the editor's rename - ``rename_sites`` says which strings it rewrites,
+``named_by_a_header`` why an external type is not renamed at all and ``rename_problem`` why
+a name may not be used, so the tab and the editor cannot disagree - planned as edit-engine
+operations rather than the text edits ``rename_edits`` answers, the way the identity fix
+does. ``GET /api/types`` lists them, ``GET /api/type`` answers one with its uses and its
+members, and ``GET /api/type-plan`` previews a change of either kind as ``PlanReply``, which
+the page applies through ``POST /api/edit`` and the undo puts back.
 
 ``ddd.declaration_plans`` sits beside ``ddd.type_plans`` and ``ddd.project_units``: a
 component may add a declaration of a variable the project already declares or of a new

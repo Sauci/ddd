@@ -73,6 +73,7 @@ from ddd.lsp.navigation import (
     is_alone,
     is_local,
     locations,
+    named_by_a_header,
     read_project,
     references,
     rename_edits,
@@ -1404,7 +1405,9 @@ class Server:
         cache: dict[Path, Document],
     ) -> dict[str, list[dict[str, Any]]] | str:
         """The edits of a rename of anything but a unit, by file uri, over every project it
-        reaches, or why it is refused (:meth:`_answer_rename`)."""
+        reaches, or why it is refused (:meth:`_answer_rename`): among the refusals each project is
+        asked, a type it declares an external one, whose name is its header's
+        (:func:`~ddd.lsp.navigation.named_by_a_header`)."""
         changes: dict[str, list[dict[str, Any]]] = {}
         made: dict[str, list[_Made]] = {}
         drifted: set[Path] = set()
@@ -1412,12 +1415,13 @@ class Server:
         refused = self._unread_refusal(reach) or self._alone_refusal(path, reach, subject)
         if refused is not None:
             return refused
+        kind, old = subject or ("variable", "")
         for loaded in reach:
             unreadable = self._unreadable(loaded)
             if unreadable is not None:
                 return self._in_image(reach, loaded, unreadable)
             built = index(loaded.workspace)
-            problem = rename_problem(built, wanted, subject[0] if subject else "variable")
+            problem = named_by_a_header(built, kind, old) or rename_problem(built, wanted, kind)
             if problem is not None:
                 return self._in_image(reach, loaded, problem)
             edited = rename_edits(built, document, pointer, wanted, cache)

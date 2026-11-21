@@ -2363,6 +2363,93 @@ class TestWhatAConstantsRenameRewrites:
         ) not in said
 
 
+class TestAnExternalTypeIsNotRenamed:
+    """10:M9. An external type's name is the one the header that defines it spells, which no
+    rename of a description reaches, so neither the editor's ``F2`` nor the page's Types tab
+    renames one. Every page that says what a type's rename does, or what a rename refuses, says
+    so."""
+
+    PHRASES: ClassVar[dict[str, tuple[str, tuple[str, ...]]]] = {
+        "SPEC.md": (
+            SPEC,
+            (
+                "because a rename that silently merges two objects compiles, links, and shares "
+                "storage nobody intended to share, and refused for an external type that a "
+                "project it reaches declares, since its name is the one the header defining it "
+                "spells and a rename of the descriptions would leave that header defining the old "
+                "one; and quick fixes",
+            ),
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            (
+                "which the loader would refuse. An external type is not renamed at all, from its "
+                "entry or from any ``typename``: its name is the one the header defining it "
+                "spells, which no edit of a description reaches, so a rename would leave that "
+                "header defining the old name and stop the build at its first compile. It is "
+                "refused, naming the header, wherever a project the rename reaches declares the "
+                "type so.",
+            ),
+        ),
+        "README.md": (
+            README,
+            (
+                "an unusable name is otherwise noticed a build later. An external type is not "
+                "renamed at all: its name is the one the header defining it spells, which no "
+                "rename of a description reaches.",
+            ),
+        ),
+        "editors/vscode/README.md": (
+            (ROOT / "editors" / "vscode" / "README.md").read_text(encoding="utf-8"),
+            (
+                "when that is not yours. An external type is not renamed at all, its name being "
+                "the one the header defining it spells.",
+            ),
+        ),
+        "docs/command_line_interface.rst": (
+            COMMAND_LINE_INTERFACE,
+            (
+                "what a scalar type fixes is changed there, and renaming a type rewrites every "
+                "declaration and member naming it in one edit, but an external type is refused, "
+                "its name being the one the header defining it spells.",
+            ),
+        ),
+        "docs/developer_documentation.rst": (
+            PAGES["docs/developer_documentation.rst"],
+            (
+                "``ddd.lsp.navigation.Index`` records every type's entry and the header of each "
+                "external one, every declaration and member naming one,",
+                "A rename is the editor's rename - ``rename_sites`` says which strings it "
+                "rewrites, ``named_by_a_header`` why an external type is not renamed at all and "
+                "``rename_problem`` why a name may not be used, so the tab and the editor cannot "
+                "disagree -",
+            ),
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(PHRASES))
+    def test_the_page_says_an_external_type_is_not_renamed(self, page: str) -> None:
+        text, phrases = self.PHRASES[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"
+
+    def test_no_page_still_says_every_type_is_renamed(self) -> None:
+        """The Types tab was said to rename a type with every name reaching it, and the module
+        notes named the one check of a new name alone."""
+        for page, stale in (
+            (
+                COMMAND_LINE_INTERFACE,
+                "and renaming one rewrites every declaration and member naming it in one edit.",
+            ),
+            (
+                PAGES["docs/developer_documentation.rst"],
+                "says which strings it rewrites and ``rename_problem`` why a name may not be used",
+            ),
+        ):
+            assert stale not in flattened(page)
+
+
 class TestWhatTheSharedTabCountsAsAUse:
     """14:M13 and 10:I10 on the page. The Shared files tab renames a constant through the
     editor's sites, and counts, lists and refuses a removal by a constant's uses: its shapes and

@@ -6147,6 +6147,22 @@ class TestTheTypesTab:
         assert (reply.status, reply.body["error"]) == (409, "invalid")
         assert says in reply.body["message"]
 
+    def test_an_external_type_is_not_renamed(self, structures) -> None:
+        """10:M9. Its name is the one its header defines: the plan refuses it, and the route
+        answers that refusal as any other, before anything is written."""
+        api, root = structures
+        before = contents(root)
+        reply = get(api, "/api/type-plan", action="rename", name="DriverStatus_t", to="X_t")
+        assert reply == Reply(
+            409,
+            {
+                "error": "invalid",
+                "message": "'DriverStatus_t' is an external type whose name driver_status.h "
+                "defines, so a rename here would leave that header defining the old one",
+            },
+        )
+        assert contents(root) == before
+
     @pytest.mark.parametrize(
         ("query", "sentence"),
         [

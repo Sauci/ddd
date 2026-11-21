@@ -2927,12 +2927,14 @@ constant as a word, that word - refused up front for a name the C language
 does not allow, a type name spelling a base datatype, or one a project it reaches already
 uses, whether for another object, an enum, an enumerator, a type or a constant, because a
 rename that silently merges two objects compiles, links, and shares storage nobody intended
-to share; and quick fixes that reconcile one key across the declarations of one object, in
-either direction, including removing a key the others do not have - a declaration naming a
-declared type having every key the type fixes, as the checks read it - which change descriptions
-and never the code of the components that read the variable, and none of which is offered
-where writing it would leave a file the loader refuses; and, on a `missing-id`, a fix that
-gives the declaration an identity, writing what `ddd id --assign` would write and offered
+to share, and refused for an external type that a project it reaches declares, since its name is
+the one the header defining it spells and a rename of the descriptions would leave that header
+defining the old one; and quick fixes that reconcile one key across the declarations of one
+object, in either direction, including removing a key the others do not have - a declaration
+naming a declared type having every key the type fixes, as the checks read it - which change
+descriptions and never the code of the components that read the variable, and none of which is
+offered where writing it would leave a file the loader refuses; and, on a `missing-id`, a fix
+that gives the declaration an identity, writing what `ddd id --assign` would write and offered
 only where that finding is reported.
 
 A rename is also refused, naming the file, and a quick fix is not offered, in two states where

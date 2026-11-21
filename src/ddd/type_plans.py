@@ -2,8 +2,9 @@
 
 Transport-neutral, like :mod:`ddd.project_types` beside it. A rename is the editor's rename:
 :func:`ddd.lsp.navigation.rename_sites` says which strings it has to rewrite - the type's own
-``name`` and every ``typename`` reaching it - and :func:`~ddd.lsp.navigation.rename_problem` says
-why a name may not be used, in the sentence the editor shows. What is not borrowed is
+``name`` and every ``typename`` reaching it - :func:`~ddd.lsp.navigation.named_by_a_header` why
+an external type is not renamed at all, and :func:`~ddd.lsp.navigation.rename_problem` why a
+name may not be used, each in the sentence the editor shows. What is not borrowed is
 ``rename_edits``, which answers text edits with ranges: the interface plans operations on json
 pointers, the way part 4's identity fix does, so that one engine writes every change ``ddd gui``
 makes and one undo puts it back.
@@ -26,7 +27,15 @@ from pathlib import Path
 from typing import Final, Literal
 
 from ddd.editing import Operation
-from ddd.lsp.navigation import Index, Site, changed_since, drift, rename_problem, rename_sites
+from ddd.lsp.navigation import (
+    Index,
+    Site,
+    changed_since,
+    drift,
+    named_by_a_header,
+    rename_problem,
+    rename_sites,
+)
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import PlannedEdit
 from ddd.project_types import kind_of, type_in_place
@@ -106,14 +115,16 @@ def set_key(
 def rename_type(built: Index, name: str, to: str, cache: dict[Path, Document]) -> TypePlan:
     """What renaming a type takes: its own ``name`` and every ``typename`` reaching it.
 
-    Refused in the editor's own words for a name that may not be used, before a file is touched -
-    a rename writes into every file naming the type, and a name that turns out to be unusable
-    would leave the project broken across all of them at once. Refused too while a file no longer
-    names the type at a place the index recorded (:func:`~ddd.lsp.navigation.drift`): the
-    rename would write the new name over whatever sits there now.
+    Refused in the editor's own words for an external type, whose name is the one its header
+    defines (:func:`~ddd.lsp.navigation.named_by_a_header`), and for a name that may not be used,
+    before a file is touched - a rename writes into every file naming the type, and a name that
+    turns out to be unusable would leave the project broken across all of them at once. Refused
+    too while a file no longer names the type at a place the index recorded
+    (:func:`~ddd.lsp.navigation.drift`): the rename would write the new name over whatever sits
+    there now.
     """
     _entry(built, name)
-    problem = rename_problem(built, to, "type")
+    problem = named_by_a_header(built, "type", name) or rename_problem(built, to, "type")
     if problem is not None:
         raise TypeRefusalError("invalid", problem)
     sites = rename_sites(built, "type", name)

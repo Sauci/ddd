@@ -470,8 +470,9 @@ The commands
        its edges changing; a negative one - legal here - mirrors the curve instead of
        leaving it alone. A Types tab lists the types the project declares, with
        what each fixes and what names it;
-       what a scalar type fixes is changed there, and renaming one rewrites every
-       declaration and member naming it in one edit.
+       what a scalar type fixes is changed there, and renaming a type rewrites every
+       declaration and member naming it in one edit, but an external type is refused,
+       its name being the one the header defining it spells.
        Every change is written into the files in their own layout and checked
        the way ``ddd check`` checks them. A change is refused as a whole, every file
        left as it was, where a file it changes was saved from elsewhere since it was

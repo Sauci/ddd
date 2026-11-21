@@ -10241,6 +10241,112 @@ class TestGatheringARenamesEdits:
         )
 
 
+EXTERNAL_REFUSED: Final = (
+    "'DriverStatus_t' is an external type whose name driver_status.h defines, so a rename here "
+    "would leave that header defining the old one"
+)
+"""What a rename of ``examples/structures``' external ``DriverStatus_t`` is refused with."""
+
+
+def renamed_at(root: Path, path: Path, pointer: str, name: str, *before: dict[str, Any]) -> Any:
+    """The server's answer to ``F2`` on the string at ``pointer`` of ``path``, renaming it onto
+    ``name``, in a session over ``root`` that sent ``before`` first."""
+    at = Document(path.read_text(encoding="utf-8")).text_range_of(pointer)
+    assert at is not None
+    request = {
+        "jsonrpc": "2.0",
+        "id": 15,
+        "method": "textDocument/rename",
+        "params": {
+            "textDocument": {"uri": path.as_uri()},
+            "position": at["start"],
+            "newName": name,
+        },
+    }
+    writer = io.BytesIO()
+    assert Server(session(*before, request, *END), writer, root=root).run() == 0
+    return next(message for message in sent(writer) if message.get("id") == 15)
+
+
+class TestAnExternalTypeIsNotRenamed:
+    """10:M9. An external type names a c type the header beside it defines, and its name is that
+    header's, not the project's: renamed, the header went on defining the old name, the generated
+    types header spelled the new one, and the build stopped at the first compile, while ``ddd
+    check`` said nothing. A rename of one is refused, from its entry or from any ``typename``
+    spelling it, wherever a project the rename reaches declares it so, and the page's Types tab
+    refuses it in the same words (``tests/test_type_plans.py``)."""
+
+    def structures(self, tmp_path: Path) -> Path:
+        """A copy of ``examples/structures``, whose types file declares ``DriverStatus_t`` as an
+        external type that ``driver_status.h`` defines, and nests it in ``Sensor_t``."""
+        root = tmp_path / "structures"
+        shutil.copytree(EXAMPLES / "structures", root)
+        return root
+
+    @pytest.mark.parametrize(
+        "pointer", ["types[1].name", "types[4].members[2].typename"], ids=["entry", "member"]
+    )
+    def test_an_external_type_is_refused_from_its_entry_and_from_a_name_of_it(
+        self, tmp_path: Path, pointer: str
+    ) -> None:
+        """The finding's trigger: accepted, the rename rewrote the entry and the member, and the
+        header still ended ``} DriverStatus_t;``."""
+        root = self.structures(tmp_path)
+        types_file = root / "types.ddd.json"
+        answer = renamed_at(root, types_file, pointer, "DriverState_t")
+        assert answer["error"] == {"code": REQUEST_FAILED, "message": EXTERNAL_REFUSED}
+
+    def test_a_type_the_project_declares_itself_is_renamed_as_before(self, tmp_path: Path) -> None:
+        """The control, in the same file: a structure is the project's own, and so is its name."""
+        root = self.structures(tmp_path)
+        types_file = root / "types.ddd.json"
+        answer = renamed_at(root, types_file, "types[2].name", "Reading_t")
+        assert set(rewritten_by(answer["result"]["changes"])) == {"types.ddd.json"}
+
+    def test_a_variable_spelled_as_an_external_type_is_renamed(self, tmp_path: Path) -> None:
+        """The refusal is the type's: a variable spelled ``Word_t`` beside the external type of
+        that name is the project's own, and renaming it is how their collision is mended."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
+                "t.ddd.json": {"types": [{"type": "external", "name": "Word_t", "header": "w.h"}]},
+                "a.ddd.json": component("A", declare("local", "Word_t")),
+            },
+        )
+        a = tmp_path / "a.ddd.json"
+        answer = renamed_at(tmp_path, a, "component.interface[0].definition.name", "Word")
+        assert json.loads(rewritten_by(answer["result"]["changes"])["a.ddd.json"]) == component(
+            "A", declare("local", "Word")
+        )
+
+    def test_a_type_another_image_declares_external_is_refused_naming_that_image(
+        self, tmp_path: Path
+    ) -> None:
+        """Image one declares ``Foo_t`` a structure of its own and image two an external type,
+        and the structure both images hold nests it: renamed from image one's entry, the rename
+        reaches image two through the member, where the name is the header's."""
+        imaged(
+            tmp_path,
+            {"one": ["t1.ddd.json", "s.ddd.json"], "two": ["t2.ddd.json", "s.ddd.json"]},
+            {
+                "t1.ddd.json": types(struct_type("Foo_t")),
+                "t2.ddd.json": {
+                    "types": [{"type": "external", "name": "Foo_t", "header": "foo.h"}]
+                },
+                "s.ddd.json": types(struct_type("Holder_t", value_member("foo", typename="Foo_t"))),
+            },
+        )
+        answer = renamed_at(tmp_path, tmp_path / "t1.ddd.json", "types[0].name", "Bar_t")
+        assert answer["error"] == {
+            "code": REQUEST_FAILED,
+            "message": (
+                "in two.elf, which this rename reaches too: 'Foo_t' is an external type whose "
+                "name foo.h defines, so a rename here would leave that header defining the old one"
+            ),
+        }
+
+
 class TestMessagesTheClientGetsWrong:
     """Somebody else's bytes, in the shapes a client actually sends them wrong.
 

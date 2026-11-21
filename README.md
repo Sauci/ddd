@@ -230,7 +230,9 @@ file you start from is in - as long as the server finds both images for it: thro
 build records, or, without records, through a project description above it.  A name c
 reserves, one that is not a usable identifier, or one a project it reaches already declares
 is refused with the reason before a single file is touched - a rename writes into several at
-once, and an unusable name is otherwise noticed a build later.  Free text is left alone: a
+once, and an unusable name is otherwise noticed a build later.  An external type is not renamed
+at all: its name is the one the header defining it spells, which no rename of a description
+reaches.  Free text is left alone: a
 `description` that mentions the old name still mentions it, because rewriting prose by
 substring is how a rename tool starts corrupting files.  A rename is refused outright, naming
 the file, while a document has unsaved changes that moved a declaration it would touch, and a

@@ -235,9 +235,11 @@ at all: its name is the one the header defining it spells, which no rename of a 
 reaches.  Free text is left alone: a
 `description` that mentions the old name still mentions it, because rewriting prose by
 substring is how a rename tool starts corrupting files.  A rename is refused outright, naming
-the file, while a document has unsaved changes that moved a declaration it would touch, and a
-quick fix that would touch one is not offered; while a file of the project did not load a rename
-is refused the same way and the quick fixes offer nothing, the server's log saying why once: the
+the file, while a document has unsaved changes that moved a declaration it would touch, or a file
+changed on disk since the project was read has moved one, and a quick fix that would touch one is
+not offered; while a file of the project did not load, or loaded with an error that stops the
+project being analysed, a rename is refused the same way and the quick fixes offer nothing, the
+server's log saying why once: the
 project the edit would be computed from is not the project on disk, and rewriting the rest of it
 around the gap is exactly the half-done rename the refusal exists to prevent.  A rename is refused
 too while an open document of a project it reaches holds what its file on disk does not,
@@ -246,8 +248,8 @@ for anything but a local variable while none is: a component no record claims, t
 description above it includes and that declares no project itself is read on its own.  And it
 is refused, naming the description and why, where a description it needs could not be read: a
 plugin stops it.  Where an image the file you started from is not in already declares the
-name, or holds a file that did not load, the refusal names that image, or its project
-description where no build record names one.
+name, declares the type an external one, or holds a file that did not load, the refusal names
+that image, or its project description where no build record names one.
 
 Which project a file belongs to is not something the file can say, so the server reads the
 `ddd-build.json` that `ddd_generate` leaves in the build tree, and applies the same severities

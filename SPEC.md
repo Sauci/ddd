@@ -2939,11 +2939,14 @@ only where that finding is reported.
 
 A rename is also refused, naming the file, and a quick fix is not offered, in two states where
 the project the edit would be computed from is not the project on disk: while an open document
-has unsaved changes that moved a declaration the edit would touch, and while a file of the
-project reported an error that stopped it being read. Neither is performed in part. In the
+has unsaved changes that moved a declaration the edit would touch, or a closed file changed on
+disk since the project was read has moved one, and while a file of the project did not load, or
+loaded with an error that stops the project being analysed. Neither is performed in part. In the
 first state a quick fix is not offered rather than offered for the declarations the buffer left
 in place, and nothing is said: the buffer is the reader's own, and saving it brings the fix
-back. In the second state a request for the quick fixes, which a client makes at
+back. A rename refused for a closed file changed on disk says so, and goes through once the
+server has read the project again: at the next open or save of a document, or when the editor
+reports the change. In the second state a request for the quick fixes, which a client makes at
 every move of the caret, is answered with none rather than with an error: the reason is in the
 unread file's own finding, and the server's log says it once, and again only once the project
 has been read whole and is found broken anew. A project is indexed from what loaded, so a file
@@ -2970,9 +2973,9 @@ that rewrites it then rewrites the readers of both images, whichever of the two 
 starts from is in; reaching only the projects of that file would leave the other image reading
 a name nothing declares. Every project the rename reaches is asked each refusal above before
 anything is written. Where a project the file it starts from does not belong to already uses
-the name, or holds a file that did not load, the refusal names that project's image, or its
-description where no build record names it; unsaved changes are refused naming the file that
-holds them, wherever it is. A unit's rename is refused as well, naming both, where two projects
+the name, declares the type an external one, or holds a file that did not load, the refusal
+names that project's image, or its description where no build record names it; unsaved changes
+are refused naming the file that holds them, wherever it is. A unit's rename is refused as well, naming both, where two projects
 it reaches would rewrite a units file they share two ways: the one listing the unit renamed onto
 merges the old spelling into it, and the other respells it.
 
@@ -3097,8 +3100,8 @@ not read a second time on their own.
 The server asks the client to watch every description file and every build record of the
 workspace, `**/*.ddd.json` and `**/ddd-build.json`, once the client has said it is
 initialized, wherever the client announced that it takes such a registration while the
-session runs; a client that did not is asked for nothing, and hears of a file changed behind
-the editor's back at the next open or save. A change of a build record is a change of which
+session runs; a client that did not is asked for nothing, and a file changed behind the
+editor's back is read again at the next open or save. A change of a build record is a change of which
 projects there are and of their severities: the records are searched for again, and the open
 documents are checked again under them, or, while no document is open, every file whose
 findings are on screen. A record is never checked as a description, nor is any other file

@@ -13,7 +13,8 @@ all. VS Code has no way to start one without an extension, which is the only rea
 So nothing here adds a feature, and nothing here should grow one that could be served from the
 server instead. It starts the server once a `*.ddd.json` is open or the workspace holds one, so
 a json file of another name starts nothing, and it watches nothing itself: the server asks VS
-Code to watch the descriptions and the build records, as it asks any editor.
+Code to watch the descriptions and the build records, as it asks any editor that announced it
+takes such a registration while the session runs.
 
 ## Installing it
 
@@ -113,7 +114,7 @@ meaning.
 
 | setting | what it does |
 | --- | --- |
-| `ddd.executable` | the `ddd` command; a bare name is looked up on the PATH |
+| `ddd.executable` | the `ddd` command; a bare name is looked up on the PATH. A change takes a restart: **DDD: Restart Language Server** |
 | `ddd.buildDirectories` | directories holding a build, each searched for the `ddd-build.json` that `ddd_generate()` writes; a relative entry is read against each workspace folder. Empty searches the usual names in each workspace folder. A change takes a restart: **DDD: Restart Language Server** |
 
 Which project a file belongs to is not something the file can say - without `PROJECT`, CMake

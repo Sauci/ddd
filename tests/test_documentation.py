@@ -1757,8 +1757,8 @@ class TestWhatARenameReaches:
     ASKED: ClassVar[str] = (
         "Every project the rename reaches is asked each refusal above before anything is "
         "written. Where a project the file it starts from does not belong to already uses the "
-        "name, or holds a file that did not load, the refusal names that project's image, or its "
-        "description where no build record names it"
+        "name, declares the type an external one, or holds a file that did not load, the "
+        "refusal names that project's image, or its description where no build record names it"
     )
     UNSAVED: ClassVar[str] = (
         "unsaved changes are refused naming the file that holds them, wherever it is."
@@ -1814,9 +1814,10 @@ class TestWhatARenameReaches:
                 f"from is in - {FINDS} A name c reserves, one that is not a usable identifier, or "
                 "one a project it reaches already declares is refused with the reason before a "
                 "single file is touched",
-                "Where an image the file you started from is not in already declares the name, or "
-                "holds a file that did not load, the refusal names that image, or its project "
-                "description where no build record names one.",
+                "Where an image the file you started from is not in already declares the name, "
+                "declares the type an external one, or holds a file that did not load, the "
+                "refusal names that image, or its project description where no build record "
+                "names one.",
             ),
         ),
         "editors/vscode/README.md": (
@@ -2000,8 +2001,9 @@ class TestWhatTheQuickFixesAnswerWhileAFileDidNotLoad:
         "README.md": (
             README,
             (
-                "while a file of the project did not load a rename is refused the same way and "
-                "the quick fixes offer nothing, the server's log saying why once:",
+                "while a file of the project did not load, or loaded with an error that stops the "
+                "project being analysed, a rename is refused the same way and the quick fixes "
+                "offer nothing, the server's log saying why once:",
             ),
         ),
     }
@@ -2022,6 +2024,33 @@ class TestWhatTheQuickFixesAnswerWhileAFileDidNotLoad:
             "moved a declaration they would touch or while a file of the project did not load"
             not in flattened(README)
         )
+
+
+class TestWhatTheLastSmallSentencesOfTheEditorSay:
+    """10:M12 and the items earlier parts routed to the last: a unit's rename is refused where a
+    file no longer holds the unit, and the editor's plan and the page's agree for one project
+    alone."""
+
+    UNIT_MOVED: ClassVar[str] = (
+        "A file that no longer holds the unit where the project was read - an open document "
+        "with unsaved changes that moved or respelled it, or a closed file changed on disk "
+        "since - refuses it as well, naming the file."
+    )
+    TWO_PLANS: ClassVar[str] = (
+        "Both are the plans ``ddd gui`` previews and applies, made as text edits: for one "
+        "project the editor and the page do the same, but the page plans over the one project it "
+        "is open on and the editor's rename over every image it reaches, so across images the "
+        "editor's reaches files the page's does not; a plan that is refused is not offered."
+    )
+
+    def test_the_editor_page_says_when_a_unit_s_rename_is_refused_for_a_moved_file(self) -> None:
+        said = flattened(EDITOR_INTEGRATION)
+        assert ("because renaming may be how such a mistake is fixed. " + self.UNIT_MOVED) in said
+
+    def test_the_editor_page_says_how_far_the_editor_and_the_page_agree(self) -> None:
+        said = flattened(EDITOR_INTEGRATION)
+        assert self.TWO_PLANS in said
+        assert "so the editor and the page never disagree about what either does" not in said
 
 
 class TestWhatADefectOfTheServerCosts:
@@ -2082,7 +2111,14 @@ class TestAQuickFixUnderAMovedBufferAndAcrossImages:
 
     MOVED: ClassVar[str] = (
         "while an open document has unsaved changes that moved a declaration the edit would "
-        "touch, and while a file of the project reported an error that stopped it being read."
+        "touch, or a closed file changed on disk since the project was read has moved one, and "
+        "while a file of the project did not load, or loaded with an error that stops the "
+        "project being analysed."
+    )
+    CLOSED: ClassVar[str] = (
+        "A rename refused for a closed file changed on disk says so, and goes through once the "
+        "server has read the project again: at the next open or save of a document, or when the "
+        "editor reports the change."
     )
     FIRST: ClassVar[str] = (
         "In the first state a quick fix is not offered rather than offered for the declarations "
@@ -2112,8 +2148,8 @@ class TestAQuickFixUnderAMovedBufferAndAcrossImages:
             (
                 "A rename is also refused, naming the file, and a quick fix is not offered, in two "
                 "states where the project the edit would be computed from is not the project on "
-                f"disk: {MOVED} Neither is performed in part. {FIRST} In the second state a "
-                "request for the quick fixes",
+                f"disk: {MOVED} Neither is performed in part. {FIRST} {CLOSED} In the second state "
+                "a request for the quick fixes",
                 f"{ACROSS} {NEITHER}",
                 "A fix renaming a unit is the rename of that unit (`F2`), over every project it "
                 "reaches, and is not offered where that rename is refused.",
@@ -2123,11 +2159,12 @@ class TestAQuickFixUnderAMovedBufferAndAcrossImages:
         "docs/editor_integration.rst": (
             EDITOR_INTEGRATION,
             (
-                "A variable's, a type's, a constant's or a section's rename is also refused - "
-                "naming the file, and before anything is written - and a quick fix below is not "
+                "A variable's, a type's, a constant's, a section's or a raster's rename is also "
+                "refused - naming the file, and before anything is written - and a quick fix "
+                "below is not "
                 "offered, while the project on disk is not the project the edit would be computed "
                 f"from: {MOVED}",
-                f"exactly that key. {FIRST} In the second state",
+                f"exactly that key. {FIRST} {CLOSED} In the second state",
                 "A component linked into two images is in two projects, and a fix the two offer "
                 "alike is offered once. A fix sending this declaration's value out, or taking a "
                 "key out of the others, reaches the declarations of both images, and of every "
@@ -2149,9 +2186,11 @@ class TestAQuickFixUnderAMovedBufferAndAcrossImages:
             README,
             (
                 "A rename is refused outright, naming the file, while a document has unsaved "
-                "changes that moved a declaration it would touch, and a quick fix that would touch "
-                "one is not offered; while a file of the project did not load a rename is refused "
-                "the same way and the quick fixes offer nothing, the server's log saying why once:",
+                "changes that moved a declaration it would touch, or a file changed on disk since "
+                "the project was read has moved one, and a quick fix that would touch one is not "
+                "offered; while a file of the project did not load, or loaded with an error that "
+                "stops the project being analysed, a rename is refused the same way and the quick "
+                "fixes offer nothing, the server's log saying why once:",
                 "A component linked into two images is offered each fix once, and a value sent "
                 "out from it reaches the declarations of every image holding a file the fix "
                 "writes.",
@@ -2177,6 +2216,8 @@ class TestAQuickFixUnderAMovedBufferAndAcrossImages:
             "A rename and the quick fixes are refused outright",
             "Both are refused whole rather than performed in part",
             "It is refused, naming the file, only while a file of a project it reaches",
+            "and while a file of the project reported an error that stopped it being read",
+            "while a file of the project did not load a rename is refused the same way",
         ):
             assert stale not in said, f"{page} still says: {stale!r}"
 
@@ -10934,7 +10975,8 @@ class TestTheServerWatchesWhatItReads:
                 "of the workspace, `**/*.ddd.json` and `**/ddd-build.json`, once the client has "
                 "said it is initialized, wherever the client announced that it takes such a "
                 "registration while the session runs; a client that did not is asked for nothing, "
-                "and hears of a file changed behind the editor's back at the next open or save.",
+                "and a file changed behind the editor's back is read again at the next open or "
+                "save.",
                 "A change of a build record is a change of which projects there are and of their "
                 "severities: the records are searched for again, and the open documents are "
                 "checked again under them, or, while no document is open, every file whose "
@@ -10945,7 +10987,7 @@ class TestTheServerWatchesWhatItReads:
                 "everything a reader sees is the tool's answer, and the server asks the client "
                 "itself for what it needs to hear of the files,",
             ),
-            (),
+            ("and hears of a file changed behind the editor's back",),
         ),
         "docs/editor_integration.rst": (
             EDITOR_INTEGRATION,
@@ -10956,15 +10998,20 @@ class TestTheServerWatchesWhatItReads:
                 "The server asks the editor to watch every description file and every build record "
                 "of the workspace, once the editor has said it is initialized, where its client "
                 "takes such a registration while the session runs, as VS Code's does; a client "
-                "that does not is asked for nothing, and hears of a file changed behind it at the "
-                "next open or save. A build record changing is a change of which projects there "
+                "that does not is asked for nothing, and a file changed behind it is read again at "
+                "the next open or save. A build record changing is a change of which projects "
+                "there "
                 "are and of their severities: the open documents are checked again under the "
                 "records as they now read, or, while none is open, every file whose findings are "
                 "on screen.",
                 "watches nothing itself: the server asks for the watcher it needs, as it asks any "
-                "other editor.",
+                "other editor that announced it takes such a registration while the session runs.",
             ),
-            ("when the editor reports that a description file it watches changed",),
+            (
+                "when the editor reports that a description file it watches changed",
+                "and hears of a file changed behind it",
+                "as it asks any other editor.",
+            ),
         ),
         "README.md": (
             README,
@@ -10983,11 +11030,12 @@ class TestTheServerWatchesWhatItReads:
                 "Findings appear on open, on save, and when a description or a build record "
                 "changes on disk, for **every** file of the project",
                 "watches nothing itself: the server asks VS Code to watch the descriptions and the "
-                "build records, as it asks any editor.",
+                "build records, as it asks any editor that announced it takes such a registration "
+                "while the session runs.",
                 "works the same in any editor that can start a language server and watch the files "
                 "it asks for",
             ),
-            ("Findings appear on open and on save,",),
+            ("Findings appear on open and on save,", "build records, as it asks any editor."),
         ),
     }
 
@@ -11007,12 +11055,23 @@ class TestTheServerWatchesWhatItReads:
         assert not re.search(r"createFileSystemWatcher\s*\(", source)
         assert not re.search(r"fileEvents\s*:", source)
 
-    def test_a_change_of_the_build_directories_takes_a_restart(self) -> None:
-        """The settings are read once, when the server is started, and nothing said so."""
+    def test_a_change_of_a_setting_takes_a_restart(self) -> None:
+        """Both settings are read once, when the server is started (``start()``), and nothing said
+        so of the executable."""
+        for setting in ("ddd.buildDirectories", "ddd.executable"):
+            assert (
+                "A change takes effect once the server is restarted: **DDD: Restart Language "
+                "Server**." in extension_setting(setting)
+            )
+        said = flattened(EDITOR_INTEGRATION)
         assert (
-            "A change takes effect once the server is restarted: **DDD: Restart Language Server**."
-            in extension_setting("ddd.buildDirectories")
+            "set it to an absolute path to use the interpreter of a virtual environment. A change "
+            "takes effect once the server is restarted." in said
         )
+        assert (
+            "| `ddd.executable` | the `ddd` command; a bare name is looked up on the PATH. A "
+            "change takes a restart: **DDD: Restart Language Server** |"
+        ) in flattened((EXTENSION / "README.md").read_text(encoding="utf-8"))
         assert (
             "The command is **DDD: Restart Language Server**, for picking up a newly installed "
             "tool, or a change of the settings, without reloading the window."

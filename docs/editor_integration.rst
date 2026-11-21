@@ -69,7 +69,7 @@ saying two different things, and both are published.
 The server asks the editor to watch every description file and every build record of the
 workspace, once the editor has said it is initialized, where its client takes such a
 registration while the session runs, as VS Code's does; a client that does not is asked for
-nothing, and hears of a file changed behind it at the next open or save. A build record
+nothing, and a file changed behind it is read again at the next open or save. A build record
 changing is a change of which projects there are and of their severities: the open documents
 are checked again under the records as they now read, or, while none is open, every file
 whose findings are on screen.
@@ -158,23 +158,29 @@ channel. A unit is renamed from any place it is stated, or from its entry in a u
 renaming onto a unit that already exists merges the two instead of refusing the collision, as
 a variable's rename would. It is refused, naming the file, while a file of a project it reaches
 does not load at all, and for no lesser error of a file - a unit listed twice, reported as
-``duplicate-unit``, does not stop it, because renaming may be how such a mistake is fixed. Only
+``duplicate-unit``, does not stop it, because renaming may be how such a mistake is fixed. A file
+that no longer holds the unit where the project was read - an open document with unsaved changes
+that moved or respelled it, or a closed file changed on disk since - refuses it as well, naming
+the file. Only
 the characters between the quotes are replaced - in a ``condition``, the constant's own word,
 never a longer identifier holding it - and the new name is written there as json spells it,
 escaping the quote or the backslash a raster's name may hold, so formatting survives and free
 text is left alone.
 
-A variable's, a type's, a constant's or a section's rename is also refused - naming the file,
-and before anything is written - and a quick fix below is not offered, while the project on
-disk is not the project the edit would be computed from: while an open document has unsaved
-changes that moved a declaration the edit would touch, and while a file of the project reported
-an error that stopped it being read. A project is indexed from what loaded, so a file a
+A variable's, a type's, a constant's, a section's or a raster's rename is also refused - naming
+the file, and before anything is written - and a quick fix below is not offered, while the
+project on disk is not the project the edit would be computed from: while an open document has
+unsaved changes that moved a declaration the edit would touch, or a closed file changed on disk
+since the project was read has moved one, and while a file of the project did not load, or
+loaded with an error that stops the project being analysed. A project is indexed from what loaded, so a file a
 ``schema`` error dropped mid edit declares nothing as far as the index knows: the rename would
 rewrite every other file and leave that one holding the old name, and a fix would offer to
 remove a key "no other declaration has" while the unloaded producer states exactly that key.
 In the first state a quick fix is not offered rather than offered for the declarations the
 buffer left in place, and nothing is said: the buffer is the reader's own, and saving it brings
-the fix back. In the second state a request for the quick fixes, which the editor makes at every
+the fix back. A rename refused for a closed file changed on disk says so, and goes through once
+the server has read the project again: at the next open or save of a document, or when the
+editor reports the change. In the second state a request for the quick fixes, which the editor makes at every
 move of the caret, is answered with none rather than with an error, which it would show as a
 failed request each time: an empty lightbulb in such a project has its reason in the unread
 file's own finding, and in the server's log, which says it once for as long as it stands.
@@ -199,8 +205,9 @@ claims it, by the search above it - and a variable it writes is then renamed in 
 both images, whichever of the two the file the rename starts from is in; so is a type, a
 constant, a section, a raster or a unit that a file of both spells. Every project the rename
 reaches is asked each refusal above before anything is written. Where a project the file it
-starts from does not belong to already uses the name, or holds a file that did not load, the
-refusal names that project's image, or its description where no build record names it -
+starts from does not belong to already uses the name, declares the type an external one, or
+holds a file that did not load, the refusal names that project's image, or its description
+where no build record names it -
 asked from one image, a name "already declared by this project" in the other sends the reader
 looking in the wrong one; unsaved changes are refused naming the file that holds them,
 wherever it is. A unit's rename is refused as well, naming both, where two projects it reaches
@@ -272,11 +279,13 @@ ids yet, and the editor does not argue with that.
 An ``unknown-unit`` finding, which only a project with a units file reports, offers two fixes
 of its own: "Add 'RPM' to the vocabulary", and, for each spelling close enough to suggest,
 "Rename 'RPM' to 'rpm' everywhere" - the same rename ``F2`` makes, merging into a unit that
-exists. Both are the plans ``ddd gui`` previews and applies, so the editor and the page never
-disagree about what either does; a plan that is refused is not offered. The rename is the one
-``F2`` makes from the unit, over every image it reaches, and is not offered where that rename is
-refused; the unit is added only where every image planning it adds it to the same file, since an
-image holding both files would list it twice.
+exists. Both are the plans ``ddd gui`` previews and applies, made as text edits: for one project
+the editor and the page do the same, but the page plans over the one project it is open on and
+the editor's rename over every image it reaches, so across images the editor's reaches files the
+page's does not; a plan that is refused is not offered. The rename is the one ``F2`` makes from
+the unit, over every image it reaches, and is not offered where that rename is refused; the unit
+is added only where every image planning it adds it to the same file, since an image holding both
+files would list it twice.
 
 Which project a file belongs to
 -------------------------------
@@ -364,7 +373,8 @@ VS Code cannot start a language server without an extension, so one is shipped i
 is the server's answer, so an editor DDD ships nothing for is not at a disadvantage. It starts
 the server once a description file is open or the workspace holds one, so that a json file of
 another name starts nothing, and it watches nothing itself: the server asks for the watcher it
-needs, as it asks any other editor. It contributes two settings and one command:
+needs, as it asks any other editor that announced it takes such a registration while the
+session runs. It contributes two settings and one command:
 
 .. list-table::
    :header-rows: 1
@@ -375,7 +385,7 @@ needs, as it asks any other editor. It contributes two settings and one command:
    * - ``ddd.executable``
      - the ``ddd`` command to run the server with. Left as the bare name it is looked up on
        the ``PATH``; set it to an absolute path to use the interpreter of a virtual
-       environment.
+       environment. A change takes effect once the server is restarted.
    * - ``ddd.buildDirectories``
      - the directories handed to the server as ``-b``, each searched for a
        ``ddd-build.json``; a relative entry is read against each workspace folder. Left

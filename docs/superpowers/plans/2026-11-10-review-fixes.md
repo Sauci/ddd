@@ -1960,6 +1960,12 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
 - **The progress log's rows** (D0): branch 8's row names its ids by the headings of its tasks and
   may miss some, and says it is not merged, which #94 since was; that row and branch 9's are branch
   10's D0's (R228).
+- **A component two projects include, taken out of one** (the re-review of the final wave): a
+  component that two projects include is taken out of one of them, which a save or a change behind
+  the editor does, is not open, and no build record runs the other project: its findings are
+  withdrawn until the other project is next checked. Before branch 9 it kept the first project's
+  findings, stale. Running the other project's place again would settle it, at the cost of a second
+  pass of the check. The maintainer's to weigh, and PR #95's body names it.
 
 ## Rulings taken
 

@@ -382,11 +382,12 @@ From the build. Which project a description file belongs to is not something the
 say - in the collected CMake mode the project description exists only in the build tree - so
 ``ddd_generate()`` records it, together with the severity policy, in a ``ddd-build.json``
 beside its artefacts, and the language server searches the build directories for that
-record: the ones named with ``-b`` (the ``ddd.buildDirectories`` setting in VS Code), or the
-conventional directory names next to the workspace. The editor then reports exactly what the
-build reports. A file no build claims is checked under the nearest containing project, and a
-file with no project at all is checked alone, with the checks that need the whole project
-held back. The full story is in :doc:`editor_integration`.
+record: the ones named with ``-b`` (the ``ddd.buildDirectories`` setting in VS Code), a
+relative one read against each workspace folder, or the conventional directory names in each
+workspace folder. The editor then reports exactly what the build reports. A file no build
+claims is checked under the outermost containing project, and a file with no project at all is
+checked alone, with the checks that need the whole project held back. The full story is in
+:doc:`editor_integration`.
 
 Why does DDD refuse my enum name?
 ---------------------------------

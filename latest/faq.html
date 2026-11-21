@@ -452,11 +452,12 @@ attribute.</p>
 say - in the collected CMake mode the project description exists only in the build tree - so
 <code class="docutils literal notranslate"><span class="pre">ddd_generate()</span></code> records it, together with the severity policy, in a <code class="docutils literal notranslate"><span class="pre">ddd-build.json</span></code>
 beside its artefacts, and the language server searches the build directories for that
-record: the ones named with <code class="docutils literal notranslate"><span class="pre">-b</span></code> (the <code class="docutils literal notranslate"><span class="pre">ddd.buildDirectories</span></code> setting in VS Code), or the
-conventional directory names next to the workspace. The editor then reports exactly what the
-build reports. A file no build claims is checked under the nearest containing project, and a
-file with no project at all is checked alone, with the checks that need the whole project
-held back. The full story is in <a class="reference internal" href="editor_integration.html"><span class="doc">Editor integration</span></a>.</p>
+record: the ones named with <code class="docutils literal notranslate"><span class="pre">-b</span></code> (the <code class="docutils literal notranslate"><span class="pre">ddd.buildDirectories</span></code> setting in VS Code), a
+relative one read against each workspace folder, or the conventional directory names in each
+workspace folder. The editor then reports exactly what the build reports. A file no build
+claims is checked under the outermost containing project, and a file with no project at all is
+checked alone, with the checks that need the whole project held back. The full story is in
+<a class="reference internal" href="editor_integration.html"><span class="doc">Editor integration</span></a>.</p>
 </section>
 <section id="why-does-ddd-refuse-my-enum-name">
 <h2>Why does DDD refuse my enum name?<a class="headerlink" href="#why-does-ddd-refuse-my-enum-name" title="Link to this heading"></a></h2>

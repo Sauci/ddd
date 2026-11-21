@@ -87,7 +87,10 @@
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#building-this-documentation">Building this documentation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#publishing-this-documentation">Publishing this documentation</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#publishing-a-release">Publishing a release</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#publishing-a-release">Publishing a release</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#the-steps-of-a-release">The steps of a release</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="#delivering-the-editor-extension">Delivering the editor extension</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#the-browser-interface">The browser interface</a></li>
 </ul>
@@ -522,9 +525,9 @@ python<span class="w"> </span>-m<span class="w"> </span>mypy
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">mypy</span></code> runs in strict mode over <code class="docutils literal notranslate"><span class="pre">src/ddd</span></code> and <code class="docutils literal notranslate"><span class="pre">tools/</span></code> with the pydantic plugin;
 <code class="docutils literal notranslate"><span class="pre">ruff</span></code> lints the sources, the tests, the release machinery and the documentation
-configuration with a line length of 100. The whole suite takes a couple of minutes in a warm
-checkout - longer in a fresh environment, where <code class="docutils literal notranslate"><span class="pre">tests/test_cmake.py</span></code> configures and builds
-the module - so <code class="docutils literal notranslate"><span class="pre">--no-cov</span></code> and a <code class="docutils literal notranslate"><span class="pre">-k</span></code> are what a single test is worth running under, and
+configuration with a line length of 100. The whole suite takes minutes rather than seconds, how
+many varying with the machine - about seven, in a fresh checkout, on the Linux machine it was
+last timed on - so <code class="docutils literal notranslate"><span class="pre">--no-cov</span></code> and a <code class="docutils literal notranslate"><span class="pre">-k</span></code> are what a single test is worth running under, and
 the whole of it is what a commit is worth running under. Not <code class="docutils literal notranslate"><span class="pre">-q</span></code>: the <code class="docutils literal notranslate"><span class="pre">addopts</span></code> in
 <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code> carry one already, pytest counts them, and a second drops the summary - the
 “N passed” line and the coverage total both - leaving the exit code as the only statement of
@@ -595,27 +598,34 @@ the service at any other directory, so a project can put its own templates throu
 treatment.</p>
 </section>
 <section id="continuous-integration">
-<h2>Continuous integration<a class="headerlink" href="#continuous-integration" title="Link to this heading"></a></h2>
+<span id="id1"></span><h2>Continuous integration<a class="headerlink" href="#continuous-integration" title="Link to this heading"></a></h2>
 <p><code class="docutils literal notranslate"><span class="pre">.github/workflows/ci.yml</span></code> runs the commands above - the suite with its coverage gate,
 <code class="docutils literal notranslate"><span class="pre">ruff</span></code> twice and <code class="docutils literal notranslate"><span class="pre">mypy</span></code> - on every push to <code class="docutils literal notranslate"><span class="pre">master</span></code> and every pull request, in two jobs,
-and five more the commands above do not cover. <code class="docutils literal notranslate"><span class="pre">extension</span></code> installs node and the package,
-runs <code class="docutils literal notranslate"><span class="pre">npm</span> <span class="pre">ci</span></code>, <code class="docutils literal notranslate"><span class="pre">npm</span> <span class="pre">test</span></code> and <code class="docutils literal notranslate"><span class="pre">npm</span> <span class="pre">run</span> <span class="pre">package</span></code> in <code class="docutils literal notranslate"><span class="pre">editors/vscode</span></code>, and uploads the
-<code class="docutils literal notranslate"><span class="pre">.vsix</span></code> it produced. Its tests start a real language server, which is why it installs the
-python package as well as compiling typescript, and packaging the extension there proves that
-the artefact a customer is handed can be produced at all.</p>
+<code class="docutils literal notranslate"><span class="pre">test</span></code> and <code class="docutils literal notranslate"><span class="pre">lint</span></code>, and six more the commands above do not cover. <code class="docutils literal notranslate"><span class="pre">extension</span></code> installs node
+and the package, runs <code class="docutils literal notranslate"><span class="pre">npm</span> <span class="pre">ci</span></code>, <code class="docutils literal notranslate"><span class="pre">npm</span> <span class="pre">test</span></code> and <code class="docutils literal notranslate"><span class="pre">npm</span> <span class="pre">run</span> <span class="pre">package</span></code> in <code class="docutils literal notranslate"><span class="pre">editors/vscode</span></code>, and
+uploads the <code class="docutils literal notranslate"><span class="pre">.vsix</span></code> it produced. Its tests start a real language server, which is why it
+installs the python package as well as compiling typescript, and packaging the extension there
+proves that the artefact a customer is handed can be produced at all.</p>
 <p><code class="docutils literal notranslate"><span class="pre">gui</span></code> builds and tests the browser interface, on three legs: ubuntu with Playwright’s own
 Chromium, windows with the same Chromium, and windows with the windows runner’s own Edge, driven
 through <code class="docutils literal notranslate"><span class="pre">PLAYWRIGHT_CHANNEL=msedge</span></code>, which needs no download. Each leg installs the package and
 node, generates the TypeScript types from <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">schema</span></code>, runs Biome, the type check and Vitest
 with its coverage gate, compiles the pages, and drives them against a real <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> with
-Playwright. On the ubuntu leg it then builds the wheel and the sdist with the pages it compiled,
-checks that the wheel carries them the way the release build checks its own, and uploads both as
-<code class="docutils literal notranslate"><span class="pre">ddd-tool-&lt;commit&gt;</span></code>: what installs a branch without node. The release build still compiles the
-pages again, into the wheel it publishes - an artifact expires, and needs a GitHub account to
-reach.</p>
+Playwright. On the ubuntu leg of the workflow’s own runs it then stamps a development version
+into its checkout, as <code class="docutils literal notranslate"><span class="pre">dev-build</span></code> stamps its own, builds the wheel and the sdist with the pages
+it compiled, checks that the wheel carries them the way the release build checks its own, and
+uploads both as <code class="docutils literal notranslate"><span class="pre">ddd-tool-&lt;commit&gt;</span></code>: what installs a branch without node, under a version that
+says it is a build of that commit and not a release. The release build still compiles the pages
+again, into the wheel it publishes - an artifact expires, and needs a GitHub account to reach.</p>
 <p>A manual run of the workflow (<code class="docutils literal notranslate"><span class="pre">workflow_dispatch</span></code>) takes a <code class="docutils literal notranslate"><span class="pre">repeat</span></code> input, one by default;
 above that it is a hunt, and only these three legs run, each journey repeated that many times
 (<code class="docutils literal notranslate"><span class="pre">--repeat-each</span></code>) while every other job is skipped.</p>
+<p><code class="docutils literal notranslate"><span class="pre">gui-screenshots</span></code> photographs every story of <code class="docutils literal notranslate"><span class="pre">gui/</span></code> and compares each with its reference
+image, committed in <code class="docutils literal notranslate"><span class="pre">gui/screenshots/references</span></code> beside the spec that photographs them, in
+Playwright’s own Linux image, of the version <code class="docutils literal notranslate"><span class="pre">gui/package.json</span></code> pins, which is the one place
+those images are made: a look that changes by accident fails here, and one changed on purpose
+arrives with its new references in the same pull request. A run of it that fails uploads the
+differences as <code class="docutils literal notranslate"><span class="pre">screenshots-diff</span></code>.</p>
 <p><code class="docutils literal notranslate"><span class="pre">container</span></code> builds the image behind <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">compose</span></code>, checks that the package installed in
 it carries the pages of <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> and that neither node nor npm reached it, and runs the
 <code class="docutils literal notranslate"><span class="pre">generate</span></code> service in it. Nothing built the image for a long time, and it is the local
@@ -632,33 +642,64 @@ without it the check would read the checkout rather than the image.</p>
 <code class="docutils literal notranslate"><span class="pre">master</span></code>, and of every push to this repository’s own pull requests, on TestPyPI, as
 <a class="reference internal" href="#development-builds"><span class="std std-ref">Development builds</span></a> below describes.</p>
 <p>The suite runs across a matrix of ubuntu and windows on python 3.12, 3.13 and 3.14, which is
-the six combinations the classifiers in <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code> advertise. That is not thoroughness
-for its own sake: a path handling defect that only appeared on linux has already reached a
-user of this project, having passed the whole suite on windows first. A test in
-<code class="docutils literal notranslate"><span class="pre">tests/test_documentation.py</span></code> keeps the matrix and those classifiers in agreement, so
-advertising a new interpreter without testing it fails.</p>
+the six combinations the classifiers in <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code> advertise: Windows and Linux, and not
+macOS, which no cell runs. That is not thoroughness for its own sake: a path handling defect
+that only appeared on linux has already reached a user of this project, having passed the whole
+suite on windows first. A test in <code class="docutils literal notranslate"><span class="pre">tests/test_documentation.py</span></code> keeps the matrix and those
+classifiers in agreement, so advertising a new interpreter or a new system without testing it
+fails.</p>
 <p>The two python jobs install the project with <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">-e</span> <span class="pre">&quot;.[dev]&quot;</span></code> rather than running
 it out of <code class="docutils literal notranslate"><span class="pre">src</span></code> - the extension job installs <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">-e</span> <span class="pre">.</span></code>, since what it needs is a
 <code class="docutils literal notranslate"><span class="pre">ddd</span></code> on the path to launch. That is deliberate too, and it is the cheapest check in the
 file: it exercises the packaging metadata, which the tests themselves never touch, so a
 dependency list that no longer builds fails here rather than for whoever installs the
 distribution.</p>
-<p>Style and types are checked once rather than per platform, since neither varies by platform.
-<code class="docutils literal notranslate"><span class="pre">publish.yml</span></code> runs the suite again before it builds a release, which is not redundant: a
-release can be cut from a commit this workflow never saw, and an upload to an index is
-permanent.</p>
+<p>Style and types are checked once rather than per platform, since neither varies by platform.</p>
+<p><code class="docutils literal notranslate"><span class="pre">publish.yml</span></code> runs this whole workflow again before it builds a release, on the release’s own
+commit, which is not redundant: a release can be cut from a commit this workflow never saw, and
+an upload to an index is permanent. It calls <code class="docutils literal notranslate"><span class="pre">ci.yml</span></code> as a reusable workflow
+(<code class="docutils literal notranslate"><span class="pre">workflow_call</span></code>) rather than keeping a copy of its jobs, so the two cannot drift, and builds
+nothing for upload until every job of it has passed - the six cells of the suite, the lint, the
+image, the extension, the three legs of the browser interface and its screenshots. It used to
+run the python suite again on one of the six cells, and none of the page’s own gates. A run
+called so is given Publish’s <code class="docutils literal notranslate"><span class="pre">github</span></code> context - its event, its tag and its commit, and its
+name and run id, which is how the workflow tells Publish’s run from one of its own - and only
+the inputs Publish passes, which are none, so the journeys run once each and nothing is skipped
+as in a hunt. Three things differ there: the concurrency group is Publish’s run’s own, so that
+no push or dispatch cancels a release’s gates, nor has its own cancelled by them; the <code class="docutils literal notranslate"><span class="pre">gui</span></code>
+job builds no wheel, Publish building, installing and checking the one it ships; and
+<code class="docutils literal notranslate"><span class="pre">dev-build</span></code> and <code class="docutils literal notranslate"><span class="pre">dev-publish</span></code>, which run on a push or a pull request alone, never run for a
+release. The call allows <code class="docutils literal notranslate"><span class="pre">id-token:</span> <span class="pre">write</span></code>, which <code class="docutils literal notranslate"><span class="pre">dev-publish</span></code> asks for: a called
+workflow’s jobs can only lower the permissions they are given, and GitHub checks what each asks
+for as the run starts, whatever its <code class="docutils literal notranslate"><span class="pre">if:</span></code>. <code class="docutils literal notranslate"><span class="pre">dev-publish</span></code> cannot run in Publish’s run, and
+every other job of it is held to reading by the workflow’s own <code class="docutils literal notranslate"><span class="pre">permissions</span></code>.</p>
+<p>A release waits on every job of <code class="docutils literal notranslate"><span class="pre">ci.yml</span></code>, then, its windows cells and its journeys included,
+and its documentation waits on the release. When one of them fails - a journey that fails only
+now and then, say - <em>Re-run failed jobs</em> on Publish’s run runs that job again, on the release’s
+commit, and with it every job that depends on it: the build, its checks and the uploads, none
+of which had run. The jobs that passed keep their results.</p>
 <p>Nothing in the toolchain moves on its own. Every <code class="docutils literal notranslate"><span class="pre">uses:</span></code> is pinned by a major tag, the
 extension’s and the browser interface’s lock files pin their dependencies exactly, and
 <code class="docutils literal notranslate"><span class="pre">ruff</span></code> and <code class="docutils literal notranslate"><span class="pre">mypy</span></code> are capped to a minor in <code class="docutils literal notranslate"><span class="pre">requirements-dev.txt</span></code> - those two are gates
 rather than libraries, so a release of either fails the lint job on the day it is published
-rather than on the day somebody upgrades it. What proposes the moves instead is
-<code class="docutils literal notranslate"><span class="pre">.github/dependabot.yml</span></code>, weekly, for the actions, the requirements files, the extension and
-the browser interface: a bump then arrives as a pull request that ci has already run, which is
-the difference between upgrading a tool and discovering on a release day that one has moved on
-without you. A test holds every action to one version across the three workflows, and both
-caps to being caps.</p>
+rather than on the day somebody upgrades it. <code class="docutils literal notranslate"><span class="pre">sphinx</span></code> is pinned to one release in
+<code class="docutils literal notranslate"><span class="pre">requirements-docs.txt</span></code> for the same reason: the documentation is built with <code class="docutils literal notranslate"><span class="pre">-W</span></code>, so a
+sphinx that warns about anything new fails the documentation’s build, and on the wrong day
+that build is a release’s. So is every tool a release is built and checked with: <code class="docutils literal notranslate"><span class="pre">build</span></code> and
+<code class="docutils literal notranslate"><span class="pre">twine</span></code> in <code class="docutils literal notranslate"><span class="pre">requirements-release.txt</span></code>, which <code class="docutils literal notranslate"><span class="pre">publish.yml</span></code> installs them from,
+<code class="docutils literal notranslate"><span class="pre">hatchling</span></code> and <code class="docutils literal notranslate"><span class="pre">hatch-requirements-txt</span></code> in the <code class="docutils literal notranslate"><span class="pre">[build-system]</span></code> table of
+<code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code>, and <code class="docutils literal notranslate"><span class="pre">&#64;vscode/vsce</span></code> in the scripts of <code class="docutils literal notranslate"><span class="pre">editors/vscode/package.json</span></code>.
+What proposes the moves instead is <code class="docutils literal notranslate"><span class="pre">.github/dependabot.yml</span></code>, weekly, for the actions, the
+requirements files, the extension and the browser interface: a bump then arrives as a pull
+request that ci has already run, which is the difference between upgrading a tool and
+discovering on a release day that one has moved on without you. Dependabot may not reach the
+backend, since its documentation says nothing of <code class="docutils literal notranslate"><span class="pre">[build-system]</span></code> - its first weekly run shows
+whether it does - and cannot reach vsce, since a version written into an <code class="docutils literal notranslate"><span class="pre">npx</span></code> command is no
+dependency it reads: vsce is moved by hand, and the backend may have to be. A test holds every
+action to one version across the three workflows, both caps to being caps, and sphinx and the
+release’s tools each to one version.</p>
 <section id="development-builds">
-<span id="id1"></span><h3>Development builds<a class="headerlink" href="#development-builds" title="Link to this heading"></a></h3>
+<span id="id2"></span><h3>Development builds<a class="headerlink" href="#development-builds" title="Link to this heading"></a></h3>
 <p>The last commit of every push to <code class="docutils literal notranslate"><span class="pre">master</span></code>, and of every push to one of this repository’s own
 pull requests, is published to <a class="reference external" href="https://test.pypi.org/project/ddd-tool/">TestPyPI</a> as a
 development build, so that such a commit installs with <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span></code> - its compiled pages
@@ -669,24 +710,27 @@ any other job fails publishes nothing, and neither does one that a newer push ca
 upload has begun; a <code class="docutils literal notranslate"><span class="pre">dev-publish</span></code> that fails once its upload has begun leaves on TestPyPI
 whatever it had uploaded.</p>
 <p><code class="docutils literal notranslate"><span class="pre">dev-build</span></code> waits for every other job of the run - <code class="docutils literal notranslate"><span class="pre">test</span></code>, <code class="docutils literal notranslate"><span class="pre">lint</span></code>, <code class="docutils literal notranslate"><span class="pre">container</span></code>,
-<code class="docutils literal notranslate"><span class="pre">extension</span></code> and <code class="docutils literal notranslate"><span class="pre">gui</span></code> - so that a commit any of them fails is never a build anybody is
-pointed at; a test holds a job added to <code class="docutils literal notranslate"><span class="pre">ci.yml</span></code> to joining the list. It checks the commit
-out - a pull request’s own head, not the merge <code class="docutils literal notranslate"><span class="pre">gui</span></code> tests it as - and fails at once, with an
-error saying to merge <code class="docutils literal notranslate"><span class="pre">master</span></code> into the branch, when that head has no
-<code class="docutils literal notranslate"><span class="pre">tools/dev_version.py</span></code>: a pull request whose branch was cut before development builds
-existed. It then stamps the development version into the checkout, compiles the pages and
-builds the wheel and the sdist as the release build does, type check included, and checks that
-the wheel carries the pages. <code class="docutils literal notranslate"><span class="pre">dev-publish</span></code> uploads what it built, and writes the run’s
-summary. They are two jobs for the reason <code class="docutils literal notranslate"><span class="pre">publish.yml</span></code> builds a release in one job and
-uploads it in another: <code class="docutils literal notranslate"><span class="pre">npm</span> <span class="pre">ci</span></code> runs the install scripts of every package the pages depend on,
-and a build runs whatever its backend is, so none of that runs in the job that can ask for a
-token to publish with. That job checks nothing out, and takes nothing it is handed on trust:
-the version has to be this run’s; <code class="docutils literal notranslate"><span class="pre">dist/</span></code> has to hold that version’s wheel and sdist and
-nothing else - a file left there for a later run’s version would otherwise be uploaded under it,
-and that run’s own upload refused; and the wheel has to name this run’s commit and declare
+<code class="docutils literal notranslate"><span class="pre">extension</span></code>, <code class="docutils literal notranslate"><span class="pre">gui</span></code> and <code class="docutils literal notranslate"><span class="pre">gui-screenshots</span></code> - so that a commit any of them fails is never a
+build anybody is pointed at; a test holds a job added to <code class="docutils literal notranslate"><span class="pre">ci.yml</span></code> to joining the list, and
+another holds this one to it. It checks the commit out - a pull request’s own head, not the
+merge <code class="docutils literal notranslate"><span class="pre">gui</span></code> tests it as - and fails at once, with an error saying to merge <code class="docutils literal notranslate"><span class="pre">master</span></code> into the
+branch, when that head has no <code class="docutils literal notranslate"><span class="pre">tools/dev_version.py</span></code>: a pull request whose branch was cut
+before development builds existed. It then stamps the development version into the checkout,
+compiles the pages and builds the wheel and the sdist as the release build does, type check
+included, and checks that the wheel carries the pages. <code class="docutils literal notranslate"><span class="pre">dev-publish</span></code> uploads what it built,
+and writes the run’s summary. They are two jobs for the reason <code class="docutils literal notranslate"><span class="pre">publish.yml</span></code> builds a release
+in one job and uploads it in another: <code class="docutils literal notranslate"><span class="pre">npm</span> <span class="pre">ci</span></code> runs the install scripts of every package the
+pages depend on, and a build runs whatever its backend is, so none of that runs in the job that
+can ask for a token to publish with. That job checks nothing out, and takes nothing it is handed
+on trust: the version has to be this run’s; <code class="docutils literal notranslate"><span class="pre">dist/</span></code> has to hold that version’s wheel and sdist
+and nothing else - a file left there for a later run’s version would otherwise be uploaded under
+it, and that run’s own upload refused; and the wheel has to name this run’s commit and declare
 requirements an install line can print as they are. All of it is checked before the upload.</p>
 <p><strong>The version is the next patch, as a development release numbered by the run.</strong> After 0.10.0,
-run 57 publishes <code class="docutils literal notranslate"><span class="pre">0.10.1.dev57</span></code>. The commit cannot be part of the version: PEP 440 refuses
+run 57 publishes <code class="docutils literal notranslate"><span class="pre">0.10.1.dev57</span></code>. After a release candidate it is the next candidate’s: after
+<code class="docutils literal notranslate"><span class="pre">0.11.0rc1</span></code>, run 57 publishes <code class="docutils literal notranslate"><span class="pre">0.11.0rc2.dev57</span></code>, which sorts after the candidate and before
+both of what can follow it, <code class="docutils literal notranslate"><span class="pre">0.11.0rc2</span></code> and <code class="docutils literal notranslate"><span class="pre">0.11.0</span></code>. The commit cannot be part of the
+version: PEP 440 refuses
 <code class="docutils literal notranslate"><span class="pre">0.10.0-&lt;sha&gt;</span></code>, and PyPI and TestPyPI both refuse a local label such as <code class="docutils literal notranslate"><span class="pre">0.10.0+g&lt;sha&gt;</span></code>. The
 build’s metadata carries it instead, as the <code class="docutils literal notranslate"><span class="pre">Commit</span></code> link of the project, and the run’s
 summary maps the version to it. The base is the next patch because <code class="docutils literal notranslate"><span class="pre">0.10.0.dev57</span></code> would sort
@@ -706,19 +750,37 @@ Find out why the number was reused instead.
 Renaming <code class="docutils literal notranslate"><span class="pre">ci.yml</span></code> is one way: it restarts the run numbers - and its registration below names
 the file - so its uploads are refused until the numbers, or the next release, move past the
 versions already published.</p>
-<p><code class="docutils literal notranslate"><span class="pre">tools/dev_version.py</span></code> writes that version into the job’s own checkout, and nothing it
-rewrites is committed. It writes it into the three places the installed package compares at
-run time: <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code>; <code class="docutils literal notranslate"><span class="pre">src/ddd/__init__.py</span></code>, so that <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">--version</span></code> prints <code class="docutils literal notranslate"><span class="pre">ddd</span>
-<span class="pre">0.10.1.dev57</span></code>, in the format it always has; and <code class="docutils literal notranslate"><span class="pre">cmake/Ddd.cmake</span></code>, whose
+<p><code class="docutils literal notranslate"><span class="pre">tools/dev_version.py</span></code> writes that version into the checkout of the job running it, and
+nothing it rewrites is committed. It writes it into the three places the installed package
+compares at run time: <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code>; <code class="docutils literal notranslate"><span class="pre">src/ddd/__init__.py</span></code>, so that <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">--version</span></code>
+prints <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">0.10.1.dev57</span></code>, in the format it always has; and <code class="docutils literal notranslate"><span class="pre">cmake/Ddd.cmake</span></code>, whose
 <code class="docutils literal notranslate"><span class="pre">DDD_MODULE_VERSION</span></code> the module compares with that output by exact string, refusing a tool of
 any other release. Nothing compares the other spellings, listed under
 <a class="reference internal" href="#publishing-a-release"><span class="std std-ref">Publishing a release</span></a>, at run time: the extension’s manifest and lock file reach no
 installed package, and the rest is prose - the README’s included, which the wheel carries as
-its description. The script refuses a version with no next patch, and a release candidate is
-one: a run whose commit states a candidate in <code class="docutils literal notranslate"><span class="pre">__version__</span></code> fails <code class="docutils literal notranslate"><span class="pre">dev-build</span></code> - every run of
-<code class="docutils literal notranslate"><span class="pre">master</span></code> for as long as the candidate stands there - while a pull request branched before it
-still builds. <code class="docutils literal notranslate"><span class="pre">tests/test_documentation.py</span></code> holds the script to all of this, and runs the
-checks <code class="docutils literal notranslate"><span class="pre">dev-publish</span></code> makes.</p>
+its description. The script refuses a version it cannot number after: an alpha or a beta, and a
+development, post or local release, none of which a commit of <code class="docutils literal notranslate"><span class="pre">master</span></code> states. A run whose
+commit states one fails <code class="docutils literal notranslate"><span class="pre">dev-build</span></code>, and the ubuntu leg of <code class="docutils literal notranslate"><span class="pre">gui</span></code>, which stamps the wheel it
+uploads the same way. A release candidate it numbers, so its stamp fails no job on one. The
+extension’s manifest states the version too, held equal to <code class="docutils literal notranslate"><span class="pre">__version__</span></code> by a test, and
+<code class="docutils literal notranslate"><span class="pre">0.12.0rc1</span></code> is no semver version, which semver would spell <code class="docutils literal notranslate"><span class="pre">0.12.0-rc.1</span></code>: npm installs a
+manifest of that version as it is, but whether vsce packages one is untried, so a candidate
+stated on <code class="docutils literal notranslate"><span class="pre">master</span></code> may still fail the <code class="docutils literal notranslate"><span class="pre">extension</span></code> job, in ci’s own runs and in Publish’s,
+before anything is uploaded. <code class="docutils literal notranslate"><span class="pre">tests/test_documentation.py</span></code> holds the script to all of this,
+and runs the checks <code class="docutils literal notranslate"><span class="pre">dev-publish</span></code> makes.</p>
+<p><strong>Every wheel ci builds is stamped so, and no other.</strong> <code class="docutils literal notranslate"><span class="pre">dev-build</span></code>’s is, and so is the one the
+<code class="docutils literal notranslate"><span class="pre">gui</span></code> job uploads as <code class="docutils literal notranslate"><span class="pre">ddd-tool-&lt;commit&gt;</span></code>, with <code class="docutils literal notranslate"><span class="pre">dev-build</span></code>’s run number, and naming the
+commit it was built from - for a pull request, the merge <code class="docutils literal notranslate"><span class="pre">gui</span></code> tests, where <code class="docutils literal notranslate"><span class="pre">dev-build</span></code>
+builds the head. Each is numbered after the version its own commit states: the two are one on a
+push, and on a pull request they part only where its head and the merge it is tested as state two
+versions - a branch cut before a release’s commit, say - and not on the release’s own pull
+request, whose head and merge both state the release. A wheel built anywhere else, by
+<code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">-m</span> <span class="pre">build</span></code> in a checkout, carries the version its <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code> states, and
+<code class="docutils literal notranslate"><span class="pre">master</span></code> states the last release’s until the next release commit: built between releases, such
+a wheel holds every commit since that release and says it is that release - to
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">--version</span></code>, to the banner of every file it generates, to the module’s handshake and to
+pip - and its metadata names no commit. Only the release’s own build, from its tag, is the
+release.</p>
 <p>The run’s summary gives the two commands that install the build, for instance:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>pip install "jinja2&lt;4,&gt;=3.1" "pydantic&lt;3,&gt;=2.7"
 pip install --no-deps --index-url https://test.pypi.org/simple/ ddd-tool==0.10.1.dev57
@@ -773,9 +835,46 @@ of it.</p>
 <h2>Publishing this documentation<a class="headerlink" href="#publishing-this-documentation" title="Link to this heading"></a></h2>
 <p><code class="docutils literal notranslate"><span class="pre">.github/workflows/docs.yml</span></code> builds the html and publishes it to
 <a class="reference external" href="https://sauci.github.io/ddd/">GitHub Pages</a>. It runs on every pull request, and deploys on
-two events: a push to <code class="docutils literal notranslate"><span class="pre">master</span></code>, and a published release. The deployment is a push to the
-<code class="docutils literal notranslate"><span class="pre">gh-pages</span></code> branch with the workflow’s own token, and Pages serves that branch directly;
-nothing else authenticates, and no deployment environment is involved.</p>
+a push to <code class="docutils literal notranslate"><span class="pre">master</span></code> and for a release - the release once <code class="docutils literal notranslate"><span class="pre">publish.yml</span></code> has published it.
+The deployment is a push to the <code class="docutils literal notranslate"><span class="pre">gh-pages</span></code> branch with the workflow’s own token, and Pages
+serves that branch directly; nothing else authenticates, and no deployment environment is
+involved.</p>
+<p>A release’s documentation waits for Publish, because a release can be one Publish refuses -
+its tag names a version <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code> does not - or one whose tests or build fail. While
+both workflows started on the release itself, neither waiting for the other, such a release
+was published on the site all the same, and became the version its root redirects to, though
+PyPI never received it. So the release starts no documentation run. Publish’s run completing
+starts one, which builds and deploys only if Publish’s run was a release’s and succeeded -
+from the commit the release’s tag names, and under the tag. A release tagged on a commit older
+than this arrangement - a fix on a line branched before it - is the exception: GitHub runs a
+release’s workflows from its tag, so that commit’s own <code class="docutils literal notranslate"><span class="pre">docs.yml</span></code> still publishes it on the
+release event, whatever Publish then does, and once Publish succeeds this one publishes it
+again.</p>
+<p>A release Publish failed is published when a re-run of that Publish run passes, with <em>Re-run
+failed jobs</em>, which runs again only the jobs that failed. <em>Re-run all jobs</em> cannot pass once the
+release is on PyPI: it runs the upload again, an index accepts a file name once and for ever,
+and <code class="docutils literal notranslate"><span class="pre">publish.yml</span></code> asks for no <code class="docutils literal notranslate"><span class="pre">skip-existing</span></code>, so every such attempt fails the same way. A
+release pypi.org holds whose Publish no re-run can finish - what failed is in the tagged commit,
+which every re-run builds again, or every attempt left would repeat the upload - is published
+by hand: run <em>Documentation</em> from <code class="docutils literal notranslate"><span class="pre">master</span></code> with the release’s tag as <code class="docutils literal notranslate"><span class="pre">tag</span></code>. That run builds
+the commit the tag names, refuses a tag that is not <code class="docutils literal notranslate"><span class="pre">v</span></code> followed by the version
+<code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code> states at that commit, as Publish does, and refuses, before anything is
+built, a version pypi.org holds no file of, read off the index’s json. What it cannot check is
+what a release’s run reads besides, Publish’s success, every job of it: there is no such run to
+read, so a release whose <code class="docutils literal notranslate"><span class="pre">.vsix</span></code> was never attached is published all the same. A release that
+never reached pypi.org is not published by hand, which would put the documentation of a version
+pip cannot install on the site, crowned stable were it the newest: it is deleted with its tag
+and created again, as <a class="reference internal" href="#the-steps-of-a-release"><span class="std std-ref">the steps of a release</span></a> say.</p>
+<p>A release’s run is alone in a concurrency group of its own, so a push to <code class="docutils literal notranslate"><span class="pre">master</span></code> cannot
+cancel it. GitHub keeps one run going and one waiting in a group, and cancels the waiting one
+when another arrives: <code class="docutils literal notranslate"><span class="pre">master</span></code>’s runs share a group, where that costs nothing, since the
+newer push builds everything the older one would have, but a release’s run waiting there was
+cancelled by the next merge, with nothing red and no directory for the release. A dispatch on
+another branch naming no tag waits in <code class="docutils literal notranslate"><span class="pre">master</span></code>’s group as well, and deploys nothing, so when
+it replaces <code class="docutils literal notranslate"><span class="pre">master</span></code>’s waiting run, <code class="docutils literal notranslate"><span class="pre">latest</span></code> stays a push behind until the next push. A
+release’s deploy and <code class="docutils literal notranslate"><span class="pre">master</span></code>’s can therefore run at once, and neither takes the branch to be
+where it found it: a push refused because <code class="docutils literal notranslate"><span class="pre">gh-pages</span></code> moved takes the branch as it now stands,
+puts its own directory back on it, rewrites the index from that, and pushes again.</p>
 <p>The site keeps one directory per version, and a menu in the bottom left corner of every page
 switches between them:</p>
 <table class="docutils align-default">
@@ -791,14 +890,17 @@ switches between them:</p>
 <td><p>every push</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">v0.5.0</span></code>, <code class="docutils literal notranslate"><span class="pre">v0.6.0</span></code>, …</p></td>
-<td><p>publishing that release</p></td>
-<td><p>never</p></td>
+<td><p>that release, once Publish has published it</p></td>
+<td><p>only by a re-run of that release’s run, or by a dispatch naming its tag</p></td>
 </tr>
 </tbody>
 </table>
-<p>Old documentation describes old code, so nothing rebuilds a released version. That is not
-only a saving: a tag from two years ago would have to keep building under the sphinx of the
-day, and the run that failed would be the one publishing the <em>current</em> release.</p>
+<p>Old documentation describes old code, so nothing rebuilds a released version but a re-run of
+that release’s run, or a dispatch naming its tag, which builds the tag’s commit with what its
+requirements allow that day and replaces the directory whole, so that a dispatch naming the
+wrong tag rewrites that release’s documentation. That is not only a saving: a tag from two
+years ago would have to keep building under the sphinx of the day, and the run that failed
+would be the one publishing the <em>current</em> release.</p>
 <p>A build produces one version and the site is all of them, so the versions that are not being
 built have to come from somewhere: the <code class="docutils literal notranslate"><span class="pre">gh-pages</span></code> branch holds them. The branch is the site
 rather than an archive of it - Pages is configured to serve it, so the push at the end of the
@@ -836,13 +938,15 @@ produces one for whoever does.</p>
 the branch whether or not anything serves it, so with the setting missing the push succeeds
 and the <em>Read back what was published</em> step fails five minutes later, naming that setting.
 There is nothing to change in the repository to fix it: correct the setting and re-run.</p>
-<p><strong>A pull request builds but never deploys.</strong> The deploy job names the branch and the release
-event it publishes, rather than resting on the event alone, because a pull request from a
-fork proposes arbitrary content: without that condition, opening one would be enough to
-publish somebody else’s revision as the product’s documentation.</p>
+<p><strong>A pull request builds but never deploys.</strong> The deploy job names the branch it publishes and
+the Publish run it waits for, rather than resting on the event alone, because a pull request
+from a fork proposes arbitrary content: without that condition, opening one would be enough to
+publish somebody else’s revision as the product’s documentation. The Publish run has to have
+been a release’s, too, since a workflow called Publish in a pull request from a fork completes
+as well.</p>
 </section>
 <section id="publishing-a-release">
-<span id="id2"></span><h2>Publishing a release<a class="headerlink" href="#publishing-a-release" title="Link to this heading"></a></h2>
+<span id="id3"></span><h2>Publishing a release<a class="headerlink" href="#publishing-a-release" title="Link to this heading"></a></h2>
 <p><code class="docutils literal notranslate"><span class="pre">.github/workflows/publish.yml</span></code> builds, checks and uploads the distribution. It never
 holds an API token: the upload authenticates with <a class="reference external" href="https://docs.pypi.org/trusted-publishers/">trusted publishing</a>, where GitHub mints a short lived OIDC token
 and the index decides whether the claims in it match a publisher somebody registered.</p>
@@ -903,6 +1007,30 @@ directory named after its tag and lists only the ones beginning with <code class
 same run started on a branch would have built whatever that branch’s <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code> said
 and uploaded it under no tag, with no <code class="docutils literal notranslate"><span class="pre">.vsix</span></code> and no documentation directory - and an index
 accepts a file name once and for ever, so the only way back is the next version number.</p>
+<p><strong>Nothing is uploaded until the wheel has been installed and run.</strong> Every job of <code class="docutils literal notranslate"><span class="pre">ci.yml</span></code> has
+passed on the release’s commit first, as <a class="reference internal" href="#continuous-integration"><span class="std std-ref">continuous integration</span></a>
+says. The build then installs the wheel it built into a fresh virtual environment, its
+dependencies from the index, and <code class="docutils literal notranslate"><span class="pre">tools/installed_wheel.py</span></code> runs the installed <code class="docutils literal notranslate"><span class="pre">ddd</span></code> in an
+empty directory, holding what it answers to the wheel itself: <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">--version</span></code> the version the
+run publishes - the tag’s on a release, <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code>’s on a dry run from a branch - which
+the wheel’s metadata and the module’s <code class="docutils literal notranslate"><span class="pre">DDD_MODULE_VERSION</span></code> have to state as well; <code class="docutils literal notranslate"><span class="pre">ddd</span>
+<span class="pre">templates-dir</span></code> a directory holding exactly the templates the wheel carries; <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">cmake-dir</span></code>
+one whose <code class="docutils literal notranslate"><span class="pre">Ddd.cmake</span></code> is the wheel’s; and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code>, started, the wheel’s <code class="docutils literal notranslate"><span class="pre">index.html</span></code> at
+the address it prints. Only then is the wheel handed to the jobs that upload it. The one look
+the release took at its artefact used to be a listing of the wheel for <code class="docutils literal notranslate"><span class="pre">index.html</span></code>, and it
+was never installed.</p>
+<p><strong>A release’s page on the index links its own documentation.</strong> The README is the description
+PyPI shows for a release, and in the tree its links into the documentation point into
+<code class="docutils literal notranslate"><span class="pre">latest/</span></code>, which follows <code class="docutils literal notranslate"><span class="pre">master</span></code>: the right pages for the tree, and for a reader of the
+release, pages of what it may not have. So the build points each of them at <code class="docutils literal notranslate"><span class="pre">v&lt;version&gt;/</span></code>, of
+the version <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code> states, the link to the root of the site among them, and with them
+<code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code>’s <code class="docutils literal notranslate"><span class="pre">Documentation</span></code> url, which the index shows beside the description, in its
+checkout and before <code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">-m</span> <span class="pre">build</span></code> reads the two; nothing of that is committed. The
+installed check then refuses a wheel whose <code class="docutils literal notranslate"><span class="pre">Documentation</span></code> url is not that directory, whose
+description links the documentation anywhere else or nothing of it, or that names no
+<code class="docutils literal notranslate"><span class="pre">Documentation</span></code> url at all. That directory is written once Publish has succeeded, so for as
+long as Documentation takes after it - longer, for a release waiting on a re-run - the
+release’s page links pages that are not served yet.</p>
 <p><strong>The version is spelled in ten files, and a test holds five of them together.</strong>
 <code class="docutils literal notranslate"><span class="pre">src/ddd/__init__.py</span></code> is where it lives: <code class="docutils literal notranslate"><span class="pre">docs/conf.py</span></code> imports <code class="docutils literal notranslate"><span class="pre">__version__</span></code> rather than
 restating it, and the banner of every generated file carries it from there. <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code>,
@@ -942,6 +1070,78 @@ but not a pushed tag, unless a tag ruleset also restricts who may create <code c
 reviewer stops both. An environment restricted to the default branch instead is the whole of
 what a release is not - a release runs from its tag - and rejects the release after a green
 build, with <em>not allowed to deploy … due to environment protection rules</em>.</p>
+<section id="the-steps-of-a-release">
+<span id="id4"></span><h3>The steps of a release<a class="headerlink" href="#the-steps-of-a-release" title="Link to this heading"></a></h3>
+<p>In order, each step waiting for the one before it:</p>
+<ol class="arabic simple">
+<li><p><strong>Merge</strong> into <code class="docutils literal notranslate"><span class="pre">master</span></code> everything the release is to carry, each change through its pull
+request.</p></li>
+<li><p><strong>Wait for ci</strong> on <code class="docutils literal notranslate"><span class="pre">master</span></code>’s newest commit, every job of <code class="docutils literal notranslate"><span class="pre">ci.yml</span></code> passing. Publish runs
+all of them but the development builds again on the release’s commit and uploads nothing
+until they pass, so what would fail there fails here first, where it costs a pull request
+rather than a release to delete and create again.</p></li>
+<li><p><strong>Bump the version</strong> in a commit of its own, on a branch, in the ten files listed above, and
+in no other commit: <code class="docutils literal notranslate"><span class="pre">master</span></code> states the release’s version from the moment that commit
+lands.</p></li>
+<li><p><strong>Write the notes</strong> in that commit: <code class="docutils literal notranslate"><span class="pre">##</span> <span class="pre">Unreleased</span></code> in <code class="docutils literal notranslate"><span class="pre">CHANGELOG.md</span></code> becomes
+<code class="docutils literal notranslate"><span class="pre">##</span> <span class="pre">&lt;version&gt;</span></code>, and that section is the release’s notes. Merge the commit through its pull
+request, and wait for ci on <code class="docutils literal notranslate"><span class="pre">master</span></code> once more: the commit it runs on is the one the tag
+names.</p></li>
+<li><p><strong>Rehearse the release</strong>, optionally, before it is created: dispatch <em>Publish</em> from
+<code class="docutils literal notranslate"><span class="pre">master</span></code> with <code class="docutils literal notranslate"><span class="pre">target:</span> <span class="pre">testpypi</span></code>, the dry run above. It is the one rehearsal of the
+release path before a tag exists. On the commit the tag will name, it runs <code class="docutils literal notranslate"><span class="pre">ci</span></code> through the
+call, then <code class="docutils literal notranslate"><span class="pre">build</span></code> - the pages, the description’s links pointed at <code class="docutils literal notranslate"><span class="pre">v&lt;version&gt;/</span></code>, the
+wheel and the sdist, <code class="docutils literal notranslate"><span class="pre">twine</span> <span class="pre">check</span></code> and the installed check - and uploads to TestPyPI alone,
+which spends the version there and nowhere else: a second rehearsal of that version is refused
+at its upload, and pypi.org is untouched. It shows GitHub starting Publish with the call - the
+permissions the call grants, checked as the run starts, and <code class="docutils literal notranslate"><span class="pre">build</span></code> waiting on <code class="docutils literal notranslate"><span class="pre">ci</span></code> with
+the development builds skipped - and the build’s checks passing on a runner. It does not show
+the tag check, which a dispatch from a branch skips, the <code class="docutils literal notranslate"><span class="pre">.vsix</span></code>, which <code class="docutils literal notranslate"><span class="pre">extension</span></code>
+attaches to a release alone, the upload to pypi.org and the <code class="docutils literal notranslate"><span class="pre">pypi</span></code> environment’s
+protection, or <em>Documentation</em>, which publishes nothing for a dry run.</p></li>
+<li><p><strong>Create the release</strong> on GitHub, on that commit, with a new tag <code class="docutils literal notranslate"><span class="pre">v&lt;version&gt;</span></code> - <code class="docutils literal notranslate"><span class="pre">v</span></code> and
+the version <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code> states, exactly, or Publish refuses it - and the notes of
+<code class="docutils literal notranslate"><span class="pre">##</span> <span class="pre">&lt;version&gt;</span></code>, and publish it.</p></li>
+<li><p><strong>Publish runs</strong>, on the tag’s commit, in this order: <code class="docutils literal notranslate"><span class="pre">ci</span></code>, every job of <code class="docutils literal notranslate"><span class="pre">ci.yml</span></code> but the
+development builds; then <code class="docutils literal notranslate"><span class="pre">build</span></code>, which compiles the pages, points the description’s links
+into the documentation, and the <code class="docutils literal notranslate"><span class="pre">Documentation</span></code> url, at <code class="docutils literal notranslate"><span class="pre">v&lt;version&gt;/</span></code>, builds the wheel
+and the sdist, checks that the wheel carries the pages and that the tag is the version, runs
+<code class="docutils literal notranslate"><span class="pre">twine</span> <span class="pre">check</span></code>, and installs the wheel into a fresh environment and checks the
+installation; then, each waiting for <code class="docutils literal notranslate"><span class="pre">build</span></code>, <code class="docutils literal notranslate"><span class="pre">extension</span></code>, which attaches
+<code class="docutils literal notranslate"><span class="pre">ddd-&lt;version&gt;.vsix</span></code> to the release, and <code class="docutils literal notranslate"><span class="pre">publish-pypi</span></code>, which uploads the wheel and the
+sdist to pypi.org. Where the <code class="docutils literal notranslate"><span class="pre">pypi</span></code> environment has a required reviewer, as the protection
+above describes, <code class="docutils literal notranslate"><span class="pre">publish-pypi</span></code> waits for that reviewer’s approval before it uploads, and
+Publish’s run, and so the documentation, waits with it.</p></li>
+<li><p><strong>Documentation publishes</strong> once Publish’s run has succeeded - every job of it, the
+<code class="docutils literal notranslate"><span class="pre">.vsix</span></code>’s included: a run of <code class="docutils literal notranslate"><span class="pre">docs.yml</span></code> builds the commit the tag names, publishes it
+under <code class="docutils literal notranslate"><span class="pre">v&lt;version&gt;</span></code>, lists it in the menu of every page, and reads it back from the site.
+The root of the site lands on it if it is the newest release, which a release candidate
+never is.</p></li>
+<li><p><strong>Check</strong> what was published: the version on pypi.org, whose page links <code class="docutils literal notranslate"><span class="pre">v&lt;version&gt;/</span></code> of
+the documentation; <code class="docutils literal notranslate"><span class="pre">ddd-&lt;version&gt;.vsix</span></code> on the release; <code class="docutils literal notranslate"><span class="pre">v&lt;version&gt;</span></code> in the menu of the
+site; and, in a fresh environment, <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">ddd-tool==&lt;version&gt;</span></code> installing a <code class="docutils literal notranslate"><span class="pre">ddd</span></code>
+whose <code class="docutils literal notranslate"><span class="pre">--version</span></code> answers <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">&lt;version&gt;</span></code>.</p></li>
+<li><p><strong>When a job fails</strong>, what to do depends on whether anything has reached pypi.org. Until
+<code class="docutils literal notranslate"><span class="pre">publish-pypi</span></code> has uploaded, nothing has - whether a gate failed, the build, one of its
+checks, or the upload itself, refused before it began, as for <code class="docutils literal notranslate"><span class="pre">invalid-publisher</span></code> until the
+registration is corrected: <em>Re-run failed jobs</em> on Publish’s run, for a failure that comes and
+goes or one corrected outside the tree; for one in the tagged commit, delete the release and
+its tag, fix <code class="docutils literal notranslate"><span class="pre">master</span></code>, and create the release again, its version unchanged, since pypi.org
+does not hold it. A tag Publish refused is remade so too. Once a file is on pypi.org no run of
+the upload passes again, an index taking a file name once: <em>Re-run failed jobs</em> runs again
+only what failed and what waits for it, so it serves a failed <code class="docutils literal notranslate"><span class="pre">extension</span></code> beside an upload
+that passed, and <em>Re-run all jobs</em> cannot pass. A release on pypi.org that no re-run can
+finish has its documentation published by hand: <em>Documentation</em>, run from <code class="docutils literal notranslate"><span class="pre">master</span></code> with
+the release’s tag as <code class="docutils literal notranslate"><span class="pre">tag</span></code>, which refuses a version pypi.org holds no file of. A run of
+<em>Documentation</em> that fails on its own is re-run as it is. A file no re-run can upload - the
+wheel on pypi.org and the sdist refused, say - waits for the next version: every route here
+uploads the whole of <code class="docutils literal notranslate"><span class="pre">dist</span></code>, and an index takes a file that landed once.</p></li>
+<li><p><strong>Leave master’s version</strong> as the release’s: nothing is bumped after a release. <code class="docutils literal notranslate"><span class="pre">master</span></code>
+states it until the next release commit, and its development builds number themselves after
+it: <code class="docutils literal notranslate"><span class="pre">&lt;next</span> <span class="pre">patch&gt;.dev&lt;run&gt;</span></code> after a release, and after a release candidate the next
+candidate’s, <code class="docutils literal notranslate"><span class="pre">0.12.0rc2.dev&lt;run&gt;</span></code> after <code class="docutils literal notranslate"><span class="pre">0.12.0rc1</span></code>.</p></li>
+</ol>
+</section>
 </section>
 <section id="delivering-the-editor-extension">
 <h2>Delivering the editor extension<a class="headerlink" href="#delivering-the-editor-extension" title="Link to this heading"></a></h2>
@@ -975,7 +1175,8 @@ a test refuses the two halves separately.</p>
 <code class="docutils literal notranslate"><span class="pre">src/ddd/gui/static/</span></code>. git ignores the compiled pages, and Node.js is needed where they are
 compiled, never where ddd is installed. The release build compiles them before it builds the
 wheel, which then carries them. The <code class="docutils literal notranslate"><span class="pre">gui</span></code> job of ci does the same and uploads the wheel as
-<code class="docutils literal notranslate"><span class="pre">ddd-tool-&lt;commit&gt;</span></code>, so every branch ci runs on installs without Node.js as well, and
+<code class="docutils literal notranslate"><span class="pre">ddd-tool-&lt;commit&gt;</span></code>, stamped as a development build of that commit, so every branch ci runs on
+installs without Node.js as well, and
 <code class="docutils literal notranslate"><span class="pre">dev-build</span></code> does it again for the <a class="reference internal" href="#development-builds"><span class="std std-ref">development build</span></a> of the last
 commit of a push to <code class="docutils literal notranslate"><span class="pre">master</span></code> or to a pull request, which TestPyPI serves to anybody. The image
 behind <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">compose</span></code> compiles them in a build stage of its own, thrown away with its
@@ -1090,9 +1291,15 @@ next one’s output. The page lays its canvas out with dagre, in a worker of its
 overflows that worker’s stack on a chain so deep, so the canvas is laid out in ranks only: a
 state no example and no other generated project reaches. In Chrome on Linux the shortest chain
 laid out in ranks only is 908 components long, and the fixture’s is more than twice that.</p>
-<p>The build refuses a bundled package whose licence is not MIT, ISC, Apache-2.0, BSD-2-Clause,
-BSD-3-Clause or 0BSD. The project screen’s canvas is drawn with <code class="docutils literal notranslate"><span class="pre">&#64;xyflow/react</span></code> and laid out
-with <code class="docutils literal notranslate"><span class="pre">&#64;dagrejs/dagre</span></code>, both MIT like every other bundled package.</p>
+<p>The build writes the licence of every package the pages bundle into
+<code class="docutils literal notranslate"><span class="pre">third-party-licenses.txt</span></code>, beside them, and refuses a bundled package whose licence is not
+MIT, ISC, Apache-2.0, BSD-2-Clause, BSD-3-Clause or 0BSD. It lists every production package of
+<code class="docutils literal notranslate"><span class="pre">gui/package-lock.json</span></code> that is installed: it walks npm’s own tree of them, reads each one’s
+directory off the lock file rather than off a path npm prints, and refuses, naming each, a
+production package of the lock file the walk did not list - which would ship without its notice,
+and past the licence check - and a package it listed that the lock file does not hold. The
+project screen’s canvas is drawn with <code class="docutils literal notranslate"><span class="pre">&#64;xyflow/react</span></code> and laid out with <code class="docutils literal notranslate"><span class="pre">&#64;dagrejs/dagre</span></code>, both
+MIT.</p>
 <p><code class="docutils literal notranslate"><span class="pre">.venv/bin/python</span> <span class="pre">tools/generate_project.py</span> <span class="pre">DIRECTORY</span> <span class="pre">--declarations</span> <span class="pre">N</span></code> writes a project of
 <code class="docutils literal notranslate"><span class="pre">N</span></code> declarations, rounded down to even components and refused under 120, to measure <code class="docutils literal notranslate"><span class="pre">ddd</span>
 <span class="pre">gui</span></code> on - large enough to matter in a way nothing under <code class="docutils literal notranslate"><span class="pre">examples/</span></code> is, the same bytes for
@@ -1213,15 +1420,16 @@ is why <code class="docutils literal notranslate"><span class="pre">ddd</span> <
 gone, the rule read from <code class="docutils literal notranslate"><span class="pre">ddd.lsp.edits.settle</span></code> alone now.</p>
 <p>The types a project declares are read by <code class="docutils literal notranslate"><span class="pre">ddd.project_types</span></code> and changed by
 <code class="docutils literal notranslate"><span class="pre">ddd.type_plans</span></code>, the pair <code class="docutils literal notranslate"><span class="pre">ddd.project_units</span></code> and <code class="docutils literal notranslate"><span class="pre">ddd.lsp.units</span></code> already make for
-units. Neither indexes anything new: <code class="docutils literal notranslate"><span class="pre">ddd.lsp.navigation.Index</span></code> records every type’s
-entry, every declaration and member naming one, and every c identifier the project has
-spent, and what a type <em>says</em> is read from the document at its entry. A rename is the
-editor’s rename - <code class="docutils literal notranslate"><span class="pre">rename_sites</span></code> says which strings it rewrites and <code class="docutils literal notranslate"><span class="pre">rename_problem</span></code>
-why a name may not be used, so the tab and the editor cannot disagree - planned as
-edit-engine operations rather than the text edits <code class="docutils literal notranslate"><span class="pre">rename_edits</span></code> answers, the way the
-identity fix does. <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/types</span></code> lists them, <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/type</span></code> answers one with its
-uses and its members, and <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/type-plan</span></code> previews a change of either kind as
-<code class="docutils literal notranslate"><span class="pre">PlanReply</span></code>, which the page applies through <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/edit</span></code> and the undo puts back.</p>
+units. Neither indexes anything new: <code class="docutils literal notranslate"><span class="pre">ddd.lsp.navigation.Index</span></code> records every type’s entry
+and the header of each external one, every declaration and member naming one, and every c
+identifier the project has spent, and what a type <em>says</em> is read from the document at its
+entry. A rename is the editor’s rename - <code class="docutils literal notranslate"><span class="pre">rename_sites</span></code> says which strings it rewrites,
+<code class="docutils literal notranslate"><span class="pre">named_by_a_header</span></code> why an external type is not renamed at all and <code class="docutils literal notranslate"><span class="pre">rename_problem</span></code> why
+a name may not be used, so the tab and the editor cannot disagree - planned as edit-engine
+operations rather than the text edits <code class="docutils literal notranslate"><span class="pre">rename_edits</span></code> answers, the way the identity fix
+does. <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/types</span></code> lists them, <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/type</span></code> answers one with its uses and its
+members, and <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/type-plan</span></code> previews a change of either kind as <code class="docutils literal notranslate"><span class="pre">PlanReply</span></code>, which
+the page applies through <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/edit</span></code> and the undo puts back.</p>
 <p><code class="docutils literal notranslate"><span class="pre">ddd.declaration_plans</span></code> sits beside <code class="docutils literal notranslate"><span class="pre">ddd.type_plans</span></code> and <code class="docutils literal notranslate"><span class="pre">ddd.project_units</span></code>: a
 component may add a declaration of a variable the project already declares or of a new
 object of one of the six kinds, and its three verbs take a file, a name and a scope to

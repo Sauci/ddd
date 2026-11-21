@@ -470,8 +470,9 @@ The commands
        its edges changing; a negative one - legal here - mirrors the curve instead of
        leaving it alone. A Types tab lists the types the project declares, with
        what each fixes and what names it;
-       what a scalar type fixes is changed there, and renaming one rewrites every
-       declaration and member naming it in one edit.
+       what a scalar type fixes is changed there, and renaming a type rewrites every
+       declaration and member naming it in one edit, but an external type is refused,
+       its name being the one the header defining it spells.
        Every change is written into the files in their own layout and checked
        the way ``ddd check`` checks them. A change is refused as a whole, every file
        left as it was, where a file it changes was saved from elsewhere since it was
@@ -515,11 +516,12 @@ The commands
        as ``event 2`` alone where it states none - and what names it. What an entry states is
        changed there: a constant's value and its description, a section's access, its alignment
        and its description, a raster's event, its cycle and its description. Renaming one
-       rewrites every place naming it in one edit - for a constant every shape spelling it; for
-       a section its own entry and every definition placing data in it; for a raster its own
-       entry, every definition measured in it and a component's own default naming it for
-       everything it produces - since a rename reaching the entry alone would leave those
-       definitions, or that default, naming a section or a raster nothing declares. A section's
+       rewrites every place naming it in one edit - for a constant every shape spelling it
+       and its word in every ``condition`` spelling it; for a section its own entry and
+       every definition placing data in it; for a raster its own entry, every definition
+       measured in it and a component's own default naming it for everything it produces -
+       since a rename reaching the entry alone would leave those definitions, or that
+       default, naming a section or a raster nothing declares. A section's
        name is judged as the linker string it is rather than as a c identifier, which is why a
        leading dot is an ordinary spelling; a name outside the letters, digits, ``.``, ``_`` and
        ``$`` that spelling allows is refused, being one whose file would then not load, and so
@@ -552,10 +554,11 @@ The commands
        one - ``event 1 is already claimed by raster '10ms'`` - whether it is being declared or
        changed: an event is a property of the target's XCP configuration, distinct across the
        project, so not free for a second raster to claim. Removing one is refused while anything
-       still names it - a shape, for a constant; a definition placing data there, for a section;
-       a definition measured in it or a component's own default naming it, for a raster, its own
-       refusal counting every shape rather than naming one: ``2 shapes name 10ms, so it cannot
-       be removed.`` The last one a file declares is removed like any other, leaving a file that
+       still names it - a shape or a ``condition`` spelling it, for a constant; a
+       definition placing data there, for a section; a definition measured in it or a
+       component's own default naming it, for a raster, its own refusal counting every
+       shape rather than naming one: ``2 shapes name 10ms, so it cannot be removed.``
+       The last one a file declares is removed like any other, leaving a file that
        declares nothing, which loads and is reported as ``empty-vocabulary``; the last constant
        a component declares takes the component's ``constants`` key with it, since a component
        that publishes none leaves the key out. A constant value no shape can use is reported

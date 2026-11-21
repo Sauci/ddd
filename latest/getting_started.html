@@ -131,17 +131,18 @@ disagree. Everything shown here is the actual output of the tool; typing along t
 minutes and needs nothing but python.</p>
 <section id="installation">
 <h2>Installation<a class="headerlink" href="#installation" title="Link to this heading"></a></h2>
-<p>DDD is a python package and needs <strong>python 3.12 or newer</strong>; its only runtime dependencies are
-pydantic, which parses and validates the description files, and jinja2, which renders the
-generated artefacts. Both are installed with it, and nothing else is required - in particular
-no compiler, since DDD writes c code but never builds it.</p>
+<p>DDD is a python package and needs <strong>python 3.12 or newer</strong>; its runtime dependencies are
+pydantic, which parses and validates the description files, jinja2, which renders the
+generated artefacts, and pyelftools, which reads a linked ELF image for <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">tool</span> <span class="pre">from-elf</span></code>
+and for <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code> given <code class="docutils literal notranslate"><span class="pre">--image</span></code>. All three are installed with it, and nothing else is
+required - in particular no compiler, since DDD writes c code but never builds it.</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>ddd-tool<span class="w">                              </span><span class="c1"># from an index</span>
 pip<span class="w"> </span>install<span class="w"> </span>./ddd_tool-0.11.0-py3-none-any.whl<span class="w">     </span><span class="c1"># from a delivered wheel, no network</span>
 </pre></div>
 </div>
 <p>The second form is the one to use behind a firewall or in an air-gapped build environment: the
-wheel carries everything DDD needs apart from pydantic and jinja2, which have to be reachable
-in some form as well. Once the installation succeeded, the tool answers with the release it
+wheel carries everything DDD needs apart from those three, which have to be reachable in some
+form as well. Once the installation succeeded, the tool answers with the release it
 was built from, and that release is what the header of every generated file mentions:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd --version
 ddd 0.11.0
@@ -161,17 +162,21 @@ documentation ever refers to <code class="docutils literal notranslate"><span cl
 <section id="running-from-a-source-checkout">
 <h3>Running from a source checkout<a class="headerlink" href="#running-from-a-source-checkout" title="Link to this heading"></a></h3>
 <p>The examples of this documentation live in the source distribution rather than in the wheel,
-and while evaluating the tool it is often convenient not to install anything at all. From a
-checkout or an unpacked sdist, the package runs directly out of <code class="docutils literal notranslate"><span class="pre">src</span></code>:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ PYTHONPATH=src python -m ddd --version  # from a checkout of the sources
+and while evaluating the tool it is often convenient not to install it. From a checkout or an
+unpacked sdist, the package runs directly out of <code class="docutils literal notranslate"><span class="pre">src</span></code>, once the runtime dependencies
+<code class="docutils literal notranslate"><span class="pre">requirements.txt</span></code> lists are installed - which installs nothing of DDD itself:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ pip install -r requirements.txt  # pydantic, jinja2 and pyelftools
+$ PYTHONPATH=src python -m ddd --version  # from a checkout of the sources
 ddd 0.11.0
 </pre></div>
 </div>
-<p><code class="docutils literal notranslate"><span class="pre">PYTHONPATH=src</span> <span class="pre">python</span> <span class="pre">-m</span> <span class="pre">ddd</span></code> and <code class="docutils literal notranslate"><span class="pre">ddd</span></code> are the same program invoked in two ways, and
-every command shown below works with either. The transcripts use the installed form for
-readability; if you follow along in a checkout, put <code class="docutils literal notranslate"><span class="pre">PYTHONPATH=src</span> <span class="pre">python</span> <span class="pre">-m</span></code> in front of
-each of them. A checkout also gives you a bigger project to look at than the one built on this
-page - <code class="docutils literal notranslate"><span class="pre">examples/demo/demo.ddd.json</span></code> exercises every kind of data object DDD knows:</p>
+<p>Without them, the version and the help still answer, and <code class="docutils literal notranslate"><span class="pre">check</span></code> fails, naming the
+<code class="docutils literal notranslate"><span class="pre">pydantic</span></code> it cannot import. With them, <code class="docutils literal notranslate"><span class="pre">PYTHONPATH=src</span> <span class="pre">python</span> <span class="pre">-m</span> <span class="pre">ddd</span></code> and <code class="docutils literal notranslate"><span class="pre">ddd</span></code> are the
+same program invoked in two ways, and every command shown below works with either. The
+transcripts use the installed form for readability; if you follow along in a checkout, put
+<code class="docutils literal notranslate"><span class="pre">PYTHONPATH=src</span> <span class="pre">python</span> <span class="pre">-m</span></code> in front of each of them. A checkout also gives you a bigger project
+to look at than the one built on this page - <code class="docutils literal notranslate"><span class="pre">examples/demo/demo.ddd.json</span></code> exercises every
+kind of data object DDD knows:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check examples/demo/demo.ddd.json
 ok: 23 variables in 4 components are consistent
 </pre></div>

@@ -691,7 +691,7 @@ class TestAPlansLinesComeFromItsSpans:
     def test_a_file_a_plan_creates_is_its_whole_text_without_difflib(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from ddd.lsp.units import PlannedEdit
+        from ddd.plans import PlannedEdit
         from ddd.project_units import previewed
 
         def refused(*arguments: object, **keywords: object) -> None:

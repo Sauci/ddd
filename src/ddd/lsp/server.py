@@ -112,13 +112,12 @@ from ddd.lsp.protocol import (
 )
 from ddd.lsp.ranges import Document, differs_from_disk, lines_differ, read
 from ddd.lsp.units import (
-    UnitPlan,
-    UnitRefusalError,
     rename_unit,
     text_edits,
     unit_drift,
     unit_project,
 )
+from ddd.plans import Plan, PlanRefusalError
 
 _DID_OPEN: Final = "textDocument/didOpen"
 _DID_CHANGE: Final = "textDocument/didChange"
@@ -1550,7 +1549,7 @@ class Server:
             project = unit_project(loaded.path, loaded.unloaded, cache)
             try:
                 plan = rename_unit(built, project, old, new, cache)
-            except UnitRefusalError as unplanned:
+            except PlanRefusalError as unplanned:
                 return self._in_image(reach, loaded, unplanned.message)
             if new in built.vocabulary:
                 listing.add(loaded.path.resolve())
@@ -1572,7 +1571,7 @@ class Server:
 
     @staticmethod
     def _rendered(
-        plan: UnitPlan, cache: dict[Path, Document]
+        plan: Plan, cache: dict[Path, Document]
     ) -> tuple[dict[str, list[dict[str, Any]]], set[Path]]:
         """A unit's plan as text edits by file uri, made file by file, and the files whose text the
         edit engine cannot make it in.
@@ -1592,7 +1591,7 @@ class Server:
         unmade: set[Path] = set()
         for planned in plan.edits:
             try:
-                edits.update(text_edits(UnitPlan((planned,)), cache))
+                edits.update(text_edits(Plan((planned,)), cache))
             except EditError:
                 unmade.add(planned.path)
         return edits, unmade

@@ -22,7 +22,8 @@ from ddd.finding_routes import UNIT_CHECKS
 from ddd.findings_by_file import FindingsByFile, Pair
 from ddd.lsp.navigation import Index, Site, UnitSite
 from ddd.lsp.ranges import Document, read
-from ddd.lsp.units import PlannedEdit, UnitProject, UnitRefusalError, adoption, listing_files
+from ddd.lsp.units import UnitProject, adoption, listing_files
+from ddd.plans import PlannedEdit, PlanRefusalError
 from ddd.variables import Planned, declarations_of, lines_replaced, planned, role_of
 
 
@@ -239,7 +240,7 @@ def adoptable(built: Index | None, project: Callable[[], UnitProject]) -> int | 
         return None
     try:
         planned = adoption(built, project())
-    except UnitRefusalError:
+    except PlanRefusalError:
         return None
     if planned is None:
         return 0
@@ -254,8 +255,8 @@ def previewed(
     """The edit a plan comes to, file by file in the plan's order, and the lines it changes in
     each - made by the edit engine in memory and never written.
 
-    Takes a plan's edits rather than the plan itself, so that a :class:`~ddd.type_plans.TypePlan`
-    and a :class:`~ddd.lsp.units.UnitPlan` - two different dataclasses sharing one shape - are
+    Takes a plan's edits rather than the plan itself, so that a :class:`~ddd.plans.Plan` - every
+    tab's but the Files tab's - and the Files tab's plan, which carries more beside its edits, are
     both previewed by the one function, instead of each tab writing its own copy of it.
 
     A file the plan changes carries the fingerprint the analysis read it at, from

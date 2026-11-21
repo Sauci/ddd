@@ -71,7 +71,6 @@ from ddd.lsp.navigation import Index, Site, renameable_at
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import (
     UnitProject,
-    UnitRefusalError,
     add_unit,
     engine_edit,
     rename_unit,
@@ -86,6 +85,7 @@ from ddd.models import (
     scalar_conversion,
 )
 from ddd.models.objects import FIXED_BY_A_TYPE, STORAGE_NAMES, storage_keys
+from ddd.plans import PlanRefusalError
 from ddd.value_identity import same_value
 
 PROPAGATED_KEYS: Final = frozenset(
@@ -620,7 +620,7 @@ def _renamed_in(
         return None
     try:
         return text_edits(rename_unit(built, project, unit, new, cache), cache)
-    except (UnitRefusalError, EditError):
+    except (PlanRefusalError, EditError):
         return None
 
 
@@ -803,7 +803,7 @@ def _vocabulary_actions(
     for built, project in planning:
         # Refused, or not an edit the engine can make in the buffer as it stands - a units file
         # caught halfway through an edit: either way there is nothing to offer.
-        with contextlib.suppress(UnitRefusalError, EditError):
+        with contextlib.suppress(PlanRefusalError, EditError):
             added.append(text_edits(add_unit(built, project, unit, cache), cache))
     plans: list[tuple[str, dict[str, list[dict[str, Any]]] | None]] = []
     if added and all(changes == added[0] for changes in added):

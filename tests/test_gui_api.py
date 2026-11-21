@@ -6912,7 +6912,7 @@ class TestConstant:
         before = contents(root)
         preview = get(api, "/api/constant-plan", action="add", name="NEW_CONST", raw="5").body
         assert contents(root) == before
-        # Sorted by path, as `SharedPlan` promises: "constants.ddd.json" sorts before
+        # Sorted by path, as `Plan` promises: "constants.ddd.json" sorts before
         # "p.ddd.json" beside it, unlike the units precedent this test is modelled on, where the
         # project file happens to sort first - so the two are told apart here by which one has a
         # fingerprint rather than by position.

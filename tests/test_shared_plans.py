@@ -17,13 +17,11 @@ from ddd.gui.session import Session
 from ddd.loading import included_files, load_workspace
 from ddd.lsp.navigation import Index, index
 from ddd.lsp.ranges import Document
-from ddd.lsp.units import PlannedEdit
+from ddd.plans import Plan, PlannedEdit, PlanRefusalError
 from ddd.project_shared import RASTERS, SECTIONS, Vocabulary
 from ddd.shared_plans import (
     CONSTANTS_FILE,
-    SharedPlan,
     SharedProject,
-    SharedRefusalError,
     _raw,
     add_entry,
     project_of,
@@ -159,8 +157,8 @@ def test_the_file_a_project_without_one_gets_is_named_for_what_it_holds() -> Non
 
 
 def test_a_refusal_carries_its_code_and_its_sentence() -> None:
-    with pytest.raises(SharedRefusalError) as raised:
-        raise SharedRefusalError("invalid", "'X' is already declared")
+    with pytest.raises(PlanRefusalError) as raised:
+        raise PlanRefusalError("invalid", "'X' is already declared")
     assert (raised.value.code, raised.value.message) == ("invalid", "'X' is already declared")
 
 
@@ -169,7 +167,7 @@ def _index(tmp_path: Path, files: Mapping[str, Any]) -> Index:
     return built_of(tmp_path, **files)[0]
 
 
-def _made(plan: SharedPlan) -> None:
+def _made(plan: Plan) -> None:
     """Every edit of the plan made on disk by the edit engine, as `POST /api/edit` makes it, so
     that what a removal leaves can be loaded rather than only read off its operations."""
     for edit in plan.edits:
@@ -323,7 +321,7 @@ class TestSettingAKey:
         have emptied itself in one press."""
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
-        with pytest.raises(SharedRefusalError) as raised:
+        with pytest.raises(PlanRefusalError) as raised:
             set_entry(project_shared.CONSTANTS, built, "TREND_SAMPLES", "value", None, cache)
         assert raised.value.code == "invalid"
         assert "c.ddd.json" in raised.value.message
@@ -343,12 +341,12 @@ class TestSettingAKey:
         cache: dict[Path, Document] = {}
         assert set_entry(
             project_shared.CONSTANTS, built, "CELLS", "description", None, cache
-        ) == SharedPlan(())
+        ) == Plan(())
 
     def test_a_key_a_constant_has_not_is_refused(self, tmp_path: Path) -> None:
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
-        with pytest.raises(SharedRefusalError) as raised:
+        with pytest.raises(PlanRefusalError) as raised:
             set_entry(project_shared.CONSTANTS, built, "TREND_SAMPLES", "unit", '"rpm"', cache)
         assert raised.value.code == "invalid"
         assert "description" in raised.value.message and "value" in raised.value.message
@@ -357,19 +355,19 @@ class TestSettingAKey:
         assert "'unit'" in raised.value.message
 
     def test_a_key_a_constant_has_not_names_the_file_it_concerns(self, tmp_path: Path) -> None:
-        """Every refusal names the file it concerns, the way `UnitRefusalError`'s docstring
+        """Every refusal names the file it concerns, the way `PlanRefusalError`'s docstring
         requires of the units plans - this key is not one an entry has, but the entry is still
         the reader's own, in a file the reader can open."""
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
-        with pytest.raises(SharedRefusalError) as raised:
+        with pytest.raises(PlanRefusalError) as raised:
             set_entry(project_shared.CONSTANTS, built, "TREND_SAMPLES", "unit", '"rpm"', cache)
         assert "c.ddd.json" in raised.value.message
 
     def test_a_name_no_file_declares_is_not_found(self, tmp_path: Path) -> None:
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
-        with pytest.raises(SharedRefusalError) as raised:
+        with pytest.raises(PlanRefusalError) as raised:
             set_entry(project_shared.CONSTANTS, built, "NOTHING", "value", "1", cache)
         assert raised.value.code == "not-found"
 
@@ -382,7 +380,7 @@ class TestSettingAKey:
         interface and the loader cannot disagree about what a constant may hold."""
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
-        with pytest.raises(SharedRefusalError) as raised:
+        with pytest.raises(PlanRefusalError) as raised:
             set_entry(project_shared.CONSTANTS, built, "TREND_SAMPLES", "value", raw, cache)
         assert raised.value.code == "invalid"
 
@@ -407,7 +405,7 @@ class TestSettingAKey:
         closed the same way for `description`."""
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
-        with pytest.raises(SharedRefusalError) as raised:
+        with pytest.raises(PlanRefusalError) as raised:
             set_entry(project_shared.CONSTANTS, built, "TREND_SAMPLES", "description", raw, cache)
         assert raised.value.code == "invalid"
         assert "c.ddd.json" in raised.value.message
@@ -488,7 +486,7 @@ class TestRemoving:
         that is the mistake part 11 filed against `variable_keys._storage_of`."""
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
-        with pytest.raises(SharedRefusalError) as raised:
+        with pytest.raises(PlanRefusalError) as raised:
             remove_entry(project_shared.CONSTANTS, built, "TREND_SAMPLES", cache)
         assert raised.value.code == "invalid"
         assert "a.ddd.json" in raised.value.message
@@ -501,7 +499,7 @@ class TestRemoving:
         and applied with `ddd check` clean: the condition then read a name nothing defines, which
         `#if` takes for 0, and compiled its object out from that build on."""
         built = _index(tmp_path, _UNDER_CONDITIONS)
-        with pytest.raises(SharedRefusalError) as raised:
+        with pytest.raises(PlanRefusalError) as raised:
             remove_entry(project_shared.CONSTANTS, built, "UNUSED", {})
         assert (raised.value.code, raised.value.message) == (
             "invalid",
@@ -514,7 +512,7 @@ class TestRemoving:
         wording proves both counts ship - `TWO_HOMES` alone only ever puts one shape on a name."""
         built = _index(tmp_path, _TWO_USES)
         cache: dict[Path, Document] = {}
-        with pytest.raises(SharedRefusalError) as raised:
+        with pytest.raises(PlanRefusalError) as raised:
             remove_entry(project_shared.CONSTANTS, built, "TREND_SAMPLES", cache)
         assert "has 2 uses," in raised.value.message
         # The message names *the first* blocking shape. `a.ddd.json` comes before `b.ddd.json`
@@ -525,7 +523,7 @@ class TestRemoving:
     def test_a_name_no_file_declares_is_not_found(self, tmp_path: Path) -> None:
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
-        with pytest.raises(SharedRefusalError) as raised:
+        with pytest.raises(PlanRefusalError) as raised:
             remove_entry(project_shared.CONSTANTS, built, "NOTHING", cache)
         assert raised.value.code == "not-found"
 
@@ -627,7 +625,7 @@ class TestRenaming:
         variables are recorded under, `Trend` among them here but not asked for."""
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
-        with pytest.raises(SharedRefusalError) as raised:
+        with pytest.raises(PlanRefusalError) as raised:
             rename_entry(project_shared.CONSTANTS, built, "TREND_SAMPLES", to, cache)
         assert raised.value.code == "invalid"
         assert because in raised.value.message
@@ -635,7 +633,7 @@ class TestRenaming:
     def test_a_name_no_file_declares_is_not_found(self, tmp_path: Path) -> None:
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
-        with pytest.raises(SharedRefusalError) as raised:
+        with pytest.raises(PlanRefusalError) as raised:
             rename_entry(project_shared.CONSTANTS, built, "NOTHING", "SOMETHING", cache)
         assert raised.value.code == "not-found"
 
@@ -690,7 +688,7 @@ MOVED: dict[str, Moved] = {
     ),
 }
 
-VERBS: dict[str, tuple[Callable[[Moved, Index], SharedPlan], str]] = {
+VERBS: dict[str, tuple[Callable[[Moved, Index], Plan], str]] = {
     "set": (
         lambda moved, built: set_entry(
             moved.vocabulary, built, moved.name, moved.key, moved.raw, {}
@@ -724,7 +722,7 @@ class TestAnEntryMovedSinceTheIndex:
         built = _index(tmp_path, {moved.file: {container: moved.entries}})
         write_tree(tmp_path, {moved.file: {container: [moved.above, *moved.entries]}})
         plan, consequence = VERBS[verb]
-        with pytest.raises(SharedRefusalError) as raised:
+        with pytest.raises(PlanRefusalError) as raised:
             plan(moved, built)
         assert (raised.value.code, raised.value.message) == (
             "stale",
@@ -746,7 +744,7 @@ class TestAnEntryMovedSinceTheIndex:
                 }
             },
         )
-        with pytest.raises(SharedRefusalError) as raised:
+        with pytest.raises(PlanRefusalError) as raised:
             rename_entry(project_shared.CONSTANTS, built, "TREND_SAMPLES", "TREND_SLOTS", {})
         assert (raised.value.code, raised.value.message) == (
             "stale",
@@ -776,7 +774,7 @@ class TestAnEntryMovedSinceTheIndex:
                 )
             },
         )
-        with pytest.raises(SharedRefusalError) as raised:
+        with pytest.raises(PlanRefusalError) as raised:
             rename_entry(project_shared.CONSTANTS, built, "UNUSED", "SPARE", {})
         assert (raised.value.code, raised.value.message) == (
             "stale",
@@ -958,7 +956,7 @@ class TestDeclaringOne:
         write_tree(tmp_path, {"constants.ddd.json": "not a description"})
         cache: dict[Path, Document] = {}
         found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
-        with pytest.raises(SharedRefusalError) as raised:
+        with pytest.raises(PlanRefusalError) as raised:
             add_entry(
                 project_shared.CONSTANTS,
                 built,
@@ -988,7 +986,7 @@ class TestDeclaringOne:
         cache: dict[Path, Document] = {}
         found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
         assert found.files == ()
-        with pytest.raises(SharedRefusalError) as raised:
+        with pytest.raises(PlanRefusalError) as raised:
             add_entry(
                 project_shared.CONSTANTS,
                 built,
@@ -1036,7 +1034,7 @@ class TestDeclaringOne:
         found = project_of(
             project_shared.CONSTANTS, tmp_path / "p.ddd.json", [tmp_path / "c.ddd.json"], cache
         )
-        with pytest.raises(SharedRefusalError) as raised:
+        with pytest.raises(PlanRefusalError) as raised:
             add_entry(
                 project_shared.CONSTANTS,
                 built,
@@ -1052,7 +1050,7 @@ class TestDeclaringOne:
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
         found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
-        with pytest.raises(SharedRefusalError) as raised:
+        with pytest.raises(PlanRefusalError) as raised:
             add_entry(
                 project_shared.CONSTANTS,
                 built,
@@ -1083,7 +1081,7 @@ class TestDeclaringOne:
         cache: dict[Path, Document] = {}
         found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
         assert not found.files
-        with pytest.raises(SharedRefusalError) as raised:
+        with pytest.raises(PlanRefusalError) as raised:
             add_entry(
                 project_shared.CONSTANTS,
                 built,
@@ -1098,7 +1096,7 @@ class TestDeclaringOne:
         built = _index(tmp_path, TWO_HOMES)
         cache: dict[Path, Document] = {}
         found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
-        with pytest.raises(SharedRefusalError) as raised:
+        with pytest.raises(PlanRefusalError) as raised:
             add_entry(
                 project_shared.CONSTANTS,
                 built,
@@ -1118,7 +1116,7 @@ class TestDeclaringOne:
         built = _index(tmp_path, files)
         cache: dict[Path, Document] = {}
         found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
-        with pytest.raises(SharedRefusalError) as raised:
+        with pytest.raises(PlanRefusalError) as raised:
             add_entry(
                 project_shared.CONSTANTS,
                 built,
@@ -1225,10 +1223,10 @@ class TestTheDescriptorsVerbs:
         # The whole expected plan spelled out - the file it lands in, the pointer inside it, and
         # the json text as written - rather than anything derived from another call of the verb
         # under test. Every part of the answer is stated here independently, so `set_entry`
-        # ablated to `return SharedPlan(())`, or to an edit of the wrong file or the wrong key,
+        # ablated to `return Plan(())`, or to an edit of the wrong file or the wrong key,
         # fails this line. Comparing one call against another cannot say any of that: it holds
         # whatever the function does today, which is the shape of an assertion that never fails.
-        assert plan == SharedPlan(
+        assert plan == Plan(
             (
                 PlannedEdit(
                     (tmp_path / "c.ddd.json").resolve(),
@@ -1246,7 +1244,7 @@ class TestTheDescriptorsVerbs:
         # component's `constants` key away while `Cells` still names what it held.
         built, _root = built_of(tmp_path, **SOLE_AND_NAMED)
         cache: dict[Path, Document] = {}
-        with pytest.raises(SharedRefusalError) as raised:
+        with pytest.raises(PlanRefusalError) as raised:
             remove_entry(project_shared.CONSTANTS, built, "CELLS", cache)
         assert raised.value.code == "invalid"
         assert "'CELLS' has 1 use, the first in a.ddd.json" in raised.value.message
@@ -1259,7 +1257,7 @@ class TestTheDescriptorsVerbs:
         built, _root = built_of(tmp_path, **TWO_HOMES)
         cache: dict[Path, Document] = {}
         found = project_of(project_shared.CONSTANTS, tmp_path / "p.ddd.json", (), cache)
-        with pytest.raises(SharedRefusalError) as raised:
+        with pytest.raises(PlanRefusalError) as raised:
             add_entry(
                 project_shared.CONSTANTS,
                 built,
@@ -1308,7 +1306,7 @@ class TestSectionRefusals:
         # here through the api whatever the panel's chooser offers.
         built, _root = built_of(tmp_path, **PLACED)
         cache: dict[Path, Document] = {}
-        with pytest.raises(SharedRefusalError) as raised:
+        with pytest.raises(PlanRefusalError) as raised:
             set_entry(SECTIONS, built, ".calib", key, raw, cache)
         assert raised.value.code == "invalid"
         assert "s.ddd.json" in raised.value.message
@@ -1321,7 +1319,7 @@ class TestSectionRefusals:
         which `test_add_refuses_a_raw_key_the_vocabulary_does_not_have` above pins."""
         built, _root = built_of(tmp_path, **PLACED)
         cache: dict[Path, Document] = {}
-        with pytest.raises(SharedRefusalError) as raised:
+        with pytest.raises(PlanRefusalError) as raised:
             set_entry(SECTIONS, built, ".calib", "value", "1", cache)
         assert raised.value.code == "invalid"
         assert raised.value.message == (
@@ -1343,7 +1341,7 @@ class TestSectionRefusals:
         docstring says the required check exists to prevent."""
         built, _root = built_of(tmp_path, **PLACED)
         cache: dict[Path, Document] = {}
-        with pytest.raises(SharedRefusalError) as raised:
+        with pytest.raises(PlanRefusalError) as raised:
             set_entry(SECTIONS, built, ".calib", key, None, cache)
         assert raised.value.code == "invalid"
         assert f"states an {key}" in raised.value.message
@@ -1355,7 +1353,7 @@ class TestSectionRefusals:
         alignment would be refused too and the three cases above would still pass."""
         built, _root = built_of(tmp_path, **PLACED)
         cache: dict[Path, Document] = {}
-        assert set_entry(SECTIONS, built, ".calib", "alignment", "8", cache) == SharedPlan(
+        assert set_entry(SECTIONS, built, ".calib", "alignment", "8", cache) == Plan(
             (
                 PlannedEdit(
                     (tmp_path / "s.ddd.json").resolve(),
@@ -1374,14 +1372,14 @@ class TestSectionRefusals:
         `test_a_key_the_model_gives_no_default_may_not_be_taken_away` above, for both keys."""
         built, _root = built_of(tmp_path, **PLACED)
         cache: dict[Path, Document] = {}
-        with pytest.raises(SharedRefusalError) as judged:
+        with pytest.raises(PlanRefusalError) as judged:
             set_entry(SECTIONS, built, ".calib", "alignment", "3", cache)
         assert "3 is not an alignment a section may state" in judged.value.message
 
     def test_a_name_the_pattern_refuses_is_refused(self, tmp_path: Path) -> None:
         built, _root = built_of(tmp_path, **PLACED)
         cache: dict[Path, Document] = {}
-        with pytest.raises(SharedRefusalError) as raised:
+        with pytest.raises(PlanRefusalError) as raised:
             rename_entry(SECTIONS, built, ".calib", ".cal ib", cache)
         assert raised.value.code == "invalid"
 
@@ -1392,7 +1390,7 @@ class TestSectionRefusals:
         The interface can see the name is taken and the reader can pick another."""
         built, _root = built_of(tmp_path, **TWO_SECTIONS)
         cache: dict[Path, Document] = {}
-        with pytest.raises(SharedRefusalError) as raised:
+        with pytest.raises(PlanRefusalError) as raised:
             rename_entry(SECTIONS, built, ".calib", ".nvm", cache)
         assert raised.value.code == "invalid"
         assert "already" in raised.value.message
@@ -1425,7 +1423,7 @@ class TestSectionRefusals:
         plan = add_entry(
             SECTIONS, built, found, ".fresh", {"access": '"read-write"', "alignment": "8"}, cache
         )
-        assert plan == SharedPlan(
+        assert plan == Plan(
             (
                 PlannedEdit(
                     (tmp_path / "s.ddd.json").resolve(),
@@ -1475,7 +1473,7 @@ class TestSectionRefusals:
         `unknown-section` apiece, in files the reader was not looking at."""
         built, _root = built_of(tmp_path, **PLACED)
         cache: dict[Path, Document] = {}
-        assert rename_entry(SECTIONS, built, ".calib", ".nvm", cache) == SharedPlan(
+        assert rename_entry(SECTIONS, built, ".calib", ".nvm", cache) == Plan(
             (
                 PlannedEdit(
                     (tmp_path / "a.ddd.json").resolve(),
@@ -1607,7 +1605,7 @@ class TestRasterRefusals:
         layer's rewording has to get past."""
         built, _root = built_of(tmp_path, **TIMED)
         cache: dict[Path, Document] = {}
-        with pytest.raises(SharedRefusalError) as raised:
+        with pytest.raises(PlanRefusalError) as raised:
             set_entry(RASTERS, built, "10ms", key, raw, cache)
         assert raised.value.code == "invalid"
         assert raised.value.message == says
@@ -1620,7 +1618,7 @@ class TestRasterRefusals:
         refused by a rule about a key nobody set."""
         built, _root = built_of(tmp_path, **TIMED)
         cache: dict[Path, Document] = {}
-        assert set_entry(RASTERS, built, "10ms", "event", "2", cache) == SharedPlan(
+        assert set_entry(RASTERS, built, "10ms", "event", "2", cache) == Plan(
             (
                 PlannedEdit(
                     (tmp_path / "r.ddd.json").resolve(),
@@ -1637,7 +1635,7 @@ class TestRasterRefusals:
         than an omission - `cycle` is `str | None`, and an event that is not cyclic says so."""
         built, _root = built_of(tmp_path, **TIMED)
         cache: dict[Path, Document] = {}
-        assert set_entry(RASTERS, built, "10ms", "cycle", raw, cache) == SharedPlan(
+        assert set_entry(RASTERS, built, "10ms", "cycle", raw, cache) == Plan(
             (
                 PlannedEdit(
                     (tmp_path / "r.ddd.json").resolve(),
@@ -1652,7 +1650,7 @@ class TestRasterRefusals:
         channel, so the interface refuses."""
         built, _root = built_of(tmp_path, **TWO_RASTERS)
         cache: dict[Path, Document] = {}
-        with pytest.raises(SharedRefusalError) as raised:
+        with pytest.raises(PlanRefusalError) as raised:
             set_entry(RASTERS, built, "10ms", "event", "2", cache)
         assert raised.value.code == "invalid"
         assert raised.value.message == "event 2 is already claimed by raster '20ms'"
@@ -1675,7 +1673,7 @@ class TestRasterRefusals:
         built, _root = built_of(tmp_path, **TWO_RASTERS)
         cache: dict[Path, Document] = {}
         found = project_of(RASTERS, tmp_path / "p.ddd.json", (), cache)
-        with pytest.raises(SharedRefusalError) as raised:
+        with pytest.raises(PlanRefusalError) as raised:
             add_entry(RASTERS, built, found, "5ms", {"event": "2"}, cache)
         assert raised.value.code == "invalid"
         assert raised.value.message == "event 2 is already claimed by raster '20ms'"
@@ -1711,7 +1709,7 @@ class TestRasterRefusals:
         default - and every tab in the page empties over one keystroke in this one."""
         built, _root = built_of(tmp_path, **TIMED)
         cache: dict[Path, Document] = {}
-        with pytest.raises(SharedRefusalError) as raised:
+        with pytest.raises(PlanRefusalError) as raised:
             set_entry(RASTERS, built, "10ms", "event", None, cache)
         assert raised.value.code == "invalid"
         assert raised.value.message == (
@@ -1726,7 +1724,7 @@ class TestRasterRefusals:
         `raster` begins with a consonant, so the article here is `a` either way."""
         built, _root = built_of(tmp_path, **TIMED)
         cache: dict[Path, Document] = {}
-        with pytest.raises(SharedRefusalError) as raised:
+        with pytest.raises(PlanRefusalError) as raised:
             set_entry(RASTERS, built, "10ms", "value", "1", cache)
         assert raised.value.code == "invalid"
         assert raised.value.message == (
@@ -1740,7 +1738,7 @@ class TestRasterRefusals:
         another's channel."""
         built, _root = built_of(tmp_path, **TWO_RASTERS)
         cache: dict[Path, Document] = {}
-        with pytest.raises(SharedRefusalError) as raised:
+        with pytest.raises(PlanRefusalError) as raised:
             rename_entry(RASTERS, built, "10ms", "20ms", cache)
         assert raised.value.code == "invalid"
         assert raised.value.message == "'20ms' is already a raster this project declares"
@@ -1777,7 +1775,7 @@ class TestRasterRefusals:
             {"description": '"fast task"', "event": "3", "cycle": '"5ms"'},
             cache,
         )
-        assert plan == SharedPlan(
+        assert plan == Plan(
             (
                 PlannedEdit(
                     (tmp_path / "r.ddd.json").resolve(),
@@ -1824,7 +1822,7 @@ class TestRasterRefusals:
         default is a shape neither of the other two vocabularies has."""
         built, _root = built_of(tmp_path, **TIMED)
         cache: dict[Path, Document] = {}
-        assert rename_entry(RASTERS, built, "10ms", "5ms", cache) == SharedPlan(
+        assert rename_entry(RASTERS, built, "10ms", "5ms", cache) == Plan(
             (
                 PlannedEdit(
                     (tmp_path / "a.ddd.json").resolve(),

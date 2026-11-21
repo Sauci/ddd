@@ -24,6 +24,14 @@ verb. The constants-named bindings that carried the api across that change -
 ``shared_project`` - are gone: the api asks for the verb and the vocabulary it means, so a
 project's sections are planned by the same five functions and neither client can get a different
 answer for the two.
+
+Each verb answers a :class:`~ddd.plans.Plan`, one edit per file, sorted by path, as the interface
+applies them, or raises a :class:`~ddd.plans.PlanRefusalError`, in a sentence naming the file it
+concerns: ``unreadable`` where a file the change has to see did not load; ``invalid`` where the
+change cannot be made - a key a constant has not, a name that may not be used, a constant a shape
+or a condition still names; ``not-found`` where no file of the project declares an entry of that
+name; ``stale`` where a file the change points into no longer holds the entry, or a shape or a
+condition naming it, where the index found it, having changed since the analysis read it.
 """
 
 from __future__ import annotations
@@ -32,7 +40,7 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Final, Literal
+from typing import Any, Final
 
 from ddd.editing import Operation
 from ddd.loading import included_files, resolve_path
@@ -46,7 +54,8 @@ from ddd.lsp.navigation import (
     word_spans,
 )
 from ddd.lsp.ranges import Document, read
-from ddd.lsp.units import PlannedEdit, appended_at, created_beside
+from ddd.lsp.units import appended_at, created_beside
+from ddd.plans import Plan, PlannedEdit, PlanRefusalError
 from ddd.pointers import parent_pointer
 from ddd.project_shared import CONSTANTS, Vocabulary, entry_in_place
 
@@ -93,34 +102,6 @@ class SharedProject:
 
     unread: tuple[Path, ...]
     """The project's files that did not load, resolved and sorted."""
-
-
-@dataclass(frozen=True, slots=True)
-class SharedPlan:
-    """Everything one change of an entry takes: one edit per file, sorted by path."""
-
-    edits: tuple[PlannedEdit, ...]
-
-
-class SharedRefusalError(Exception):
-    """A change of an entry that cannot be planned, and the code both clients refuse it with."""
-
-    code: Literal["unreadable", "invalid", "not-found", "stale"]
-    """``unreadable``: a file the change has to see did not load. ``invalid``: the change cannot
-    be made - a key a constant has not, a name that may not be used, a constant a shape or a
-    condition still names. ``not-found``: no file of the project declares a constant of that name.
-    ``stale``: a file the change points into no longer holds the entry, or a shape or a condition
-    naming it, where the index found it, having changed since the analysis read it."""
-
-    message: str
-    """The sentence the refusal is shown with, naming the file it concerns."""
-
-    def __init__(
-        self, code: Literal["unreadable", "invalid", "not-found", "stale"], message: str
-    ) -> None:
-        super().__init__(message)
-        self.code = code
-        self.message = message
 
 
 def project_of(
@@ -172,7 +153,7 @@ def set_entry(
     key: str,
     raw: str | None,
     cache: dict[Path, Document],
-) -> SharedPlan:
+) -> Plan:
     """``key`` of that entry of ``vocabulary`` set to the json text ``raw``, or taken away where
     ``raw`` is ``None``.
 
@@ -213,13 +194,13 @@ def set_entry(
     _in_place(vocabulary, built, name, cache, f"'{name}' cannot be changed")
     if raw is None:
         if key in vocabulary.required:
-            raise SharedRefusalError(
+            raise PlanRefusalError(
                 "invalid",
                 f"{_article(vocabulary.kind)} {vocabulary.kind} states {_article(key)} {key}, so "
                 f"'{name}' cannot be left without one in {entry.path.name}",
             )
         if read(entry.path, cache).value_at(f"{entry.pointer}.{key}") is None:
-            return SharedPlan(())
+            return Plan(())
         return _plan({entry.path: [Operation("remove", f"{entry.pointer}.{key}")]})
     _judged(vocabulary, key, raw, name, entry.path)
     _untaken(vocabulary, built, name, key, raw, cache)
@@ -228,7 +209,7 @@ def set_entry(
 
 def rename_entry(
     vocabulary: Vocabulary, built: Index, name: str, to: str, cache: dict[Path, Document]
-) -> SharedPlan:
+) -> Plan:
     """What renaming that entry of ``vocabulary`` takes: its own ``name``, every shape spelling it,
     and the word of every condition spelling a constant.
 
@@ -250,12 +231,12 @@ def rename_entry(
     _entry(vocabulary, built, name)
     problem = vocabulary.taken[vocabulary.name_key](built, name, to, cache)
     if problem is not None:
-        raise SharedRefusalError("invalid", problem)
+        raise PlanRefusalError("invalid", problem)
     sites = rename_sites(built, vocabulary.kind, name)
     conditions = conditions_spelling(built, vocabulary.kind, name)
     moved = drift(sites, name, cache, conditions)
     if moved:
-        raise SharedRefusalError(
+        raise PlanRefusalError(
             "stale", changed_since(moved, f"renaming '{name}' cannot be planned")
         )
     by_file: dict[Path, list[Operation]] = {}
@@ -274,7 +255,7 @@ def add_entry(
     name: str,
     raws: Mapping[str, str],
     cache: dict[Path, Document],
-) -> SharedPlan:
+) -> Plan:
     """``name`` declared with ``raws`` - one json text per key of ``vocabulary`` - appended to the
     first of the vocabulary's own files the project includes, or written into a new one beside the
     project description where it includes none.
@@ -326,10 +307,10 @@ def add_entry(
     """
     problem = vocabulary.taken[vocabulary.name_key](built, None, name, cache)
     if problem is not None:
-        raise SharedRefusalError("invalid", problem)
+        raise PlanRefusalError("invalid", problem)
     if not project.files:
         if project.untellable:
-            raise SharedRefusalError(
+            raise PlanRefusalError(
                 "unreadable",
                 f"{_names(project.untellable)} did not parse, so whether this project already "
                 f"keeps its {vocabulary.kind}s there is unknown and '{name}' cannot be declared "
@@ -338,7 +319,7 @@ def add_entry(
         return _created(vocabulary, project, name, raws, cache)
     file = project.files[0]
     if file in project.unread:
-        raise SharedRefusalError(
+        raise PlanRefusalError(
             "unreadable",
             f"{file.name} did not load, so what it declares is unknown and '{name}' cannot be "
             "added to it",
@@ -357,7 +338,7 @@ def add_entry(
 
 def remove_entry(
     vocabulary: Vocabulary, built: Index, name: str, cache: dict[Path, Document]
-) -> SharedPlan:
+) -> Plan:
     """That entry of ``vocabulary`` taken out of the list holding it - or, where that list is
     nested and the entry is its last, the key holding the list.
 
@@ -406,7 +387,7 @@ def remove_entry(
     # every shape naming the entry naming nothing - and this refusal names a place the reader can
     # go to and undo.
     if used:
-        raise SharedRefusalError(
+        raise PlanRefusalError(
             "invalid",
             f"'{name}' has {_plural(len(used), 'use')}, the first in {used[0].path.name}; "
             "nothing may name it before it goes",
@@ -424,7 +405,7 @@ def _entry(vocabulary: Vocabulary, built: Index, name: str) -> Site:
     """Where that entry of ``vocabulary`` is declared, or a refusal saying nothing declares it."""
     entry = vocabulary.entries(built).get(name)
     if entry is None:
-        raise SharedRefusalError(
+        raise PlanRefusalError(
             "not-found",
             f"no file of this project declares {_article(vocabulary.kind)} {vocabulary.kind} "
             f"called '{name}'",
@@ -443,7 +424,7 @@ def _in_place(
     """
     if not entry_in_place(vocabulary, built, name, cache):
         where = vocabulary.entries(built)[name].path
-        raise SharedRefusalError("stale", changed_since((where,), consequence))
+        raise PlanRefusalError("stale", changed_since((where,), consequence))
 
 
 def _settable(vocabulary: Vocabulary, key: str, file: Path) -> None:
@@ -461,7 +442,7 @@ def _settable(vocabulary: Vocabulary, key: str, file: Path) -> None:
     alignment and description" for the first that has three.
     """
     if key not in vocabulary.keys:
-        raise SharedRefusalError(
+        raise PlanRefusalError(
             "invalid",
             f"{_article(vocabulary.kind)} {vocabulary.kind} has no '{key}' to set in "
             f"{file.name}: it states {_listed(sorted(vocabulary.keys))}",
@@ -481,7 +462,7 @@ def _judged(vocabulary: Vocabulary, key: str, raw: str, name: str, file: Path) -
     try:
         judgement.adapter.validate_python(json.loads(raw))
     except (ValueError, TypeError) as refused:
-        raise SharedRefusalError(
+        raise PlanRefusalError(
             "invalid",
             f"{raw} is not {_article(key)} {key} {_article(vocabulary.kind)} {vocabulary.kind} "
             f"may state, so '{name}' cannot take it in {file.name}: {judgement.tail}",
@@ -526,13 +507,13 @@ def _untaken(
     problem = judge(built, entry, raw, cache)
     if problem is None:
         return
-    raise SharedRefusalError("invalid", problem)
+    raise PlanRefusalError("invalid", problem)
 
 
-def _plan(operations: Mapping[Path, Sequence[Operation]]) -> SharedPlan:
-    """One edit per file, sorted by path, as :class:`SharedPlan` promises and the interface applies
-    them."""
-    return SharedPlan(
+def _plan(operations: Mapping[Path, Sequence[Operation]]) -> Plan:
+    """One edit per file, sorted by path, as :class:`~ddd.plans.Plan` promises and the interface
+    applies them."""
+    return Plan(
         tuple(
             PlannedEdit(path, tuple(operations[path]))
             for path in sorted(operations, key=Path.as_posix)
@@ -633,7 +614,7 @@ def _created(
     name: str,
     raws: Mapping[str, str],
     cache: dict[Path, Document],
-) -> SharedPlan:
+) -> Plan:
     """The file of ``vocabulary`` a project without one gets, and the ``includes`` entry naming
     it.
 
@@ -645,7 +626,7 @@ def _created(
     """
     created = project.project.parent / vocabulary.filename
     if created.exists():
-        raise SharedRefusalError(
+        raise PlanRefusalError(
             "invalid",
             f"declaring '{name}' writes {vocabulary.filename} beside {project.project.name}, "
             "and a file of that name is there already",
@@ -655,7 +636,7 @@ def _created(
         _judged(vocabulary, key, raw, name, created)
     text = f'{{"{vocabulary.containers[0]}": [{_entry_text(vocabulary, name, raws)}]}}'
     edits = created_beside(project.project, vocabulary.filename, text, cache)
-    return SharedPlan(tuple(sorted(edits, key=lambda edit: edit.path.as_posix())))
+    return Plan(tuple(sorted(edits, key=lambda edit: edit.path.as_posix())))
 
 
 def _entry_text(vocabulary: Vocabulary, name: str, raws: Mapping[str, str]) -> str:

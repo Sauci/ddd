@@ -36,9 +36,7 @@ from ddd.lsp.navigation import Index, index
 from ddd.lsp.ranges import Document
 from ddd.lsp.units import (
     ADOPTED,
-    UnitPlan,
     UnitProject,
-    UnitRefusalError,
     add_unit,
     adopt_units,
     created_beside,
@@ -47,6 +45,7 @@ from ddd.lsp.units import (
     rename_unit,
     unit_project,
 )
+from ddd.plans import Plan, PlanRefusalError
 from ddd.project_units import adoptable
 
 
@@ -88,7 +87,7 @@ def drifted(vocabulary: list[Any] | None = None) -> dict[str, Any]:
     return files if vocabulary is None else {"units.ddd.json": {"units": vocabulary}, **files}
 
 
-def written(plan: UnitPlan) -> dict[Path, str]:
+def written(plan: Plan) -> dict[Path, str]:
     """Every file the plan writes, as the text it leaves: a created file as the text it carries,
     any other as the edit engine leaves it after making its operations in order."""
     found: dict[Path, str] = {}
@@ -103,14 +102,14 @@ def written(plan: UnitPlan) -> dict[Path, str]:
     return found
 
 
-def after(plan: UnitPlan) -> dict[str, Any]:
+def after(plan: Plan) -> dict[str, Any]:
     """Every file the plan writes, by name, as the json it leaves."""
     return {path.name: json.loads(text) for path, text in written(plan).items()}
 
 
-def refusal(plan: Callable[[], UnitPlan]) -> tuple[str, str]:
+def refusal(plan: Callable[[], Plan]) -> tuple[str, str]:
     """The code and the message a plan is refused with."""
-    with pytest.raises(UnitRefusalError) as refused:
+    with pytest.raises(PlanRefusalError) as refused:
         plan()
     return refused.value.code, refused.value.message
 
@@ -857,7 +856,7 @@ class TestAdopt:
     ],
 )
 def test_a_component_that_does_not_load_stops_no_addition_or_description_to_the_vocabulary(
-    tmp_path: Path, plan: Callable[[Index, UnitProject], UnitPlan]
+    tmp_path: Path, plan: Callable[[Index, UnitProject], Plan]
 ) -> None:
     """Only the units file matters to these: a component that did not load may state units, and
     no entry of the vocabulary changes with what it states. A removal is not among them: it is
@@ -878,12 +877,12 @@ def test_a_component_that_does_not_load_stops_no_addition_or_description_to_the_
     ],
 )
 def test_a_refused_plan_has_read_no_file(
-    tmp_path: Path, plan: Callable[[Index, UnitProject, dict[Path, Document]], UnitPlan]
+    tmp_path: Path, plan: Callable[[Index, UnitProject, dict[Path, Document]], Plan]
 ) -> None:
     """Every refusal is made from the index and the project alone, before a file is read."""
     idx, where = opened(tmp_path, drifted(["rpm", "kPa"]), unread=["units.ddd.json"])
     cache: dict[Path, Document] = {}
-    with pytest.raises(UnitRefusalError):
+    with pytest.raises(PlanRefusalError):
         plan(idx, where, cache)
     assert cache == {}
 

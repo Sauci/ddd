@@ -10,6 +10,15 @@ whole project resolves - together with the producer's merged ``init``, the conve
 defaults filled in and the physical limits. Re-deriving any of that would give the project two
 answers to what shape an object is, and the second would be wrong first for a dimension spelled
 as the name of a constant.
+
+A change answers a :class:`~ddd.plans.Plan` of one edit, on the producer's file. A grid that
+cannot be shown, and a change that cannot be made, raise a :class:`~ddd.plans.PlanRefusalError`:
+``not-found`` where the project declares no object of that name; ``invalid`` where the grid
+cannot be drawn - a shape of more dimensions than rows of cells, an init with a list where a
+number belongs or a number where a row belongs - or the change cannot be made: an element
+outside the shape, a value the datatype cannot hold, an object whose init is text, or no one
+declaration to write into; ``stale`` where the producing declaration's file no longer holds it
+where the index found it, having changed since the analysis read it.
 """
 
 from __future__ import annotations
@@ -25,10 +34,10 @@ from ddd.editing import Operation
 from ddd.ir import DataDictionary
 from ddd.lsp.navigation import Index, Site, changed_since, drift
 from ddd.lsp.ranges import Document, read
-from ddd.lsp.units import PlannedEdit
 from ddd.models.common import Datatype
 from ddd.models.conversion import Conversion
 from ddd.models.objects import InitElement, InitValue, check_shape
+from ddd.plans import Plan, PlannedEdit, PlanRefusalError
 
 _ELEMENT: Final = re.compile(r"(?:\[[0-9]+\])+")
 """An element's indices as the pointer writes them: each in brackets, ``[2]`` or ``[1][3]``."""
@@ -57,26 +66,6 @@ Measured, not assumed: an axis's own ``references`` names its ``input`` measurem
 reference and is not an axis - ``AxisA`` of examples/demo answers ``{"input": "ValueE"}``. A
 grid laid against every reference would draw that measurement as the axis's own breakpoints.
 """
-
-
-class ValueRefusalError(Exception):
-    """A grid that cannot be shown or changed, and the code both clients refuse it with."""
-
-    code: Literal["invalid", "not-found", "stale"]
-    """``not-found``: the project declares no object of that name. ``invalid``: the grid cannot
-    be drawn - a shape of more dimensions than rows of cells, an init with a list where a number
-    belongs or a number where a row belongs - or the change cannot be made: an element outside
-    the shape, a value the datatype cannot hold, an object whose init is text, or no one
-    declaration to write into. ``stale``: the producing declaration's file no longer holds it
-    where the index found it, having changed since the analysis read it."""
-
-    message: str
-    """The sentence the refusal is shown with."""
-
-    def __init__(self, code: Literal["invalid", "not-found", "stale"], message: str) -> None:
-        super().__init__(message)
-        self.code = code
-        self.message = message
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,14 +151,14 @@ def grid_of(dictionary: DataDictionary, built: Index, name: str) -> Grid:
     """
     resolved = dictionary.by_name.get(name)
     if resolved is None:
-        raise ValueRefusalError("not-found", f"the project declares no '{name}'")
+        raise PlanRefusalError("not-found", f"the project declares no '{name}'")
     shape = tuple(resolved.shape)
     if len(shape) > 2:
         # `dimensions: [2, 3, 4]` is ordinary DDD - the loader takes it and no check reports
         # it - and a grid is rows of cells and nothing deeper, which :attr:`Grid.rows`,
         # :func:`_laid_out` and :func:`_element` all assume. Refused where the page can draw
         # the sentence, rather than drawn a dimension short.
-        raise ValueRefusalError(
+        raise PlanRefusalError(
             "invalid", f"'{name}' has {len(shape)} dimensions, and a grid draws at most two"
         )
     _fits(name, resolved.init, shape)
@@ -319,7 +308,7 @@ def _fits(name: str, init: InitValue | None, shape: tuple[int, ...]) -> None:
         return
     problem = _misplaced(init, shape)
     if problem is not None:
-        raise ValueRefusalError(
+        raise PlanRefusalError(
             "invalid", f"'{name}' is initialised with values that do not fit its shape: {problem}"
         )
 
@@ -398,13 +387,6 @@ def _filled(scalar: float, shape: tuple[int, ...]) -> tuple[tuple[float, ...], .
     return tuple(tuple([scalar] * shape[1]) for _ in range(shape[0]))
 
 
-@dataclass(frozen=True, slots=True)
-class ValuePlan:
-    """Everything one change of a value takes: one edit, on the producer's file."""
-
-    edits: tuple[PlannedEdit, ...]
-
-
 def set_cell(
     dictionary: DataDictionary,
     built: Index,
@@ -412,7 +394,7 @@ def set_cell(
     at: str,
     raw: float,
     cache: dict[Path, Document],
-) -> ValuePlan:
+) -> Plan:
     """What setting one element takes.
 
     One ``set`` at the element's own pointer - ``…definition.init[2]`` for a curve,
@@ -434,18 +416,18 @@ def set_cell(
     """
     grid = grid_of(dictionary, built, name)
     if not grid.shape and not grid.rows:
-        raise ValueRefusalError("invalid", f"'{name}' has no cell for a value to sit in")
+        raise PlanRefusalError("invalid", f"'{name}' has no cell for a value to sit in")
     if grid.stated == "text":
-        raise ValueRefusalError("invalid", f"'{name}' is initialised with text, not with a grid")
+        raise PlanRefusalError("invalid", f"'{name}' is initialised with text, not with a grid")
     sites = built.producers.get(name) or []
     if not sites:
-        raise ValueRefusalError("invalid", f"nothing produces '{name}', so it has no values to set")
+        raise PlanRefusalError("invalid", f"nothing produces '{name}', so it has no values to set")
     if len(sites) > 1:
         # The two causes of a read-only grid say different things, because only one of them is
         # true at a time: here two declarations do produce it, and the refusal is that neither
         # of them is *the* file - the analysis reads one of them for the values and the index
         # need not name the same one first.
-        raise ValueRefusalError(
+        raise PlanRefusalError(
             "invalid",
             f"'{name}' is produced in more than one place, so there is no one file to set it in",
         )
@@ -458,7 +440,7 @@ def set_cell(
     if not grid.shape:
         # The scalar's own pointer: its value is its ``init``, whether it is stated or not.
         operation = Operation("set", f"{site.pointer}.init", json.dumps(raw))
-        return ValuePlan((PlannedEdit(site.path, (operation,)),))
+        return Plan((PlannedEdit(site.path, (operation,)),))
     written = read(site.path, cache).value_at(f"{site.pointer}.init")
     if _has_cell(written, found):
         operation = Operation("set", f"{site.pointer}.init{at}", json.dumps(raw))
@@ -476,7 +458,7 @@ def set_cell(
             whole = rows
         rows[row][column] = raw
         operation = Operation("set", f"{site.pointer}.init", json.dumps(whole))
-    return ValuePlan((PlannedEdit(site.path, (operation,)),))
+    return Plan((PlannedEdit(site.path, (operation,)),))
 
 
 def set_cells(
@@ -485,7 +467,7 @@ def set_cells(
     name: str,
     cells: Sequence[tuple[str, float]],
     cache: dict[Path, Document],
-) -> ValuePlan:
+) -> Plan:
     """What setting several elements at once takes: the cells typed into the page's grid, each
     given as :func:`set_cell` takes one, its element and its raw count, in the grid's order.
 
@@ -506,12 +488,12 @@ def set_cells(
     """
     grid = grid_of(dictionary, built, name)
     if not grid.shape:
-        raise ValueRefusalError("invalid", f"'{name}' has no cell for a value to sit in")
+        raise PlanRefusalError("invalid", f"'{name}' has no cell for a value to sit in")
     if grid.stated == "text":
-        raise ValueRefusalError("invalid", f"'{name}' is initialised with text, not with a grid")
+        raise PlanRefusalError("invalid", f"'{name}' is initialised with text, not with a grid")
     sites = built.producers.get(name) or []
     if len(sites) != 1:
-        raise ValueRefusalError("invalid", _no_single_producer(name, sites))
+        raise PlanRefusalError("invalid", _no_single_producer(name, sites))
     found = [(_indices(at, grid.shape), at, raw) for at, raw in cells]
     datatype = Datatype(grid.datatype)
     offenders: list[tuple[str, str]] = []
@@ -523,10 +505,10 @@ def set_cells(
             continue
         try:
             _acceptable(raw, datatype, name)
-        except ValueRefusalError as refused:
+        except PlanRefusalError as refused:
             offenders.append((label, refused.message))
     if offenders:
-        raise ValueRefusalError("invalid", _all_of_them(offenders, name))
+        raise PlanRefusalError("invalid", _all_of_them(offenders, name))
     site = sites[0]
     _in_place(site, name, cache)
     written = read(site.path, cache).value_at(f"{site.pointer}.init")
@@ -539,14 +521,14 @@ def set_cells(
             )
             for element, _, raw in found
         )
-        return ValuePlan((PlannedEdit(site.path, operations),))
+        return Plan((PlannedEdit(site.path, operations),))
     rows = _filled_out(grid.rows, grid.shape, datatype)
     for element, _, raw in found:
         row, column = (0, element[0]) if len(grid.shape) == 1 else element
         rows[row][column] = _written(raw, datatype)
     whole: list[float] | list[list[float]] = rows[0] if len(grid.shape) == 1 else rows
     operation = Operation("set", f"{site.pointer}.init", json.dumps(whole))
-    return ValuePlan((PlannedEdit(site.path, (operation,)),))
+    return Plan((PlannedEdit(site.path, (operation,)),))
 
 
 def _element_label(row: int, column: int, shape: tuple[int, ...]) -> str:
@@ -566,7 +548,7 @@ def set_values(
     name: str,
     rows: Sequence[Sequence[float]],
     cache: dict[Path, Document],
-) -> ValuePlan:
+) -> Plan:
     """What replacing every value of an object takes: one ``set`` of the whole ``init``.
 
     The whole table at once, rather than a cell at a time, is what makes a pasted calibration one
@@ -583,12 +565,12 @@ def set_values(
     # scalar whose init is a string - would otherwise be told two different things depending on
     # which way a reader reached it.
     if not grid.shape:
-        raise ValueRefusalError("invalid", f"'{name}' has no cell for a value to sit in")
+        raise PlanRefusalError("invalid", f"'{name}' has no cell for a value to sit in")
     if grid.stated == "text":
-        raise ValueRefusalError("invalid", f"'{name}' is initialised with text, not with a grid")
+        raise PlanRefusalError("invalid", f"'{name}' is initialised with text, not with a grid")
     sites = built.producers.get(name) or []
     if len(sites) != 1:
-        raise ValueRefusalError("invalid", _no_single_producer(name, sites))
+        raise PlanRefusalError("invalid", _no_single_producer(name, sites))
     wanted = (1, grid.shape[0]) if len(grid.shape) == 1 else (grid.shape[0], grid.shape[1])
     given = (len(rows), len(rows[0]) if rows else 0)
     # Ragged first, and in a sentence of its own: measured against `wanted` alone, a block of
@@ -596,13 +578,13 @@ def set_values(
     # rows of 6" - the same shape printed twice, since `given`'s width is the first row's. What
     # is wrong with such a block is not its shape but that it has none.
     if any(len(row) != len(rows[0]) for row in rows):
-        raise ValueRefusalError(
+        raise PlanRefusalError(
             "invalid",
             f"'{name}' takes {_table(wanted)} values, and this block's rows are not all the "
             "same length",
         )
     if given != wanted:
-        raise ValueRefusalError(
+        raise PlanRefusalError(
             "invalid",
             f"'{name}' takes {_table(wanted)} values, and this is {_table(given)}",
         )
@@ -612,16 +594,16 @@ def set_values(
         for c, value in enumerate(row):
             try:
                 _acceptable(value, datatype, name)
-            except ValueRefusalError as refused:
+            except PlanRefusalError as refused:
                 offenders.append((_element_label(r, c, grid.shape), refused.message))
     if offenders:
-        raise ValueRefusalError("invalid", _all_of_them(offenders, name))
+        raise PlanRefusalError("invalid", _all_of_them(offenders, name))
     site = sites[0]
     _in_place(site, name, cache)
     written = [[_written(value, datatype) for value in row] for row in rows]
     whole: list[float] | list[list[float]] = written[0] if len(grid.shape) == 1 else written
     operation = Operation("set", f"{site.pointer}.init", json.dumps(whole))
-    return ValuePlan((PlannedEdit(site.path, (operation,)),))
+    return Plan((PlannedEdit(site.path, (operation,)),))
 
 
 def _table(shape: tuple[int, int]) -> str:
@@ -718,7 +700,7 @@ def _indices(at: str, shape: tuple[int, ...]) -> tuple[int, ...]:
     writes them: ``1`` is no element, where read as one it planned a key of its own, ``init1``."""
     parts = _INDEX.findall(at) if _ELEMENT.fullmatch(at) else []
     if len(parts) != len(shape):
-        raise ValueRefusalError("invalid", f"'{at}' is not an element of this object")
+        raise PlanRefusalError("invalid", f"'{at}' is not an element of this object")
     return tuple(int(piece) for piece in parts)
 
 
@@ -731,7 +713,7 @@ def _element(at: str, shape: tuple[int, ...]) -> tuple[int, ...]:
     """The indices ``at`` names (:func:`_indices`), checked against the shape."""
     found = _indices(at, shape)
     if _past(found, shape):
-        raise ValueRefusalError("invalid", f"'{at}' is past the end of this object")
+        raise PlanRefusalError("invalid", f"'{at}' is past the end of this object")
     return found
 
 
@@ -744,7 +726,7 @@ def _in_place(site: Site, name: str, cache: dict[Path, Document]) -> None:
     declaration now is."""
     moved = drift((Site(site.path, f"{site.pointer}.name"),), name, cache)
     if moved:
-        raise ValueRefusalError(
+        raise PlanRefusalError(
             "stale", changed_since(moved, f"the values of '{name}' cannot be set")
         )
 
@@ -767,27 +749,27 @@ def _acceptable(raw: float, datatype: Datatype, name: str) -> None:
     """
     if datatype is Datatype.BOOLEAN:
         if not isinstance(raw, bool) and raw not in (0, 1):
-            raise ValueRefusalError("invalid", f"{raw!r} is not a valid bool")
+            raise PlanRefusalError("invalid", f"{raw!r} is not a valid bool")
         return
     if datatype.is_integer and isinstance(raw, float):
-        raise ValueRefusalError(
+        raise PlanRefusalError(
             "invalid",
             f"{raw!r} is written as a fractional number, but '{name}' has the integer "
             f"datatype {datatype.value}",
         )
     info = datatype.info
     if not info.raw_min <= raw <= info.raw_max:
-        raise ValueRefusalError(
+        raise PlanRefusalError(
             "invalid",
             f"{raw} does not fit into {datatype.value} ({info.raw_min} .. {info.raw_max})",
         )
     if datatype.is_integer and abs(raw) >= EXACT:
         # Only a 64 bit integer reaches this: a narrower one holds no number this large, and
         # is refused it above as not fitting.
-        raise ValueRefusalError(
+        raise PlanRefusalError(
             "invalid",
             f"{raw} is at or past {'-' if raw < 0 else ''}2^53, where the page cannot hold every "
             f"whole number exactly, so no {datatype.value} is set to it here",
         )
     if datatype.rounds_to_zero(raw):
-        raise ValueRefusalError("invalid", f"{raw} rounds to zero in {datatype.value}")
+        raise PlanRefusalError("invalid", f"{raw} rounds to zero in {datatype.value}")

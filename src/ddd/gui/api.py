@@ -33,8 +33,6 @@ from ddd.declaration_plans import (
     KINDS,
     PRODUCING_SCOPES,
     SCOPES,
-    DeclarationPlan,
-    DeclarationRefusalError,
     declarable,
     declare_object,
     describe_declaration,
@@ -56,7 +54,6 @@ from ddd.editing import (
 )
 from ddd.file_plans import (
     CREATABLE,
-    FileRefusalError,
     add_plan,
     create_plan,
     included_entries,
@@ -162,10 +159,7 @@ from ddd.lsp.edits import settle, type_conversions
 from ddd.lsp.navigation import Index
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import (
-    PlannedEdit,
-    UnitPlan,
     UnitProject,
-    UnitRefusalError,
     add_unit,
     adopt_units,
     describe_unit,
@@ -173,15 +167,8 @@ from ddd.lsp.units import (
     rename_unit,
     unit_project,
 )
-from ddd.object_values import (
-    Grid,
-    ValueRefusalError,
-    grid_of,
-    limits_refusal,
-    set_cell,
-    set_cells,
-    set_values,
-)
+from ddd.object_values import Grid, grid_of, limits_refusal, set_cell, set_cells, set_values
+from ddd.plans import Plan, PlannedEdit, PlanRefusalError
 from ddd.project_shared import (
     CONSTANTS,
     RASTERS,
@@ -213,16 +200,14 @@ from ddd.project_units import (
     unit_rows,
 )
 from ddd.shared_plans import (
-    SharedPlan,
     SharedProject,
-    SharedRefusalError,
     add_entry,
     project_of,
     remove_entry,
     rename_entry,
     set_entry,
 )
-from ddd.type_plans import REQUIRED, TypePlan, TypeRefusalError, rename_type, set_key
+from ddd.type_plans import REQUIRED, rename_type, set_key
 from ddd.variable_keys import offer_for, offers, unit_refusal
 from ddd.variables import (
     Planned,
@@ -317,7 +302,7 @@ class _OfAnEntry(Protocol):
 
 
 type SharedPlanner[A] = Callable[
-    [A, Index, Callable[[], SharedProject], dict[Path, Document]], SharedPlan
+    [A, Index, Callable[[], SharedProject], dict[Path, Document]], Plan
 ]
 """What :meth:`Api._shared_plan` asks for the plan itself: the action asked for, read as its own
 model (``A``), the index, what makes the project's own files - called by ``add`` alone - and the
@@ -955,7 +940,7 @@ class Api:
         asked = query.root
         try:
             plan = _unit_plan_of(asked, built, project, cache)
-        except UnitRefusalError as refused:
+        except PlanRefusalError as refused:
             named = None
             if isinstance(asked, RenameUnit | DescribeUnit | RemoveUnit):
                 named = asked.unit
@@ -1104,7 +1089,7 @@ class Api:
                 return _refusal(revision, "invalid", spaced, asked.name)
         try:
             plan = _type_plan_of(asked, built, cache)
-        except TypeRefusalError as refused:
+        except PlanRefusalError as refused:
             return _refusal(revision, refused.code, refused.message, asked.name)
         derived = self._derive(revision)
         try:
@@ -1335,7 +1320,7 @@ class Api:
 
         try:
             plan = _files_plan_of(query.root, revision, cache, refuse)
-        except FileRefusalError as refused:
+        except PlanRefusalError as refused:
             status = 404 if refused.code == "not-found" else 409
             return _error(status, refused.code, refused.message)
         except EditError as refused:
@@ -1383,7 +1368,7 @@ class Api:
         ``?raw=``, and each value an ``add`` declares - was read as json text by the query, before
         anything asked for the project: a request that is not json is a mistake about the
         request, not a refusal about the project, so it answers 400 rather than being folded into
-        a :class:`~ddd.shared_plans.SharedRefusalError`.
+        a :class:`~ddd.plans.PlanRefusalError`.
 
         A rename or a removal is refused, naming the files, while any file of the project did not
         load (:func:`_unseen_refusal`), before the files are read to plan it; and a refusal that
@@ -1415,7 +1400,7 @@ class Api:
 
         try:
             plan = plan_of(asked, built, project, cache)
-        except SharedRefusalError as refused:
+        except PlanRefusalError as refused:
             return _refusal(revision, refused.code, refused.message, asked.name)
         derived = self._derive(revision)
         try:
@@ -1606,7 +1591,7 @@ class Api:
         cache: dict[Path, Document] = {}
         try:
             plan = _declaration_plan_of(asked, built, file, cache)
-        except DeclarationRefusalError as refused:
+        except PlanRefusalError as refused:
             return _refusal(revision, refused.code, refused.message, named)
         derived = self._derive(revision)
         try:
@@ -1645,7 +1630,7 @@ class Api:
         cache: dict[Path, Document] = {}
         try:
             plan = describe_declaration(built, file, query.name, query.description, cache)
-        except DeclarationRefusalError as refused:
+        except PlanRefusalError as refused:
             # A refusal that nothing is found is about the name only where the index lacks it,
             # as `_declaration_plan` asks: where it holds the name, the refusal is about this
             # file, and its own sentence stands.
@@ -1677,7 +1662,7 @@ class Api:
             return _unresolved(revision)
         try:
             grid = grid_of(dictionary, built, name)
-        except ValueRefusalError as refused:
+        except PlanRefusalError as refused:
             # Both codes are reachable - a name the project has not, and a shape of more
             # dimensions than a grid draws - so both arms need a status and a test reaching
             # them. An `if`/`else` rather than a ternary: a conditional expression registers
@@ -1731,7 +1716,7 @@ class Api:
         try:
             raw = _number(query.raw)
             plan = set_cell(dictionary, built, query.name, query.at, raw, cache)
-        except ValueRefusalError as refused:
+        except PlanRefusalError as refused:
             # Both codes again, as in _values above - a name the project has not, and every
             # other refusal - so both arms need a status and a test reaching them: a ternary
             # here would read the same but hide an untested arm from the coverage gate, the
@@ -1766,7 +1751,7 @@ class Api:
             pairs = zip(query.at.split(","), query.raw.split(","), strict=True)
             cells = [(at, _number(raw)) for at, raw in pairs]
             plan = set_cells(dictionary, built, query.name, cells, cache)
-        except ValueRefusalError as refused:
+        except PlanRefusalError as refused:
             # Both codes, as `_value_plan` above: a name the project has not, and every other
             # refusal. A statement rather than a ternary, so the gate can see both arms.
             if refused.code == "not-found":
@@ -1798,7 +1783,7 @@ class Api:
         try:
             flat = [_number(piece) for piece in query.raw.split(",")]
             plan = set_values(dictionary, built, name, _folded(flat, dictionary, name), cache)
-        except ValueRefusalError as refused:
+        except PlanRefusalError as refused:
             # Both codes, as `_value_plan` above: a name the project has not, and every other
             # refusal. A statement rather than a ternary, so the gate can see both arms.
             if refused.code == "not-found":
@@ -2336,7 +2321,7 @@ def _unit_plan_of(
     built: Index,
     project: UnitProject,
     cache: dict[Path, Document],
-) -> UnitPlan:
+) -> Plan:
     """The plan ``asked`` names, over the parts its model read."""
     if isinstance(asked, RenameUnit):
         return rename_unit(built, project, asked.unit, asked.to, cache)
@@ -2351,7 +2336,7 @@ def _unit_plan_of(
 
 def _type_plan_of(
     asked: SetTypeKey | RenameType, built: Index, cache: dict[Path, Document]
-) -> TypePlan:
+) -> Plan:
     """The plan ``asked`` names, over the parts its model read."""
     if isinstance(asked, SetTypeKey):
         return set_key(built, asked.name, asked.key, asked.raw, cache)
@@ -2363,7 +2348,7 @@ def _constant_plan_of(
     built: Index,
     project: Callable[[], SharedProject],
     cache: dict[Path, Document],
-) -> SharedPlan:
+) -> Plan:
     """The plan ``asked`` names, over the parts its model read.
 
     ``project`` is called by ``add`` alone: it may have to create a constants file, the one verb
@@ -2393,7 +2378,7 @@ def _section_plan_of(
     built: Index,
     project: Callable[[], SharedProject],
     cache: dict[Path, Document],
-) -> SharedPlan:
+) -> Plan:
     """The plan ``asked`` names, over the parts its model read.
 
     The same four verbs as :func:`_constant_plan_of`, differing only in ``add``: a section is
@@ -2418,7 +2403,7 @@ def _raster_plan_of(
     built: Index,
     project: Callable[[], SharedProject],
     cache: dict[Path, Document],
-) -> SharedPlan:
+) -> Plan:
     """The plan ``asked`` names, over the parts its model read.
 
     The same four verbs as :func:`_section_plan_of`, and the same ``add``: one json text per key
@@ -2660,17 +2645,17 @@ def _addition(
         served_path(revision, added)
     except NotInProjectError:
         serves = (directory.as_posix() for directory in revision.served)
-        raise FileRefusalError("invalid", outside_served(entry, serves)) from None
+        raise PlanRefusalError("invalid", outside_served(entry, serves)) from None
     plan = add_plan(revision.project, entry, cache)
     kind = kind_of(added, read_json(added))
     if kind == "plugin":
-        raise FileRefusalError(
+        raise PlanRefusalError(
             "invalid",
             f"{entry} is a python file, which a project names among its plugins rather than its "
             "includes",
         )
     if kind == "unknown":
-        raise FileRefusalError(
+        raise PlanRefusalError(
             "invalid",
             f"{entry} is no kind of file a project includes: it cannot be read as json, or its "
             f"top level holds none of {', '.join(DESCRIPTION_KINDS[:-1])} and "
@@ -2728,12 +2713,12 @@ def _removal(
     if errors:
         where, first = errors[0]
         if len(errors) == 1:
-            raise FileRefusalError(
+            raise PlanRefusalError(
                 "invalid",
                 f"removing {removing} would leave one error more than the project has now at "
                 f"its place, in {where.name}: {first.message}",
             )
-        raise FileRefusalError(
+        raise PlanRefusalError(
             "invalid",
             f"removing {removing} would leave {len(errors)} errors more than the project has "
             f"now at their places, the first in {where.name}: {first.message}",
@@ -2785,7 +2770,7 @@ def _declaration_plan_of(
     built: Index,
     file: Path,
     cache: dict[Path, Document],
-) -> DeclarationPlan:
+) -> Plan:
     """The plan ``asked`` names, over the parts its model read.
 
     A definition is read here, rather than by the query, as json text is read everywhere else in
@@ -2800,9 +2785,9 @@ def _declaration_plan_of(
     try:
         definition = json_value(asked.definition)
     except EditError as malformed:
-        raise DeclarationRefusalError("invalid", "the definition is not json") from malformed
+        raise PlanRefusalError("invalid", "the definition is not json") from malformed
     if not isinstance(definition, dict):
-        raise DeclarationRefusalError("invalid", "the definition is not json")
+        raise PlanRefusalError("invalid", "the definition is not json")
     return declare_object(built, file, asked.scope, definition, cache)
 
 
@@ -2892,13 +2877,13 @@ def _number(text: str) -> float:
     ``json.loads`` raises a plain ``ValueError`` for, not a ``JSONDecodeError``.
     """
     if "[" in text or "{" in text:
-        raise ValueRefusalError("invalid", f"'{text}' is not a number")
+        raise PlanRefusalError("invalid", f"'{text}' is not a number")
     try:
         value = json.loads(text)
     except ValueError as malformed:
-        raise ValueRefusalError("invalid", f"'{text}' is not a number") from malformed
+        raise PlanRefusalError("invalid", f"'{text}' is not a number") from malformed
     if not isinstance(value, int | float) or isinstance(value, bool):
-        raise ValueRefusalError("invalid", f"'{text}' is not a number")
+        raise PlanRefusalError("invalid", f"'{text}' is not a number")
     return value
 
 

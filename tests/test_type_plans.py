@@ -11,7 +11,8 @@ from ddd.diagnostics import DiagnosticBag
 from ddd.loading import load_workspace
 from ddd.lsp.navigation import Index, index
 from ddd.lsp.ranges import Document, read
-from ddd.type_plans import TypePlan, TypeRefusalError, rename_type, set_key
+from ddd.plans import Plan, PlanRefusalError
+from ddd.type_plans import rename_type, set_key
 
 EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
 
@@ -52,7 +53,7 @@ class TestSettingAKey:
             },
         )
         built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
-        assert set_key(built, "Spare_t", "limits", None, cache) == TypePlan(())
+        assert set_key(built, "Spare_t", "limits", None, cache) == Plan(())
 
     @pytest.mark.parametrize(
         ("name", "key"),
@@ -65,7 +66,7 @@ class TestSettingAKey:
         ],
     )
     def test_a_key_the_kind_does_not_have_is_refused(self, built, cache, name, key) -> None:
-        with pytest.raises(TypeRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             set_key(built, name, key, '"x"', cache)
         assert refused.value.code == "invalid"
 
@@ -78,13 +79,13 @@ class TestSettingAKey:
         ],
     )
     def test_a_required_key_may_not_be_left_out(self, built, cache, name, key) -> None:
-        with pytest.raises(TypeRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             set_key(built, name, key, None, cache)
         assert refused.value.code == "invalid"
         assert key in str(refused.value)
 
     def test_a_name_no_type_holds_is_not_found(self, built, cache) -> None:
-        with pytest.raises(TypeRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             set_key(built, "Nothing_t", "unit", '"K"', cache)
         assert refused.value.code == "not-found"
 
@@ -108,7 +109,7 @@ class TestSettingAKey:
         """3:I1. Planned and applied, each of these left a types file the loader refuses, and every
         type it declares went with it: the entry as the plan would leave it is asked of the models
         (``type_problem``), as a variable's settlement asks them of a definition."""
-        with pytest.raises(TypeRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             set_key(built, "Temperature_t", key, raw, cache)
         assert (refused.value.code, refused.value.message) == (
             "invalid",
@@ -128,7 +129,7 @@ class TestSettingAKey:
             },
         )
         built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
-        with pytest.raises(TypeRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             set_key(built, "Wide_t", "conversion", '{"kind": "linear", "factor": 2}', cache)
         assert (refused.value.code, refused.value.message) == (
             "invalid",
@@ -159,7 +160,7 @@ class TestSettingAKey:
     ) -> None:
         """Json the loader refuses - a key written twice - is said as the loader says it, as a
         variable's settlement says it (``loading_problem``), and never raised."""
-        with pytest.raises(TypeRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             set_key(built, "Temperature_t", "limits", '{"min": 0, "min": 1, "max": 5}', cache)
         assert (refused.value.code, refused.value.message) == (
             "invalid",
@@ -190,7 +191,7 @@ class TestSettingAKey:
             scalar_type("B_t", unit="Nm"),
         )
         write_tree(tmp_path, {"types.ddd.json": moved})
-        with pytest.raises(TypeRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             set_key(built, "B_t", "unit", '"K"', cache)
         assert (refused.value.code, refused.value.message) == (
             "stale",
@@ -252,7 +253,7 @@ class TestATypeTheAnalysisRefusesAlready:
     def test_a_datatype_bringing_a_refusal_of_its_own_is_refused_naming_it(
         self, wide, cache
     ) -> None:
-        with pytest.raises(TypeRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             set_key(wide, "Wide_t", "datatype", '"uint7"', cache)
         assert (refused.value.code, refused.value.message) == (
             "invalid",
@@ -302,13 +303,13 @@ class TestRenaming:
     def test_a_name_that_may_not_be_used_is_refused_in_the_editor_s_own_words(
         self, built, cache, to, says
     ) -> None:
-        with pytest.raises(TypeRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             rename_type(built, "Temperature_t", to, cache)
         assert refused.value.code == "invalid"
         assert says in str(refused.value)
 
     def test_a_name_no_type_holds_is_not_found(self, built, cache) -> None:
-        with pytest.raises(TypeRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             rename_type(built, "Nothing_t", "Reading_t", cache)
         assert refused.value.code == "not-found"
 
@@ -319,7 +320,7 @@ class TestRenaming:
         the header defining the old name. Refused in the sentence the editor's ``F2`` refuses it
         with (``tests/test_lsp.py``), so the two clients cannot disagree about it - and whatever
         it would be renamed onto, since no new name would do."""
-        with pytest.raises(TypeRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             rename_type(built, "DriverStatus_t", to, cache)
         assert (refused.value.code, refused.value.message) == (
             "invalid",
@@ -342,7 +343,7 @@ class TestRenaming:
         built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
         moved = types(scalar_type("X_t"), scalar_type("A_t"), scalar_type("B_t"))
         write_tree(tmp_path, {"types.ddd.json": moved})
-        with pytest.raises(TypeRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             rename_type(built, "B_t", "C_t", cache)
         assert (refused.value.code, refused.value.message) == (
             "stale",
@@ -368,7 +369,7 @@ class TestRenaming:
             "A", declare("output", "Other"), declare("output", "Speed", typename="A_t")
         )
         write_tree(tmp_path, {"a.ddd.json": moved})
-        with pytest.raises(TypeRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             rename_type(built, "A_t", "C_t", cache)
         assert (refused.value.code, refused.value.message) == (
             "stale",

@@ -24,8 +24,6 @@ from ddd.declaration_plans import (
     PRODUCING_SCOPES,
     SCOPES,
     Declarable,
-    DeclarationPlan,
-    DeclarationRefusalError,
     declarable,
     declare_object,
     describe_declaration,
@@ -41,6 +39,7 @@ from ddd.loading import load_workspace
 from ddd.lsp.navigation import Index, index
 from ddd.lsp.ranges import Document
 from ddd.models.component import Scope
+from ddd.plans import Plan, PlanRefusalError
 
 EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
 CONTROLLER = EXAMPLES / "demo" / "components" / "controller.ddd.json"
@@ -88,7 +87,7 @@ def cache() -> dict[Path, Document]:
     return {}
 
 
-def checks_after(base: Path, plan: DeclarationPlan, root: str = "p.ddd.json") -> list[str]:
+def checks_after(base: Path, plan: Plan, root: str = "p.ddd.json") -> list[str]:
     """Every check the project reports once that plan has been written into it.
 
     The whole of what these verbs promise, in one helper: ``ddd gui`` writes the files a person
@@ -385,7 +384,7 @@ class TestReadingWhatTheProjectHas:
         assert '"name": "ValueC",\n' in after  # a key per line, as the file spells one
 
     def test_a_name_the_project_does_not_declare_is_not_found(self, demo, cache) -> None:
-        with pytest.raises(DeclarationRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             read_object(demo, CONTROLLER, "Nope", "input", cache)
         assert (refused.value.code, refused.value.message) == (
             "not-found",
@@ -393,7 +392,7 @@ class TestReadingWhatTheProjectHas:
         )
 
     def test_a_name_this_component_already_declares_is_refused(self, demo, cache) -> None:
-        with pytest.raises(DeclarationRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             read_object(demo, CONTROLLER, "ValueA", "input", cache)
         assert refused.value.code == "invalid"
         assert refused.value.message == "this component already declares 'ValueA'"
@@ -401,13 +400,13 @@ class TestReadingWhatTheProjectHas:
     def test_a_local_this_component_keeps_is_one_it_already_declares(self, demo, cache) -> None:
         # A local of this file's own is not another component's: it is refused as a name the
         # file already declares, not as one kept by the component that asks.
-        with pytest.raises(DeclarationRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             read_object(demo, CONTROLLER, "ParameterA", "input", cache)
         assert refused.value.message == "this component already declares 'ParameterA'"
 
     def test_a_scope_the_name_may_not_take_is_refused(self, demo, cache) -> None:
         # ValueC has a producer, so offering `output` here would make a multiple-producers.
-        with pytest.raises(DeclarationRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             read_object(demo, CONTROLLER, "ValueC", "output", cache)
         assert refused.value.message == "'ValueC' may not be declared 'output' here"
 
@@ -483,7 +482,7 @@ class TestReadingWhatTheProjectHas:
         # component 'R'`, in a project that reported nothing. The refusal says why, in the
         # sentence the check uses for what it is.
         built, root = built_of(tmp_path, **LOCAL_BESIDE_OUTPUT)
-        with pytest.raises(DeclarationRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             read_object(built, root / "r.ddd.json", "Loc", scope, cache)
         assert (refused.value.code, refused.value.message) == (
             "invalid",
@@ -503,7 +502,7 @@ class TestReadingWhatTheProjectHas:
                 "r.ddd.json": component("R"),
             },
         )
-        with pytest.raises(DeclarationRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             read_object(built, root / "r.ddd.json", "Loc", "input", cache)
         assert refused.value.message == (
             "'Loc' is local to component 'V', so no other component may declare it"
@@ -552,7 +551,7 @@ class TestReadingWhatTheProjectHas:
         )
         built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
         write_tree(tmp_path, {"a.ddd.json": component("A")})
-        with pytest.raises(DeclarationRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             read_object(built, tmp_path / "b.ddd.json", "X", "input", cache)
         assert (refused.value.code, refused.value.message) == (
             "stale",
@@ -577,7 +576,7 @@ class TestReadingWhatTheProjectHas:
         built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
         above = declare("output", "Y", unit="Nm")
         write_tree(tmp_path, {"a.ddd.json": component("A", above, declare("output", "X"))})
-        with pytest.raises(DeclarationRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             read_object(built, tmp_path / "b.ddd.json", "X", "input", cache)
         assert (refused.value.code, refused.value.message) == (
             "stale",
@@ -642,7 +641,7 @@ class TestDeclaringSomethingNew:
                 "with the variables",
             ),
         ):
-            with pytest.raises(DeclarationRefusalError) as refused:
+            with pytest.raises(PlanRefusalError) as refused:
                 declare_object(
                     demo,
                     CONTROLLER,
@@ -653,7 +652,7 @@ class TestDeclaringSomethingNew:
             assert (refused.value.code, refused.value.message) == ("invalid", why)
 
     def test_a_kind_that_is_not_one_of_the_six_is_refused(self, demo, cache) -> None:
-        with pytest.raises(DeclarationRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             declare_object(
                 demo, CONTROLLER, "output", {"name": "Pressure", "kind": "signal"}, cache
             )
@@ -663,12 +662,12 @@ class TestDeclaringSomethingNew:
 
     def test_a_definition_without_a_name_or_a_kind_is_refused(self, demo, cache) -> None:
         for definition in ({"kind": "measurement"}, {"name": "Pressure"}, {"name": 4}):
-            with pytest.raises(DeclarationRefusalError) as refused:
+            with pytest.raises(PlanRefusalError) as refused:
                 declare_object(demo, CONTROLLER, "output", definition, cache)
             assert refused.value.message == "a definition states a 'name' and a 'kind'"
 
     def test_a_scope_that_is_not_one_of_the_three_is_refused(self, demo, cache) -> None:
-        with pytest.raises(DeclarationRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             declare_object(
                 demo,
                 CONTROLLER,
@@ -679,7 +678,7 @@ class TestDeclaringSomethingNew:
         assert refused.value.message == "'sideways' is not a scope: output, input, local"
 
     def test_a_required_key_left_out_is_refused_before_a_file_is_written(self, demo, cache) -> None:
-        with pytest.raises(DeclarationRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             declare_object(
                 demo,
                 CONTROLLER,
@@ -690,7 +689,7 @@ class TestDeclaringSomethingNew:
         assert refused.value.message == "a value_block must state 'dimensions'"
 
     def test_a_key_the_kind_has_not_is_refused(self, demo, cache) -> None:
-        with pytest.raises(DeclarationRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             declare_object(
                 demo,
                 CONTROLLER,
@@ -703,7 +702,7 @@ class TestDeclaringSomethingNew:
     def test_an_id_sent_by_the_page_is_refused_rather_than_written(self, demo, cache) -> None:
         # The server mints it, so a client that states one is either confused or forging an
         # identity another object already carries.
-        with pytest.raises(DeclarationRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             declare_object(
                 demo,
                 CONTROLLER,
@@ -725,7 +724,7 @@ class TestDeclaringSomethingNew:
         # keys, which `definition_keys`' required set cannot express - only the models catch
         # it, and they have to catch it here, before a plan is made, or `declare_object` would
         # hand back a plan whose own file then fails to load.
-        with pytest.raises(DeclarationRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             declare_object(
                 demo,
                 CONTROLLER,
@@ -749,7 +748,7 @@ class TestDeclaringSomethingNew:
         # the definition alone, so it is refused here, in the analysis's sentence, before a plan
         # is made - not left for the file it is written into to be counted as one that did not
         # load.
-        with pytest.raises(DeclarationRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             declare_object(
                 demo,
                 CONTROLLER,
@@ -775,7 +774,7 @@ class TestDeclaringSomethingNew:
         # the file it is written into (`schema`). The plan knows the project, and says so first.
         built, root = built_of(tmp_path, **STRING_TYPE_BESIDE_SCALAR)
         stated = {"name": "Label", "kind": "measurement", "typename": "Text_t", "volatile": False}
-        with pytest.raises(DeclarationRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             declare_object(built, root / "w.ddd.json", "local", stated, cache)
         assert (refused.value.code, refused.value.message) == (
             "invalid",
@@ -903,7 +902,7 @@ class TestDescribingADeclaration:
 
     def test_a_lone_surrogate_is_refused_rather_than_written(self, demo, cache) -> None:
         # A query can carry one; no file can hold it, and it would reach none the page could apply.
-        with pytest.raises(DeclarationRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             describe_declaration(demo, CONTROLLER, "ParameterA", "\ud800", cache)
         assert (refused.value.code, refused.value.message) == (
             "invalid",
@@ -934,7 +933,7 @@ class TestDescribingADeclaration:
             },
         )
         built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
-        with pytest.raises(DeclarationRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             describe_declaration(built, tmp_path / "a.ddd.json", "Speed", "", cache)
         assert (refused.value.code, refused.value.message) == (
             "invalid",
@@ -942,7 +941,7 @@ class TestDescribingADeclaration:
         )
 
     def test_a_name_this_file_does_not_declare_is_not_found(self, demo, cache) -> None:
-        with pytest.raises(DeclarationRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             describe_declaration(demo, CONTROLLER, "ValueI", "x", cache)
         assert (refused.value.code, refused.value.message) == (
             "not-found",
@@ -967,7 +966,7 @@ class TestDescribingADeclaration:
         )
         built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
         write_tree(tmp_path, {"a.ddd.json": component("A", other, one)})
-        with pytest.raises(DeclarationRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             describe_declaration(built, tmp_path / "a.ddd.json", "One", "new", cache)
         assert (refused.value.code, refused.value.message) == (
             "stale",
@@ -989,7 +988,7 @@ class TestRemovingADeclaration:
         assert "ValueA" not in names
 
     def test_a_name_this_file_does_not_declare_is_not_found(self, demo, cache) -> None:
-        with pytest.raises(DeclarationRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             remove_declaration(demo, CONTROLLER, "ValueI", cache)
         assert (refused.value.code, refused.value.message) == (
             "not-found",
@@ -1002,7 +1001,7 @@ class TestRemovingADeclaration:
         # with the wrong file answers.
         write_tree(tmp_path, {"p.ddd.json": project("P")})
         built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
-        with pytest.raises(DeclarationRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             remove_declaration(built, tmp_path / "p.ddd.json", "ValueA", cache)
         assert refused.value.code == "not-found"
         assert refused.value.message == "p.ddd.json declares no interface"

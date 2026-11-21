@@ -78,15 +78,8 @@ from ddd.lsp.protocol import (
 )
 from ddd.lsp.ranges import Document, differs_from_disk, read
 from ddd.lsp.server import Server, uri_to_path
-from ddd.lsp.units import (
-    PlannedEdit,
-    UnitPlan,
-    UnitRefusalError,
-    rename_unit,
-    text_edits,
-    unit_drift,
-    unit_project,
-)
+from ddd.lsp.units import rename_unit, text_edits, unit_drift, unit_project
+from ddd.plans import Plan, PlannedEdit, PlanRefusalError
 from test_variable_keys import edited
 
 
@@ -3423,7 +3416,7 @@ class TestAUnitPlanAsTextEdits:
         out the same, or the editor and ddd gui would write two different things. The edits come
         in the order of the text, whichever order the operations are in."""
         path = self.vocabulary(tmp_path)
-        plan = UnitPlan((PlannedEdit(path, operations),))
+        plan = Plan((PlannedEdit(path, operations),))
         (edits,) = text_edits(plan, {}).values()
         assert apply_edits(path, edits) == edit_text(path.read_text(encoding="utf-8"), operations)
         starts = [
@@ -3436,7 +3429,7 @@ class TestAUnitPlanAsTextEdits:
         claim the one between them: two overlapping edits, which a client refuses whole."""
         path = self.vocabulary(tmp_path)
         removed = (Operation("remove", "units[3]"), Operation("remove", "units[2]"))
-        (edits,) = text_edits(UnitPlan((PlannedEdit(path, removed),)), {}).values()
+        (edits,) = text_edits(Plan((PlannedEdit(path, removed),)), {}).values()
         assert len(edits) == 1
         assert json.loads(apply_edits(path, edits))["units"] == ["rpm", {"unit": "Nm"}]
 
@@ -3444,7 +3437,7 @@ class TestAUnitPlanAsTextEdits:
         """The client applies it to what it shows, which one blank line puts a line lower."""
         path = self.vocabulary(tmp_path)
         disk = path.read_text(encoding="utf-8")
-        plan = UnitPlan((PlannedEdit(path, (Operation("set", "units[0]", '"1/min"'),)),))
+        plan = Plan((PlannedEdit(path, (Operation("set", "units[0]", '"1/min"'),)),))
         (edits,) = text_edits(plan, {path: Document("\n" + disk)}).values()
         on_disk = Document(disk).value_range_of("units[0]")
         assert on_disk is not None
@@ -3459,7 +3452,7 @@ class TestAUnitPlanAsTextEdits:
             creates=True,
         )
         with pytest.raises(EditError) as refused:
-            text_edits(UnitPlan((created,)), {})
+            text_edits(Plan((created,)), {})
         assert refused.value.code == INVALID
 
     def built(self, tmp_path: Path) -> Any:
@@ -6518,12 +6511,12 @@ class TestServer:
         assert speed["definition"]["unit"] == "rpm"
         assert len(changes[(tmp_path / "units.ddd.json").as_uri()]) == 1
 
-    def refusal_of(self, document: Path, old: str, new: str) -> UnitRefusalError:
+    def refusal_of(self, document: Path, old: str, new: str) -> PlanRefusalError:
         """The plan's own refusal of this rename, which is what the server has to answer."""
         (loaded,) = navigation.workspaces([], document, document.parent)
         built = navigation.index(loaded.workspace)
         project = unit_project(loaded.path, loaded.unloaded, {})
-        with pytest.raises(UnitRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             rename_unit(built, project, old, new, {})
         return refused.value
 

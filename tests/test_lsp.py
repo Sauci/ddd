@@ -11686,7 +11686,7 @@ class TestAMalformedFieldIsRefused:
             "no-registration",
         ],
     )
-    def test_a_handshake_may_leave_out_what_the_protocol_lets_it(
+    def test_a_handshake_may_leave_out_what_the_server_tolerates(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str], params: dict[str, Any]
     ) -> None:
         """The control: what the protocol lets a client leave out, or send as null, and what it

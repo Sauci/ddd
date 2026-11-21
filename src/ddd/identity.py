@@ -113,12 +113,12 @@ def unstamped(document: Document) -> list[tuple[str, bool]]:
 def stamp(definition: str) -> Operation:
     """The operation giving the declaration at the pointer ``definition`` a fresh identity.
 
-    What the command and the page's fix for ``missing-id`` each hand the edit engine, which
-    writes the ``id`` right after the declaration's ``name`` - or, where the declaration states
-    one as ``null``, in place of that ``null`` - in the layout of the file around it
-    (:func:`ddd.editing.member_addition`). Spelled once, here, so that the two cannot ask for
-    one edit in two ways; a fresh id per call, so a caller applies the answer it was given
-    rather than asking again.
+    What the command, the page's fix for ``missing-id`` and the editor's each hand the edit
+    engine, which writes the ``id`` right after the declaration's ``name`` - or, where the
+    declaration states one as ``null``, in place of that ``null`` - in the layout of the file
+    around it (:func:`ddd.editing.member_addition`). Spelled once, here, so that the three cannot
+    ask for one edit in two ways; a fresh id per call, so a caller applies the answer it was
+    given rather than asking again.
     """
     return Operation("set", f"{definition}.id", json.dumps(new_id()))
 

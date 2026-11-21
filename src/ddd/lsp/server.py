@@ -1461,14 +1461,16 @@ class Server:
         reaches.
 
         The plan is :func:`ddd.lsp.units.rename_unit`'s, the one ``ddd gui`` previews and
-        applies, so an editor and the page cannot disagree about what a rename reaches or when
-        it merges two spellings; its refusal is answered as a variable's is. The plan refuses
-        while a file of the project did not load, and only then: one that loaded with an error
-        is in the index, and a unit its units file lists twice is renamed at both entries. A
-        buffer that no longer holds the unit where the index found it refuses the rename before
-        the plan is made: the plan's pointers are the disk's, and made in that buffer they would
-        respell whatever sits there now. A text the engine cannot make the plan in refuses it too,
-        but once the plan is made, as it is rendered as text edits (:meth:`_rendered`).
+        applies for one project, so that for any one project an editor and the page merge two
+        spellings alike; its refusal is answered as a variable's is. The plan refuses while a
+        file of the project did not load, and only then: one that loaded with an error is in the
+        index, and a unit its units file lists twice is renamed at both entries. A file that no
+        longer holds the unit where the index found it - one changed on disk since it was read,
+        an open document that differs having been refused first (:meth:`_unseen_refusal`) - is
+        not planned in: the plan's pointers are the disk's, and made in that text they would
+        respell whatever sits there now, so the rename is refused for it (:meth:`_drifted`). A
+        text the engine cannot make the plan in refuses it too, once the plan is made, as it is
+        rendered as text edits (:meth:`_rendered`).
 
         Two projects planning one place of a file they share differently refuse it, both named
         (:meth:`_two_ways`): two images sharing a units file, of which one lists the unit renamed

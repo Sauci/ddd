@@ -573,9 +573,9 @@ def edits_at_once(document: Document, operations: Sequence[Operation]) -> list[T
     its end for every operation.
 
     What the language server renders a unit's plan with (:func:`ddd.lsp.units.text_edits`), as
-    :func:`edit_text` makes the batch for ``ddd gui`` (:func:`_made_at_once`, which asks
-    :func:`_independent` itself and makes the edits with :func:`_at_once`): neither builds a
-    document of the file for each of its operations. Read back once, as :func:`edit_text` reads
+    :func:`edit_text` makes the batch for ``ddd gui`` (which asks :func:`_independent` itself
+    and goes through :func:`_made_at_once` to :func:`_at_once`): neither builds a document of the
+    file for each of its operations. Read back once, as :func:`edit_text` reads
     it, so that an edit that wrote what it was not meant to is raised as ``unverified`` and not
     sent: where ``edit_text`` makes the batch again in turn, there is no other way here.
     """

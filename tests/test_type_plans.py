@@ -169,13 +169,15 @@ class TestRenaming:
             rename_type(built, "Nothing_t", "Reading_t", cache)
         assert refused.value.code == "not-found"
 
-    def test_an_external_type_is_refused_in_the_editor_s_own_words(self, built, cache) -> None:
+    @pytest.mark.parametrize("to", ["DriverState_t", "Sample_t"], ids=["free", "taken"])
+    def test_an_external_type_is_refused_in_the_editor_s_own_words(self, built, cache, to) -> None:
         """10:M9. The header beside an external type defines its name, which no plan of the
         descriptions reaches: the page renamed it through the editor's ``rename_sites`` and left
         the header defining the old name. Refused in the sentence the editor's ``F2`` refuses it
-        with (``tests/test_lsp.py``), so the two clients cannot disagree about it."""
+        with (``tests/test_lsp.py``), so the two clients cannot disagree about it - and whatever
+        it would be renamed onto, since no new name would do."""
         with pytest.raises(TypeRefusalError) as refused:
-            rename_type(built, "DriverStatus_t", "DriverState_t", cache)
+            rename_type(built, "DriverStatus_t", to, cache)
         assert (refused.value.code, refused.value.message) == (
             "invalid",
             "'DriverStatus_t' is an external type whose name driver_status.h defines, so a rename "

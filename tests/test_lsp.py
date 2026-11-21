@@ -10443,6 +10443,17 @@ class TestAnExternalTypeIsNotRenamed:
         answer = renamed_at(root, types_file, pointer, "DriverState_t")
         assert answer["error"] == {"code": REQUEST_FAILED, "message": EXTERNAL_REFUSED}
 
+    @pytest.mark.parametrize("name", ["int", "Sample_t"], ids=["reserved", "taken"])
+    def test_an_external_type_is_refused_whatever_it_would_be_renamed_onto(
+        self, tmp_path: Path, name: str
+    ) -> None:
+        """Asked before the new name is judged, since no new name would do: refused for the name
+        it would take, the rename sent the reader to try another, which the type then refused."""
+        root = self.structures(tmp_path)
+        types_file = root / "types.ddd.json"
+        answer = renamed_at(root, types_file, "types[1].name", name)
+        assert answer["error"] == {"code": REQUEST_FAILED, "message": EXTERNAL_REFUSED}
+
     def test_a_type_the_project_declares_itself_is_renamed_as_before(self, tmp_path: Path) -> None:
         """The control, in the same file: a structure is the project's own, and so is its name."""
         root = self.structures(tmp_path)

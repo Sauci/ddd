@@ -177,14 +177,15 @@ loaded, so a file a ``schema`` error dropped mid edit declares nothing as far as
 the rename would rewrite every other file and leave that one holding the old name, and a fix would
 offer to remove a key "no other declaration has" while the unloaded producer states exactly that
 key.
-In the first state a quick fix is not offered rather than offered for the declarations the
-buffer left in place, and nothing is said: the buffer is the reader's own, and saving it brings
-the fix back. A rename refused for a closed file changed on disk says so, and goes through once
-the server has read the project again: at the next open or save of a document, or when the
-editor reports the change. In the second state a request for the quick fixes, which the editor makes
-at every move of the caret, is answered with none rather than with an error, which it would show as
-a failed request each time: an empty lightbulb in such a project has its reason in the unread file's
-own finding, and in the server's log, which says it once for as long as it stands.
+In the first state a quick fix is not offered rather than offered for the declarations a buffer, or
+a closed file changed on disk, left in place, and nothing is said: a buffer is the reader's own, and
+saving it brings the fix back, as the server's reading the file again does for the other. A rename
+refused for a closed file changed on disk says so, and goes through once the server has read the
+project again: at the next open or save of a document, or when the editor reports the change. In the
+second state a request for the quick fixes, which the editor makes at every move of the caret, is
+answered with none rather than with an error, which it would show as a failed request each time: an
+empty lightbulb in such a project has its reason in the finding of the file that did not load, or
+loaded with an error, and in the server's log, which says it once for as long as it stands.
 A rename is refused as well, naming the document, while an open document of a project it
 reaches holds what its file on disk does not, since the rename is planned from the files and a
 mention typed and not saved is one it cannot see; and it is refused when it would rewrite

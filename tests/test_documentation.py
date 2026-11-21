@@ -1828,7 +1828,10 @@ class TestWhatARenameReaches:
                 f"image the file you start from is in, {FINDS} A name c reserves, one that is not "
                 "a usable identifier, or one a project it reaches already declares is refused "
                 "with the reason rather than half applied, naming the image it comes from - or its "
-                "project description, without a build record - when that is not yours.",
+                "project description, without a build record - when that is not yours. An "
+                "external type is not renamed at all, its name being the one the header defining "
+                "it spells, and that refusal names the image too where a project the rename "
+                "reaches declares the type so.",
             ),
         ),
     }
@@ -1984,7 +1987,8 @@ class TestWhatTheQuickFixesAnswerWhileAFileDidNotLoad:
             (
                 "In the second state a request for the quick fixes, which a client makes at every "
                 "move of the caret, is answered with none rather than with an error: the reason "
-                "is in the unread file's own finding, and the server's log says it once, and "
+                "is in the finding of the file that did not load, or loaded with an error, and "
+                "the server's log says it once, and "
                 "again only once the project has been read whole and is found broken anew.",
             ),
         ),
@@ -1994,8 +1998,9 @@ class TestWhatTheQuickFixesAnswerWhileAFileDidNotLoad:
                 "In the second state a request for the quick fixes, which the editor makes at "
                 "every move of the caret, is answered with none rather than with an error, which "
                 "it would show as a failed request each time: an empty lightbulb in such a "
-                "project has its reason in the unread file's own finding, and in the server's "
-                "log, which says it once for as long as it stands.",
+                "project has its reason in the finding of the file that did not load, or "
+                "loaded with an error, and in the server's log, which says it once for as long as "
+                "it stands.",
             ),
         ),
         "README.md": (
@@ -2122,8 +2127,9 @@ class TestAQuickFixUnderAMovedBufferAndAcrossImages:
     )
     FIRST: ClassVar[str] = (
         "In the first state a quick fix is not offered rather than offered for the declarations "
-        "the buffer left in place, and nothing is said: the buffer is the reader's own, and "
-        "saving it brings the fix back."
+        "a buffer, or a closed file changed on disk, left in place, and nothing is said: a "
+        "buffer is the reader's own, and saving it brings the fix back, as the server's reading "
+        "the file again does for the other."
     )
     ACROSS: ClassVar[str] = (
         "A quick fix is offered once however many projects holding the document offer it, and a "
@@ -2444,7 +2450,7 @@ class TestAnExternalTypeIsNotRenamed:
             (ROOT / "editors" / "vscode" / "README.md").read_text(encoding="utf-8"),
             (
                 "when that is not yours. An external type is not renamed at all, its name being "
-                "the one the header defining it spells.",
+                "the one the header defining it spells, and that refusal names the image too",
             ),
         ),
         "docs/command_line_interface.rst": (

@@ -104,7 +104,8 @@ without records, through a project description above it. A name c reserves, one 
 usable identifier, or one a project it reaches already declares is refused with the reason
 rather than half applied, naming the image it comes from - or its project description, without
 a build record - when that is not yours. An external type is not renamed at all, its name
-being the one the header defining it spells. Free text is left alone, so a `description`
+being the one the header defining it spells, and that refusal names the image too where a project
+the rename reaches declares the type so. Free text is left alone, so a `description`
 mentioning the old name still mentions it.
 
 The published json schemas keep working alongside this: they do structure, the server does

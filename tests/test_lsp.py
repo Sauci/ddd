@@ -12582,9 +12582,16 @@ class TestWhatNoRunReportsOnLeavesTheScreen:
         """The checks of the last findings published for ``path``, sorted."""
         return sorted(entry["code"] for entry in published(writer).get(path.as_uri(), []))
 
-    def test_a_component_taken_out_of_its_project_is_withdrawn(self, tmp_path: Path) -> None:
-        """The project file is open, and the component is taken out of its ``includes`` and the
-        project saved: the project's run no longer reports on it, and no other run does."""
+    @pytest.mark.parametrize(
+        "ran", ["the-project-read-alone", "the-project-above-a-component", "the-build-of-a-record"]
+    )
+    def test_a_component_taken_out_of_its_project_is_withdrawn(
+        self, tmp_path: Path, ran: str
+    ) -> None:
+        """The component is taken out of its project's ``includes``, and the project is checked
+        again: read as the project file it is, open and saved; found above its other component,
+        open, as the watcher reports the change; or run as a build record names it. Its run no
+        longer reports on the component, and no other run does."""
         write_tree(
             tmp_path,
             {
@@ -12593,17 +12600,58 @@ class TestWhatNoRunReportsOnLeavesTheScreen:
             },
         )
         p, a, b = (tmp_path / name for name in ("p.ddd.json", "a.ddd.json", "b.ddd.json"))
+        if ran == "the-build-of-a-record":
+            build_record(tmp_path, p)
+        opened = a if ran == "the-project-above-a-component" else p
         writer = io.BytesIO()
         server = Server(io.BytesIO(), writer, root=tmp_path)
         assert server._handle(opening(tmp_path))
-        assert server._handle(holding(p, p.read_text(encoding="utf-8")))
+        assert server._handle(holding(opened, opened.read_text(encoding="utf-8")))
         assert "definition-mismatch" in self.last_codes(writer, a)
         assert "definition-mismatch" in self.last_codes(writer, b)
         write_tree(tmp_path, {"p.ddd.json": project("P", "a.ddd.json")})
-        for message in self.saved(p):
+        changed = [changed_on_disk(p)] if opened == a else self.saved(p)
+        for message in changed:
             assert server._handle(message)
         assert published(writer)[b.as_uri()] == [], "b kept what p's run no longer says"
         assert "definition-mismatch" not in self.last_codes(writer, a)
+
+    def test_a_description_mended_to_include_the_document_no_more_is_withdrawn(
+        self, tmp_path: Path
+    ) -> None:
+        """A plugin stops the description above an open component, and the search for the
+        component's project names it there, as a finding of its own. Mended, and including the
+        component no more, it is named by no search and reported on by no run: the component's
+        next check withdraws what its search said of it."""
+        write_tree(
+            tmp_path,
+            {
+                "tools/exiting_plugin.py": EXITING_MODEL_PLUGIN,
+                "p.ddd.json": project(
+                    "P", "a.ddd.json", "b.ddd.json", plugins=["tools/exiting_plugin.py"]
+                ),
+                "a.ddd.json": component("A", declare("input", "X")),
+                "b.ddd.json": component(
+                    "B", declare("local", "Y", extensions={"exiting": {"tag": "t"}})
+                ),
+            },
+        )
+        p, a = tmp_path / "p.ddd.json", tmp_path / "a.ddd.json"
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(opening(tmp_path))
+        assert server._handle(holding(a, a.read_text(encoding="utf-8")))
+        assert self.last_codes(writer, p) == ["plugin-invalid"]
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "b.ddd.json"),
+                "b.ddd.json": component("B", declare("local", "Y")),
+            },
+        )
+        for message in self.saved(a):
+            assert server._handle(message)
+        assert published(writer)[p.as_uri()] == [], "p kept what a's search no longer says"
 
     def test_a_description_fixed_behind_the_editor_is_checked_while_another_project_is_open(
         self, tmp_path: Path

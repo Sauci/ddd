@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import dataclasses
 import io
 import json
@@ -695,6 +696,38 @@ class TestTheRouteTable:
             "/api/undo",
         }
         assert all(route.method == "POST" for route in ROUTES if route.body is not None)
+
+
+class TestEveryPlanIsAnsweredOneWay:
+    """What a route answers of a plan, and of an edit engine's refusal, is written once (2:I10):
+    copied into each route, each copy drifted from its neighbours, and a route added copied the
+    one beside it. Read off the api's own source, which is where a copy would come back."""
+
+    TREE: Final = ast.parse(Path(api_module.__file__).read_text(encoding="utf-8"))
+
+    def test_the_status_an_edit_refusal_is_answered_with_is_decided_once(self) -> None:
+        """Which of the engine's refusals a page can act on, ``409``, and which are the server's
+        own failure, ``500``, is asked of :data:`~ddd.gui.api.REFUSALS` in one place."""
+        asked = [
+            node.lineno
+            for node in ast.walk(self.TREE)
+            if isinstance(node, ast.Name)
+            and node.id == "REFUSALS"
+            and isinstance(node.ctx, ast.Load)
+        ]
+        assert len(asked) == 1, f"the edit refusals are mapped to a status at lines {asked}"
+
+    def test_a_plan_s_reply_is_made_in_one_place(self) -> None:
+        """Every plan route but the Files tab's, whose reply says more, answers ``PlanReply``
+        through one function."""
+        made = [
+            node.lineno
+            for node in ast.walk(self.TREE)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "PlanReply"
+        ]
+        assert len(made) == 1, f"a plan's reply is made at lines {made}"
 
 
 class TestTheQueryIsReadOnce:

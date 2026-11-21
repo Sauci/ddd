@@ -739,7 +739,7 @@ class Api:
             within_depth(body.changes)
             at, wrote = self.session.edit([_file_change(c) for c in body.changes], body.label)
         except EditError as refusal:
-            return _error(409 if refusal.code in REFUSALS else 500, refusal.code, str(refusal))
+            return _edit_refusal(refusal)
         # Answered once written, before its analysis: the edit's own number is what says when a
         # revision includes it.
         return Reply(
@@ -765,7 +765,7 @@ class Api:
         try:
             changes = _undone_changes(top)
         except EditError as refused:
-            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
+            return _edit_refusal(refused)
         return Reply(
             200,
             written(
@@ -781,7 +781,7 @@ class Api:
         try:
             number = self.session.undo(body.at)
         except EditError as refused:
-            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
+            return _edit_refusal(refused)
         return Reply(200, written(contract.UndoReply(edit=number)))
 
     def _variable(self, query: VariableQuery, body: None) -> Reply:
@@ -938,31 +938,11 @@ class Api:
             revision.project, [file.path for file in revision.files if not file.loaded], cache
         )
         asked = query.root
-        try:
-            plan = _unit_plan_of(asked, built, project, cache)
-        except PlanRefusalError as refused:
-            named = None
-            if isinstance(asked, RenameUnit | DescribeUnit | RemoveUnit):
-                named = asked.unit
-            return _refusal(revision, refused.code, refused.message, named)
-        derived = self._derive(revision)
-        try:
-            self._refuse_generated(
-                revision,
-                (edit.path for edit in plan.edits),
-                (edit.path for edit in plan.edits if edit.creates),
-            )
-            self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
-            planned = previewed(plan.edits, derived.stamps, cache)
-        except EditError as refused:
-            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
-        return Reply(
-            200,
-            written(
-                contract.PlanReply(
-                    revision=revision.number, changes=_planned_changes(revision, derived, planned)
-                )
-            ),
+        named = None
+        if isinstance(asked, RenameUnit | DescribeUnit | RemoveUnit):
+            named = asked.unit
+        return self._answered(
+            revision, lambda: _unit_plan_of(asked, built, project, cache), cache, named=named
         )
 
     def _types(self, query: NoQuery, body: None) -> Reply:
@@ -1087,24 +1067,8 @@ class Api:
             spaced = unit_refusal(asked.raw)
             if spaced is not None:
                 return _refusal(revision, "invalid", spaced, asked.name)
-        try:
-            plan = _type_plan_of(asked, built, cache)
-        except PlanRefusalError as refused:
-            return _refusal(revision, refused.code, refused.message, asked.name)
-        derived = self._derive(revision)
-        try:
-            self._refuse_generated(revision, (edit.path for edit in plan.edits))
-            self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
-            planned = previewed(plan.edits, derived.stamps, cache)
-        except EditError as refused:
-            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
-        return Reply(
-            200,
-            written(
-                contract.PlanReply(
-                    revision=revision.number, changes=_planned_changes(revision, derived, planned)
-                )
-            ),
+        return self._answered(
+            revision, lambda: _type_plan_of(asked, built, cache), cache, named=asked.name
         )
 
     def _shared(self, query: NoQuery, body: None) -> Reply:
@@ -1321,15 +1285,14 @@ class Api:
         try:
             plan = _files_plan_of(query.root, revision, cache, refuse)
         except PlanRefusalError as refused:
-            status = 404 if refused.code == "not-found" else 409
-            return _error(status, refused.code, refused.message)
+            return _refusal(revision, refused.code, refused.message, None)
         except EditError as refused:
-            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
+            return _edit_refusal(refused)
         derived = self._derive(revision)
         try:
             made = previewed(plan.edits, derived.stamps, cache)
         except EditError as refused:
-            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
+            return _edit_refusal(refused)
         return Reply(
             200,
             written(
@@ -1398,28 +1361,8 @@ class Api:
             unread = [file.path for file in revision.files if not file.loaded]
             return project_of(vocabulary, revision.project, unread, cache)
 
-        try:
-            plan = plan_of(asked, built, project, cache)
-        except PlanRefusalError as refused:
-            return _refusal(revision, refused.code, refused.message, asked.name)
-        derived = self._derive(revision)
-        try:
-            self._refuse_generated(
-                revision,
-                (edit.path for edit in plan.edits),
-                (edit.path for edit in plan.edits if edit.creates),
-            )
-            self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
-            made = previewed(plan.edits, derived.stamps, cache)
-        except EditError as refused:
-            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
-        return Reply(
-            200,
-            written(
-                contract.PlanReply(
-                    revision=revision.number, changes=_planned_changes(revision, derived, made)
-                )
-            ),
+        return self._answered(
+            revision, lambda: plan_of(asked, built, project, cache), cache, named=asked.name
         )
 
     def _settle(self, query: SettleQuery, body: None) -> Reply:
@@ -1469,7 +1412,7 @@ class Api:
             self._refuse_unanalysed(revision, (change.site.path for change in settlement.changes))
             planned = preview(settlement, key, derived.stamps, cache)
         except EditError as refused:
-            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
+            return _edit_refusal(refused)
         return Reply(
             200,
             written(
@@ -1507,7 +1450,7 @@ class Api:
                     for edit in fix.changes
                 ]
             except EditError as refused:
-                return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
+                return _edit_refusal(refused)
             offered.append(
                 {"title": fix.title, "changes": _planned_changes(revision, derived, made)}
             )
@@ -1589,24 +1532,8 @@ class Api:
         ):
             named = asked.name
         cache: dict[Path, Document] = {}
-        try:
-            plan = _declaration_plan_of(asked, built, file, cache)
-        except PlanRefusalError as refused:
-            return _refusal(revision, refused.code, refused.message, named)
-        derived = self._derive(revision)
-        try:
-            self._refuse_generated(revision, (edit.path for edit in plan.edits))
-            self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
-            planned = previewed(plan.edits, derived.stamps, cache)
-        except EditError as refused:
-            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
-        return Reply(
-            200,
-            written(
-                contract.PlanReply(
-                    revision=revision.number, changes=_planned_changes(revision, derived, planned)
-                )
-            ),
+        return self._answered(
+            revision, lambda: _declaration_plan_of(asked, built, file, cache), cache, named=named
         )
 
     def _description_plan(self, query: DescriptionPlanQuery, body: None) -> Reply:
@@ -1627,31 +1554,19 @@ class Api:
                 f"{file.name} did not load, so what it declares is unknown and nothing can be "
                 "described in it",
             )
+        # A refusal that nothing is found is about the name only where the index lacks it, as
+        # `_declaration_plan` asks: where it holds the name, the refusal is about this file, and
+        # its own sentence stands.
+        named = None
+        if query.name not in built.declarations:
+            named = query.name
         cache: dict[Path, Document] = {}
-        try:
-            plan = describe_declaration(built, file, query.name, query.description, cache)
-        except PlanRefusalError as refused:
-            # A refusal that nothing is found is about the name only where the index lacks it,
-            # as `_declaration_plan` asks: where it holds the name, the refusal is about this
-            # file, and its own sentence stands.
-            named = None
-            if query.name not in built.declarations:
-                named = query.name
-            return _refusal(revision, refused.code, refused.message, named)
-        derived = self._derive(revision)
-        try:
-            self._refuse_generated(revision, (edit.path for edit in plan.edits))
-            self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
-            planned = _changing(previewed(plan.edits, derived.stamps, cache))
-        except EditError as refused:
-            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
-        return Reply(
-            200,
-            written(
-                contract.PlanReply(
-                    revision=revision.number, changes=_planned_changes(revision, derived, planned)
-                )
-            ),
+        return self._answered(
+            revision,
+            lambda: describe_declaration(built, file, query.name, query.description, cache),
+            cache,
+            named=named,
+            changing=True,
         )
 
     def _values(self, query: ValuesQuery, body: None) -> Reply:
@@ -1664,12 +1579,8 @@ class Api:
             grid = grid_of(dictionary, built, name)
         except PlanRefusalError as refused:
             # Both codes are reachable - a name the project has not, and a shape of more
-            # dimensions than a grid draws - so both arms need a status and a test reaching
-            # them. An `if`/`else` rather than a ternary: a conditional expression registers
-            # no branch at all with coverage.py, which is how an untested arm hid here before.
-            if refused.code == "not-found":
-                return _error(404, refused.code, refused.message)
-            return _error(409, refused.code, refused.message)
+            # dimensions than a grid draws - each answered as a plan's refusal is: 404 and 409.
+            return _refusal(revision, refused.code, refused.message, None)
         derived = self._derive(revision)
         cache: dict[Path, Document] = {}
         return Reply(
@@ -1713,32 +1624,12 @@ class Api:
         if built is None or dictionary is None:
             return _unresolved(revision)
         cache: dict[Path, Document] = {}
-        try:
+
+        def plan() -> Plan:
             raw = _number(query.raw)
-            plan = set_cell(dictionary, built, query.name, query.at, raw, cache)
-        except PlanRefusalError as refused:
-            # Both codes again, as in _values above - a name the project has not, and every
-            # other refusal - so both arms need a status and a test reaching them: a ternary
-            # here would read the same but hide an untested arm from the coverage gate, the
-            # same blind spot that let two earlier defects through.
-            if refused.code == "not-found":
-                return _error(404, refused.code, refused.message)
-            return _error(409, refused.code, refused.message)
-        derived = self._derive(revision)
-        try:
-            self._refuse_generated(revision, (edit.path for edit in plan.edits))
-            self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
-            planned = _changing(previewed(plan.edits, derived.stamps, cache))
-        except EditError as refused:
-            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
-        return Reply(
-            200,
-            written(
-                contract.PlanReply(
-                    revision=revision.number, changes=_planned_changes(revision, derived, planned)
-                )
-            ),
-        )
+            return set_cell(dictionary, built, query.name, query.at, raw, cache)
+
+        return self._answered(revision, plan, cache, changing=True)
 
     def _cells_plan(self, query: CellsPlanQuery, body: None) -> Reply:
         revision = self._opened()
@@ -1746,32 +1637,14 @@ class Api:
         if built is None or dictionary is None:
             return _unresolved(revision)
         cache: dict[Path, Document] = {}
-        try:
+
+        def plan() -> Plan:
             # As many counts as elements: the query refuses any other pairing.
             pairs = zip(query.at.split(","), query.raw.split(","), strict=True)
             cells = [(at, _number(raw)) for at, raw in pairs]
-            plan = set_cells(dictionary, built, query.name, cells, cache)
-        except PlanRefusalError as refused:
-            # Both codes, as `_value_plan` above: a name the project has not, and every other
-            # refusal. A statement rather than a ternary, so the gate can see both arms.
-            if refused.code == "not-found":
-                return _error(404, refused.code, refused.message)
-            return _error(409, refused.code, refused.message)
-        derived = self._derive(revision)
-        try:
-            self._refuse_generated(revision, (edit.path for edit in plan.edits))
-            self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
-            planned = _changing(previewed(plan.edits, derived.stamps, cache))
-        except EditError as refused:
-            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
-        return Reply(
-            200,
-            written(
-                contract.PlanReply(
-                    revision=revision.number, changes=_planned_changes(revision, derived, planned)
-                )
-            ),
-        )
+            return set_cells(dictionary, built, query.name, cells, cache)
+
+        return self._answered(revision, plan, cache, changing=True)
 
     def _values_plan(self, query: ValuesPlanQuery, body: None) -> Reply:
         name = query.name
@@ -1780,30 +1653,12 @@ class Api:
         if built is None or dictionary is None:
             return _unresolved(revision)
         cache: dict[Path, Document] = {}
-        try:
+
+        def plan() -> Plan:
             flat = [_number(piece) for piece in query.raw.split(",")]
-            plan = set_values(dictionary, built, name, _folded(flat, dictionary, name), cache)
-        except PlanRefusalError as refused:
-            # Both codes, as `_value_plan` above: a name the project has not, and every other
-            # refusal. A statement rather than a ternary, so the gate can see both arms.
-            if refused.code == "not-found":
-                return _error(404, refused.code, refused.message)
-            return _error(409, refused.code, refused.message)
-        derived = self._derive(revision)
-        try:
-            self._refuse_generated(revision, (edit.path for edit in plan.edits))
-            self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
-            planned = _changing(previewed(plan.edits, derived.stamps, cache))
-        except EditError as refused:
-            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
-        return Reply(
-            200,
-            written(
-                contract.PlanReply(
-                    revision=revision.number, changes=_planned_changes(revision, derived, planned)
-                )
-            ),
-        )
+            return set_values(dictionary, built, name, _folded(flat, dictionary, name), cache)
+
+        return self._answered(revision, plan, cache, changing=True)
 
     def _compare(self, query: CompareQuery, body: None) -> Reply:
         revision = self._opened()
@@ -1855,6 +1710,51 @@ class Api:
         """The open project's newest revision, or the refusal :meth:`handle` answers: no project
         open, or none of its analyses landed yet."""
         return self.session.current()
+
+    def _answered(
+        self,
+        revision: Revision,
+        plan: Callable[[], Plan],
+        cache: dict[Path, Document],
+        *,
+        named: str | None = None,
+        changing: bool = False,
+    ) -> Reply:
+        """What a plan route answers of the plan ``plan`` makes against ``revision``: its refusal
+        as :func:`_refusal` answers one about ``named``; then the plan refused where it writes
+        under the build tree a build generates the project in (:meth:`_refuse_generated`), or a
+        file an edit wrote that no analysis has read yet (:meth:`_refuse_unanalysed`); and
+        otherwise previewed as ``PlanReply`` from ``cache``, the documents ``plan`` read - leaving
+        out, where ``changing``, each file its edit would leave as it was (:func:`_changing`).
+
+        The one answer of every plan route but two: the Files tab's, which judges a plan between
+        its refusals and its preview, and the variable panel's settlement, which answers more
+        beside it. Written into each route, it was eight copies of one tail (2:I10)."""
+        try:
+            made = plan()
+        except PlanRefusalError as refused:
+            return _refusal(revision, refused.code, refused.message, named)
+        derived = self._derive(revision)
+        try:
+            self._refuse_generated(
+                revision,
+                (edit.path for edit in made.edits),
+                (edit.path for edit in made.edits if edit.creates),
+            )
+            self._refuse_unanalysed(revision, (edit.path for edit in made.edits))
+            planned = previewed(made.edits, derived.stamps, cache)
+        except EditError as refused:
+            return _edit_refusal(refused)
+        if changing:
+            planned = _changing(planned)
+        return Reply(
+            200,
+            written(
+                contract.PlanReply(
+                    revision=revision.number, changes=_planned_changes(revision, derived, planned)
+                )
+            ),
+        )
 
     def _refuse_unanalysed(self, revision: Revision, paths: Iterable[Path]) -> None:
         """Refuse a plan changing a file an edit wrote since ``revision``'s analysis began.
@@ -2072,6 +1972,16 @@ as the route's own model and its body as its own before its handler is asked."""
 
 def _error(status: int, code: str, message: str) -> Reply:
     return Reply(status, {"error": code, "message": message})
+
+
+def _edit_refusal(refused: EditError) -> Reply:
+    """A refusal of the edit engine's as every route answers it: ``409`` for one the page can act
+    on (:data:`REFUSALS`), ``500`` for any other. Decided here alone, so that one refusal is
+    answered alike whichever route met it - an edit, an undo, or a plan the engine made in
+    memory (2:I10)."""
+    if refused.code in REFUSALS:
+        return _error(409, refused.code, str(refused))
+    return _error(500, refused.code, str(refused))
 
 
 def _finding(

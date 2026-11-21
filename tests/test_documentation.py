@@ -11420,6 +11420,19 @@ class TestWhereLimitsNobodyStatesAreWritten:
         ) in flattened(COMMAND_LINE_INTERFACE)
 
 
+class TestATypeAndWhatItFixesAreOneThing:
+    """14:I3. The command page says when the ``typename`` row disagrees, as ``ddd check`` reads
+    the declarations."""
+
+    def test_the_command_page_says_the_typename_row_disagrees_between_two_types(self) -> None:
+        assert (
+            "A declaration naming a type and one spelling what that type fixes agree, as "
+            "``ddd check`` reads them: the ``typename`` row disagrees only where two "
+            "declarations name different types, and a unit of no text beside none is no "
+            "disagreement."
+        ) in flattened(COMMAND_LINE_INTERFACE)
+
+
 class TestLimitsAreOneValueExactly:
     """3:M9. ``same_value`` read each bound of a range as the double nearest it, so that two
     maxima past 2^53 ``ddd check`` files apart were one value to the panel and to every fix. The

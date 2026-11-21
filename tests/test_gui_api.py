@@ -8718,83 +8718,91 @@ class TestAPlanWhosePlaceMovedSinceTheAnalysis:
             },
         )
 
-    @pytest.mark.parametrize(
-        ("route", "query", "file", "consequence"),
-        [
-            (
-                "/api/unit-plan",
-                {"action": "rename", "unit": "rpm", "to": "rev/min"},
-                "a.ddd.json",
-                "renaming 'rpm' cannot be planned",
-            ),
-            (
-                "/api/unit-plan",
-                {"action": "describe", "unit": "rpm", "description": "revolutions"},
-                "units.ddd.json",
-                "the description of 'rpm' cannot be set",
-            ),
-            (
-                "/api/unit-plan",
-                {"action": "remove", "unit": "spare"},
-                "units.ddd.json",
-                "'spare' cannot be taken out of the vocabulary",
-            ),
-            (
-                "/api/type-plan",
-                {"action": "rename", "name": "Speed_t", "to": "Rate_t"},
-                "types.ddd.json",
-                "renaming 'Speed_t' cannot be planned",
-            ),
-            (
-                "/api/type-plan",
-                {"action": "set", "name": "Speed_t", "key": "unit", "raw": '"rev/min"'},
-                "types.ddd.json",
-                "'Speed_t' cannot be changed",
-            ),
-            (
-                "/api/constant-plan",
-                {"action": "set", "name": "SPARE", "key": "value", "raw": "4"},
-                "constants.ddd.json",
-                "'SPARE' cannot be changed",
-            ),
-            (
-                "/api/constant-plan",
-                {"action": "rename", "name": "SPARE", "to": "SPARE_CELLS"},
-                "constants.ddd.json",
-                "renaming 'SPARE' cannot be planned",
-            ),
-            (
-                "/api/constant-plan",
-                {"action": "remove", "name": "SPARE"},
-                "constants.ddd.json",
-                "'SPARE' cannot be removed",
-            ),
-            (
-                "/api/value-plan",
-                {"name": "Table", "at": "[1]", "raw": "5"},
-                "a.ddd.json",
-                "the values of 'Table' cannot be set",
-            ),
-            (
-                "/api/cells-plan",
-                {"name": "Table", "at": "[0],[1]", "raw": "4,5"},
-                "a.ddd.json",
-                "the values of 'Table' cannot be set",
-            ),
-            (
-                "/api/values-plan",
-                {"name": "Table", "raw": "4,5,6"},
-                "a.ddd.json",
-                "the values of 'Table' cannot be set",
-            ),
-            (
-                "/api/declaration-plan",
-                {"action": "read", "file": "b.ddd.json", "name": "Speed", "scope": "input"},
-                "a.ddd.json",
-                "'Speed' cannot be declared here",
-            ),
-        ],
-    )
+    PLANS: Final = [
+        (
+            "/api/unit-plan",
+            {"action": "rename", "unit": "rpm", "to": "rev/min"},
+            "a.ddd.json",
+            "renaming 'rpm' cannot be planned",
+        ),
+        (
+            "/api/unit-plan",
+            {"action": "describe", "unit": "rpm", "description": "revolutions"},
+            "units.ddd.json",
+            "the description of 'rpm' cannot be set",
+        ),
+        (
+            "/api/unit-plan",
+            {"action": "remove", "unit": "spare"},
+            "units.ddd.json",
+            "'spare' cannot be taken out of the vocabulary",
+        ),
+        (
+            "/api/type-plan",
+            {"action": "rename", "name": "Speed_t", "to": "Rate_t"},
+            "types.ddd.json",
+            "renaming 'Speed_t' cannot be planned",
+        ),
+        (
+            "/api/type-plan",
+            {"action": "set", "name": "Speed_t", "key": "unit", "raw": '"rev/min"'},
+            "types.ddd.json",
+            "'Speed_t' cannot be changed",
+        ),
+        (
+            "/api/constant-plan",
+            {"action": "set", "name": "SPARE", "key": "value", "raw": "4"},
+            "constants.ddd.json",
+            "'SPARE' cannot be changed",
+        ),
+        (
+            "/api/constant-plan",
+            {"action": "rename", "name": "SPARE", "to": "SPARE_CELLS"},
+            "constants.ddd.json",
+            "renaming 'SPARE' cannot be planned",
+        ),
+        (
+            "/api/constant-plan",
+            {"action": "remove", "name": "SPARE"},
+            "constants.ddd.json",
+            "'SPARE' cannot be removed",
+        ),
+        (
+            "/api/value-plan",
+            {"name": "Table", "at": "[1]", "raw": "5"},
+            "a.ddd.json",
+            "the values of 'Table' cannot be set",
+        ),
+        (
+            "/api/cells-plan",
+            {"name": "Table", "at": "[0],[1]", "raw": "4,5"},
+            "a.ddd.json",
+            "the values of 'Table' cannot be set",
+        ),
+        (
+            "/api/values-plan",
+            {"name": "Table", "raw": "4,5,6"},
+            "a.ddd.json",
+            "the values of 'Table' cannot be set",
+        ),
+        (
+            "/api/declaration-plan",
+            {"action": "read", "file": "b.ddd.json", "name": "Speed", "scope": "input"},
+            "a.ddd.json",
+            "'Speed' cannot be declared here",
+        ),
+        (
+            "/api/description-plan",
+            {"file": "a.ddd.json", "name": "Speed", "description": "rotational speed"},
+            "a.ddd.json",
+            "the description of 'Speed' cannot be set",
+        ),
+    ]
+    """Each plan pointing into a file by the index - a unit's, a type's, a constant's, an
+    object's values, a variable read into ``b.ddd.json`` and a declaration's description - with
+    the file :attr:`MOVED` moves its place in, and what it then cannot do."""
+
+    @pytest.mark.parametrize(("route", "query", "file", "consequence"), PLANS)
     def test_each_plan_is_refused_as_stale(
         self, tmp_path: Path, route: str, query: dict[str, str], file: str, consequence: str
     ) -> None:
@@ -8809,6 +8817,95 @@ class TestAPlanWhosePlaceMovedSinceTheAnalysis:
         assert planned.status == 200, planned.body
         write_tree(root, {file: self.MOVED[file]})
         assert get(api, route, **asked) == self.refused(file, consequence)
+
+    LISTS: Final = {
+        "units.ddd.json": "units",
+        "types.ddd.json": "types",
+        "constants.ddd.json": "constants",
+        "a.ddd.json": "component.interface",
+    }
+    """Where each file of :attr:`MOVED` keeps the list it has one more entry at the top of."""
+
+    @classmethod
+    def putting_in(cls, root: Path, file: str) -> dict[str, Any]:
+        """An edit of the page's own putting in at the top of ``file`` the entry :attr:`MOVED`
+        holds there, which moves every place below it."""
+        container = cls.LISTS[file]
+        entries: Any = cls.MOVED[file]
+        for key in container.split("."):
+            entries = entries[key]
+        path = root / file
+        return {
+            "changes": [
+                {
+                    "file": path.as_posix(),
+                    "fingerprint": fingerprint(path.read_bytes()),
+                    "operations": [
+                        {
+                            "op": "insert",
+                            "pointer": f"{container}[0]",
+                            "raw": json.dumps(entries[0]),
+                        }
+                    ],
+                }
+            ],
+            "label": f"an entry at the top of {file}",
+        }
+
+    @pytest.mark.parametrize(("route", "query", "file"), [plan[:3] for plan in PLANS])
+    def test_each_plan_an_edit_moved_waits_for_that_edit_s_analysis(
+        self,
+        gated: Callable[[Path], Api],
+        tmp_path: Path,
+        route: str,
+        query: dict[str, str],
+        file: str,
+    ) -> None:
+        """The same entry put in by an edit of the page's own, whose analysis waits: refused
+        ``analysing``, naming the file, as a plan writing a file that edit wrote is, and not
+        ``stale``, which says the file was saved from elsewhere - the plan asked once that
+        analysis lands is made where the place now is. A variable read into ``b.ddd.json`` writes
+        that file alone and reads its producer's declaration in ``a.ddd.json``: what the plan
+        reads is asked, not only what it writes."""
+        root = self.written(tmp_path)
+        asked = {
+            key: posix(root, value) if key == "file" else value for key, value in query.items()
+        }
+        api = gated(root / "p.ddd.json")
+        planned = get(api, route, **asked)
+        assert planned.status == 200, planned.body
+        left_waiting(api, self.putting_in(root, file))
+        assert get(api, route, **asked) == waiting_for(file)
+
+    def test_a_plan_a_save_moved_is_stale_while_an_edit_of_a_file_it_does_not_read_waits(
+        self, gated: Callable[[Path], Api], tmp_path: Path
+    ) -> None:
+        """An edit waiting for its analysis says nothing of a file it did not write: a unit's
+        description whose place a save from elsewhere moved is refused ``stale``, as with no edit
+        waiting, while an edit of ``b.ddd.json``, which the plan never reads, waits."""
+        root = self.written(tmp_path)
+        asked = {"action": "describe", "unit": "rpm", "description": "revolutions"}
+        api = gated(root / "p.ddd.json")
+        assert get(api, "/api/unit-plan", **asked).status == 200
+        left_waiting(api, touching(root / "b.ddd.json", "component.description"))
+        write_tree(root, {"units.ddd.json": self.MOVED["units.ddd.json"]})
+        assert get(api, "/api/unit-plan", **asked) == self.refused(
+            "units.ddd.json", "the description of 'rpm' cannot be set"
+        )
+
+    def test_a_plan_refused_for_what_it_asks_says_so_while_an_edit_of_a_file_it_read_waits(
+        self, gated: Callable[[Path], Api], tmp_path: Path
+    ) -> None:
+        """Only a place that moved is the waiting edit's to explain: a rename onto the spelling
+        the unit has already is refused in its own words, while an edit of ``units.ddd.json``,
+        which the plan reads, waits for its analysis."""
+        root = self.written(tmp_path)
+        api = gated(root / "p.ddd.json")
+        left_waiting(api, self.putting_in(root, "units.ddd.json"))
+        reply = get(api, "/api/unit-plan", action="rename", unit="rpm", to="rpm")
+        assert reply == Reply(
+            409, {"error": "invalid", "message": "'rpm' is spelled that way already"}
+        )
 
     def test_a_read_whose_producer_was_taken_out_is_refused_as_stale_too(
         self, tmp_path: Path

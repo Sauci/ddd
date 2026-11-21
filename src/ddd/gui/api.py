@@ -247,7 +247,8 @@ its next analysis."""
 ANALYSING: Final = "analysing"
 """The refusal of a request the analysis has not caught up with: asked of the open project before
 its first analysis has landed, or a plan changing a file an edit wrote that no analysis has read
-yet. Answered 409, and answered differently once the analysis lands."""
+yet - or refused for a place such a file it read no longer holds. Answered 409, and answered
+differently once the analysis lands."""
 
 REFUSALS: Final = frozenset(
     {STALE, UNREADABLE, INVALID, UNVERIFIED, UNWRITABLE, ANALYSING, GENERATED, PLUGINS}
@@ -1733,12 +1734,23 @@ class Api:
         otherwise previewed as ``PlanReply`` from ``cache``, the documents ``plan`` read - leaving
         out, where ``changing``, each file its edit would leave as it was (:func:`_changing`).
 
+        A plan refused ``stale`` - a file no longer holding, at a place the plan points at, what
+        the analysis found there - is refused ``analysing`` first where an edit wrote a file the
+        plan read and no analysis has read it yet: that edit is what moved the place, the page's
+        own, and the plan asked once its analysis lands is made where the place now is. ``stale``
+        says the file was saved from elsewhere, and stands where it was.
+
         The one answer of every plan route but two: the Files tab's, which judges a plan between
         its refusals and its preview, and the variable panel's settlement, which answers more
         beside it. Written into each route, it was eight copies of one tail (2:I10)."""
         try:
             made = plan()
         except PlanRefusalError as refused:
+            if refused.code == STALE:
+                try:
+                    self._refuse_unanalysed(revision, cache)
+                except EditError as waiting:
+                    return _edit_refusal(waiting)
             return _refusal(revision, refused.code, refused.message, named)
         derived = self._derive(revision)
         try:
@@ -1763,7 +1775,9 @@ class Api:
         )
 
     def _refuse_unanalysed(self, revision: Revision, paths: Iterable[Path]) -> None:
-        """Refuse a plan changing a file an edit wrote since ``revision``'s analysis began.
+        """Refuse a plan changing a file an edit wrote since ``revision``'s analysis began - or,
+        of a plan refused because a place it points at moved, reading one (:meth:`_answered`):
+        ``paths`` is the files it changes, or the ones it read.
 
         Computed all the same, it would carry the fingerprint the analysis read that file at, and
         the edit engine would refuse its Apply as stale; and where it points into the file comes

@@ -2095,7 +2095,7 @@ class TestAPluginChangedSinceItWasImported:
     """A module is imported once per process (14:I4, decision 14.2): a plugin saved with other
     bytes once the server imported it is noticed by the poll, which stamps its file, and the
     revision that follows runs the module imported first. It carries ``plugin-changed`` on the
-    plugin's file, an error, saying the server has to be restarted."""
+    plugin's file, an error by default, saying the server has to be restarted."""
 
     def test_a_plugin_edited_is_told_changed_on_its_file_as_an_error(self, tmp_path: Path) -> None:
         """``plug.py`` files ``OLD WORDS``, then is saved filing ``NEW WORDS``: the next revision
@@ -2125,6 +2125,25 @@ class TestAPluginChangedSinceItWasImported:
         plugin = a_saying_plugin(tmp_path, "OLD WORDS")
         session = opened_and_settled(tmp_path / "p.ddd.json")
         plugin.write_bytes(plugin.read_bytes())
+        moved(plugin)
+        assert session.poll() is True
+        assert (said(session), told_changed(session)) == (["OLD WORDS"], [])
+
+    def test_a_plugin_given_back_the_bytes_it_was_imported_from_is_told_nothing_again(
+        self, tmp_path: Path
+    ) -> None:
+        """Saved back as it was imported, its file holds the very bytes the server's module was run
+        from: ``plugin-changed`` goes with the next revision, no restart taken. Moved back twice,
+        so that its stamp cannot be the one the edit left, whatever the clock's granularity."""
+        plugin = a_saying_plugin(tmp_path, "OLD WORDS")
+        session = opened_and_settled(tmp_path / "p.ddd.json")
+        imported = plugin.read_bytes()
+        plugin.write_text(SAYING_PLUGIN.format(words="NEW WORDS"), encoding="utf-8")
+        moved(plugin)
+        assert session.poll() is True
+        assert [severity for _, severity, _ in told_changed(session)] == [Severity.ERROR]
+        plugin.write_bytes(imported)
+        moved(plugin)
         moved(plugin)
         assert session.poll() is True
         assert (said(session), told_changed(session)) == (["OLD WORDS"], [])

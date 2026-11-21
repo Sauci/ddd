@@ -50,6 +50,7 @@ from ddd.backends.c.model import (
 )
 from ddd.cli import EXIT_OK, EXIT_USAGE, _build_parser, cmake_module_directory, main, schema_models
 from ddd.diagnostics import CHECKS, Severity
+from ddd.gui import session as gui_session
 from ddd.gui.compare import Compared, _own_errors
 from ddd.gui.contract import CompareReply
 from ddd.loading import FILE_KINDS
@@ -11451,9 +11452,10 @@ class TestLimitsAreOneValueExactly:
 class TestAPluginChangedUnderDddGui:
     """14:I4, decision 14.2. A module is imported once per process, so a plugin saved with other
     bytes once ``ddd gui`` imported it was analysed as its old code, and nothing a reader of ``ddd
-    gui`` met said so. It files ``plugin-changed`` on the plugin's file until it is restarted, a
-    check of its own, and the pages say so: what it is, that ``ddd check`` never files it, and the
-    edits nothing tells - a module a plugin imports, and a plugin named as a module."""
+    gui`` met said so. It files ``plugin-changed`` on the plugin's file, a check of its own, until
+    it is restarted or the file holds the bytes it was imported from again, and the pages say so:
+    what it is, that ``ddd check`` never files it, and the edits nothing tells - a module a plugin
+    imports, and a plugin named as a module."""
 
     SAID: ClassVar[dict[str, tuple[str, tuple[str, ...], tuple[str, ...]]]] = {
         "SPEC.md": (
@@ -11468,47 +11470,67 @@ class TestAPluginChangedUnderDddGui:
                 "its path ([section 3.11](#311-plugins)) that holds other bytes than the server "
                 "imported it from. A module is imported once per process, so the server goes on "
                 "running the old code until it is restarted, and every finding of an analysis "
-                "after the edit is that code's: an error for that reason. The same bytes written "
-                "again are no change, and `ddd check`, which imports every plugin afresh, never "
-                "files it.",
+                "after the edit is that code's: an error by default, for that reason. The same "
+                "bytes written again are no change, and `ddd check`, which imports every plugin "
+                "afresh, never files it.",
                 "`plugin-not-found` and `plugin-invalid` have a fixed severity, because a project "
                 "cannot be interpreted without the plugins it names.",
-                "and says how many the project has of its own. While `plugin-changed` stands, the "
-                "tab counts it as one of the open project's own errors, so its verdict is a "
-                "refusal until the server is restarted, where the commands, which import every "
-                "plugin afresh, never file it.",
+                "and says how many the project has of its own. While `plugin-changed` stands as an "
+                "error, as it does by default, the tab counts it as one of the open project's own "
+                "errors, so its verdict is a refusal until the server is restarted or the plugin's "
+                "file holds the bytes it was imported from again, where the commands, which import "
+                "every plugin afresh, never file it.",
             ),
             (
                 "an edit takes effect in the next run, and in the editor after the server is",
                 "Both checks have a fixed severity",
+                "that code's: an error for that reason.",
+                "While `plugin-changed` stands, the tab counts it",
             ),
         ),
         "docs/command_line_interface.rst": (
             COMMAND_LINE_INTERFACE,
             (
                 "the answer says how many errors the project has of its own. While "
-                "``plugin-changed`` stands it is one of them, so the verdict is a refusal until "
-                "the server is restarted, where ``ddd compare``, which imports every plugin "
-                "afresh, never files it.",
+                "``plugin-changed`` stands as an error, as it does by default, it is one of them, "
+                "so the verdict is a refusal until the server is restarted or the plugin's file "
+                "holds the bytes it was imported from again, where ``ddd compare``, which imports "
+                "every plugin afresh, never files it.",
                 "A plugin named by its path that changed since the server imported it is reported "
-                "with ``plugin-changed`` on its file, an error: a module is imported once per "
-                "process, so the server goes on running the old code until it is restarted. A "
-                "module a plugin imports is not watched, and a plugin named as a module is not "
-                "compared, so editing either takes a restart unsaid. Large projects stay "
-                "responsive.",
+                "with ``plugin-changed`` on its file, an error by default: a module is imported "
+                "once per process, so the server goes on running the old code until it is "
+                "restarted. A module a plugin imports is not watched, and a plugin named as a "
+                "module is not compared, so editing either takes a restart unsaid. Large projects "
+                "stay responsive.",
             ),
-            (),
+            (
+                "While ``plugin-changed`` stands it is one of them,",
+                "on its file, an error: a module",
+            ),
         ),
         "docs/plugins.rst": (
             PAGES["docs/plugins.rst"],
             (
                 "editing the plugin file only takes effect the next time a process starts. ``ddd "
-                "gui`` says so until it is restarted, with ``plugin-changed`` on the file of a "
-                "plugin named by its path that changed since it imported it; a module a plugin "
-                "imports is not watched, and a plugin named as a module is not compared, so "
-                "editing either takes a restart unsaid.",
+                "gui`` says so, with ``plugin-changed`` on the file of a plugin named by its path "
+                "that changed since it imported it, until it is restarted or the file holds the "
+                "bytes it was imported from again; a module a plugin imports is not watched, and a "
+                "plugin named as a module is not compared, so editing either takes a restart "
+                "unsaid.",
             ),
-            ("only takes effect the next time a process starts. A ``.py`` plugin",),
+            (
+                "only takes effect the next time a process starts. A ``.py`` plugin",
+                "says so until it is restarted, with",
+            ),
+        ),
+        "ddd.gui.session": (
+            gui_session.__doc__ or "",
+            (
+                "the revision carries ``plugin-changed`` on the plugin's file, an error by "
+                "default, until ``ddd gui`` is restarted or the file holds the bytes it was "
+                "imported from again (:func:`_tell_changed_plugins`).",
+            ),
+            ("on the plugin's file, an error, until",),
         ),
         "docs/consistency_checks.rst": (
             CONSISTENCY_CHECKS,

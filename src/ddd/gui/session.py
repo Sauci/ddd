@@ -23,11 +23,11 @@ So a component saved where a pattern matches, a plugin created or mended and a b
 rewritten each make a new revision, as a file saved does. So does a plugin named by its path and
 edited once this process imported it, whose analysis runs the module of its old bytes, a module
 being imported once per process: the revision carries ``plugin-changed`` on the plugin's file, an
-error, until ``ddd gui`` is restarted (:func:`_tell_changed_plugins`). A build record written where
-none was, elsewhere than beside the project description - a new build tree's, or a new image's -
-and a plugin named as a module and installed since are noticed when something else changes, and
-an edit of a plugin named as a module, or of a module a plugin imports, is told by nothing, which
-are limits of the preview.
+error by default, until ``ddd gui`` is restarted or the file holds the bytes it was imported from
+again (:func:`_tell_changed_plugins`). A build record written where none was, elsewhere than beside
+the project description - a new build tree's, or a new image's - and a plugin named as a module and
+installed since are noticed when something else changes, and an edit of a plugin named as a
+module, or of a module a plugin imports, is told by nothing, which are limits of the preview.
 
 The analysis is the language server's, run the way ``ddd lsp`` runs it: under the severities of
 every build record naming the project, or under the defaults when none does.

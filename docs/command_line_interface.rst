@@ -511,9 +511,10 @@ The commands
        verdict is the one ``ddd compare`` exits on, and the project's own errors count in it
        as the baseline's and the comparison's do, so that a project the Findings tab shows
        errors on cannot replace a baseline; the answer says how many errors the project has of
-       its own. While ``plugin-changed`` stands it is one of them, so the verdict is a refusal
-       until the server is restarted, where ``ddd compare``, which imports every plugin afresh,
-       never files it. A finding that names a place in
+       its own. While ``plugin-changed`` stands as an error, as it does by default, it is one of
+       them, so the verdict is a refusal until the server is restarted or the plugin's file holds
+       the bytes it was imported from again, where ``ddd compare``, which imports every plugin
+       afresh, never files it. A finding that names a place in
        this project leads there, as on the Findings tab: a plugin's comparison rule files at
        the declaration it is about. The comparison's own findings name the whole delivery
        rather than a place in one file, and the baseline's own, marked ``in the baseline:``,
@@ -725,10 +726,10 @@ The commands
        does not read as one, so nothing under /home/you/project/build is written from here
        until it does``.
        A plugin named by its path that changed since the server imported it is reported with
-       ``plugin-changed`` on its file, an error: a module is imported once per process, so the
-       server goes on running the old code until it is restarted. A module a plugin imports is
-       not watched, and a plugin named as a module is not compared, so editing either takes a
-       restart unsaid.
+       ``plugin-changed`` on its file, an error by default: a module is imported once per
+       process, so the server goes on running the old code until it is restarted. A module a
+       plugin imports is not watched, and a plugin named as a module is not compared, so editing
+       either takes a restart unsaid.
        Large projects stay responsive. An edit is answered once its files are written, before
        it is analysed, and the change shows where it was made; its findings follow once the
        project has been analysed again, the heading saying ``Updating the findings…`` until

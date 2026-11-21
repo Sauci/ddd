@@ -13415,7 +13415,8 @@ KEPT: Final = ("/api/graph", "/api/types", "/api/shared", "/api/findings")
 the revision and the files it read."""
 
 # A root including a pattern, one file of which is there to be matched: a file appearing where the
-# pattern matches is one no revision read, so the poll never notices it.
+# pattern matches is one no revision read, until the poll notices the directory the pattern
+# expands in move and an analysis lands.
 PATTERNED = {
     "p.ddd.json": project("P", "a.ddd.json", "lib/*.ddd.json"),
     "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
@@ -13487,14 +13488,14 @@ class TestAnswersKeptForARevision:
     def test_the_files_tab_lists_a_file_appearing_where_a_pattern_matches(
         self, tmp_path: Path
     ) -> None:
-        """A file appearing where a root pattern matches starts no analysis - the poll compares
-        the files the revision read - so no revision could say a kept answer had gone stale: the
-        tab is answered anew, and lists the file at the next request."""
+        """A file appearing where a root pattern matches is one no revision read until the poll
+        notices it and an analysis lands, so no revision could say a kept answer had gone stale
+        meanwhile: the tab is answered anew, and lists the file at the next request, asked here
+        before any poll."""
         api = opened(tmp_path, PATTERNED)
         assert not api.session.poll()
         before = get(api, "/api/files").body
         write_tree(tmp_path, {"lib/c.ddd.json": component("C")})
-        assert not api.session.poll()
         after = get(api, "/api/files").body
         assert (before["revision"], after["revision"]) == (1, 1)
         assert [Path(file).name for file in before["entries"][1]["files"]] == ["b.ddd.json"]
@@ -13506,9 +13507,10 @@ class TestAnswersKeptForARevision:
 
     def test_the_units_tab_offers_adopting_as_the_disk_now_allows(self, tmp_path: Path) -> None:
         """Whether adopting may write units.ddd.json beside the description, and which units file
-        it would fill instead, are read from the disk as it stands, and neither a file no include
-        names nor one a root pattern has come to match starts an analysis: the offer is answered
-        anew, as the plan would be made."""
+        it would fill instead, are read from the disk as it stands: a file no include names starts
+        no analysis, and one a root pattern has come to match is no revision's until the analysis
+        the poll asks for lands. The offer is answered anew, as the plan would be made - asked
+        here before any poll."""
         api = opened(tmp_path, PATTERNED)
         assert not api.session.poll()
         assert get(api, "/api/units").body["adoptable"] == 1
@@ -13516,7 +13518,6 @@ class TestAnswersKeptForARevision:
         assert not api.session.poll()
         assert get(api, "/api/units").body["adoptable"] is None
         write_tree(tmp_path, {"lib/units.ddd.json": {"units": ["rpm"]}})
-        assert not api.session.poll()
         body = get(api, "/api/units").body
         assert (body["revision"], body["adoptable"]) == (1, 1)
         assert body == get(Api(api.session, api.project), "/api/units").body

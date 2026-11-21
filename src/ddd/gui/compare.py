@@ -410,7 +410,8 @@ def _resolved_baseline(
     stamp it was read at - :func:`~ddd.gui.session.stamped`, the session's own reading of "has
     this file changed", asked of the baseline's files as the poller asks it of the candidate's.
     A file a wildcard include would match only once it exists is noticed when something else
-    changes, which is the limit the session already states for the open project.
+    changes: a baseline is stamped by its files alone, where the open project's poll stamps the
+    directories its patterns expand in too (:attr:`~ddd.gui.session.Revision.watched`).
     """
     try:
         resolved = path.resolve()

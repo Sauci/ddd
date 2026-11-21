@@ -1481,6 +1481,430 @@ class TestStamps:
         assert session.revision is not None and session.revision.edits == undone
 
 
+def moved(path: Path) -> None:
+    """``path``'s modification time moved back ten seconds, its access time kept: what creating or
+    removing an entry does to a directory's time, made sure of. A directory written in the tick
+    its stamp was taken in can keep the time it had, the clock's granularity deciding, and its
+    size says nothing on most systems; a test of what the poll stamps leaves neither to chance."""
+    status = path.stat()
+    os.utime(path, ns=(status.st_atime_ns, status.st_mtime_ns - 10**10))
+
+
+def checks_of(session: Session) -> dict[str, Severity]:
+    """Each check the newest revision reports, at the severity it reports it at."""
+    revision = session.revision
+    assert revision is not None
+    return {filed.diagnostic.check: filed.diagnostic.severity for filed in revision.findings}
+
+
+NAMED_PLUGIN = 'from ddd.plugins import Plugin\n\nPLUGIN = Plugin(name="named")\n'
+"""A plugin that loads and does nothing."""
+
+MODELLED_PLUGIN = """
+from pydantic import BaseModel, field_validator
+
+from ddd.plugins import Plugin
+
+
+class Settings(BaseModel):
+    level: int = 0
+
+    @field_validator("level")
+    @classmethod
+    def broken(cls, value: int) -> int:
+        raise RuntimeError("the model is broken")
+
+
+PLUGIN = Plugin(name="modelled", project_model=Settings)
+"""
+"""A plugin whose own model raises on the project's block: what ends the read of a project naming
+it, ``plugin-invalid``, the run covering the project description alone."""
+
+
+def a_pattern_of_writers(base: Path, pattern: str, first: str) -> Path:
+    """A project including ``pattern``, and the file ``first`` it matches, writing ``Speed``;
+    returns the project file."""
+    write_tree(
+        base,
+        {
+            "p.ddd.json": project("P", pattern),
+            first: component("W", declare("output", "Speed", unit="rpm")),
+        },
+    )
+    return base / "p.ddd.json"
+
+
+def a_second_writer(path: Path) -> None:
+    """A component at ``path`` writing ``Speed`` too: ``multiple-producers``, once it is read."""
+    write_tree(path.parent, {path.name: component("X", declare("output", "Speed", unit="rpm"))})
+
+
+class TestWhatThePollWatches:
+    """Beside the files an analysis read, the poll stamps what decides which files there are and
+    how they are graded (14:I5): the directory each wildcard include expands in, every file a
+    ``plugins`` list names by its path, loaded or not, and every build record the search finds, a
+    refused one among them. A change none of the files shows makes a new revision all the same,
+    and it says what ``ddd check`` says then."""
+
+    def test_a_component_added_on_a_pattern_makes_a_new_revision(self, tmp_path: Path) -> None:
+        """``comps/*.ddd.json`` matches a second writer of ``Speed`` once it is saved there, which
+        ``ddd check`` reports as ``multiple-producers``: so does the next revision, the directory
+        the pattern expands in having moved."""
+        project_file = a_pattern_of_writers(tmp_path, "comps/*.ddd.json", "comps/w.ddd.json")
+        session = opened_and_settled(project_file)
+        assert "multiple-producers" not in checks_of(session)
+        a_second_writer(tmp_path / "comps" / "x.ddd.json")
+        moved(tmp_path / "comps")
+        assert session.poll() is True
+        assert checks_of(session)["multiple-producers"] is Severity.ERROR
+
+    def test_a_file_saved_where_a_recursive_pattern_walks_makes_a_new_revision(
+        self, tmp_path: Path
+    ) -> None:
+        """``lib/**/*.ddd.json`` expands in every directory it walks, the ones below ``lib``
+        among them."""
+        project_file = a_pattern_of_writers(tmp_path, "lib/**/*.ddd.json", "lib/a/w.ddd.json")
+        session = opened_and_settled(project_file)
+        a_second_writer(tmp_path / "lib" / "a" / "x.ddd.json")
+        moved(tmp_path / "lib" / "a")
+        assert session.poll() is True
+        assert "multiple-producers" in checks_of(session)
+
+    def test_a_directory_made_where_a_recursive_pattern_walks_makes_a_new_revision(
+        self, tmp_path: Path
+    ) -> None:
+        """``lib/**/c.ddd.json`` looks ``c.ddd.json`` up in every directory the ``**`` walks, and
+        lists each of them for its subdirectories: one made below ``lib/a``, holding one, is
+        noticed by the time of ``lib/a``."""
+        project_file = a_pattern_of_writers(tmp_path, "lib/**/c.ddd.json", "lib/a/c.ddd.json")
+        session = opened_and_settled(project_file)
+        a_second_writer(tmp_path / "lib" / "a" / "b" / "c.ddd.json")
+        moved(tmp_path / "lib" / "a")
+        assert session.poll() is True
+        assert "multiple-producers" in checks_of(session)
+
+    def test_a_file_saved_where_a_second_wildcard_matches_makes_a_new_revision(
+        self, tmp_path: Path
+    ) -> None:
+        """``lib/*/*.ddd.json`` matches its last name in each directory its first wildcard
+        matches: a writer saved in ``lib/a`` is noticed by the time of ``lib/a``."""
+        project_file = a_pattern_of_writers(tmp_path, "lib/*/*.ddd.json", "lib/a/w.ddd.json")
+        session = opened_and_settled(project_file)
+        a_second_writer(tmp_path / "lib" / "a" / "x.ddd.json")
+        moved(tmp_path / "lib" / "a")
+        assert session.poll() is True
+        assert "multiple-producers" in checks_of(session)
+
+    def test_a_directory_made_where_a_wildcard_matches_makes_a_new_revision(
+        self, tmp_path: Path
+    ) -> None:
+        """``comps/*/c.ddd.json`` lists ``comps`` for the directories its wildcard matches, and
+        looks ``c.ddd.json`` up in each: a directory made there, holding one, is noticed by the
+        time of ``comps``."""
+        project_file = a_pattern_of_writers(tmp_path, "comps/*/c.ddd.json", "comps/a/c.ddd.json")
+        session = opened_and_settled(project_file)
+        a_second_writer(tmp_path / "comps" / "b" / "c.ddd.json")
+        moved(tmp_path / "comps")
+        assert session.poll() is True
+        assert "multiple-producers" in checks_of(session)
+
+    def test_a_file_saved_in_a_directory_a_wildcard_matched_makes_a_new_revision(
+        self, tmp_path: Path
+    ) -> None:
+        """``c.ddd.json`` is looked up in every directory ``comps/*`` matches, there or not: one
+        saved in ``comps/b``, which held none, is noticed by its own stamp, though no directory
+        the pattern lists gained an entry."""
+        project_file = a_pattern_of_writers(tmp_path, "comps/*/c.ddd.json", "comps/a/c.ddd.json")
+        (tmp_path / "comps" / "b").mkdir()
+        session = opened_and_settled(project_file)
+        a_second_writer(tmp_path / "comps" / "b" / "c.ddd.json")
+        assert session.poll() is True
+        assert "multiple-producers" in checks_of(session)
+
+    def test_the_directory_a_pattern_names_made_with_a_file_in_it_makes_a_new_revision(
+        self, tmp_path: Path
+    ) -> None:
+        """``extra/*.ddd.json`` names a directory that is not there yet: stamped as not there, it
+        is noticed once it is made, a second writer of ``Speed`` in it."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "extra/*.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        session = opened_and_settled(tmp_path / "p.ddd.json")
+        assert "include-empty" in checks_of(session)
+        a_second_writer(tmp_path / "extra" / "x.ddd.json")
+        assert session.poll() is True
+        assert "multiple-producers" in checks_of(session)
+
+    def test_a_file_saved_where_no_pattern_expands_asks_for_nothing(self, tmp_path: Path) -> None:
+        """An editor's swap file beside the description: ``comps/*.ddd.json`` looks ``comps`` up
+        there and lists nothing else, so that directory's time is no stamp of the project."""
+        project_file = a_pattern_of_writers(tmp_path, "comps/*.ddd.json", "comps/w.ddd.json")
+        session = opened_and_settled(project_file)
+        (tmp_path / ".p.ddd.json.swp").write_bytes(b"")
+        moved(tmp_path)
+        assert session.poll() is False
+
+    @pytest.mark.parametrize(
+        ("pattern", "other"),
+        [("lib/**/*.ddd.json", "lib/a/notes.txt"), ("lib/*/*.ddd.json", "lib/n")],
+    )
+    def test_a_file_no_pattern_matches_rewritten_where_one_walks_asks_for_nothing(
+        self, tmp_path: Path, pattern: str, other: str
+    ) -> None:
+        """A pattern's walk is watched by its directories alone: a file it passes over, rewritten
+        in place, is no change of the project, though pathlib's walk meets it - ``**`` yields
+        files too from python 3.13 on, and a wildcard followed by a name matches them as well.
+        The directory it lies in keeps its time, as a write in place leaves it."""
+        project_file = a_pattern_of_writers(tmp_path, pattern, "lib/a/w.ddd.json")
+        passed_over = tmp_path / other
+        passed_over.write_text("notes", encoding="utf-8")
+        session = opened_and_settled(project_file)
+        status = passed_over.parent.stat()
+        passed_over.write_text("notes, longer", encoding="utf-8")
+        os.utime(passed_over.parent, ns=(status.st_atime_ns, status.st_mtime_ns))
+        assert session.poll() is False
+
+    def test_a_pattern_with_its_wildcards_in_its_last_name_is_listed_by_the_loader_alone(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``comps/*.ddd.json`` expands in ``comps``, which its names lead to: watching it lists no
+        directory, and the one listing of ``comps`` an analysis makes is the loader's own - over
+        a generated project of 100,000 declarations, 1,683 files."""
+        project_file = a_pattern_of_writers(tmp_path, "comps/*.ddd.json", "comps/w.ddd.json")
+        session = opened_and_settled(project_file)
+        globbed: list[str] = []
+        real = Path.glob
+
+        def counted(self: Path, pattern: str, *arguments: Any, **keywords: Any) -> object:
+            globbed.append(pattern)
+            return real(self, pattern, *arguments, **keywords)
+
+        monkeypatch.setattr(Path, "glob", counted)
+        project_file.write_bytes(project_file.read_bytes() + b" ")
+        assert session.poll() is True
+        revision = session.revision
+        assert revision is not None and revision.watched == ((tmp_path / "comps").resolve(),)
+        assert globbed.count("comps/*.ddd.json") == 1
+
+    def test_an_analysis_reads_the_descriptions_again_and_no_component(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """What a revision watches is read off the project descriptions its analysis read, read
+        again for their lists: never off a component, which states neither and is most of a large
+        project's bytes."""
+        project_file = a_pattern_of_writers(tmp_path, "comps/*.ddd.json", "comps/w.ddd.json")
+        session = opened_and_settled(project_file)
+        read: list[str] = []
+        real = module._read_json
+
+        def recorded(path: Path) -> Any:
+            read.append(path.name)
+            return real(path)
+
+        monkeypatch.setattr(module, "_read_json", recorded)
+        (tmp_path / "comps" / "w.ddd.json").write_text(
+            json.dumps(component("W", declare("output", "Speed", unit="Hz"))), encoding="utf-8"
+        )
+        assert session.poll() is True
+        assert "p.ddd.json" in read
+        assert "w.ddd.json" not in read
+
+    def test_an_entry_naming_a_file_not_there_watches_no_directory(self, tmp_path: Path) -> None:
+        """``sub/gone.ddd.json`` names a file, stamped as not there by the revision's files: the
+        directory ``sub`` it would lie in is not watched, and a file saved there is no change."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "sub/gone.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "sub/kept.txt": "kept",
+            },
+        )
+        session = opened_and_settled(tmp_path / "p.ddd.json")
+        (tmp_path / "sub" / "other.txt").write_text("other", encoding="utf-8")
+        moved(tmp_path / "sub")
+        assert session.poll() is False
+
+    def test_an_entry_naming_a_file_watches_no_directory(self, tmp_path: Path) -> None:
+        """``v[2].ddd.json`` names the file of that name, which the loader reads before it reads
+        the entry as a pattern: ``v2.ddd.json`` saved beside it is no file of the project."""
+        write_tree(
+            tmp_path,
+            {"p.ddd.json": project("P", "v[2].ddd.json"), "v[2].ddd.json": component("V")},
+        )
+        session = opened_and_settled(tmp_path / "p.ddd.json")
+        a_second_writer(tmp_path / "v2.ddd.json")
+        moved(tmp_path)
+        assert session.poll() is False
+
+    def test_a_pattern_the_platform_refuses_to_expand_is_analysed_all_the_same(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Platforms disagree about which patterns they accept: the analysis reports one refused
+        as ``include-empty``, and it watches no directory. Refused for the include's pattern
+        alone, the search for build records globbing its own."""
+        project_file = a_pattern_of_writers(tmp_path, "lib/**/*.ddd.json", "lib/a/w.ddd.json")
+        real = Path.glob
+
+        def refuse(self: Path, pattern: str, *arguments: Any, **keywords: Any) -> object:
+            if pattern.startswith("lib/"):
+                msg = "Non-relative patterns are unsupported"
+                raise NotImplementedError(msg)
+            return real(self, pattern, *arguments, **keywords)
+
+        monkeypatch.setattr(Path, "glob", refuse)
+        session = Session(tmp_path)
+        session.open(project_file)
+        assert "include-empty" in checks_of(session)
+        assert session.revision is not None and session.revision.watched == ()
+
+    def test_a_plugin_named_and_then_created_makes_a_new_revision(self, tmp_path: Path) -> None:
+        write_tree(tmp_path, {"p.ddd.json": project("P", plugins=["named.py"])})
+        session = opened_and_settled(tmp_path / "p.ddd.json")
+        assert "plugin-not-found" in checks_of(session)
+        (tmp_path / "named.py").write_text(NAMED_PLUGIN, encoding="utf-8")
+        assert session.poll() is True
+        assert checks_of(session) == {}
+
+    def test_a_plugin_that_failed_to_import_and_is_mended_makes_a_new_revision(
+        self, tmp_path: Path
+    ) -> None:
+        write_tree(tmp_path, {"p.ddd.json": project("P", plugins=["named.py"])})
+        (tmp_path / "named.py").write_text('raise RuntimeError("broken")\n', encoding="utf-8")
+        session = opened_and_settled(tmp_path / "p.ddd.json")
+        assert "plugin-invalid" in checks_of(session)
+        (tmp_path / "named.py").write_text(NAMED_PLUGIN, encoding="utf-8")
+        assert session.poll() is True
+        assert checks_of(session) == {}
+
+    def test_a_plugin_named_beside_one_that_ends_the_read_is_watched_all_the_same(
+        self, tmp_path: Path
+    ) -> None:
+        """A plugin whose model raises on the project's block ends the read, and the run covers
+        the project description alone: another plugin the description names by its path, missing
+        then created, is watched though no run noted its file."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project(
+                    "P",
+                    plugins=["modelled.py", "named.py"],
+                    extensions={"modelled": {"level": 1}},
+                ),
+            },
+        )
+        (tmp_path / "modelled.py").write_text(MODELLED_PLUGIN, encoding="utf-8")
+        session = opened_and_settled(tmp_path / "p.ddd.json")
+        revision = session.revision
+        assert revision is not None and [file.path.name for file in revision.files] == [
+            "p.ddd.json"
+        ]
+        assert "plugin-not-found" in checks_of(session)
+        (tmp_path / "named.py").write_text(NAMED_PLUGIN, encoding="utf-8")
+        assert session.poll() is True
+        assert "plugin-not-found" not in checks_of(session)
+
+    def test_a_plugin_named_as_a_module_is_watched_by_the_files_its_run_noted(
+        self, tmp_path: Path
+    ) -> None:
+        """A module is no path: finding its file can import its parents, so the watch passes it
+        over, and its files are the ones the run noted, which the revision's files stamp. The
+        standard library's ``json`` is a module no plugin is made of: ``plugin-invalid``."""
+        write_tree(tmp_path, {"p.ddd.json": project("P", plugins=["json"])})
+        revision = first_revision(tmp_path, tmp_path / "p.ddd.json")
+        assert "plugin-invalid" in {filed.diagnostic.check for filed in revision.findings}
+        assert revision.watched == ()
+        assert Path(json.__file__).resolve() in {file.path for file in revision.files}
+
+    def test_a_build_record_rewritten_makes_a_new_revision_under_its_severities(
+        self, tmp_path: Path
+    ) -> None:
+        """A reconfigure with ``--strict``: ``ddd check --strict`` reports the output nobody reads
+        as an error, and so does the next revision."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        project_file = tmp_path / "p.ddd.json"
+        record = build_record(tmp_path, project_file)
+        session = opened_and_settled(project_file)
+        assert checks_of(session)["unused-output"] is Severity.WARNING
+        build_record(tmp_path, project_file, strict=True)
+        assert session.poll() is True
+        assert checks_of(session)["unused-output"] is Severity.ERROR
+        assert record.is_file()
+
+    def test_a_refused_build_record_mended_makes_a_new_revision_under_its_severities(
+        self, tmp_path: Path
+    ) -> None:
+        """A record a newer DDD wrote is refused, and the project analysed under the defaults; the
+        record written again by this one's build applies."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        project_file = tmp_path / "p.ddd.json"
+        build_record(tmp_path, project_file, format=99)
+        session = opened_and_settled(project_file)
+        assert session.revision is not None and session.revision.builds == ()
+        build_record(tmp_path, project_file, strict=True)
+        assert session.poll() is True
+        assert session.revision is not None and len(session.revision.builds) == 1
+        assert checks_of(session)["unused-output"] is Severity.ERROR
+
+    def test_a_revision_watches_every_description_s_patterns_its_plugins_and_the_records(
+        self, tmp_path: Path
+    ) -> None:
+        """A sub-project's pattern as much as the project's own, and the plugin a description
+        names by its path."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "comps/*.ddd.json", "sub/s.ddd.json"),
+                "comps/w.ddd.json": component("W", declare("output", "Speed", unit="rpm")),
+                "sub/s.ddd.json": project("S", "lib/*.ddd.json", plugins=["named.py"]),
+                "sub/named.py": NAMED_PLUGIN,
+            },
+        )
+        project_file = tmp_path / "p.ddd.json"
+        record = build_record(tmp_path, project_file)
+        revision = first_revision(tmp_path, project_file)
+        root = tmp_path.resolve()
+        assert revision.watched == tuple(
+            sorted(
+                {
+                    root / "comps",
+                    root / "sub" / "lib",
+                    root / "sub" / "named.py",
+                    record.resolve(),
+                }
+            )
+        )
+
+    def test_opening_a_project_with_a_pattern_and_a_build_record_analyses_it_once(
+        self, tmp_path: Path
+    ) -> None:
+        """Opening stamps the directories its own patterns expand in, and the build records the
+        search finds, before the first analysis reads anything, as it stamps the files its own
+        includes name: watched from that analysis on, they cost it no second one."""
+        project_file = a_pattern_of_writers(tmp_path, "comps/*.ddd.json", "comps/w.ddd.json")
+        build_record(tmp_path, project_file)
+        session = Session(tmp_path)
+        session.open(project_file)
+        assert session.revision is not None and session.revision.number == 1
+        assert session.poll() is False
+
+
 class TestEachPathResolvedOnce:
     def test_a_revision_names_each_of_its_paths_resolved_by_the_loaders_rule(
         self, tmp_path: Path

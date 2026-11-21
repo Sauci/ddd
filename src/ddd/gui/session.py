@@ -14,8 +14,14 @@ of a generated project of 100,000 declarations (``--shape mixed --missing-ids 1 
 took 2 to 6 ms a round with nothing else running, and 2.8 to 3.4 s a round while an analysis ran,
 every stat waiting out the analysis's turn of the interpreter - one run of four analyses on the
 Linux development PC, Python 3.14 at its default switch interval, which ``ddd gui`` keeps - which
-is why a round holds no lock while it stamps (:meth:`Session.poll`). A file a wildcard include
-would match only once it exists is noticed when something else changes, which is a limit of the
+is why a round holds no lock while it stamps (:meth:`Session.poll`). Beside the files, a round
+stamps what can change the analysis though none of them changed (:attr:`Revision.watched`): the
+directory each wildcard include expands in, since creating or removing a file moves its time;
+every file a ``plugins`` list names by its path, loaded or not; and every build record the search
+finds, a refused one among them. So a component saved where a pattern matches, a plugin created
+or mended and a build record rewritten each make a new revision, as a file saved does. A build
+record the search had not found - a new build tree's, or a new image's - and a plugin named as a
+module and installed since are noticed when something else changes, which is a limit of the
 preview.
 
 The analysis is the language server's, run the way ``ddd lsp`` runs it: under the severities of
@@ -71,9 +77,10 @@ from ddd.loading import (
     top_level_kind,
 )
 from ddd.lsp.diagnostics import Run, group_findings, run_build, run_project
-from ddd.lsp.discovery import BUILD_DIRECTORY_PATTERNS, discover
+from ddd.lsp.discovery import BUILD_DIRECTORY_PATTERNS, build_files, discover, load_builds
 from ddd.lsp.navigation import LOAD_CHECKS, Index
 from ddd.lsp.ranges import Document
+from ddd.plugins import plugin_files
 
 KINDS: Final = FILE_KINDS
 """The top-level keys that say what a description file is, as the loader reads them: the
@@ -87,10 +94,11 @@ DESCRIPTION_SUFFIX: Final = ".ddd.json"
 may name as its project for the start page to read."""
 
 UNKNOWN: Final = (-1, -1)
-"""The stamp of a file whose modification time and size were not taken before an analysis read
-it: a size no file has, so a poll finds the file changed. A revision published with one asks for
-the next analysis itself (:meth:`Session._finished`); an analysis that raised leaves every file
-it stamped so, and the next poll asks again."""
+"""The stamp of a path whose modification time and size were not taken before an analysis read
+it - a file, or what it watches (:attr:`Revision.watched`): a size nothing has, so a poll finds
+the path changed. A revision published with one asks for the next analysis itself
+(:meth:`Session._finished`); an analysis that raised leaves every path it stamped so, and the
+next poll asks again."""
 
 MAX_UNDO: Final = 50
 """How many edits the stack keeps, the oldest falling off: a session that runs all day does not
@@ -136,6 +144,10 @@ registering a new description goes into (:func:`_instead`)."""
 _HOME_DIRECTORY: Final = "CMAKE_HOME_DIRECTORY:INTERNAL="
 """The entry of a CMake cache naming the source tree it was configured from, as CMake spells it:
 the one entry :func:`_source_tree` reads."""
+
+_WILDCARDS: Final = frozenset("*?[")
+"""The characters that make an ``includes`` entry a pattern, as the loader reads one
+(:func:`ddd.loading.expand_include`): an entry holding none names a file."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -279,6 +291,16 @@ class Revision:
     ``None`` for a project somebody wrote, its record, where a build has one, lying in a build
     tree it is not in."""
 
+    watched: tuple[Path, ...] = ()
+    """What the poll stamps beside :attr:`files`, sorted (:func:`_watched`): what can change the
+    analysis though no file it read changed. The directory each wildcard include of the project's
+    descriptions expands in, every directory a ``**`` walks among them - creating or removing an
+    entry moves a directory's modification time, so a component saved on a pattern is noticed by
+    that time; every file a ``plugins`` list names by its path, loaded or not, so a plugin created
+    or mended is noticed whatever the run read of it; and every build record the search found, a
+    refused one among them, whose rewrite changes the severities. Empty for a revision made any
+    other way - a test's."""
+
     @property
     def dictionary(self) -> DataDictionary | None:
         """What the analysis resolved to, or ``None`` when it did not get that far."""
@@ -414,12 +436,12 @@ class Session:
     name (:func:`_refuse_plugins`), so that the number it takes, the stack and the files waiting
     for an analysis move with the write: the poll stamps the files without it (:meth:`poll`), an
     analysis stamps those it is about to read without it (:meth:`_next`), and opening reads what a
-    project includes before taking it (:meth:`open`). While another thread computes, every system
-    call waits out that thread's turn of the interpreter, and a lock held across a project's
-    thousands of files held every edit, state and plan behind them: edits asked 0.2 to 3.0 s into
-    an analysis of a generated project of 100,000 declarations answered in 2 to 3,363 ms while the
-    poll stamped holding it, and in 2 to 129 ms since - one run each, seven edits, on the Linux
-    development PC.
+    project includes, and searches for its build records, before taking it (:meth:`open`). While
+    another thread computes, every system call waits out that thread's turn of the interpreter,
+    and a lock held across a project's thousands of files held every edit, state and plan behind
+    them: edits asked 0.2 to 3.0 s into an analysis of a generated project of 100,000 declarations
+    answered in 2 to 3,363 ms while the poll stamped holding it, and in 2 to 129 ms since - one run
+    each, seven edits, on the Linux development PC.
     """
 
     def __init__(
@@ -471,16 +493,19 @@ class Session:
 
         What its own includes name (:func:`_named_by`) is read before the lock is taken, as
         whether it is a project description at all is: the description read and its patterns
-        expanded on disk, system calls each of which waits out any busy thread's turn. Sound,
-        because what it names is only which files are stamped as the first analysis begins, the
-        stamps themselves taken then (:meth:`_next`): a description changed in between names a
-        file with no stamp from before, which costs the one analysis more any such file costs
-        (:meth:`_finished`).
+        expanded on disk, system calls each of which waits out any busy thread's turn. So are the
+        directories its own patterns expand in and the build records the search finds, which its
+        revision watches (:attr:`Revision.watched`): stamped as well, they cost a project with a
+        pattern or a build no second analysis. Sound, because what it names is only which paths
+        are stamped as the first analysis begins, the stamps themselves taken then
+        (:meth:`_next`): a description changed in between names a path with no stamp from before,
+        which costs the one analysis more any such path costs (:meth:`_finished`).
         """
         path = project.resolve()
         if not _is_project(path):
             raise ValueError(f"{project} is not a project description")
-        named = _named_by(path)
+        named = _named_by(path) | _expanded_by(path, _read_json(path))
+        named.update(build_files(self.root, self.build_directories))
         with self._lock:
             self._project = path
             self._revision = None
@@ -528,11 +553,12 @@ class Session:
             return frozenset(waiting)
 
     def poll(self) -> bool:
-        """Ask for an analysis if a file of the open project changed on disk since its stamps
-        were taken; say whether one did.
+        """Ask for an analysis if a file of the open project, or what its revision watches
+        (:attr:`Revision.watched`), changed on disk since its stamps were taken; say whether one
+        did.
 
-        The files are stamped without the lock, which is held only to read the stamps to compare
-        with and then to compare and ask: one stat a file, each waiting out any busy thread's
+        The paths are stamped without the lock, which is held only to read the stamps to compare
+        with and then to compare and ask: one stat a path, each waiting out any busy thread's
         turn, held every edit, state and plan behind a round of them for seconds. Stamps replaced
         in between - an analysis begun or published, a project opened, each of which rebinds them
         whole and never changes them in place - make this reading moot, and the round passes
@@ -723,9 +749,12 @@ class Session:
 
     def _analysed(self, project: Path) -> Revision:
         ignored: dict[Path, str] = {}  # the start page is where a refused record is reported
+        # Every record found, apart from reading them: the revision watches each, the refused
+        # among them (`Revision.watched`).
+        found = build_files(self.root, self.build_directories)
         builds = tuple(
             info
-            for info in _offering(discover(self.root, self.build_directories, ignored), self.root)
+            for info in _offering(load_builds(found, ignored), self.root)
             if Path(info.project).resolve() == project
         )
         runs = _runs(project, builds)
@@ -744,6 +773,10 @@ class Session:
             _described(path, grouped.get(path, ()), read.get(path)) for path in sorted(covered)
         )
         findings = _filed(grouped)
+        # Each project description the analysis read, the project's own among them, whatever
+        # the runs went on to cover: a plugin's model raising ends the read, and a run so ended
+        # covers the project description alone.
+        descriptions = [path for path, file in read.items() if file.kind == "project"]
         return Revision(
             # Numbered when it is published (`_finished`): an analysis thrown away takes none.
             number=0,
@@ -761,6 +794,7 @@ class Session:
             served=served,
             resolved_paths=_resolved_paths(files, findings),
             generated=_generated(project, self.root),
+            watched=_watched(descriptions, found),
         )
 
     def _request(self) -> None:
@@ -874,19 +908,20 @@ class Session:
     def _finished(self, begun: _Begun, revision: Revision | None) -> None:
         """What an analysis leaves once it has ended, made holding the lock: nothing, where the
         project it read is no longer the one open. Otherwise what it made becomes the newest
-        revision, its files stamped as they were before it read them - a file with no stamp from
-        before :data:`UNKNOWN` - and where it raised instead, ``revision`` being ``None``,
-        nothing is published and every file it stamped is stamped unknown, so that the next poll
-        asks again.
+        revision, its files and what it watches (:attr:`Revision.watched`) stamped as they were
+        before it read them - a path with no stamp from before :data:`UNKNOWN` - and where it
+        raised instead, ``revision`` being ``None``, nothing is published and every path it
+        stamped is stamped unknown, so that the next poll asks again.
 
         Before, never after: stamped after the analysis, a save landing while it ran was already in
         the stamps, so no poll ever saw it and the page kept the findings of bytes no longer on
         disk. The revision's fingerprints are of what its analysis read for the same reason
-        (:func:`_described`), never of the disk once it is over. A file with no stamp from before -
-        a sub-project's file or a plugin, when the project was just opened, or a file the analysis
-        found newly included - is stamped :data:`UNKNOWN`, and the revision is published asking for
-        the next analysis: one analysis more, which catches a save made to that file while this one
-        ran. Asked here rather than left to the next poll, which asked for it up to
+        (:func:`_described`), never of the disk once it is over. A path with no stamp from before -
+        a sub-project's file, a plugin or the directory a sub-project's pattern expands in, when
+        the project was just opened, or a file the analysis found newly included - is stamped
+        :data:`UNKNOWN`, and the revision is published asking for the next analysis: one analysis
+        more, which catches a save made to that file while this one ran. Asked here rather than
+        left to the next poll, which asked for it up to
         ``poll_interval`` later, so that the session says it is analysing until that analysis
         lands, rather than that it is done and then, a poll later, that it is analysing again.
 
@@ -904,7 +939,8 @@ class Session:
                 self._numbered += 1
                 self._revision = replace(revision, number=self._numbered, edits=begun.edits)
                 self._signature = {
-                    file.path: begun.stamps.get(file.path, UNKNOWN) for file in revision.files
+                    path: begun.stamps.get(path, UNKNOWN)
+                    for path in (*(file.path for file in revision.files), *revision.watched)
                 }
                 waiting: list[tuple[int, frozenset[Path]]] = []
                 for number, paths in self._written:
@@ -1447,6 +1483,88 @@ def _named_by(project: Path) -> set[Path]:
         for entry in listed:
             named.update(included_files(project, entry))
     return named
+
+
+def _watched(descriptions: Iterable[Path], records: Iterable[Path]) -> tuple[Path, ...]:
+    """What a revision watches (:attr:`Revision.watched`): every build record of ``records``, and
+    for each project description of ``descriptions`` - each one its analysis read, the project's
+    own among them - where its wildcard includes expand (:func:`_expanded_by`) and every file its
+    ``plugins`` list names by its path, loaded or not (:func:`ddd.plugins.plugin_files`).
+
+    Each description is read again for its lists, by the loader's reading of json: a run keeps no
+    list it read, and a description saved since its run read it is a file the revision stamps
+    already, whose change makes the next analysis. A plugin named as a module is no path, and is
+    passed over: finding its file can import its parents, running code no analysis ran - a
+    description that does not validate loads none of the plugins it names."""
+    watched = set(records)
+    for described in descriptions:
+        data = _read_json(described)
+        watched |= _expanded_by(described, data)
+        for spelling in _plugins_named(data):
+            if spelling.endswith(".py"):
+                watched.update(plugin_files(spelling, described.parent))
+    return tuple(sorted(watched))
+
+
+def _expanded_by(described: Path, data: Any) -> set[Path]:
+    """Where every wildcard include of the description ``described``, its document ``data``,
+    expands (:func:`_expanded_in`); nothing where it is no project."""
+    expanded: set[Path] = set()
+    for entry in _includes_of(data):
+        expanded |= _expanded_in(described, entry)
+    return expanded
+
+
+def _expanded_in(source: Path, entry: str) -> set[Path]:
+    """Where the ``includes`` entry ``entry`` of the description ``source`` expands, as the loader
+    expands it (:func:`ddd.loading.expand_include`): what the poll stamps so that a file a pattern
+    comes to match, or stops matching, makes a new revision - creating or removing an entry moves
+    its directory's modification time, one stat where expanding the pattern again at every poll
+    would walk it.
+
+    For a pattern, each directory a wildcard of it is matched in, every directory a ``**`` walks
+    among them, hidden ones too, as the loader's walk goes into them; and each path a name of it
+    that is no wildcard is looked up at, there or not, so that the directory it names being made
+    is noticed too. A directory a name is only looked up in is not listed, and is not watched:
+    ``comps/*.ddd.json`` lists ``comps``, and a file saved beside the description including it -
+    an editor's swap file - is no change of that project. Nothing for an entry naming a file,
+    wildcard characters and all, which the loader reads before it reads the entry as a pattern
+    and the revision stamps as one of its files; nothing either for a pattern pathlib refuses,
+    which the analysis reports as ``include-empty``. Each directory is spelled under the
+    description's own, as the loader's walk finds it, so that two analyses stamp one spelling."""
+    if not any(character in entry for character in _WILDCARDS):
+        return set()
+    raw = Path(entry)
+    # The loader's own reading of the entry: tried as a file first, and a pattern's walk starting
+    # at its own anchor joined onto the description's directory (`ddd.loading._pattern_anchor`).
+    candidate = raw if raw.is_absolute() else source.parent / raw
+    if os.path.isfile(candidate):  # noqa: PTH113
+        return set()
+    base = source.parent / raw.anchor if raw.anchor else source.parent
+    parts = (raw.relative_to(raw.anchor) if raw.anchor else raw).parts
+    expanded: set[Path] = set()
+    # The paths the name at each depth is matched in, or looked up at.
+    level = [base]
+    try:
+        for depth, part in enumerate(parts):
+            prefix = "/".join(parts[: depth + 1])
+            if part == "**":
+                # Every directory it walks, the ones it starts in among them, as pathlib walks.
+                level = [found for found in base.glob(prefix) if found.is_dir()]
+                expanded.update(level)
+            elif any(character in part for character in _WILDCARDS):
+                expanded.update(level)
+                # Listed for the directories it matches only where a name follows: a wildcard in
+                # the last name, as in ``comps/*.ddd.json``, lists nothing here, which the loader's
+                # own expansion lists.
+                if depth < len(parts) - 1:
+                    level = [found for found in base.glob(prefix) if found.is_dir()]
+            else:
+                level = [directory / part for directory in level]
+                expanded.update(level)
+    except (OSError, ValueError, NotImplementedError):
+        return set()
+    return expanded
 
 
 def _generated(project: Path, root: Path) -> Generated | None:

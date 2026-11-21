@@ -275,8 +275,9 @@ def lines_replaced(before: str, replaced: Sequence[TextEdit]) -> tuple[Hunk, ...
         return ()
     kept = before.splitlines(keepends=True)
     starts = [0, *accumulate(map(len, kept))]
-    # Past a line break that ends the text, a last line holding nothing, where an edit there goes.
-    last = len(kept) if not kept or kept[-1].splitlines() != [kept[-1]] else len(kept) - 1
+    # The end of the text is on its last line, past a line break that ends the text as much as
+    # where none does: a run holding that line holds it alike before and after, and leaves it out.
+    last = max(len(kept) - 1, 0)
 
     def line_of(offset: int) -> int:
         return min(bisect_right(starts, offset) - 1, last)

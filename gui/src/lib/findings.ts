@@ -152,14 +152,14 @@ export function routeLabel(finding: Finding, state: State): string | null {
   if (route.kind === "file" && route.name !== null) {
     // Unlike the component arm above, no listed file's own declared name is ever worth
     // preferring here - not because neither check's file ever has one (a project description's
-    // own name reads through `SourceFile.name` too, `ddd.gui.session._name_in` keying off
+    // own name reads through `SourceFile.name` too, `ddd.gui.session.name_in` keying off
     // `parsed[kind]["name"]`), but because neither check's *route* ever names a file that both
     // sits in `State.files` and carries a name: `include-empty` is filed wherever a pattern
     // cannot be expanded at all (`ddd.loading._expand`'s own words, "cannot expand pattern") or
     // expands to no file, so its route names that pattern either way, which `State.files` -
     // files the loader actually read - never lists; `empty-vocabulary`'s names the vocabulary
     // file it is filed on, which `State.files` does list, but a vocabulary's own top-level key
-    // holds a list there, not the dict `_name_in` reads a name from - a component's and a
+    // holds a list there, not the dict `name_in` reads a name from - a component's and a
     // project's own both do, a vocabulary's alone does not. A row of the Files tab is one entry
     // among others the same directory can hold, so the path relative to the project - the very
     // shape an entry is itself written in (`sensors/a.ddd.json`) - says which one a `baseName`

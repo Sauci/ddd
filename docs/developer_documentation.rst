@@ -1367,7 +1367,8 @@ records as it reads each declaration's kind. ``GET /api/variable`` answers those
 the declarations themselves; ``GET /api/settle`` settles any of the twelve keys of
 ``ddd.lsp.edits.PROPAGATED_KEYS`` and is the same endpoint the unit has always used.
 ``ddd.value_identity.same_value`` decides when two spellings are one value - a conversion
-through the models and an enum by its name, limits as the numbers they resolve to,
+through the models and an enum by its name, limits as the numbers they resolve to, compared
+exactly as ``definition-mismatch`` compares them and never as the doubles nearest them,
 everything else its canonical json text, anything the models refuse outright falling back to
 that text - so the panel's values in play, ``definition-mismatch`` and what
 ``GET /api/settle`` previews can never disagree about one.

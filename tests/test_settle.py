@@ -418,6 +418,28 @@ def test_a_declaration_spelling_the_value_differently_is_nothing_to_change(
     assert settle(idx, "Speed", "conversion", raw, {}).changes == ()
 
 
+def test_two_limits_one_double_holds_are_two_values(tmp_path: Path) -> None:
+    """3:M9. ``ddd check`` compares limits as the numbers they are and files the two maxima apart;
+    read as the double nearest each, they were one, and settling on the producer's range said
+    there was nothing to change in the reader stating the other."""
+    idx = built(
+        tmp_path,
+        **{
+            "a.ddd.json": component(
+                "A", declare("output", "Speed", "uint64", limits={"min": 0, "max": 2**53 + 1})
+            ),
+            "b.ddd.json": component(
+                "B", declare("input", "Speed", "uint64", limits={"min": 0, "max": 2**53})
+            ),
+        },
+    )
+    raw = read(tmp_path / "a.ddd.json", {}).raw_at(f"{DEFINITION}.limits")
+    assert raw is not None
+    assert settle(idx, "Speed", "limits", raw, {}) == Settlement(
+        (Settled(site_in(idx, "b.ddd.json"), raw),), ()
+    )
+
+
 def test_a_declaration_meaning_something_else_still_changes(tmp_path: Path) -> None:
     idx = built(
         tmp_path,

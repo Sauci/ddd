@@ -21,6 +21,7 @@ than something the panel and the checker share.
 from __future__ import annotations
 
 import json
+from fractions import Fraction
 from typing import Any, Final
 
 from pydantic import TypeAdapter, ValidationError
@@ -46,10 +47,11 @@ def same_value(key: str, raw: str) -> str:
     ``definition-mismatch`` applies: an enum by its name, everything else by what the models
     resolve it to, so ``{"factor": 2}`` groups with ``{"kind": "linear", "factor": 2, "offset":
     0}``. ``limits`` group by the two numbers :class:`~ddd.models.objects.Limits` resolves them
-    to, so ``{"min": 0, "max": 100}`` groups with ``{"min": 0.0, "max": 100.0}``. Text the
-    models refuse outright - a file may hold a half-written conversion - falls back to its
-    canonical json text like any other key: a caller still has to do something with what is on
-    disk.
+    to, compared exactly, as ``definition-mismatch`` compares them: ``{"min": 0, "max": 100}``
+    groups with ``{"min": 0.0, "max": 100.0}``, and two whole numbers past 2^53 that the double
+    nearest each would make one stay two. Text the models refuse outright - a file may hold a
+    half-written conversion - falls back to its canonical json text like any other key: a caller
+    still has to do something with what is on disk.
     """
     # Raw text of a parsed document: json, always, so there is nothing here to fail on.
     value = json.loads(raw)
@@ -60,7 +62,9 @@ def same_value(key: str, raw: str) -> str:
     elif key == "limits":
         limits = _parsed_limits(value)
         if limits is not None:
-            return json.dumps([float(bound) for bound in limits.as_tuple()])
+            # Each bound as the exact rational it is: an int and a float are one number where
+            # python's own comparison says so, which is the analysis's, and never by a rounding.
+            return json.dumps([str(Fraction(bound)) for bound in limits.as_tuple()])
     return json.dumps(value, sort_keys=True)
 
 

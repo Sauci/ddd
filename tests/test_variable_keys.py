@@ -489,6 +489,29 @@ class TestWhatDisagrees:
         )
         assert offered(idx, "Speed", "limits").disagrees is True
 
+    def test_two_ranges_one_double_holds_disagree_as_the_checker_files_them(
+        self, tmp_path: Path
+    ) -> None:
+        """3:M9. Past 2^53 a double holds every other whole number: the two maxima were read as
+        one, the row showed one value and no disagreement, and ``ddd check`` filed the two."""
+        idx = built(
+            tmp_path,
+            **{
+                "a.ddd.json": component(
+                    "A", declare("output", "Speed", "uint64", limits={"min": 0, "max": 2**53 + 1})
+                ),
+                "b.ddd.json": component(
+                    "B", declare("input", "Speed", "uint64", limits={"min": 0, "max": 2**53})
+                ),
+            },
+        )
+        offer = offered(idx, "Speed", "limits")
+        assert [(value.components, value.producer) for value in offer.values] == [
+            (("A",), True),
+            (("B",), False),
+        ]
+        assert offer.disagrees is True
+
     def test_a_key_nobody_states_does_not_disagree(self, tmp_path: Path) -> None:
         idx = built(tmp_path, **{"a.ddd.json": component("A", declare("output", "Speed"))})
         assert offered(idx, "Speed", "unit").disagrees is False

@@ -11411,3 +11411,15 @@ class TestWhereLimitsNobodyStatesAreWritten:
             "readers leaving them to it as ``ddd check`` reads them; a variable no declaration "
             "produces is refused them, since none is the one to state them."
         ) in flattened(COMMAND_LINE_INTERFACE)
+
+
+class TestLimitsAreOneValueExactly:
+    """3:M9. ``same_value`` read each bound of a range as the double nearest it, so that two
+    maxima past 2^53 ``ddd check`` files apart were one value to the panel and to every fix. The
+    developer page, which says what it compares, says it compares them exactly."""
+
+    def test_the_developer_page_says_limits_are_compared_exactly(self) -> None:
+        assert (
+            "limits as the numbers they resolve to, compared exactly as ``definition-mismatch`` "
+            "compares them and never as the doubles nearest them,"
+        ) in flattened(PAGES["docs/developer_documentation.rst"])

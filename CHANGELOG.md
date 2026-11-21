@@ -223,9 +223,44 @@ A script or a client reading what the tool prints:
     change with the package.
   - "Six small edges of the edit engine are settled": a pointer's element is spelled with its
     brackets: `at` without them is refused, where `1` planned a key of its own.
+  - "A constant's rename rewrites a condition that spells it, and its uses count conditions": a
+    client of `GET /api/constant` reads a condition among a constant's `uses`, after the shapes, as
+    a use of the variable whose declaration it guards.
+
+An editor, or a client of `ddd lsp`:
+
+  - "A file is checked under the outermost project that includes it, as `ddd check` checks it": a
+    sub-project that is to be answered as itself in the editor has its build record name it; and
+    opening a file imports the plugins of every description at or above it, up to its folder, so a
+    repository is opened only when its build would be run.
+  - "A rename reaches every project that holds a file it rewrites, or is refused naming the image":
+    a name another image already uses, a type another image declares external, or a file of another
+    image that did not load, is dealt with there first, or the new name differs.
+  - "A rename is refused where the editor could not see what it would change": an open document that
+    differs from its file is saved, a project file is put above a component no record claims, or the
+    build is configured, and a description a plugin stops is mended, and the rename is asked again;
+    a closed file changed on disk is read again at the next open or save, or when the editor reports
+    the change.
+  - "An external type is not renamed, from the editor or from the page's Types tab": the c type in
+    its header, and every entry and `typename` in the descriptions, are renamed by hand, together.
+  - "A request of another shape is refused, naming the field": a client that sent a field of another
+    shape than the protocol gives it sends that shape, a capability or a `rootUri` among them, the
+    handshake with one having been taken and now refused.
+  - "The fixes of a `definition-mismatch` say what they leave alone, and the preferred one is the
+    owner's": a client that matched a fix by its title matches the new, and a reader who applied the
+    preferred fix of a variable that two components write, or none, picks one.
+  - "An edit that reaches several files asks the client to confirm it": a client that announced both
+    `documentChanges` and `changeAnnotationSupport` meets a prompt where the edit applied at once,
+    and a reader may leave a file out, which applies it in part.
+  - "The server asks the client to watch the descriptions and the build records": a client that
+    announces the dynamic registration of watched files drops any watcher of its own for the server,
+    which would send every change twice; one that does not is asked for nothing, and a file changed
+    behind it is read again at the next open or save.
   - "A relative `ddd lsp -b` is read against each workspace folder": an editor that starts `ddd
     lsp -b <dir>` from a directory that is none of its workspace folders, meaning that directory,
     names it absolute.
+  - "A change of `ddd.executable` or `ddd.buildDirectories` says it takes a restart": a change of
+    either is followed by **DDD: Restart Language Server**.
 
 A user of `ddd tool from-elf`:
 
@@ -312,6 +347,12 @@ A user of `ddd tool from-elf`:
     line printed as a false alarm.
   - "The browser `ddd gui` opens for the reader is no longer launched on the long-lived token": it
     is launched on a one-time code, good for sixty seconds or one use.
+  - "An external type is not renamed, from the editor or from the page's Types tab": a type renamed
+    on the Types tab that is external is renamed by hand, in its header and in the descriptions, the
+    page refusing it in the sentence the editor does.
+  - "A constant's rename rewrites a condition that spells it, and its uses count conditions": a
+    constant that only a condition spells, which the Shared files tab let go, is refused removal
+    until the condition is changed.
 
 An install and the tool's python:
 
@@ -1394,6 +1435,322 @@ A build of DDD from its sources, and a release of it:
   install has to reach; `pyelftools` has been a third since the toolbox, and the page now says so.
   Nothing to migrate.
 
+* **A file is checked under the outermost project that includes it, as `ddd check` checks it.**  The
+  server stopped at the first directory above a file that held a description including it, so a
+  component of a sub-project was checked under the sub-project alone, which does not know what the
+  rest of the outer project produces: a clean project showed `missing-producer` errors the build
+  never reports, and a rename from there edited that file alone and left `ddd check` of the outer
+  project failing.  It now walks up to the workspace folder holding the file and answers from the
+  descriptions of the outermost directory that include it; a description nearer that includes it too
+  is a sub-project of the outer one, and is dropped.  A build record is still asked first, and a
+  project description that no description above includes is checked as itself.  Migrating costs two
+  things.  A sub-project that is to be answered as itself in the editor is configured, so that its
+  build record names it.  And to find the outermost, the server reads every description at or above
+  the file, up to its folder, and imports the plugins each names, where it stopped at the first:
+  opening a file runs the python of every description above it, as `ddd check` of the outer project
+  would, so a repository is opened only when its build would be run.  No file format changes.
+
+* **A file's findings are withdrawn only by a run that reported on it.**  A refresh published an
+  empty list for every file it had published before and its run did not name, so opening a file of
+  another project, or a watched change with several documents open, erased findings that `ddd check`
+  still reports; and a file deleted since was read again from its path, which published a finding
+  about a file that does not exist.  A run now withdraws only the files it reported on.  A file that
+  was deleted has its findings emptied once and is not refreshed from its path, and an open document
+  that is not on disk, a new file not yet saved, keeps its findings.  Nothing to migrate.
+
+* **A file reached through a junction or a link has its findings under one spelling.**  A file has
+  two spellings, the one the client opens it under and the resolved one the loader reads it by, and
+  the server published under the resolved one until the client opened the file and under the
+  client's from then on, withdrawing nothing under the first: the old findings stayed on screen
+  beside the new, and stayed once the file was fixed.  It now keeps the uri each file's findings
+  went out under, and withdraws them there when they go out under another.  A quick fix asked at a
+  producer opened through a link took the declaration under the client's spelling, which equalled no
+  place of the project's index: the producer was read as a reader of its own variable, its own value
+  was offered back to it, its removal was lost, and its fixes were ordered as a reader's.  It is now
+  the declaration at the resolved path.  Nothing to migrate.
+
+* **An open document's findings are drawn in the text the editor holds.**  The findings are the
+  disk's, checked as the file was last saved, and each was drawn where the file on disk has its key:
+  with lines added above that key and not saved, a save of another file, or the open of a buffer the
+  editor restored unsaved, drew the squiggle over whatever the buffer held at that line, and a
+  client asking for the quick fixes where it had drawn the finding was offered none.  They, and the
+  notes of any finding that point into the document, are now drawn over the key where the text the
+  client holds has it, over the nearest key around it where it does not, and at the top of a text
+  that is not json.  What a document declares itself to be, which decides how it is checked, is
+  still read from the disk.  A finding names its key by its place in the file, so a declaration
+  typed above the one it is about, in the same list, takes the finding's place until the file is
+  saved.  Nothing to migrate.
+
+* **The hover speaks for every project holding the file, and names the ones it cannot.**  It said
+  who writes a variable and who reads it from the first project holding the document alone: a writer
+  linked into two images was read by the first image's reader, while find references listed the
+  second's too; of two components writing one variable it named the one the analysis builds the
+  object from; and where a file did not load it said that nobody reads the variable, or that no
+  component produces it, with nothing saying why that might not be so.  It now resolves each project
+  holding the document, and names the writers and the readers of all of them, each component once,
+  and both where two write one variable.  Where it says that no component produces the variable, or
+  that none reads it, a line under it names the files of those projects that did not load; and where
+  a plugin stops a project holding the file, a line names that project, by its image or by its
+  description where no build record names an image, since who writes and reads the variable there is
+  in no answer.  The rest of the summary, the shape and the limits, is the first project's.  It says
+  a value spans the whole range of its datatype only where it does: an enumeration whose table runs
+  from the datatype's lowest value to its highest is told so, and a table of 0 and 1 over a `uint8`
+  is not.  Nothing to migrate.
+
+* **A rename reaches every project that holds a file it rewrites, or is refused naming the image.**
+  A rename visited only the projects holding the document it started from: started from the reader
+  of one image, it rewrote that reader and the writer the two images share, and left the other
+  image's reader naming an object that no longer exists, where the same rename started from the
+  writer rewrote all three.  It now takes the projects of the document it starts from, then every
+  project holding a file their edits rewrite, until none is new, whatever is renamed: a variable, a
+  type, a constant, a section, a raster or a unit.  The images are those the server finds for the
+  file, by their build records or, where none claims it, by the search above it.  Each project
+  reached is asked every refusal a rename makes before anything is written.  Where a project the
+  document is not in already uses the name, declares the type an external one or holds a file that
+  did not load, the refusal names its image, or its description, by its path in its workspace
+  folder, where no build record names an image; an unsaved change is refused naming the file that
+  holds it, wherever it is.  Migrating costs what a refusal asks: where the name is taken in another
+  image, it is renamed there first, or the new name differs.
+
+* **A rename is refused where the editor could not see what it would change.**  A rename is planned
+  from the files on disk and the project read from them, and several states of the editor are not
+  that.  It is refused, naming the document, while an open document of a project it reaches parses
+  to something other than its file, a mention typed and not saved being one it cannot see; a CRLF
+  file does not differ from the buffer the editor sends for it, and a buffer that does not parse
+  does.  It is refused for a closed file changed on disk since the project was read, as that and not
+  as unsaved changes, until the server reads the project again, at the next open or save or when the
+  editor reports the change.  It is refused where it would rewrite nothing, which an editor applies
+  without a word.  With no project known, a component that no build record claims, that no
+  description above includes and that declares no project itself, every rename but a local
+  variable's is refused, saying so, where it rewrote that one file and said nothing, leaving every
+  other file spelling the name holding it.  And where a description it needs cannot be read, because
+  a plugin of its own stops it, whether a build record names it or the search above a file found it,
+  every rename is refused, a local variable's too, naming the description and why, since the files
+  it holds would be rewritten for no image.  Each costs a step and the rename asked again: save the
+  file, put a project file above the component that includes it or configure the build, or mend the
+  plugin.
+
+* **An external type is not renamed, from the editor or from the page's Types tab.**  An external
+  type names a c type that the header beside it defines: no typedef is generated for it, only the
+  include of that header, so its name is the header's and not the description's.  Rename Symbol
+  rewrote its entry and every `typename` naming it, as did the Types tab, while the header went on
+  defining the old name: every check stayed clean and the build stopped at its first compile.  Both
+  are now refused, in one sentence naming the header, and the editor names the image as well where a
+  project the rename reaches declares the type so; `prepareRename` still opens the box on an
+  external type, and the rename refuses it.  A variable spelled like an external type is still
+  renamed, and no quick fix renames a type.  Migrating costs a rename by hand, of the c type in its
+  header and of every entry and `typename` in the descriptions, together.
+
+* **A unit's rename is made over every image it reaches, or refused, naming the file.**  A unit is
+  renamed from any place it is stated, or from its entry in a units file, and merges into a unit
+  that exists.  Two images sharing a units file, the one listing the unit renamed onto and the other
+  not, would rewrite one entry two ways, merging the old spelling into the other for one and
+  respelling it for the other; such a rename is refused, naming both images and the one that lists
+  the unit.  The edit engine can also refuse an operation of the plan in a text other than the one
+  the project was read from, a file spelling a key like a list's position, which the loader takes no
+  file for: that was answered as a defect of the server, and the lightbulb with it, and a batch of
+  sets sent unread was written over that key's value, leaving the list as it was.  The plan is now
+  rendered file by file, and read back once per file before it is sent, and a file the engine cannot
+  make it in, or whose edits would read back otherwise, refuses the rename naming the file: an open
+  document as one that differs from its file, a closed file as one changed on disk since the project
+  was read.  Nothing to migrate.
+
+* **A new name is written as json spells it.**  A raster's name may hold a quote or a backslash, and
+  the editor's rename wrote the new name between the quotes as it was typed: a quote ended the
+  string, so no file the rename rewrote parsed, and a backslash began an escape, so the name read
+  back was another.  Every rename now writes the new name as json spells it there.  Nothing to
+  migrate.
+
+* **A constant's rename rewrites a condition that spells it, and its uses count conditions.**  The
+  shipped templates define each constant as a macro in the types header, so a `condition` may spell
+  one, and `#if` reads a name nothing defines as 0.  A constant's rename left such a condition
+  spelling the old name, and the object it guards was compiled out with every check clean; and the
+  Shared files tab counted a constant's uses by its shapes alone, so a constant only a condition
+  spells read as used by nothing, and its removal went through with the same result.  The editor's
+  rename and the tab's now rewrite the constant's word in each condition spelling it, and nothing
+  else of it: every other word, and every longer identifier holding the constant, is left as
+  written; both refuse while a condition they read no longer spells it.  The tab's count, the uses
+  its panel lists and its refusal to remove a constant read conditions too, the refusal counting
+  uses where it counted shapes, and `GET /api/constant` lists a condition among a constant's `uses`,
+  after the shapes, as a use of the variable whose declaration it guards.  Migrating costs a step
+  where a constant only a condition spells was removed through the tab: the condition is changed
+  first.
+
+* **A request the server fails on is answered, and the session goes on.**  Three inputs raised out
+  of the server and ended the session, with every finding on screen, and a client stops restarting a
+  server that the next hover ends again: a hover on a parameter whose `init` is `[]`, a hover on a
+  `float64` block whose `init` runs from -1.7e308 to 1.7e308 in a project `ddd check` passes, and a
+  build record naming its project by a relative path.  Each message is now answered inside a net: a
+  request the server fails on through a defect of its own is answered with the protocol's internal
+  error, `-32603`, naming the method and the fault, a notification is answered with nothing, as
+  ever, and the trace goes to the server's standard error, which is its log and which VS Code shows
+  in the **DDD** output channel; only an interrupt still ends the run.  The three inputs are mended
+  as well, so the net is not what answers them: an `init` that holds no values draws no rows, a
+  sparkline whose span is more than a float holds is drawn against a halved span, and the server
+  skips a record that names its project by a relative path, or by a path with no root, which a
+  build never writes, announcing why as it does for any record it cannot use.  A client shows a
+  request that fails as a failed request, VS Code with a notification.  Nothing to migrate.
+
+* **While a file of the project does not load, no quick fix is offered, and the log says why once.**
+  A quick-fix request was answered with an error while a file of the project did not load.  A client
+  asks for the quick fixes at every move of the caret, and VS Code shows a failed request as an
+  error notification, so a reader mending a schema error was shown one at each move, naming no file.
+  The request is now answered with an empty list, and the reason, naming the file, is written once
+  with `window/logMessage`: at the first request the unread file empties, and again only once the
+  project has been read whole and is found broken anew.  A file that breaks two images is said once.
+  The reason is the unread file's own finding as well, and an empty lightbulb in such a project has
+  its reason there and in the log.  A file that did not load is said not to have loaded, and one
+  that loaded with an error that stops the project being analysed, such as a block for a plugin that
+  does not import, to have that error; two unread files of one name are told apart by as much of
+  their path as it takes.  Nothing to migrate.
+
+* **A request of another shape is refused, naming the field.**  The server read several fields of a
+  request without checking them, so a client sending one of another shape was answered as if the
+  server had failed through a defect of its own, with the internal error and a trace on stderr: the
+  findings a code action is asked about, when they were `null` or a number, or held an entry that
+  was no object or a code that was neither a number nor a string; a position before the start of the
+  document; an `initialize` whose params, root or folders were of another type; and a uri whose path
+  or host holds a null character or a lone surrogate, which no file system takes and which every
+  notification naming it met as well.  Each is now refused with the invalid-parameters error,
+  `-32602`, naming the field, and nothing goes to stderr; a notification is answered with nothing.
+  The client capabilities `initialize` reads are checked the same way: a step of them in another
+  shape refuses the handshake, where it was taken for no announcement, and a step left out still
+  announces nothing; a `rootUri` of another shape is refused, beside named folders too, and a
+  refused handshake keeps no folder it named.  A boolean is no longer taken for a number.  Migrating
+  costs a client that sent such a field the shape the protocol gives it.
+
+* **The fixes of a `definition-mismatch` say what they leave alone, and the preferred one is the
+  owner's.**  The title of each editor fix reconciling a `definition-mismatch` now ends with the
+  sentence the page's carry, that the code of the readers is not touched.  The fix an editor applies
+  by itself, the one marked preferred, is the first fix only where it goes the owner's way, a reader
+  taking its producer's value or the producer sending its own: where that way is not offered, none
+  is marked, where the next in the list took its place; and none is marked where two components
+  write the variable, or none does, since the tool has no standing to pick a winner among two or for
+  nobody.  Both ways are still offered there, in the same order.  Migrating costs a client that
+  matched a fix by its title the new title, and a reader who applied the preferred fix of such a
+  variable by itself picks one.
+
+* **A fix reads a declaration's keys through the type it names.**  A declaration naming a declared
+  type states, in its own file, none of the keys the type fixes, and the fixes read that file alone.
+  A reader of a writer naming a type was offered one fix, and it was the preferred one: take its own
+  unit out, under a title saying the writer declares none, after which the reader stated no unit
+  against the unit the writer's type states; a writer whose reader names a type stating another unit
+  was offered the same removal of its own unit, and the reader's type went on stating its unit
+  whichever was taken.  What a declaration states for such a key is now what it resolves to, as the
+  checks read it.  The producer's value is read through its type, so the reader is offered the unit
+  the writer's type states; a declaration whose type states the key counts as stating it, so no
+  removal is offered beside it, nor of a key a type that one of the other declarations names states;
+  readers naming types that state two units are two answers, and nothing is offered; and a type
+  whose entry has moved, in a types buffer with another type inserted above it, say, is taken for
+  unknown and not for silence, nothing being offered then either.  `ddd gui`'s button for a
+  `definition-mismatch` reads the same way: the reader of a writer naming a type is offered the
+  type's unit, where it offered nothing, and a removal beside a type that states the key is dropped.
+  Nothing to migrate.
+
+* **An edit that reaches several files asks the client to confirm it.**  A client applies a code
+  action's edit and saves every file it touched, so a fix or a rename across files rewrote
+  components the reader had not seen.  An edit reaching two files or more, a rename's or a quick
+  fix's, is now sent with one change annotation marked `needsConfirmation`, named by every text edit
+  of it, to a client that announced both `documentChanges` and `changeAnnotationSupport`: the client
+  shows it first, and the reader may leave a file out, which applies it in part, by the reader's
+  choice.  A client that announced only one of the two gets the edit as before, and applies it at
+  once.  Migrating costs a client that announced both a prompt where the edit applied at once; VS
+  Code shows the edit in a preview.
+
+* **A fix is offered once across the images it reaches, and not past a buffer that moved.**  A quick
+  fix sending a declaration's value out to the others, or taking a key out of them, left out a
+  declaration whose unsaved buffer had moved it and wrote the rest, so it was applied in part where
+  the rename beside it was refused whole.  It is now not offered while that buffer stands.  A
+  component linked into two images is in two projects, and each project offered its own fixes: where
+  both images offered one it came twice, each copy preferred, and at a writer the two images share,
+  one fix per image reached that image's reader under one title, none reaching both.  The fixes of
+  every project holding the document are now put together, each once.  A fix taking another
+  declaration's answer in is offered where the projects offering it write one edit under one title,
+  and not where two write different edits; a fix sending this declaration's answer out is one fix
+  over every declaration of the variable in each of those projects, and in every project holding a
+  file it writes, until none is new, as a rename reaches them, so the fix pressed at one image's
+  reader reaches the other image's through the writer.  Every fix is withheld where one reaches a
+  project holding a file that did not load, or a description beyond the document's own that cannot
+  be read; the preferred fix is the one every project offering a fix leads with, where it was chosen
+  before a fix reaching another image could be withheld there.  The fix that respells an unknown
+  unit is the rename `F2` makes, over every image it reaches, and is not offered wherever that
+  rename is refused; the unit is added to the vocabulary only where every image planning it adds it
+  to the same file.  Nothing to migrate.
+
+* **Each fix carries only the findings it settles.**  A fix reconciling a `definition-mismatch`
+  carried every mismatch finding of its declaration though it settles one key, so a client listed as
+  settled a finding that was still there.  It now carries the findings that name its key alone: a
+  declaration that differs in two keys is settled in two steps, and the fix of each is still
+  offered; a finding naming both is carried by neither, one naming references carried by the fix of
+  the reference that differs, and none by a map's, whose finding names no axis; a finding a client
+  sends that names no key is carried by all, as it always was.  Nothing to migrate.
+
+* **An edit the server builds ends its lines as the file it goes into does, and the id fix writes
+  what `ddd id` writes.**  A closed file is read through universal newlines, so an edit built for
+  one said a line feed wherever it had a line to end: a quick fix's, a unit plan's and the id fix's,
+  into a file that ends its lines with a carriage return and a line feed or with a bare carriage
+  return.  Every edit now ends its lines as the document it goes into does, the first ending it
+  uses, from an open buffer or into one: a value copied over lines ends them as the closed file
+  does, and one into an open buffer as the buffer.  A file that mixes line endings gets the first
+  spelling for every edit.  The fix that gives a declaration an identity is made by the edit engine,
+  as `ddd id --assign` makes it, so it writes the same bytes, for an object written on one line or a
+  file of bare carriage returns, and lays out the one declaration it is asked of where it laid out
+  every declaration of the file.  Nothing to migrate.
+
+* **A save is analysed once per project, and a unit's plan is rendered from the text as it was
+  read.**  A save reaches the server twice, as a `didSave` and as the change the client's watcher
+  reports for the file the editor wrote, and the event checked every open document on its own: with
+  several documents of one project open, the project was analysed again for each, every hover
+  resolved it again, and the hovers and the renames waited behind those analyses.  Opens, saves and
+  watched changes that arrive together are now checked together, once the server has handled every
+  message already waiting behind the first of them and before it answers a request that came after
+  them, never waiting for a message not yet sent; one check analyses each project once however many
+  of its documents are open, reads each description once, and keeps the hover's dictionary for each
+  project until what was read is dropped.  A unit's rename, Rename Symbol's and the quick fix's that
+  respells an unknown unit, was rendered by making the plan's operations one after another, a
+  document of the whole file built after each, so a rename over a file stating the unit N times
+  built N documents of it, and a code action at an unknown unit did the same at every move of the
+  caret.  A batch none of whose operations can depend on another, which a rename's sets are, is now
+  made against the text as it was read, as `ddd gui` makes such a batch, and the entries a merge
+  takes out, each moving the ones after it, are still made in turn.  A file written on one line
+  still pays more for each edit than one written a line to a member.  Nothing to migrate.
+
+* **The extension starts the server once a description is open or the workspace holds one.**  The
+  extension is activated by any json document, as well as by a workspace holding a description, and
+  it started the server at once, so a trusted workspace that opened a json file of any name ran `ddd
+  lsp`, and where `ddd` is not installed showed its error there.  It is still activated by a json
+  document, since a description opened outside a folder, or created after the window opened, is
+  announced by nothing else, but it starts the server only once a `*.ddd.json` is open or a
+  workspace folder holds one, asking again as documents are opened and folders change, and once
+  started the server stays.  Nothing to migrate.
+
+* **The server asks the client to watch the descriptions and the build records.**  The watcher was
+  the extension's, so an editor that launched the server itself heard of no file changed behind it,
+  and a configure that rewrote only a build record left the old severities on screen until the next
+  save, the record being no description.  Once the client says it is initialized, and where it
+  announced `workspace.didChangeWatchedFiles.dynamicRegistration`, the server now registers a
+  watcher for `**/*.ddd.json` and `**/ddd-build.json`; a client that did not is asked for nothing,
+  and a file changed behind it is read again at the next open or save.  A change of a build record
+  forgets what was found and checks again the open documents under the records as they now read, or,
+  while none is open, every file whose findings are on screen; a record, or any other file that is
+  no description, is never checked as one, which had given it a finding of its own.  A change
+  reported for a description named in capitals, which the loader reads, is checked with nothing open
+  as well.  The client's answer to the registration, a message carrying an id and no method, is
+  answered with nothing, where it was refused as a request of a method named `None`.  The extension
+  makes no watcher of its own any more.  Migrating costs a client author one thing: a client that
+  announces the dynamic registration needs no watcher of its own for the server, and one that keeps
+  its own sends every change twice.
+
+* **The workspace folders the client adds or removes while the session runs are followed.**  The
+  server announced no support for workspace folders, so a client sent no change of them: a document
+  of a folder added after the start was checked as one outside every folder, on its own, though its
+  project was there to be found.  It now announces that it follows them.  A folder added is searched
+  as one named at initialize, its build records found and the open documents checked again; a folder
+  removed is answered as if it had never been named: what was published under it alone is withdrawn,
+  and the open documents, or what is on screen while none is open, are checked again, so a file
+  outside it keeps no finding only its checks gave.  With every folder removed the server answers in
+  the directory it was started in, as for a session that named none.  Nothing to migrate.
+
 * **A relative `ddd lsp -b` is read against each workspace folder.**  It was read against the
   directory the server was started in, which VS Code makes the first workspace folder: in a
   workspace of several folders the builds beside the others went unfound, as did the build of a
@@ -1405,6 +1762,13 @@ A build of DDD from its sources, and a release of it:
   meaning that directory, names it absolute.  A relative entry of the extension's
   `ddd.buildDirectories` means what it did in a workspace of one folder, and in one of several
   finds the build beside each.
+
+* **A change of `ddd.executable` or `ddd.buildDirectories` says it takes a restart.**  The extension
+  reads both when it starts the server, and listens for neither changing, which no setting or page
+  said, so a changed setting looked as if it had not taken.  The settings' descriptions, the
+  extension's page and the editor page now say that a change takes effect once the server is
+  restarted, with **DDD: Restart Language Server**, the command for it.  Migrating costs that
+  command after a change of either, as it always did.
 
 * **A file that cannot be written is refused before anything is, on every system, and what is
   written is synced.**  On Windows a read-only file was staged, refused at the rename after

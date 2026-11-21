@@ -53,6 +53,7 @@ from ddd import __version__
 from ddd.build_info import BUILD_INFO_FILENAME, BuildInfo
 from ddd.editing import EditError
 from ddd.ir import DataDictionary
+from ddd.loading import DDD_SUFFIX
 from ddd.lsp.diagnostics import collect
 from ddd.lsp.discovery import build_files, load_builds
 from ddd.lsp.edits import QUICK_FIX, UNKNOWN_UNIT, Asked, Elsewhere, actions_across
@@ -132,11 +133,8 @@ _REGISTER: Final = "client/registerCapability"
 _WATCHER: Final = "ddd-watch"
 """The id of the server's one registration, the watcher, and of the request that asks for it."""
 
-_WATCHED: Final = ("**/*.ddd.json", f"**/{BUILD_INFO_FILENAME}")
+_WATCHED: Final = (f"**/*{DDD_SUFFIX}", f"**/{BUILD_INFO_FILENAME}")
 """What the watcher watches: every description of the workspace, and every build record."""
-
-_DESCRIPTION: Final = ".ddd.json"
-"""How the name of a description ends."""
 
 _DID_CHANGE_FOLDERS: Final = "workspace/didChangeWorkspaceFolders"
 """The client added workspace folders, or removed some, while the session runs."""
@@ -242,9 +240,11 @@ def _field[T](value: Any, wanted: type[T], named: str) -> T:
     instead, a frame without the ``params`` every editor sends would reach that net as the
     server's own defect, with no field named.
 
-    A field the protocol lets a client leave out is asked for with its default, and one it lets
-    the client send as null is asked for only where it is not null; any other value of another
-    shape is refused. ``true`` is no number, although python counts a ``bool`` an ``int``.
+    A field the protocol lets a client leave out is asked for with its default, and so is one it
+    requires and this server tolerates the absence of - a handshake's ``capabilities`` and
+    ``rootUri``, a code action context's ``diagnostics``; one it lets the client send as null is
+    asked for only where it is not null; any other value of another shape is refused. ``true`` is
+    no number, although python counts a ``bool`` an ``int``.
     """
     if not isinstance(value, wanted) or (wanted is int and isinstance(value, bool)):
         msg = f"'{named}' is missing or is not {wanted.__name__}"
@@ -825,7 +825,7 @@ class Server:
         ]
         documents = sorted(self._open)
         if not documents:
-            documents = [path for path in touched if path.name.endswith(_DESCRIPTION)]
+            documents = [path for path in touched if path.name.lower().endswith(DDD_SUFFIX)]
             if any(path.name == BUILD_INFO_FILENAME for path in touched):
                 documents.extend(sorted(self._published))
         self._mark(_DID_CHANGE_WATCHED, *documents)
@@ -862,8 +862,9 @@ class Server:
         folder, on its own, though its project was there to be found. What was published under a
         removed folder alone is withdrawn, since no check need report on it again and its findings
         would then stay on screen for good - but for an open document, which is checked again with
-        the others, as one outside every folder where no folder that stays holds it. With nothing
-        open, what is on screen is checked again.
+        the others, as one outside every folder where no folder that stays holds it. What is on
+        screen and stays is checked again as well, open document or none: the findings of a file
+        outside the folder, or under one that stays, may be the removed folder's checks alone.
 
         Every field is read before any is kept, as at ``initialize``: a change refused for one
         folder takes none of the others.
@@ -885,7 +886,7 @@ class Server:
                 and all(root not in path.parents for root in roots)
             ):
                 self._publish(path, [])
-        self._mark(_DID_CHANGE_FOLDERS, *(sorted(self._open) or sorted(self._published)))
+        self._mark(_DID_CHANGE_FOLDERS, *sorted({*self._open, *self._published}))
 
     def _mark(self, method: str, *documents: Path) -> None:
         """Mark documents for the next check, which checks them together, and drop at once what
@@ -1466,8 +1467,8 @@ class Server:
         is in the index, and a unit its units file lists twice is renamed at both entries. A
         buffer that no longer holds the unit where the index found it refuses the rename before
         the plan is made: the plan's pointers are the disk's, and made in that buffer they would
-        respell whatever sits there now. So does a text the engine cannot make the plan in
-        (:meth:`_rendered`).
+        respell whatever sits there now. A text the engine cannot make the plan in refuses it too,
+        but once the plan is made, as it is rendered as text edits (:meth:`_rendered`).
 
         Two projects planning one place of a file they share differently refuse it, both named
         (:meth:`_two_ways`): two images sharing a units file, of which one lists the unit renamed
@@ -1809,13 +1810,14 @@ class Server:
         Every field is read before any is kept, so a handshake refused for one of them leaves the
         session as it was: the folders of one were taken before its capabilities were refused,
         and the session stayed in them. The protocol lets a client send both ways of naming the
-        folders as null, and leave out its capabilities, or any step of them, which then announce
-        nothing (:func:`_field`).
+        folders as null and leave out any step of its capabilities, and requires ``rootUri`` and
+        the capabilities themselves all the same: a handshake without them is served, naming no
+        folder and announcing nothing (:func:`_field`).
         """
         folders = params.get("workspaceFolders")
         roots = _named_folders([] if folders is None else folders, "params.workspaceFolders")
         root = params.get("rootUri")
-        if not roots and root is not None and _field(root, str, "params.rootUri"):
+        if root is not None and _field(root, str, "params.rootUri") and not roots:
             roots = [uri_to_path(root)]
         capabilities = _field(params.get("capabilities", {}), dict, "params.capabilities")
         named = "params.capabilities.workspace"

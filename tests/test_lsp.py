@@ -3522,15 +3522,19 @@ class TestAUnitPlanRendersInLinearTime:
     times built 1,000 documents of it, and answered four times slower for each doubling, and a code
     action at an unknown unit rendered each rename it offered so. A batch of sets none of which can
     depend on another is made against the text as it was read, as the edit engine makes it for
-    ``ddd gui``; the vocabulary's removals are still made in turn. Pinned by the documents built,
-    the same for a plan of N statings and of 4N."""
+    ``ddd gui``, and read back once per file as it reads it; the vocabulary's removals are still
+    made in turn. Pinned by the documents built, the same for a plan of N statings and of 4N, and
+    by the measuring of the lines around a value, which a literal's edit makes none of."""
 
     @pytest.mark.parametrize("statings", [10, 40])
-    def test_a_plan_of_sets_builds_no_document_of_its_file(
+    def test_a_plan_of_sets_builds_one_document_of_its_file_to_read_it_back(
         self, tmp_path: Path, monkeypatch, statings: int
     ) -> None:
-        """The edits rendered are the engine's, and no document is built for them: the file is
-        read once, before, into the cache."""
+        """The edits rendered are the engine's, and one document is built of the file they leave,
+        to read it back as the engine does: not one for each of the operations, and no operation
+        measures the lines around its value (``replacement``), which a literal never reads."""
+        import ddd.editing as editing
+
         a = stating(tmp_path, statings)
         cache: dict[Path, Document] = {}
         workspace = load_workspace(tmp_path / "p.ddd.json", DiagnosticBag())
@@ -3539,7 +3543,17 @@ class TestAUnitPlanRendersInLinearTime:
         plan = rename_unit(navigation.index(workspace), project_of, "rpm", "RPM", cache)
         read(a, cache)
         rendered: dict[str, list[dict[str, Any]]] = {}
-        assert documents_built(monkeypatch, lambda: rendered.update(text_edits(plan, cache))) == 0
+        measured = 0
+        replaced = editing.replacement
+
+        def measuring(*args: Any, **kwargs: Any) -> Any:
+            nonlocal measured
+            measured += 1
+            return replaced(*args, **kwargs)
+
+        monkeypatch.setattr(editing, "replacement", measuring)
+        assert documents_built(monkeypatch, lambda: rendered.update(text_edits(plan, cache))) == 1
+        assert measured == 0
         (planned,) = plan.edits
         assert apply_edits(a, rendered[a.as_uri()]) == edit_text(
             a.read_text(encoding="utf-8"), planned.operations
@@ -9929,7 +9943,10 @@ class TestAFixUnderAMovedBuffer:
         control = offered_at(tmp_path, "w.ddd.json", WRITER_AND_TWO_READERS, MISMATCH_REPORTED)
         assert reconciled(control) == ["Apply this unit to 2 other declarations of 'V'"]
         moved = {"r2.ddd.json": json.loads(R2_MOVED)}
-        assert offered_at(tmp_path, "w.ddd.json", WRITER_AND_TWO_READERS, (), moved) == []
+        moved_under = offered_at(
+            tmp_path, "w.ddd.json", WRITER_AND_TWO_READERS, MISMATCH_REPORTED, moved
+        )
+        assert moved_under == []
 
     def test_a_key_taken_out_is_not_offered_past_a_moved_declaration(self, tmp_path: Path) -> None:
         """The other way of sending this declaration's answer out: a silent writer taking the unit
@@ -9941,7 +9958,7 @@ class TestAFixUnderAMovedBuffer:
         control = offered_at(tmp_path, "w.ddd.json", files, MISMATCH_REPORTED)
         assert "Remove the unit from 2 other declarations of 'V'" in reconciled(control)
         moved = {"r2.ddd.json": json.loads(R2_MOVED)}
-        assert offered_at(tmp_path, "w.ddd.json", files, (), moved) == []
+        assert offered_at(tmp_path, "w.ddd.json", files, MISMATCH_REPORTED, moved) == []
 
     def test_the_fix_is_withheld_where_the_rename_beside_it_is_refused(
         self, tmp_path: Path
@@ -10815,6 +10832,30 @@ class TestAUnitPlanTheEngineCannotMakeInAText:
         }
         assert capsys.readouterr().err == ""
 
+    def test_a_respelling_is_read_back_and_refused_in_a_text_the_engine_cannot_make_it_in(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The same text, and a rename onto a spelling no entry lists: a plan of sets at the
+        entries, which the engine makes at once and reads back, and so refuses. Sent as the edits
+        were made, the new name was written over the value of the key that spells the pointer of
+        the third entry, and the list was left as it was."""
+        a = self.single(tmp_path)
+        server = Server(io.BytesIO(), io.BytesIO(), root=tmp_path)
+        assert server._handle({"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {}})
+        assert server._handle(fixes_request(a, (), AT_THE_UNIT))
+        (tmp_path / "u.ddd.json").write_text(POINTER_SPELLED, encoding="utf-8")
+        writer = io.BytesIO()
+        server.writer = writer
+        assert server._handle(rename_at(a, AT_THE_UNIT, "Rpm"))
+        (answer,) = sent(writer)
+        assert answer["error"] == {
+            "code": REQUEST_FAILED,
+            "message": "u.ddd.json has changed on disk since the project was read, which moved "
+            "or respelled a unit this rename would touch; rename again once it has been read "
+            "again",
+        }
+        assert capsys.readouterr().err == ""
+
     def across(self, tmp_path: Path) -> Path:
         """Image one holds ``c.ddd.json`` and ``d.ddd.json``, both stating ``rpm``, and lists
         ``RPM``; image three holds ``d.ddd.json`` and lists ``rpm`` twice beside ``RPM``. Returns
@@ -11001,8 +11042,9 @@ class TestAMalformedFieldIsRefused:
     a defect of the server's own: since a defect costs one answer rather than the session, a test of
     the session going on would pass with every refusal here taken out, each fault answered as the
     server's own defect, naming no field. A field the protocol lets a client leave out takes its
-    default, and one the protocol lets it send as null is null; any other value of another shape is
-    refused.
+    default, and so does one it requires and the server tolerates the absence of - the handshake's
+    ``capabilities`` and ``rootUri``, a context's ``diagnostics``; one the protocol lets it send as
+    null is null; any other value of another shape is refused.
     """
 
     AT: ClassVar[dict[str, int]] = {"line": 0, "character": 0}
@@ -11263,6 +11305,10 @@ class TestAMalformedFieldIsRefused:
             ([1], NOT_A.format("params", "dict")),
             (None, NOT_A.format("params", "dict")),
             ({"rootUri": 3}, NOT_A.format("params.rootUri", "str")),
+            (
+                {"workspaceFolders": [{"uri": "file:///w"}], "rootUri": 3},
+                NOT_A.format("params.rootUri", "str"),
+            ),
             ({"workspaceFolders": 3}, NOT_A.format("params.workspaceFolders", "list")),
             ({"workspaceFolders": [3]}, NOT_A.format("params.workspaceFolders[]", "dict")),
             (
@@ -11329,6 +11375,7 @@ class TestAMalformedFieldIsRefused:
             "params-a-list",
             "params-null",
             "root-a-number",
+            "root-a-number-beside-folders",
             "folders-a-number",
             "a-folder-a-number",
             "a-folder-uri-null",
@@ -11368,8 +11415,9 @@ class TestAMalformedFieldIsRefused:
         uri = a_null_in(tmp_path / "w.ddd.json").removesuffix(".ddd.json")
         params = {"rootUri": uri} if field == "rootUri" else {"workspaceFolders": [{"uri": uri}]}
         writer = io.BytesIO()
-        stream = framed(self.initialized(params), *END)
-        Server(stream, writer, root=tmp_path).run()
+        hello = {"jsonrpc": "2.0", "id": 8, "method": "initialize", "params": {}}
+        stream = framed(self.initialized(params), hello, *END)
+        assert Server(stream, writer, root=tmp_path).run() == 0
         assert capsys.readouterr().err == ""
         assert sent(writer)[0] == error(7, INVALID_PARAMS, NO_FILE.format(uri))
 
@@ -11411,9 +11459,9 @@ class TestAMalformedFieldIsRefused:
     def test_a_handshake_may_leave_out_what_the_protocol_lets_it(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str], params: dict[str, Any]
     ) -> None:
-        """The control: what the protocol lets a client leave out, or send as null, takes its
-        default - the folder the server was started with, edits in the plain form, and no watcher
-        asked for."""
+        """The control: what the protocol lets a client leave out, or send as null, and what it
+        requires and the server tolerates the absence of, takes its default - the folder the
+        server was started with, edits in the plain form, and no watcher asked for."""
         writer = io.BytesIO()
         server = Server(framed(self.initialized(params), INITIALIZED, *END), writer, root=tmp_path)
         assert server.run() == 0
@@ -13787,6 +13835,30 @@ class TestABuildRecordChangingOnDisk:
             "w.ddd.json": [("definition-mismatch", 1)],
         }
 
+    def test_with_nothing_open_a_description_the_loader_reads_by_a_name_in_capitals_is_checked(
+        self, tmp_path: Path
+    ) -> None:
+        """The loader takes a file whose name ends ``.ddd.json`` in any case: an event for
+        ``R.DDD.JSON`` with nothing open was dropped, and the findings of the file stayed on
+        screen as the disk no longer held them."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "w.ddd.json", "R.DDD.JSON"),
+                "w.ddd.json": component("W", declare("output", "V", unit="rpm", id="k7m2q9xr4t8w")),
+                "R.DDD.JSON": component("R", declare("input", "V", unit="krpm")),
+            },
+        )
+        r = tmp_path / "R.DDD.JSON"
+        server, writer = self.started(tmp_path)
+        assert server._handle(holding(r, r.read_text(encoding="utf-8")))
+        assert server._handle(closing(r))
+        assert self.graded(writer)["R.DDD.JSON"] == [("definition-mismatch", 1)]
+        write_tree(tmp_path, {"R.DDD.JSON": component("R", declare("input", "V", unit="rpm"))})
+        writer = server.writer = io.BytesIO()
+        assert server._handle(changed_on_disk(r))
+        assert self.graded(writer) == {"R.DDD.JSON": [], "w.ddd.json": []}
+
     @pytest.mark.parametrize("named", [BUILD_INFO_FILENAME, "notes.json"])
     def test_with_nothing_open_a_file_that_is_no_description_is_not_checked_as_one(
         self, tmp_path: Path, named: str
@@ -13918,6 +13990,43 @@ class TestFoldersAddedAndRemovedLater:
         assert codes(writer, d) == ["missing-producer"]
         assert self.publications(writer, d) == 1
         assert server.roots == [a, b / "parts"]
+
+    def test_a_file_the_removed_folder_alone_answered_for_is_checked_again(
+        self, tmp_path: Path
+    ) -> None:
+        """``parts`` stays as a folder of its own, holding no project: ``d`` is not under the
+        removed folder alone, so it is not withdrawn, and with ``c`` open it was not checked again
+        either, keeping the ``missing-producer`` only the project above ``parts`` gave it. As
+        one outside every project it says nothing of the kind."""
+        a, b, c = self.tree(tmp_path)
+        d = b / "parts" / "d.ddd.json"
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(opening(a, b, b / "parts"))
+        assert server._handle(holding(c, c.read_text(encoding="utf-8")))
+        assert codes(writer, d) == ["missing-producer"]
+        writer = server.writer = io.BytesIO()
+        assert server._handle(folders_changed(removed=[b]))
+        assert published(writer)[d.as_uri()] == []
+
+    def test_with_nothing_open_what_a_removed_folder_held_is_withdrawn(
+        self, tmp_path: Path
+    ) -> None:
+        """Everything on screen lies under the folder removed, and nothing is open to check
+        again: each file is withdrawn, once, and none is checked from a path no folder holds."""
+        a, b, c = self.tree(tmp_path)
+        d = b / "parts" / "d.ddd.json"
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(opening(a, b))
+        assert server._handle(holding(c, c.read_text(encoding="utf-8")))
+        assert server._handle(closing(c))
+        assert codes(writer, d) == ["missing-producer"]
+        writer = server.writer = io.BytesIO()
+        assert server._handle(folders_changed(removed=[b]))
+        assert published(writer) == {c.as_uri(): [], d.as_uri(): []}
+        assert self.publications(writer, c) == 1
+        assert self.publications(writer, d) == 1
 
     def test_with_every_folder_removed_the_server_answers_where_it_was_started(
         self, tmp_path: Path

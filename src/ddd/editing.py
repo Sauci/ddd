@@ -468,7 +468,8 @@ def edit_text(text: str, operations: Sequence[Operation]) -> str:
     into the document for a value it did not hold.
 
     A batch none of whose operations can depend on another (:func:`_independent`) is made from
-    the one reading instead (:func:`edits_at_once`), and the text it leaves is read once and
+    the one reading instead (:func:`_made_at_once`, through :func:`_at_once`, the edits
+    :func:`edits_at_once` gives the language server), and the text it leaves is read once and
     compared as the text one operation leaves is. A unit is renamed by a set at every
     declaration stating it, hundreds of places in one component file of a large project, and
     ``ddd id`` gives every declaration of a file an id, thousands of members added to one file;
@@ -571,13 +572,18 @@ def edits_at_once(document: Document, operations: Sequence[Operation]) -> list[T
     around the value first, which a literal never reads, copying the text from the value's line to
     its end for every operation.
 
-    What :func:`edit_text` makes such a batch from for ``ddd gui``, and what the language server
-    renders a unit's plan with (:func:`ddd.lsp.units.text_edits`), so that the two make one batch
-    the same way: neither builds a document of the file for each of its operations.
+    What the language server renders a unit's plan with (:func:`ddd.lsp.units.text_edits`), as
+    :func:`edit_text` makes the batch for ``ddd gui`` (:func:`_made_at_once`, which asks
+    :func:`_independent` itself and makes the edits with :func:`_at_once`): neither builds a
+    document of the file for each of its operations. Read back once, as :func:`edit_text` reads
+    it, so that an edit that wrote what it was not meant to is raised as ``unverified`` and not
+    sent: where ``edit_text`` makes the batch again in turn, there is no other way here.
     """
     if not _independent(document, operations):
         return None
-    return _at_once(document, operations)
+    edits = _at_once(document, operations)
+    _read_back(document, operations, edits)
+    return edits
 
 
 def _at_once(document: Document, operations: Sequence[Operation]) -> list[TextEdit]:
@@ -597,23 +603,28 @@ def _at_once(document: Document, operations: Sequence[Operation]) -> list[TextEd
 
 
 def _made_at_once(document: Document, operations: Sequence[Operation]) -> str | None:
-    """The operations made on the text as it was read (:func:`edits_at_once`), and the text they
-    leave read once - or ``None`` when one of them is refused, or that text does not read back as
-    the document every operation was meant to leave, for :func:`_made_in_turn` to answer as it
-    answers any batch. Only for a batch :func:`_independent` lets through."""
-    expected = copy.deepcopy(document.data)
+    """The operations made on the text as it was read (:func:`_at_once`), and the text they leave
+    read once (:func:`_read_back`) - or ``None`` when one of them is refused, or that text does
+    not read back as the document every operation was meant to leave, for :func:`_made_in_turn`
+    to answer as it answers any batch. Only for a batch :func:`_independent` lets through."""
     try:
-        edits = _at_once(document, operations)
-        for operation in operations:
-            expected = _set_value(expected, operation.pointer, parse_raw(operation.raw))
-        made = _read(
-            _all_applied(document.text, edits), UNVERIFIED, "an edit left the file unreadable"
-        )
+        return _read_back(document, operations, _at_once(document, operations)).text
     except EditError:
         return None
+
+
+def _read_back(
+    document: Document, operations: Sequence[Operation], edits: Sequence[TextEdit]
+) -> Document:
+    """The text ``edits`` leave in ``document``, read once, as the document every operation was
+    meant to leave, or refused as ``unverified`` where it reads as another or not at all."""
+    expected = copy.deepcopy(document.data)
+    for operation in operations:
+        expected = _set_value(expected, operation.pointer, parse_raw(operation.raw))
+    made = _read(_all_applied(document.text, edits), UNVERIFIED, "an edit left the file unreadable")
     if _canonical(made.data) != _canonical(expected):
-        return None
-    return made.text
+        raise EditError(UNVERIFIED, "the edited file does not read back as the intended document")
+    return made
 
 
 def _made_in_turn(document: Document, operations: Sequence[Operation]) -> str:

@@ -229,7 +229,9 @@ class Asked:
     """One project a position's quick fixes are asked of."""
 
     description: Path
-    """The description it was read from, resolved: what tells it from another project."""
+    """The description it was read from, resolved: what tells it from another project. Where one
+    project is asked alone (:func:`actions`), which is given the index and not the description it
+    came of, the document's path stands in: nothing else is told from it."""
 
     built: Index
     project: UnitProject | None = None

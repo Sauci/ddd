@@ -656,10 +656,11 @@ def _simultaneous(document: Document, operations: Sequence[Operation]) -> list[T
 
     A batch none of whose operations can depend on another - a rename's sets of a literal at every
     place stating the unit, or at every entry listing it - is made against the text as it was
-    read, as the engine makes such a batch (:func:`~ddd.editing.edits_at_once`), and builds no
-    document. Made one after another instead, it built a document of the whole file after each
-    operation, so that a rename over one file stating its unit N times built N of them, and its
-    time grew as the square of N.
+    read, as the engine makes such a batch (:func:`~ddd.editing.edits_at_once`), and builds one
+    document of the file, to read it back as the engine does: refused as ``unverified`` where the
+    edits leave another document than the plan meant. Made one after another instead, it built a
+    document of the whole file after each operation, so that a rename over one file stating its
+    unit N times built N of them, and its time grew as the square of N.
 
     Any other batch - the entries of the vocabulary a merge takes out, each moving the entries
     after it - is made one operation after another, as the engine makes it, with every character

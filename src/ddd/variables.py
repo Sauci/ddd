@@ -195,23 +195,30 @@ def operations_for(
 
 
 def preview(
-    settlement: Settlement, key: str, fingerprints: Mapping[Path, str]
+    settlement: Settlement,
+    key: str,
+    fingerprints: Mapping[Path, str],
+    cache: Mapping[Path, Document] | None = None,
 ) -> tuple[Planned, ...]:
     """The edit a settlement comes to, file by file, and the lines it changes in each - made by
     the edit engine in memory and never written.
 
     Each file carries the fingerprint the analysis read it at, from ``fingerprints`` (keyed by
     resolved path), so that applying the preview after the file changed on disk is refused as
-    stale rather than made to text nobody previewed.
+    stale rather than made to text nobody previewed. ``cache`` is the one the settlement was
+    decided on, whose documents :func:`planned` makes each edit from.
     """
     return tuple(
-        planned(path, operations, fingerprints)
+        planned(path, operations, fingerprints, cache)
         for path, operations in operations_for(settlement, key)
     )
 
 
 def planned(
-    path: Path, operations: tuple[Operation, ...], fingerprints: Mapping[Path, str]
+    path: Path,
+    operations: tuple[Operation, ...],
+    fingerprints: Mapping[Path, str],
+    cache: Mapping[Path, Document] | None = None,
 ) -> Planned:
     """The edit of one file the analysis read, and the lines it changes, made in memory.
 
@@ -225,7 +232,10 @@ def planned(
     again.
 
     The lines it changes are read off the spans the engine's edit replaced
-    (:func:`lines_replaced`), never found by comparing the file before and after it.
+    (:func:`lines_replaced`), never found by comparing the file before and after it. The edit is
+    made from the document ``cache`` - the plan's own - holds for the file, where the file reads
+    as that document still (:func:`ddd.editing.edit_spans`): whoever planned the operations read
+    the file already, to find where they go or that it still holds what they point at.
     """
     stamp = fingerprints.get(path)
     if stamp is None:
@@ -236,7 +246,7 @@ def planned(
         text = path.read_bytes().removeprefix(codecs.BOM_UTF8).decode("utf-8")
     except (OSError, UnicodeDecodeError):
         raise EditError(UNREADABLE, f"{path} can no longer be read as utf-8") from None
-    edited = edit_spans(text, operations)
+    edited = edit_spans(text, operations, None if cache is None else cache.get(path))
     return Planned(path, stamp, operations, lines_replaced(text, edited.replaced))
 
 

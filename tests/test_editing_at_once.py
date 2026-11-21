@@ -292,6 +292,56 @@ class TestABatchIsReadOnce:
         assert reads[-1].count('"id": "k') == 40
 
 
+class TestADocumentScannedAlready:
+    """``edit_spans`` given the document whoever planned the operations scanned: the text is
+    scanned once, as the edit leaves it, and asked the loader's rule as it stands."""
+
+    TEXT = json.dumps(declarations(3), indent=2) + "\n"
+    SET = (Operation("set", "component.interface[1].definition.datatype", '"uint16"'),)
+
+    def test_its_text_is_not_scanned_again(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Only the text the edit leaves is scanned, to read it back."""
+        expected = edit_text(self.TEXT, self.SET)
+        given = Document(self.TEXT)
+        scanned: list[str] = []
+        init = Document.__init__
+
+        def scanning(document: Document, text: str) -> None:
+            scanned.append(text)
+            init(document, text)
+
+        monkeypatch.setattr(Document, "__init__", scanning)
+        assert edit_spans(self.TEXT, self.SET, given).text == expected
+        assert scanned == [expected]
+
+    def test_one_of_another_text_is_not_used(self) -> None:
+        """A file whose line breaks python's universal newlines read as line feeds: its document
+        is of another text, and the text given is the one edited, every carriage return kept."""
+        text = self.TEXT.replace("\n", "\r\n")
+        made = edit_spans(text, self.SET, Document(self.TEXT))
+        assert made.text == edit_text(text, self.SET)
+        assert "\r\n" in made.text
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            '{"component": {"name": "B", "interface": [], "limit": NaN}}',
+            '{"component": {"name": "B", "name": "C", "interface": []}}',
+        ],
+        ids=["NaN", "a-key-spelled-twice"],
+    )
+    def test_the_loader_s_rule_is_asked_of_its_text_all_the_same(self, text: str) -> None:
+        """Python's own parser read both into a document, and the loader refuses both: refused as
+        they are without a document."""
+        operations = (Operation("set", "component.name", '"D"'),)
+        with pytest.raises(EditError) as given:
+            edit_spans(text, operations, Document(text))
+        with pytest.raises(EditError) as alone:
+            edit_text(text, operations)
+        assert (given.value.code, str(given.value)) == (alone.value.code, str(alone.value))
+        assert given.value.code == UNREADABLE
+
+
 class TestWhichBatchIsMadeAtOnce:
     TEXT = '{"a": {"b": 1, "c": "x"}, "list": [1, 2, 3], "d": null}'
 

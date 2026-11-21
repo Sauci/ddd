@@ -6145,6 +6145,30 @@ class TestUnitPlan:
                 }
             ]
 
+    def test_each_file_a_rename_writes_is_scanned_once_before_its_edit(
+        self, api: Api, root: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A rename reads every file stating the unit before it plans, to see that each still
+        holds the unit where the index found it (``unit_drift``), and the edit is made from the
+        document it read: each file is scanned once as it stands and once as its edit leaves it,
+        which the engine reads back. Scanned again for the edit, a unit renamed in the 1,167
+        files of a generated project of 35,000 declarations was every one of them scanned three
+        times."""
+        scanned: list[str] = []
+        init = Document.__init__
+
+        def scanning(document: Document, text: str) -> None:
+            scanned.append(text)
+            init(document, text)
+
+        monkeypatch.setattr(Document, "__init__", scanning)
+        reply = get(api, "/api/unit-plan", action="rename", unit="rpm", to="Hz")
+        assert reply.status == 200
+        for name in ("a.ddd.json", "b.ddd.json"):
+            text = (root / name).read_text(encoding="utf-8")
+            renamed = text.replace('"unit": "rpm"', '"unit": "Hz"')
+            assert (scanned.count(text), scanned.count(renamed)) == (1, 1)
+
     def test_posting_a_rename_changes_the_unit_everywhere_it_is_stated(
         self, api: Api, root: Path
     ) -> None:
@@ -13967,17 +13991,18 @@ class TestEachRevisionIsResolvedOnce:
         assert revision is not None
         carried: list[object] = []
 
-        def carrying(name: str) -> None:
+        def carrying(name: str, stamps_at: int) -> None:
             real = getattr(api_module, name)
 
             def spied(*arguments: Any) -> Any:
-                carried.append(arguments[-1])
+                carried.append(arguments[stamps_at])
                 return real(*arguments)
 
             monkeypatch.setattr(api_module, name, spied)
 
-        for name in ("previewed", "preview", "planned"):
-            carrying(name)
+        # Each takes the stamps after what it previews, the plan's read cache after them.
+        for name, stamps_at in (("previewed", 1), ("preview", 2), ("planned", 2)):
+            carrying(name, stamps_at)
         asked = dict(query)
         if "file" in asked:
             asked["file"] = posix(tmp_path / example, asked["file"])

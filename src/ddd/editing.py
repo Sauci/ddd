@@ -497,7 +497,9 @@ def edit_text(text: str, operations: Sequence[Operation]) -> str:
     return edit_spans(text, operations).text
 
 
-def edit_spans(text: str, operations: Sequence[Operation]) -> Edited:
+def edit_spans(
+    text: str, operations: Sequence[Operation], scanned: Document | None = None
+) -> Edited:
     """The text :func:`edit_text` makes, made the same way and refused the same way, with the spans
     of ``text`` the operations replaced to make it (:attr:`Edited.replaced`).
 
@@ -505,9 +507,21 @@ def edit_spans(text: str, operations: Sequence[Operation]) -> Edited:
     where an operation wrote, and found again by comparing the text before and after, those lines
     cost a comparison of the whole file - seconds for one plan in the largest component of a
     generated project of 100,000 declarations, nearly all of the plan's time.
+
+    ``scanned`` is a document of the file whoever planned the operations scanned already, used
+    where its text is ``text`` and scanned anew where it is not - the file changed since, or read
+    as python reads a text, every line break a line feed. Only the loader's rule is asked of
+    ``text`` then (:func:`_ruled`). A plan reads the files it writes before it plans, to find
+    where its operations go or to see that each file still holds what they point at: a unit
+    renamed in the 1,167 files of a generated project of 35,000 declarations was every one of
+    them scanned again here.
     """
     unreadable = "the file is not json DDD reads, so no pointer names a place in it"
-    document = _read(text, UNREADABLE, unreadable)
+    if scanned is not None and scanned.text == text:
+        _ruled(text, UNREADABLE, unreadable)
+        document = _scanned(scanned, UNREADABLE, unreadable)
+    else:
+        document = _read(text, UNREADABLE, unreadable)
     if _independent(document, operations):
         made = _made_at_once(document, operations)
         if made is not None:
@@ -752,11 +766,22 @@ def _read(text: str, code: str, refusal: str) -> Document:
     """
     from ddd.lsp.ranges import Document
 
+    _ruled(text, code, refusal)
+    return _scanned(Document(text), code, refusal)
+
+
+def _ruled(text: str, code: str, refusal: str) -> None:
+    """Refuse ``text`` with ``code`` where DDD does not read it as json: the loader's rule, which
+    :func:`_read` asks before it scans a text (:func:`ddd.loading.parse_json_text`)."""
     try:
         parse_json_text(text)
     except ValueError as error:
         raise EditError(code, f"{refusal}: {error}") from None
-    document = Document(text)
+
+
+def _scanned(document: Document, code: str, refusal: str) -> Document:
+    """``document``, refused with ``code`` where its scan holds nothing of a text the loader's rule
+    read (:func:`_ruled`)."""
     if document.data is None:
         # Read by the parser and too deep for the scan, which spends more stack per level.
         raise EditError(code, f"{refusal}: the json is nested too deeply to read")

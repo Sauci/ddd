@@ -968,7 +968,7 @@ class Api:
                 (edit.path for edit in plan.edits if edit.creates),
             )
             self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
-            planned = previewed(plan.edits, derived.stamps)
+            planned = previewed(plan.edits, derived.stamps, cache)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
@@ -1110,7 +1110,7 @@ class Api:
         try:
             self._refuse_generated(revision, (edit.path for edit in plan.edits))
             self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
-            planned = previewed(plan.edits, derived.stamps)
+            planned = previewed(plan.edits, derived.stamps, cache)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
@@ -1342,7 +1342,7 @@ class Api:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         derived = self._derive(revision)
         try:
-            made = previewed(plan.edits, derived.stamps)
+            made = previewed(plan.edits, derived.stamps, cache)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
@@ -1425,7 +1425,7 @@ class Api:
                 (edit.path for edit in plan.edits if edit.creates),
             )
             self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
-            made = previewed(plan.edits, derived.stamps)
+            made = previewed(plan.edits, derived.stamps, cache)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
@@ -1482,7 +1482,7 @@ class Api:
         try:
             self._refuse_generated(revision, (change.site.path for change in settlement.changes))
             self._refuse_unanalysed(revision, (change.site.path for change in settlement.changes))
-            planned = preview(settlement, key, derived.stamps)
+            planned = preview(settlement, key, derived.stamps, cache)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
@@ -1517,7 +1517,10 @@ class Api:
             try:
                 self._refuse_generated(revision, (edit.path for edit in fix.changes))
                 self._refuse_unanalysed(revision, (edit.path for edit in fix.changes))
-                made = [planned(edit.path, edit.operations, derived.stamps) for edit in fix.changes]
+                made = [
+                    planned(edit.path, edit.operations, derived.stamps, cache)
+                    for edit in fix.changes
+                ]
             except EditError as refused:
                 return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
             offered.append(
@@ -1609,7 +1612,7 @@ class Api:
         try:
             self._refuse_generated(revision, (edit.path for edit in plan.edits))
             self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
-            planned = previewed(plan.edits, derived.stamps)
+            planned = previewed(plan.edits, derived.stamps, cache)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
@@ -1654,7 +1657,7 @@ class Api:
         try:
             self._refuse_generated(revision, (edit.path for edit in plan.edits))
             self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
-            planned = _changing(previewed(plan.edits, derived.stamps))
+            planned = _changing(previewed(plan.edits, derived.stamps, cache))
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
@@ -1724,9 +1727,10 @@ class Api:
         built, dictionary = revision.index, revision.dictionary
         if built is None or dictionary is None:
             return _unresolved(revision)
+        cache: dict[Path, Document] = {}
         try:
             raw = _number(query.raw)
-            plan = set_cell(dictionary, built, query.name, query.at, raw, {})
+            plan = set_cell(dictionary, built, query.name, query.at, raw, cache)
         except ValueRefusalError as refused:
             # Both codes again, as in _values above - a name the project has not, and every
             # other refusal - so both arms need a status and a test reaching them: a ternary
@@ -1739,7 +1743,7 @@ class Api:
         try:
             self._refuse_generated(revision, (edit.path for edit in plan.edits))
             self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
-            planned = _changing(previewed(plan.edits, derived.stamps))
+            planned = _changing(previewed(plan.edits, derived.stamps, cache))
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
@@ -1756,11 +1760,12 @@ class Api:
         built, dictionary = revision.index, revision.dictionary
         if built is None or dictionary is None:
             return _unresolved(revision)
+        cache: dict[Path, Document] = {}
         try:
             # As many counts as elements: the query refuses any other pairing.
             pairs = zip(query.at.split(","), query.raw.split(","), strict=True)
             cells = [(at, _number(raw)) for at, raw in pairs]
-            plan = set_cells(dictionary, built, query.name, cells, {})
+            plan = set_cells(dictionary, built, query.name, cells, cache)
         except ValueRefusalError as refused:
             # Both codes, as `_value_plan` above: a name the project has not, and every other
             # refusal. A statement rather than a ternary, so the gate can see both arms.
@@ -1771,7 +1776,7 @@ class Api:
         try:
             self._refuse_generated(revision, (edit.path for edit in plan.edits))
             self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
-            planned = _changing(previewed(plan.edits, derived.stamps))
+            planned = _changing(previewed(plan.edits, derived.stamps, cache))
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
@@ -1789,9 +1794,10 @@ class Api:
         built, dictionary = revision.index, revision.dictionary
         if built is None or dictionary is None:
             return _unresolved(revision)
+        cache: dict[Path, Document] = {}
         try:
             flat = [_number(piece) for piece in query.raw.split(",")]
-            plan = set_values(dictionary, built, name, _folded(flat, dictionary, name), {})
+            plan = set_values(dictionary, built, name, _folded(flat, dictionary, name), cache)
         except ValueRefusalError as refused:
             # Both codes, as `_value_plan` above: a name the project has not, and every other
             # refusal. A statement rather than a ternary, so the gate can see both arms.
@@ -1802,7 +1808,7 @@ class Api:
         try:
             self._refuse_generated(revision, (edit.path for edit in plan.edits))
             self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
-            planned = _changing(previewed(plan.edits, derived.stamps))
+            planned = _changing(previewed(plan.edits, derived.stamps, cache))
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(

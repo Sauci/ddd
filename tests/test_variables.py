@@ -30,7 +30,7 @@ from ddd.editing import UNREADABLE, EditError, Operation, TextEdit, edit_text, f
 from ddd.loading import load_workspace
 from ddd.lsp.edits import Settlement, Unsettled, settle
 from ddd.lsp.navigation import Index, Site, index
-from ddd.lsp.ranges import Document
+from ddd.lsp.ranges import Document, read
 from ddd.variables import (
     Hunk,
     declarations_of,
@@ -951,3 +951,42 @@ class TestThePlannedFilesStamp:
             spelled,
             known[(tmp_path / "b.ddd.json").resolve()],
         )
+
+
+class TestThePlannedEditIsMadeFromThePlansOwnDocument:
+    """``planned`` makes the edit from the document its cache holds for the file, which whoever
+    planned it read already: the file is scanned once more, as the edit leaves it, to read it
+    back."""
+
+    def test_the_document_read_for_the_plan_is_not_scanned_again(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        speed(tmp_path)
+        b = (tmp_path / "b.ddd.json").resolve()
+        cache: dict[Path, Document] = {}
+        read(b, cache)
+        operations = (Operation("set", UNIT, '"rpm"'),)
+        expected = planned(b, operations, stamps(tmp_path, "b.ddd.json"))
+        scanned: list[str] = []
+        init = Document.__init__
+
+        def scanning(document: Document, text: str) -> None:
+            scanned.append(text)
+            init(document, text)
+
+        monkeypatch.setattr(Document, "__init__", scanning)
+        assert planned(b, operations, stamps(tmp_path, "b.ddd.json"), cache) == expected
+        assert scanned == [b.read_text(encoding="utf-8").replace('"%"', '"rpm"')]
+
+    def test_a_file_read_otherwise_than_it_is_written_is_scanned_as_it_is(
+        self, tmp_path: Path
+    ) -> None:
+        """Ending its lines with carriage returns and line feeds, which the plan's reading made
+        line feeds: edited as the file spells them."""
+        speed(tmp_path)
+        b = (tmp_path / "b.ddd.json").resolve()
+        b.write_bytes(b.read_bytes().replace(b"\n", b"\r\n"))
+        cache: dict[Path, Document] = {}
+        assert "\r" not in read(b, cache).text
+        made = planned(b, (Operation("set", UNIT, '"rpm"'),), stamps(tmp_path, "b.ddd.json"), cache)
+        assert [hunk.after for hunk in made.hunks] == [('          "unit": "rpm"',)]

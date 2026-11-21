@@ -247,7 +247,9 @@ def adoptable(built: Index | None, project: Callable[[], UnitProject]) -> int | 
 
 
 def previewed(
-    edits: Sequence[PlannedEdit], fingerprints: Mapping[Path, str]
+    edits: Sequence[PlannedEdit],
+    fingerprints: Mapping[Path, str],
+    cache: Mapping[Path, Document] | None = None,
 ) -> tuple[Planned, ...]:
     """The edit a plan comes to, file by file in the plan's order, and the lines it changes in
     each - made by the edit engine in memory and never written.
@@ -261,6 +263,8 @@ def previewed(
     A file the plan creates has none - ``POST /api/edit`` creates a file for a change without
     one - and its one hunk is the whole file, at line 1: the one span of an empty text its one
     ``set`` replaces, read as every plan's lines are (:func:`ddd.variables.lines_replaced`).
+    ``cache`` is the one the plan was made with, whose documents each edit is made from
+    (:func:`ddd.variables.planned`).
     """
     return tuple(
         Planned(
@@ -270,7 +274,7 @@ def previewed(
             lines_replaced("", (TextEdit(0, 0, edit.operations[0].raw or ""),)),
         )
         if edit.creates
-        else planned(edit.path, edit.operations, fingerprints)
+        else planned(edit.path, edit.operations, fingerprints, cache)
         for edit in edits
     )
 

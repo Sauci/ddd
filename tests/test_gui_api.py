@@ -13924,3 +13924,51 @@ class TestEachRevisionIsResolvedOnce:
         assert [(Path(found["file"]).name, found["check"]) for found in findings] == [
             ("p.ddd.json", "file-not-found")
         ]
+
+
+BARE_PLUGIN_SOURCE = 'from ddd.plugins import Plugin\n\nPLUGIN = Plugin(name="plug")\n'
+"""A plugin that loads and files nothing: what tells it changed is its bytes alone."""
+
+
+class TestWhilePluginChangedStands:
+    """14:I4's ruling 2: ``plugin-changed``, an error by default, is filed once the analysis has
+    run, and no plan or edit of ``ddd gui`` is refused because an error stands - each judges what
+    a change does, never what is standing. The one answer it changes is the Compare tab's, whose
+    verdict counts the project's own errors as ``ddd compare`` counts them."""
+
+    def test_a_plan_an_edit_and_a_removal_are_answered_and_the_verdict_alone_refuses(
+        self, tmp_path: Path
+    ) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json", plugins=["plug.py"]),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": component("B", declare("input", "Speed", unit="rpm")),
+            },
+        )
+        plugin = tmp_path / "plug.py"
+        plugin.write_text(BARE_PLUGIN_SOURCE, encoding="utf-8")
+        baseline = tmp_path / "baseline.json"
+        dumped = ["dump", posix(tmp_path, "p.ddd.json"), "-o", str(baseline)]
+        assert main([*dumped, "-W", "missing-id=ignore"]) == EXIT_OK
+        session = Session(tmp_path)
+        session.open(tmp_path / "p.ddd.json")
+        api = Api(session, tmp_path / "p.ddd.json", wait_seconds=0.05)
+        plugin.write_text(f"{BARE_PLUGIN_SOURCE}# saved again\n", encoding="utf-8")
+        assert session.poll() is True
+        standing = [found for found in every_finding(api) if found["severity"] == "error"]
+        assert [(Path(found["file"]).name, found["check"]) for found in standing] == [
+            ("plug.py", "plugin-changed")
+        ]
+        compared = get(api, "/api/compare", baseline=str(baseline))
+        assert compared.status == 200
+        assert (compared.body["findings"], compared.body["own_errors"]) == ([], 1)
+        assert compared.body["verdict"] is False
+        planned = get(api, "/api/settle", name="Speed", key="unit", raw='"Hz"')
+        assert planned.status == 200
+        assert applied(api, planned.body, "the unit of Speed").status == 200
+        assert "plugin-changed" in {found["check"] for found in every_finding(api)}
+        removal = get(api, "/api/files-plan", action="remove", path=posix(tmp_path, "b.ddd.json"))
+        assert removal.status == 200
+        assert removal.body["unjudged"] is None

@@ -2965,19 +2965,19 @@ refused, naming the description and why, where a description it needs could not 
 plugin stops, whether a build record names it or the search above a file found it: the files it
 holds would be rewritten for no image, and the others left reading a name nothing declares.
 
-A rename reaches every project that holds a file it rewrites: the projects the file it starts
-from belongs to, then every project holding a file their edits rewrite, until none is new. A
-component linked into two images is in two projects where both are found for it as below -
-by their build records, or, where no record claims it, by the search above it - and a rename
-that rewrites it then rewrites the readers of both images, whichever of the two the file it
-starts from is in; reaching only the projects of that file would leave the other image reading
-a name nothing declares. Every project the rename reaches is asked each refusal above before
-anything is written. Where a project the file it starts from does not belong to already uses
-the name, declares the type an external one, or holds a file that did not load, the refusal
-names that project's image, or its description where no build record names it; unsaved changes
-are refused naming the file that holds them, wherever it is. A unit's rename is refused as well, naming both, where two projects
-it reaches would rewrite a units file they share two ways: the one listing the unit renamed onto
-merges the old spelling into it, and the other respells it.
+A rename reaches every project that holds a file it rewrites: the projects the file it starts from
+belongs to, then every project holding a file their edits rewrite, until none is new. A component
+linked into two images is in two projects where both are found for it as below - by their build
+records, or, where no record claims it, by the search above it - and a rename that rewrites it then
+rewrites the readers of both images, whichever of the two the file it starts from is in; reaching
+only the projects of that file would leave the other image reading a name nothing declares. Every
+project the rename reaches is asked each refusal above before anything is written. Where a project
+the file it starts from does not belong to already uses the name, declares the type an external one,
+or holds a file that did not load, the refusal names that project's image, or its description where
+no build record names it; unsaved changes are refused naming the file that holds them, wherever it
+is. A unit's rename is refused as well, naming both, where two projects it reaches would rewrite a
+units file they share two ways: the one listing the unit renamed onto merges the old spelling into
+it, and the other respells it.
 
 A quick fix is offered once however many projects holding the document offer it, and a fix
 sending the declaration's own answer out - its value applied to the other declarations of the
@@ -3097,15 +3097,14 @@ given the thinner answer. Each file is published with the findings of one run of
 that a plugin defect stopped has already reported on every file it read, and those files are
 not read a second time on their own.
 
-The server asks the client to watch every description file and every build record of the
-workspace, `**/*.ddd.json` and `**/ddd-build.json`, once the client has said it is
-initialized, wherever the client announced that it takes such a registration while the
-session runs; a client that did not is asked for nothing, and a file changed behind the
-editor's back is read again at the next open or save. A change of a build record is a change of which
-projects there are and of their severities: the records are searched for again, and the open
-documents are checked again under them, or, while no document is open, every file whose
-findings are on screen. A record is never checked as a description, nor is any other file
-the client reports that is not one.
+The server asks the client to watch every description file and every build record of the workspace,
+`**/*.ddd.json` and `**/ddd-build.json`, once the client has said it is initialized, wherever the
+client announced that it takes such a registration while the session runs; a client that did not is
+asked for nothing, and a file changed behind the editor's back is read again at the next open or
+save. A change of a build record is a change of which projects there are and of their severities:
+the records are searched for again, and the open documents are checked again under them, or, while
+no document is open, every file whose findings are on screen. A record is never checked as a
+description, nor is any other file the client reports that is not one.
 
 A message body the server cannot parse is answered with the protocol's parse or
 invalid-request error and does not stop the server, and a request whose parameters are not

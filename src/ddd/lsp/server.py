@@ -1,9 +1,16 @@
-"""The language server itself: a loop, six messages, and no opinions of its own.
+"""The language server itself: the session, and what only the session can decide.
 
-Everything that decides anything lives in :mod:`ddd.lsp.diagnostics` and
-:mod:`ddd.lsp.discovery`; what is left here is translation. That split is deliberate, because
-this is the layer a test can only reach through a protocol: keeping it thin keeps the thinking
-somewhere that can be tested directly.
+What each answer is made of lives in the modules beside this one, where a test asks it directly:
+the checks in :mod:`ddd.lsp.diagnostics`, the build records in :mod:`ddd.lsp.discovery`, the
+projects, their index and a rename's edits in :mod:`ddd.lsp.navigation`, the quick fixes in
+:mod:`ddd.lsp.edits`, a unit's plan in :mod:`ddd.lsp.units`, the hover in :mod:`ddd.lsp.hover`
+and every place in a text in :mod:`ddd.lsp.ranges`. What is decided here needs what the session
+holds - the open documents, what is on screen, the folders, what has been read from disk since
+anything may have changed it: which messages are checked together, and when; which files a check
+publishes and which it withdraws; which folders and which files the session follows; and which
+projects a rename or a quick fix reaches, each asked every refusal, in their order, before
+anything is answered. A test reaches those through the messages that ask for them, as a client
+sends them.
 
 Each message is answered inside a net. The front end reports through a diagnostic bag rather
 than raising - the developer documentation states it as a rule - so a project that cannot be
@@ -16,8 +23,9 @@ protocol's internal error, a notification with nothing, as ever - and the trace 
 the server's log, where a defect is seen rather than hidden. Only ``Exception`` is caught, so an
 interrupt still ends the run.
 
-Only ``didOpen``, ``didSave``, a watched change and a change of the workspace folders refresh,
-and what they mark is checked together. The stream is read ahead on a thread of its own, which
+Only ``didOpen``, ``didSave``, a watched change, a change of the workspace folders and the
+``didClose`` of a document whose buffer drew its findings elsewhere than its file refresh, and
+what they mark is checked together. The stream is read ahead on a thread of its own, which
 is what tells the messages that came together from one not sent yet: once a message marks a
 document, the messages already waiting behind it are handled, and every document marked by
 then is checked, each project once - before a request among them is answered, and without

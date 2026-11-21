@@ -821,11 +821,12 @@ class Api:
 
         Answered anew each time, never kept (:meth:`_memoised`): the offer reads the disk as it
         stands - the includes expanded to find the units files, and whether ``units.ddd.json``
-        is there beside the description - which no revision records: neither a file appearing
-        where a pattern matches nor one no include names starts an analysis. Read only where the
-        offer can depend on it (:func:`ddd.project_units.adoptable`): a project holding a
-        vocabulary already is refused adopting by its index alone, and its includes are not
-        expanded at all."""
+        is there beside the description - which no revision records yet: a file new to a pattern
+        belongs to no revision until the poll notices the directory the pattern expands in and
+        the analysis it asks for lands, a poll interval later or a whole analysis while one runs,
+        and a file no include names is watched by nothing. Read only where the offer can depend
+        on it (:func:`ddd.project_units.adoptable`): a project holding a vocabulary already is
+        refused adopting by its index alone, and its includes are not expanded at all."""
         revision = self._opened()
         cache: dict[Path, Document] = {}
         vocabulary = vocabulary_of(
@@ -1220,15 +1221,16 @@ class Api:
         itself, which a row naming nothing has no file to carry.
 
         Answered anew each time, never kept (:meth:`_memoised`): the includes are expanded on
-        disk as it stands, which no revision records - a file appearing where a pattern matches
-        starts no analysis. At a cost while an analysis runs: over a generated project of 100,000
-        declarations, whose one pattern reaches 1,681 files, the request took 1,872 to 2,602 ms
-        asked halfway through an analysis and 24 ms otherwise, 141 ms the first time; listing
-        that directory alone took 1,028 to 1,487 ms and under a millisecond - three askings
-        each, on the Linux development PC. Kept for a revision and the session's edits instead,
-        it would list a file saved where a pattern matches only once something else changed,
-        and still be made again after every edit - when the Files tab asks for it again, its
-        own Apply written."""
+        disk as it stands, which no revision records yet - a file new to a pattern belongs to no
+        revision until the poll notices the directory the pattern expands in and the analysis it
+        asks for lands, a poll interval later or a whole analysis while one runs. At a cost while
+        an analysis runs: over a generated project of 100,000 declarations, whose one pattern
+        reaches 1,681 files, the request took 1,872 to 2,602 ms asked halfway through an analysis
+        and 24 ms otherwise, 141 ms the first time; listing that directory alone took 1,028 to
+        1,487 ms and under a millisecond - three askings each, on the Linux development PC. Kept
+        for a revision and the session's edits instead, it would list a file saved where a pattern
+        matches only once that analysis landed, and still be made again after every edit - when
+        the Files tab asks for it again, its own Apply written."""
         revision = self._opened()
         at_entry = self._derive(revision).at_entry
         cache: dict[Path, Document] = {}
@@ -1916,8 +1918,11 @@ class Api:
         Kept only where all it reads is the revision and the files the revision read: a save to
         one of those is what the poll notices, making a new revision, so the revision's number
         says when the answer has gone stale. The Files and the Units tabs are not kept for that
-        reason: both expand the includes on disk as it stands, which no revision records, and a
-        file appearing where a pattern matches starts no analysis.
+        reason: both read the disk as it stands, which no revision records yet. A file new to a
+        pattern belongs to no revision until the poll notices the directory the pattern expands in
+        and the analysis it asks for lands, a poll interval later or a whole analysis while one
+        runs; and a file no include names - ``units.ddd.json`` beside the description, whether
+        adopting may write it - is watched by nothing.
 
         Keyed by the edits the session has written as well as by the revision: an edit is written
         at once and answered then, its analysis following, so an answer reading its files as they

@@ -481,6 +481,41 @@ class TestFollowingTheDisk:
         described = next(f for f in revision.files if f.path.name == "b.ddd.json")
         assert described.fingerprint == fingerprint(read)
 
+    def test_a_file_two_builds_read_differently_is_fingerprinted_as_the_index_s_run_read_it(
+        self, shared: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The revision's index is the first run's that built one: where the first run read the
+        project description no further - its ``includes`` no list - it is the second run's. The
+        description, saved whole between the two runs and put back after, is fingerprinted as the
+        index's run read it, so that a plan made from that index is refused as stale against the
+        bytes put back, rather than applied to bytes the index does not describe."""
+        build_record(shared.parent, shared, image="one.elf")
+        build_record(shared.parent, shared, image="two.elf")
+        whole = shared.read_bytes()
+        cut = json.dumps({"project": {"name": "P", "includes": 7}}).encode()
+        shared.write_bytes(cut)
+        real = module.run_build
+        ran: list[str] = []
+
+        def run(info: BuildInfo, *, includes: Sequence[str] | None = None) -> Run:
+            answer = real(info, includes=includes)
+            ran.append(info.image)
+            if len(ran) == 1:
+                shared.write_bytes(whole)
+            elif len(ran) == 2:
+                shared.write_bytes(cut)
+            return answer
+
+        monkeypatch.setattr(module, "run_build", run)
+        session = Recording(shared.parent)
+        session.open(shared)
+        monkeypatch.undo()
+        first = session.left[0].revision
+        assert first is not None and first.index is not None
+        assert ran[:2] == ["one.elf", "two.elf"]
+        described = next(f for f in first.files if f.path == shared.resolve())
+        assert described.fingerprint == fingerprint(whole)
+
     def test_a_root_read_no_further_is_fingerprinted_as_read_though_saved_since(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

@@ -193,10 +193,11 @@ class SourceFile:
     name: str | None
     loaded: bool
     fingerprint: str
-    """Of the bytes the analysis read (:class:`~ddd.loading.FileRead`), never of the disk once it
-    is over: what every plan made from the revision carries, so that an Apply after the file
-    changed - while the analysis ran, too - is refused as stale. A file no run's read parsed, a
-    plugin, is fingerprinted as it stands once the analysis is over."""
+    """Of the bytes the analysis read (:class:`~ddd.loading.FileRead`) - those the revision's
+    index was built from, where several runs read the file (:func:`_files_read`) - never of the
+    disk once it is over: what every plan made from the revision carries, so that an Apply after
+    the file changed - while the analysis ran, too - is refused as stale. A file no run's read
+    parsed, a plugin, is fingerprinted as it stands once the analysis is over."""
 
     errors: int
     warnings: int
@@ -246,7 +247,8 @@ class Revision:
 
     index: Index | None
     """Where the project writes down each name it uses, from the analysis's own read: the first
-    run that built one, since every run of one project reads the same files."""
+    run that built one, since every run of one project reads the same files, and the run whose
+    read :attr:`files` are described by."""
 
     served: tuple[Path, ...]
     """The directories a file the page names by its path may be read, written or previewed in:
@@ -768,7 +770,10 @@ class Session:
         served: tuple[Path, ...] = (self.root,)
         if not project.parent.is_relative_to(self.root):
             served = (self.root, project.parent)
-        read = _files_read(runs)
+        # The run the index comes from, chosen once: its read is the one the files are described
+        # by (`_files_read`).
+        indexed = next((run for run in runs if run.index is not None), None)
+        read = _files_read(runs, indexed)
         files = tuple(
             _described(path, grouped.get(path, ()), read.get(path)) for path in sorted(covered)
         )
@@ -790,7 +795,7 @@ class Session:
             resolved=next((run.resolved for run in runs if run.resolved is not None), None),
             analysed=all(run.resolved is not None for run in runs),
             checks=tuple(registered.values()),
-            index=next((run.index for run in runs if run.index is not None), None),
+            index=None if indexed is None else indexed.index,
             served=served,
             resolved_paths=_resolved_paths(files, findings),
             generated=_generated(project, self.root),
@@ -1345,16 +1350,19 @@ def _included(project: Path, change: FileChange) -> frozenset[Path]:
     )
 
 
-def _files_read(runs: Sequence[Run]) -> dict[Path, FileRead]:
-    """What each file the runs read was read as, by the first run reading it.
+def _files_read(runs: Sequence[Run], indexed: Run | None) -> dict[Path, FileRead]:
+    """What each file the runs read was read as: by ``indexed``, the run the revision's index
+    comes from (:attr:`Revision.index`), and a file it did not read by the first run reading it.
 
     Every run of one project reads the same files, and reads the same bytes of each unless a save
-    lands between two of them. The revision's index is the first run's (:attr:`Revision.index`) -
-    or a later run's, where the first read no further than the root - so the first run's
-    fingerprint of a file is never of bytes newer than the ones the index was built from: a plan
-    made from the index, changing a file a save has reached since, is refused as stale rather than
-    applied to bytes the index does not describe."""
-    read: dict[Path, FileRead] = {}
+    lands between two of them. The index is the first run's that built one - a later run's, where
+    the first read no further than the project description - so a file is fingerprinted as the
+    bytes the index was built from: a plan made from the index, changing a file a save has reached
+    since, is refused as stale rather than applied to bytes the index does not describe. Taken
+    from the first run instead, a description that run read no further, saved between two runs and
+    put back after, carried the fingerprint of the bytes put back, and a plan made from the index
+    of the others passed the stale check."""
+    read: dict[Path, FileRead] = {} if indexed is None else dict(indexed.files_read)
     for run in runs:
         for path, file in run.files_read.items():
             read.setdefault(path, file)

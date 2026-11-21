@@ -1757,8 +1757,9 @@ class TestWhatARenameReaches:
     ASKED: ClassVar[str] = (
         "Every project the rename reaches is asked each refusal above before anything is "
         "written. Where a project the file it starts from does not belong to already uses the "
-        "name, declares the type an external one, or holds a file that did not load, the "
-        "refusal names that project's image, or its description where no build record names it"
+        "name, declares the type an external one, or holds a file that did not load, or loaded "
+        "with an error that stops the project being analysed, the refusal names that project's "
+        "image, or its description where no build record names it"
     )
     UNSAVED: ClassVar[str] = (
         "unsaved changes are refused naming the file that holds them, wherever it is."
@@ -1815,9 +1816,9 @@ class TestWhatARenameReaches:
                 "one a project it reaches already declares is refused with the reason before a "
                 "single file is touched",
                 "Where an image the file you started from is not in already declares the name, "
-                "declares the type an external one, or holds a file that did not load, the "
-                "refusal names that image, or its project description where no build record "
-                "names one.",
+                "declares the type an external one, or holds a file that did not load, or loaded "
+                "with an error that stops the project being analysed, the refusal names that "
+                "image, or its project description where no build record names one.",
             ),
         ),
         "editors/vscode/README.md": (
@@ -2161,7 +2162,8 @@ class TestAQuickFixUnderAMovedBufferAndAcrossImages:
     NEITHER: ClassVar[str] = (
         "Where two of them offer one fix under one title with different edits, it is not offered; "
         "and every fix is withheld where one reaches a project holding a file that did not load, "
-        "or a description, beyond the document's own projects, that cannot be read."
+        "or loaded with an error that stops the project being analysed, or a description, beyond "
+        "the document's own projects, that cannot be read."
     )
     TWO_WAYS: ClassVar[str] = (
         "A unit's rename is refused as well, naming both, where two projects it reaches would "
@@ -2197,8 +2199,9 @@ class TestAQuickFixUnderAMovedBufferAndAcrossImages:
                 "image holding a file it writes, until none is new, as a rename does. Where two "
                 "images offer one fix under one title with different edits - two values one type "
                 "states in two images, say - neither is offered; and every fix is withheld where "
-                "one reaches an image holding a file that did not load, or a description, beyond "
-                "the document's own images, that cannot be read.",
+                "one reaches an image holding a file that did not load, or loaded with an error "
+                "that stops the project being analysed, or a description, beyond the document's "
+                "own images, that cannot be read.",
                 "The rename is the one ``F2`` makes from the unit, over every image it reaches, "
                 "and is not offered where that rename is refused; the unit is added only where "
                 "every image planning it adds it to the same file, since an image holding both "
@@ -2220,6 +2223,18 @@ class TestAQuickFixUnderAMovedBufferAndAcrossImages:
                 "A component linked into two images is offered each fix once, and a value sent "
                 "out from it reaches the declarations of every image holding a file the fix "
                 "writes.",
+            ),
+        ),
+        "CHANGELOG.md": (
+            CHANGELOG,
+            (
+                "Every fix is withheld where one reaches a project holding a file that did not "
+                "load, or loaded with an error that stops the project being analysed, or a "
+                "description beyond the document's own that cannot be read;",
+                "or a file of another image that did not load, or loaded with an error that stops "
+                "the project being analysed, is dealt with there first,",
+                "declares the type an external one or holds a file that did not load, or loaded "
+                "with an error that stops the project being analysed, the refusal names its image,",
             ),
         ),
     }
@@ -10940,6 +10955,45 @@ class TestWhatACheckWithdraws:
     def test_the_page_says_what_a_check_withdraws(self, page: str) -> None:
         text, phrase = self.SAID[page]
         assert phrase in flattened(text), f"{page} no longer says: {phrase!r}"
+
+
+class TestTheEditorsMigrationsAreNamed:
+    """Two editor entries said there was nothing to migrate beside steps they ask: a unit's rename
+    refused over images sharing a units file that only one of them lists the new unit in, and a
+    fix no longer offered under a buffer that moved, or where Rename Symbol refuses the unit's
+    rename. Each names its step, and the opening lists it under its entry's lead."""
+
+    MIGRATIONS: ClassVar[dict[str, tuple[str, str]]] = {
+        "A unit's rename is made over every image it reaches, or refused, naming the file.": (
+            "Migrating costs a step where the images a rename reaches share a units file and only "
+            "one of them lists the unit renamed onto: the unit is listed in both or in neither, as "
+            "the refusal says, and the rename asked again.",
+            '"A unit\'s rename is made over every image it reaches, or refused, naming the file": '
+            "where the images it reaches share a units file and only one of them lists the unit "
+            "renamed onto, the unit is listed in both or in neither, and the rename asked again.",
+        ),
+        "A fix is offered once across the images it reaches, and not past a buffer that moved.": (
+            "Migrating costs a step where a fix is now not offered: a buffer that moved a "
+            "declaration the fix writes is saved, and where the fix that respells an unknown unit "
+            "is withheld because Rename Symbol is refused, an unsaved document of a project it "
+            "reaches among the reasons, the step that refusal names is taken; the fix is then "
+            "offered again.",
+            '"A fix is offered once across the images it reaches, and not past a buffer that '
+            'moved": a buffer that moved a declaration a fix writes is saved, and where the fix '
+            "that respells an unknown unit is withheld because Rename Symbol is refused, the step "
+            "that refusal names is taken, and the fix is offered again.",
+        ),
+    }
+
+    @pytest.mark.parametrize("lead", sorted(MIGRATIONS))
+    def test_the_entry_names_its_migration_and_the_opening_lists_it(self, lead: str) -> None:
+        said = flattened(CHANGELOG)
+        start = said.index(f"**{lead}**")
+        entry = said[start : said.index(" * **", start)]
+        migration, item = self.MIGRATIONS[lead]
+        assert migration in entry
+        assert "Nothing to migrate" not in entry
+        assert item in said[: said.index("## 0.11.0")]
 
 
 class TestWhereAnOpenDocumentsFindingsAreDrawn:

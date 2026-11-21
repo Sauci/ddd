@@ -223,13 +223,13 @@ both images, whichever of the two the file the rename starts from is in; so is a
 constant, a section, a raster or a unit that a file of both spells. Every project the rename
 reaches is asked each refusal above before anything is written. Where a project the file it
 starts from does not belong to already uses the name, declares the type an external one, or
-holds a file that did not load, the refusal names that project's image, or its description
-where no build record names it -
-asked from one image, a name "already declared by this project" in the other sends the reader
-looking in the wrong one; unsaved changes are refused naming the file that holds them,
-wherever it is. A unit's rename is refused as well, naming both, where two projects it reaches
-would rewrite a units file they share two ways: the one listing the unit renamed onto merges the
-old spelling into it, and the other respells it.
+holds a file that did not load, or loaded with an error that stops the project being analysed, the
+refusal names that project's image, or its description where no build record names it - asked from
+one image, a name "already declared by this project" in the other sends the reader looking in the
+wrong one; unsaved changes are refused naming the file that holds them, wherever it is. A unit's
+rename is refused as well, naming both, where two projects it reaches would rewrite a units file
+they share two ways: the one listing the unit renamed onto merges the old spelling into it, and the
+other respells it.
 
 An edit reaching two files or more, a rename's or a quick fix's, is sent marked
 ``needsConfirmation`` to a client that announced both ``documentChanges`` and
@@ -283,8 +283,8 @@ once. A fix sending this declaration's value out, or taking a key out of the oth
 declarations of both images, and of every image holding a file it writes, until none is new, as a
 rename does. Where two images offer one fix under one title with different edits - two values one
 type states in two images, say - neither is offered; and every fix is withheld where one reaches
-an image holding a file that did not load, or a description, beyond the document's own images,
-that cannot be read.
+an image holding a file that did not load, or loaded with an error that stops the project being
+analysed, or a description, beyond the document's own images, that cannot be read.
 
 A ``missing-id`` offers one fix of its own: give this object an identity. It writes the same
 key ``ddd id --assign`` would write, in the same place - right after the declaration's ``name``

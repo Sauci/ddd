@@ -235,7 +235,8 @@ An editor, or a client of `ddd lsp`:
     repository is opened only when its build would be run.
   - "A rename reaches every project that holds a file it rewrites, or is refused naming the image":
     a name another image already uses, a type another image declares external, or a file of another
-    image that did not load, is dealt with there first, or the new name differs.
+    image that did not load, or loaded with an error that stops the project being analysed, is dealt
+    with there first, or the new name differs.
   - "A rename is refused where the editor could not see what it would change": an open document that
     differs from its file is saved, a project file is put above a component no record claims, or the
     build is configured, and a description a plugin stops is mended, and the rename is asked again;
@@ -243,6 +244,9 @@ An editor, or a client of `ddd lsp`:
     the change.
   - "An external type is not renamed, from the editor or from the page's Types tab": the c type in
     its header, and every entry and `typename` in the descriptions, are renamed by hand, together.
+  - "A unit's rename is made over every image it reaches, or refused, naming the file": where the
+    images it reaches share a units file and only one of them lists the unit renamed onto, the unit
+    is listed in both or in neither, and the rename asked again.
   - "A request of another shape is refused, naming the field": a client that sent a field of another
     shape than the protocol gives it sends that shape, a capability or a `rootUri` among them, the
     handshake with one having been taken and now refused.
@@ -252,6 +256,10 @@ An editor, or a client of `ddd lsp`:
   - "An edit that reaches several files asks the client to confirm it": a client that announced both
     `documentChanges` and `changeAnnotationSupport` meets a prompt where the edit applied at once,
     and a reader may leave a file out, which applies it in part.
+  - "A fix is offered once across the images it reaches, and not past a buffer that moved": a
+    buffer that moved a declaration a fix writes is saved, and where the fix that respells an
+    unknown unit is withheld because Rename Symbol is refused, the step that refusal names is taken,
+    and the fix is offered again.
   - "The server asks the client to watch the descriptions and the build records": a client that
     announces the dynamic registration of watched files drops any watcher of its own for the server,
     which would send every change twice; one that does not is asked for nothing, and a file changed
@@ -1514,10 +1522,11 @@ A build of DDD from its sources, and a release of it:
   file, by their build records or, where none claims it, by the search above it.  Each project
   reached is asked every refusal a rename makes before anything is written.  Where a project the
   document is not in already uses the name, declares the type an external one or holds a file that
-  did not load, the refusal names its image, or its description, by its path in its workspace
-  folder, where no build record names an image; an unsaved change is refused naming the file that
-  holds it, wherever it is.  Migrating costs what a refusal asks: where the name is taken in another
-  image, it is renamed there first, or the new name differs.
+  did not load, or loaded with an error that stops the project being analysed, the refusal names its
+  image, or its description, by its path in its workspace folder, where no build record names an
+  image; an unsaved change is refused naming the file that holds it, wherever it is.  Migrating
+  costs what a refusal asks: where the name is taken in another image, it is renamed there first, or
+  the new name differs.
 
 * **A rename is refused where the editor could not see what it would change.**  A rename is planned
   from the files on disk and the project read from them, and several states of the editor are not
@@ -1561,7 +1570,9 @@ A build of DDD from its sources, and a release of it:
   rendered file by file, and read back once per file before it is sent, and a file the engine cannot
   make it in, or whose edits would read back otherwise, refuses the rename naming the file: an open
   document as one that differs from its file, a closed file as one changed on disk since the project
-  was read.  Nothing to migrate.
+  was read.  Migrating costs a step where the images a rename reaches share a units file and only
+  one of them lists the unit renamed onto: the unit is listed in both or in neither, as the refusal
+  says, and the rename asked again.
 
 * **A new name is written as json spells it.**  A raster's name may hold a quote or a backslash, and
   the editor's rename wrote the new name between the quotes as it was typed: a quote ended the
@@ -1678,12 +1689,16 @@ A build of DDD from its sources, and a release of it:
   over every declaration of the variable in each of those projects, and in every project holding a
   file it writes, until none is new, as a rename reaches them, so the fix pressed at one image's
   reader reaches the other image's through the writer.  Every fix is withheld where one reaches a
-  project holding a file that did not load, or a description beyond the document's own that cannot
-  be read; the preferred fix is the one every project offering a fix leads with, where it was chosen
-  before a fix reaching another image could be withheld there.  The fix that respells an unknown
-  unit is the rename `F2` makes, over every image it reaches, and is not offered wherever that
-  rename is refused; the unit is added to the vocabulary only where every image planning it adds it
-  to the same file.  Nothing to migrate.
+  project holding a file that did not load, or loaded with an error that stops the project being
+  analysed, or a description beyond the document's own that cannot be read; the preferred fix is the
+  one every project offering a fix leads with, where it was chosen before a fix reaching another
+  image could be withheld there.  The fix that respells an unknown unit is the rename `F2` makes,
+  over every image it reaches, and is not offered wherever that rename is refused; the unit is added
+  to the vocabulary only where every image planning it adds it to the same file.  Migrating costs a
+  step where a fix is now not offered: a buffer that moved a declaration the fix writes is saved,
+  and where the fix that respells an unknown unit is withheld because Rename Symbol is refused, an
+  unsaved document of a project it reaches among the reasons, the step that refusal names is taken;
+  the fix is then offered again.
 
 * **Each fix carries only the findings it settles.**  A fix reconciling a `definition-mismatch`
   carried every mismatch finding of its declaration though it settles one key, so a client listed as

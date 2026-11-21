@@ -2976,20 +2976,21 @@ rewrites the readers of both images, whichever of the two the file it starts fro
 only the projects of that file would leave the other image reading a name nothing declares. Every
 project the rename reaches is asked each refusal above before anything is written. Where a project
 the file it starts from does not belong to already uses the name, declares the type an external one,
-or holds a file that did not load, the refusal names that project's image, or its description where
-no build record names it; unsaved changes are refused naming the file that holds them, wherever it
-is. A unit's rename is refused as well, naming both, where two projects it reaches would rewrite a
-units file they share two ways: the one listing the unit renamed onto merges the old spelling into
-it, and the other respells it.
+or holds a file that did not load, or loaded with an error that stops the project being analysed,
+the refusal names that project's image, or its description where no build record names it; unsaved
+changes are refused naming the file that holds them, wherever it is. A unit's rename is refused as
+well, naming both, where two projects it reaches would rewrite a units file they share two ways: the
+one listing the unit renamed onto merges the old spelling into it, and the other respells it.
 
 A quick fix is offered once however many projects holding the document offer it, and a fix
 sending the declaration's own answer out - its value applied to the other declarations of the
 object, or a key taken out of them - reaches the declarations of each of those projects, and of
 every project holding a file it writes, until none is new, as a rename does. Where two of them
 offer one fix under one title with different edits, it is not offered; and every fix is withheld
-where one reaches a project holding a file that did not load, or a description, beyond the
-document's own projects, that cannot be read. A fix renaming a unit is the rename of that unit
-(`F2`), over every project it reaches, and is not offered where that rename is refused.
+where one reaches a project holding a file that did not load, or loaded with an error that stops the
+project being analysed, or a description, beyond the document's own projects, that cannot be read. A
+fix renaming a unit is the rename of that unit (`F2`), over every project it reaches, and is not
+offered where that rename is refused.
 
 An edit reaching two files or more, a rename's or a quick fix's, is sent marked `needsConfirmation`
 to a client that announced both `documentChanges` and `changeAnnotationSupport`, so that the client

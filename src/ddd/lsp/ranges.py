@@ -91,14 +91,18 @@ class Document:
     diagnostic.
     """
 
-    def __init__(self, text: str, newline: str | None = None) -> None:
+    def __init__(self, text: str) -> None:
+        # The text alone, as ``tests/test_lsp.py``'s copy of the walk is built: how deep a
+        # document the scan below reads depends on how this is called too, and on python 3.13 a
+        # class whose ``__init__`` has a parameter the call leaves out is entered another way,
+        # one frame of the recursion limit cheaper, which read one level deeper than the copy.
         self.text = text
         ending = _LINE_ENDING.search(text)
-        self.newline = newline or ("\n" if ending is None else ending.group())
+        self.newline = "\n" if ending is None else ending.group()
         """How the file this document stands for ends its lines, which a client applies an edit to
         as it stands, so an edit's line endings are spelled so (:meth:`spelled`). A buffer a client
         sent holds its own, the first its text uses; a closed file is read as python reads a file,
-        every ending a line feed (:func:`read`), and is given the one it was read with."""
+        every ending a line feed, and :func:`read` gives it the one it was read with."""
         self._line_starts = _line_starts(text)
         try:
             self.data: Any = json.loads(text)
@@ -301,9 +305,12 @@ def read(path: Path, cache: dict[Path, Document]) -> Document:
             raw = ""
         # Through universal newlines, as ``read_text`` reads: a client counts a line at each
         # of the three endings, so positions are of the text with each one a line feed. The
-        # file's own spelling, the first it uses, goes with the document for the edits made in it.
+        # file's own spelling, the first it uses, goes with the document for the edits made in
+        # it, set once the document is built from its text alone (``Document.__init__``).
+        found = Document(_LINE_ENDING.sub("\n", raw))
         ending = _LINE_ENDING.search(raw)
-        found = Document(_LINE_ENDING.sub("\n", raw), "\n" if ending is None else ending.group())
+        if ending is not None:
+            found.newline = ending.group()
         cache[path] = found
     return found
 

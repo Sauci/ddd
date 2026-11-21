@@ -4873,13 +4873,18 @@ class _ReferenceScanner:
 
 class _ReferenceScan:
     """What ``Document`` recorded of a text when it walked it: its ``__init__``, verbatim but for
-    its names and for its comments, which the module keeps.
+    its names, for its comments, which the module keeps, and for the line ending it notes before
+    the scan, which no answer of the walk's held.
 
     A class, as ``Document`` is, so that the two are called alike: whether a document is too deep
     for the scan depends on the frames above the scan too, and on python 3.14 a call through a
     class's ``__init__`` spends one frame of the recursion limit more than a call of a function
     does. A function in this one's place, with the walk the same in both, read some of the shapes
-    below one level deeper than ``Document`` did.
+    below one level deeper than ``Document`` did. Taking the same arguments, the text alone: on
+    python 3.13 a call leaving out a parameter of the class's ``__init__`` is made without that
+    frame, and ``Document``, given a defaulted second parameter, read thirteen of the cases below
+    one level deeper than this did, on CI's 3.13 legs and on a 3.13.15 on the Linux development
+    PC.
     """
 
     def __init__(self, text: str) -> None:
@@ -8772,7 +8777,7 @@ class TestOfferingAnIdentity:
 def apply_to_the_bytes(path: Path, edits: list[dict[str, Any]]) -> str:
     """What a client writes into the file as it stands, line ends and all: :func:`apply_edits`
     reads the text through universal newlines, which is the spelling these tests look for."""
-    text = path.read_text(encoding="utf-8", newline="")
+    text = path.read_bytes().decode("utf-8")
     starts = [0]
     for line in text.splitlines(keepends=True):
         starts.append(starts[-1] + len(line))
@@ -8984,12 +8989,10 @@ class TestAnEditCarriesTheFilesOwnNewline:
         built = self.built(tmp_path / "editor", **files)
         write_tree(tmp_path / "command", files)
         assert main(["id", "--assign", str(tmp_path / "command" / "a.ddd.json")]) == EXIT_OK
-        by_the_command = (tmp_path / "command" / "a.ddd.json").read_text(
-            encoding="utf-8", newline=""
-        )
+        by_the_command = (tmp_path / "command" / "a.ddd.json").read_bytes().decode("utf-8")
         path = tmp_path / "editor" / "a.ddd.json"
         cache: dict[Path, Document] = {}
-        written = path.read_text(encoding="utf-8", newline="")
+        written = path.read_bytes().decode("utf-8")
         for at in range(2):
             offered = actions(
                 built,

@@ -24,11 +24,14 @@ from conftest import (
     types,
     write_tree,
 )
+from ddd.analysis import analyze
 from ddd.diagnostics import DiagnosticBag
+from ddd.editing import edit_text
 from ddd.loading import load_workspace
 from ddd.lsp.edits import Settled, Settlement, Unsettled, settle
 from ddd.lsp.navigation import Index, Site, index
 from ddd.lsp.ranges import Document, read
+from ddd.variables import operations_for
 
 DEFINITION = "component.interface[0].definition"
 
@@ -49,6 +52,15 @@ def site_in(built_index: Index, file: str, name: str = "Speed") -> Site:
 def settled(built_index: Index, key: str, raw: str | None, name: str = "Speed") -> Settlement:
     cache: dict[Path, Document] = {}
     return settle(built_index, name, key, raw, cache)
+
+
+def analysed(root: Path) -> list[str]:
+    """The checks ``ddd check`` files of the project under ``root``, sorted."""
+    bag = DiagnosticBag()
+    workspace = load_workspace(root / "p.ddd.json", bag)
+    assert workspace is not None
+    analyze(workspace, bag)
+    return sorted(diagnostic.check for diagnostic in bag)
 
 
 class TestWhatChanges:
@@ -229,6 +241,28 @@ class TestLimitsNobodyStates:
         assert settled(idx, "limits", self.RANGE) == Settlement(
             (), (Unsettled(site_in(idx, "a.ddd.json"), "type", "Speed_t"),)
         )
+
+    def test_a_reader_whose_type_states_none_goes_on_leaving_them(self, tmp_path: Path) -> None:
+        """A reader naming a scalar type that states no limits leaves them, as the checks read
+        it - the analysis folds the type's ``limits``, none, into the reader - and was asked all
+        the same, answering that its type fixes them: the settlement was refused whole. Only the
+        producer is asked, and once its range is written ``ddd check`` files nothing new."""
+        idx = built(
+            tmp_path,
+            **{
+                "types.ddd.json": types(scalar_type("Speed_t", "uint8")),
+                "a.ddd.json": component("A", declare("output", "Speed")),
+                "b.ddd.json": component("B", declare("input", "Speed", typename="Speed_t")),
+            },
+        )
+        before = analysed(tmp_path)
+        settlement = settled(idx, "limits", self.RANGE)
+        assert settlement == Settlement((Settled(site_in(idx, "a.ddd.json"), self.RANGE),), ())
+        for path, operations in operations_for(settlement, "limits"):
+            text = edit_text(path.read_text(encoding="utf-8"), operations)
+            path.write_text(text, encoding="utf-8", newline="")
+        assert '"limits"' in (tmp_path / "a.ddd.json").read_text(encoding="utf-8")
+        assert analysed(tmp_path) == before
 
     def test_a_reader_whose_type_states_them_states_them(self, tmp_path: Path) -> None:
         """Read as the checks read it, through the type: the variable's limits are the type's, so

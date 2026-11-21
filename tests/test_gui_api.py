@@ -4710,18 +4710,26 @@ class TestSettle:
         assert json.loads(raw) == {"min": 0, "max": 100}
         assert get(api, "/api/settle", name="Speed", key="limits", raw=raw).body["changes"] == []
 
+    @pytest.mark.parametrize(
+        "reader",
+        [{}, {"typename": "Speed_t"}],
+        ids=["a-reader-spelling-its-storage", "a-reader-whose-type-states-none"],
+    )
     def test_limits_nobody_states_are_planned_on_the_producer_and_applied(
-        self, tmp_path: Path
+        self, tmp_path: Path, reader: dict[str, str]
     ) -> None:
         """3:I2. A Min and a Max typed on a variable no declaration states limits of read "Nothing
         to change", and no declaration made in the panel could ever be given any: the producer
-        states them now, the reader leaving them to it, and the project checks clean."""
+        states them now, the reader leaving them to it, and the project checks clean. A reader
+        naming a type that states none leaves them too, where it was refused for its type fixing
+        them, and the panel's settlement with it."""
         api = opened(
             tmp_path,
             {
-                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "p.ddd.json": project("P", "t.ddd.json", "a.ddd.json", "b.ddd.json"),
+                "t.ddd.json": types(scalar_type("Speed_t", "uint8")),
                 "a.ddd.json": component("A", declare("output", "Speed")),
-                "b.ddd.json": component("B", declare("input", "Speed")),
+                "b.ddd.json": component("B", declare("input", "Speed", **reader)),
             },
         )
         before = contents(tmp_path)

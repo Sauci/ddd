@@ -1053,33 +1053,30 @@ def settle(
     A key a declaration may leave to whoever states it (:data:`DEFERRED_KEYS`) is taken by none
     that leaves it, as the checker reads it. Where no declaration states it, every one has left it
     and nobody is there to state it: the producers state it then - every declaration of a
-    producing scope, both of two - and the readers go on leaving it to them (decision 3.3). With
-    none producing the variable no declaration is the one to state it, and every one is answered
-    ``unproduced``. Decided here, over every declaration, and never by :func:`settled_at` alone,
-    whose answer for one declaration the editor's actions changing one ask.
+    producing scope, both of two - and the readers go on leaving it to them (decision 3.3), not
+    asked at all. Each was read through the type it names, so that a reader naming a type that
+    states none leaves it as the analysis reads it, where asked it would have answered that its
+    type fixes the key. With none producing the variable no declaration is the one to state it,
+    and every one is answered ``unproduced``. Decided here, over every declaration, and never by
+    :func:`settled_at` alone, whose answer for one declaration the editor's actions changing one
+    ask.
     """
     sites = built.declarations.get(name, ())
-    producing: frozenset[Site] = frozenset()
+    deferring = True
     if (
         key in DEFERRED_KEYS
         and raw is not None
         and not any(_states(built, site, name, key, cache) for site in sites)
     ):
-        producing = frozenset(built.producers.get(name, ()))
-        if not producing:
+        producers = built.producers.get(name, ())
+        if not producers:
             return Settlement((), tuple(Unsettled(site, "unproduced") for site in sites))
+        sites, deferring = producers, False
     changes: list[Settled] = []
     unsettled: list[Unsettled] = []
     for site in sites:
         decided = settled_at(
-            built,
-            site,
-            name,
-            key,
-            raw,
-            cache,
-            withholding=withholding,
-            deferring=site not in producing,
+            built, site, name, key, raw, cache, withholding=withholding, deferring=deferring
         )
         if isinstance(decided, Settled):
             changes.append(decided)

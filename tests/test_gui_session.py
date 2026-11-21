@@ -330,8 +330,8 @@ class TestOpening:
         """A project outside the start directory, on a share, its build record naming it by a
         network path there: the record is read under every directory a request is served, the
         project's own among them, and its severities apply. The project's directory is taken for
-        the share by its spelling, as Windows reads ``//server/share``: a network path is read
-        under a directory spelled as one, which no directory a test makes is elsewhere."""
+        the share by its spelling, as Windows reads ``//server/share``: a network path is readable
+        only under a directory spelled as one, and no directory a test makes is spelled so."""
         start = tmp_path / "start"
         far = tmp_path / "far"
         write_tree(
@@ -1740,8 +1740,8 @@ class TestWhatThePollWatches:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """``comps/*.ddd.json`` expands in ``comps``, which its names lead to: watching it lists no
-        directory, and the one listing of ``comps`` an analysis makes is the loader's own - over
-        a generated project of 100,000 declarations, 1,683 files."""
+        directory, and the one listing of ``comps`` an analysis makes is the loader's own, over
+        what is most of a large project's files."""
         project_file = a_pattern_of_writers(tmp_path, "comps/*.ddd.json", "comps/w.ddd.json")
         session = opened_and_settled(project_file)
         globbed: list[str] = []

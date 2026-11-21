@@ -431,9 +431,10 @@ def find_projects(root: Path, build_directories: Sequence[Path] = ()) -> Found:
 def walk_finds(root: Path, path: Path) -> bool:
     """Whether the walk :func:`find_projects` makes finds ``path``, resolved, among the project
     descriptions under ``root``, asked of that one path rather than walked for: it lies under
-    ``root`` by directories the walk goes into - real ones it can list, ``root`` among them, none
-    of them left out, no deeper than :data:`SEARCH_DEPTH` - it is named ``*.ddd.json``, and it
-    is a project description as it stands now. A project a build record offers is not asked
+    ``root`` by directories the walk goes into - real ones, neither a symbolic link nor a
+    junction, that it can list, ``root`` among them, none of them left out, no deeper than
+    :data:`SEARCH_DEPTH` - it is named ``*.ddd.json``, and it is a project description as it
+    stands now. A project a build record offers is not asked
     about: the walk finds it by reading the records, and one outside ``root`` only a record
     offers.
 
@@ -451,7 +452,9 @@ def walk_finds(root: Path, path: Path) -> bool:
     on_the_way = [base]
     for directory in directories:
         on_the_way.append(on_the_way[-1] / directory)
-    if any(place.is_symlink() or not _listable(place) for place in on_the_way):
+    if any(
+        place.is_symlink() or place.is_junction() or not _listable(place) for place in on_the_way
+    ):
         return False
     return _is_project(path)
 
@@ -1569,8 +1572,13 @@ def _descriptions(root: Path) -> list[Path]:
     found: list[Path] = []
     for directory, subdirectories, files in root.walk():
         depth = len(directory.relative_to(root).parts)
+        # A junction is passed over as a symbolic link is: ``Path.walk`` does so itself from
+        # 3.13, and on 3.12 it would go into one, so the rule is stated here for every Python
+        # the project admits, and :func:`walk_finds` asks the same of each directory.
         subdirectories[:] = [
-            name for name in subdirectories if depth < SEARCH_DEPTH and not _skipped(name)
+            name
+            for name in subdirectories
+            if depth < SEARCH_DEPTH and not _skipped(name) and not (directory / name).is_junction()
         ]
         found.extend(
             directory / name

@@ -303,8 +303,9 @@ class TestWhatTheWalkFindsAskedOfOnePath:
 
     def test_it_finds_what_the_walk_finds_and_nothing_else(self, tmp_path: Path) -> None:
         """The description reached through the link included, whichever way the platform's
-        walk takes the link: a symbolic link is passed over, and Windows' junction, which
-        ``directory_link`` makes there, is a directory to it. A path through a file is one no
+        walk takes the link: a symbolic link is passed over, and so is Windows' junction, which
+        ``directory_link`` makes there (``Path.walk`` on 3.13 and later takes it for a file;
+        the walk states the rule itself for the 3.12 that would go into it). A path through a file is one no
         walk lists on any platform."""
         root = self.linked(tmp_path)
         walked = {found.path for found in find_projects(root).projects}
@@ -326,6 +327,26 @@ class TestWhatTheWalkFindsAskedOfOnePath:
             "p.ddd.json",
             "src/s.ddd.json",
         ]
+
+    def test_a_junction_on_the_way_is_passed_over_as_the_walk_passes_it(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A directory answering ``is_junction()`` is not gone into, by the walk or by the
+        question: Linux has no junctions, so one directory is made to answer so, as Windows'
+        answers for the one ``directory_link`` makes there."""
+        root = tmp_path / "root"
+        write_tree(root, {"joined/j.ddd.json": project("Joined"), "p.ddd.json": project("Plain")})
+        junction = root / "joined"
+        is_junction = Path.is_junction
+
+        def answering(self: Path) -> bool:
+            return self == junction or is_junction(self)
+
+        monkeypatch.setattr(Path, "is_junction", answering)
+        walked = {found.path for found in find_projects(root).projects}
+        assert walked == {root / "p.ddd.json"}
+        assert walk_finds(root, root / "p.ddd.json")
+        assert not walk_finds(root, junction / "j.ddd.json")
 
     def test_a_project_only_a_record_offers_is_not_one_it_finds(self, tmp_path: Path) -> None:
         """The walk offers it by the record, which this does not read."""

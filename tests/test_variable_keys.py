@@ -578,15 +578,31 @@ class TestWhatAnEditorOffers:
         )
         assert "local-conflict" in [diagnostic.check for diagnostic in bag]
 
-    def test_a_form_for_a_declaration_no_file_holds_yet_lists_every_object(
+    def test_an_offer_for_no_components_declaration_lists_every_object(
         self, tmp_path: Path
     ) -> None:
-        """It has no component to compare the owner of a local with."""
+        """A type's panel has no component to compare the owner of a local with."""
         idx = built(
             tmp_path,
             **{"a.ddd.json": component("A", declare("local", "Mine", kind="axis", size=4))},
         )
         assert offer_for(idx, "axis", None, required=False).choices == ("Mine",)
+
+    def test_a_file_is_one_component_so_files_are_what_is_compared(self, tmp_path: Path) -> None:
+        """A second file naming a component is refused ``duplicate-component`` and never loaded,
+        so the index holds one file for each component name: the owner of a local is one file."""
+        files = {
+            "a.ddd.json": component("A", declare("local", "Mine", kind="axis", size=4)),
+            "a2.ddd.json": component("A", declare("output", "Torque", kind="curve", axis="Mine")),
+        }
+        _, bag = run_analysis(
+            tmp_path, {"p.ddd.json": project("P", *files), **files}, root="p.ddd.json"
+        )
+        assert "duplicate-component" in [diagnostic.check for diagnostic in bag]
+        workspace = load_workspace(tmp_path / "p.ddd.json", DiagnosticBag())
+        assert workspace is not None
+        names = list(index(workspace).components.values())
+        assert len(names) == len(set(names))
 
     def test_a_component_is_offered_its_own_locals(self, tmp_path: Path) -> None:
         idx = built(

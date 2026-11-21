@@ -205,7 +205,9 @@ class TestWhatAKindAsksFor:
         # Read from definition_keys rather than listed here, so a key added to a model shows up
         # as a failure of this test rather than as a form that cannot make a loadable file.
         required = {
-            kind: {offer.key for offer in form_for(demo, kind) if offer.carried[0].required}
+            kind: {
+                offer.key for offer in form_for(demo, kind, CONTROLLER) if offer.carried[0].required
+            }
             for kind in KINDS
         }
         assert required == {
@@ -218,15 +220,43 @@ class TestWhatAKindAsksFor:
         }
 
     def test_a_kind_offers_the_editors_the_chooser_already_draws(self, demo: Index) -> None:
-        editors = {offer.key: offer.editor for offer in form_for(demo, "axis")}
+        editors = {offer.key: offer.editor for offer in form_for(demo, "axis", CONTROLLER)}
         assert editors["size"] == "size"
         assert editors["unit"] == "unit"
         assert editors["input"] == "name"
 
+    def test_another_components_local_is_not_offered_to_a_new_declaration(
+        self, tmp_path: Path
+    ) -> None:
+        """13:I6. The add form knows the component it writes into: a local is its owner's alone,
+        and chosen from any other component it is a ``local-conflict``."""
+        built, _ = built_of(
+            tmp_path,
+            **{
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "Mine", kind="axis", size=4),
+                    declare("local", "Hidden"),
+                ),
+                "b.ddd.json": component(
+                    "B", declare("output", "Points", kind="axis", size=4), declare("output", "S")
+                ),
+            },
+        )
+
+        def chosen(file: str, kind: str, key: str) -> tuple[str, ...]:
+            offers = form_for(built, kind, (tmp_path / file).resolve())
+            return next(offer.choices for offer in offers if offer.key == key)
+
+        assert chosen("b.ddd.json", "curve", "axis") == ("Points",)
+        assert chosen("b.ddd.json", "axis", "input") == ("S",)
+        assert chosen("a.ddd.json", "curve", "axis") == ("Mine", "Points")
+        assert chosen("a.ddd.json", "axis", "input") == ("Hidden", "S")
+
     def test_a_kind_nothing_declares_asks_for_nothing(self, demo: Index) -> None:
         # definition_keys answers two empty sets for a kind it does not know, and the endpoint
         # refuses before reaching here - so this is the branch a broken caller would take.
-        assert form_for(demo, "nonsense") == ()
+        assert form_for(demo, "nonsense", CONTROLLER) == ()
 
 
 class TestWhatOnlyAProducerMayState:

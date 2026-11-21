@@ -1395,10 +1395,11 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   `axis` or an `input` it lists a name another component declares `local`, which `declarable`
   leaves out, and choosing it writes a `local-conflict`, the harm `13:I6` was graded for. Branch
   10 lists `variable_keys.py`, where the chooser's offer is made. *(Done by branch 10, task 3:
-  `variable_keys._objects` leaves out a name a component declares `local` unless every declaration
-  of the variable is in that component, reading the owner off `Index.scopes` as `_kept_by` does;
-  the form for a declaration no file holds yet still lists them all, having no component to
-  compare.)*
+  `variable_keys._objects` leaves out a name a component declares `local` unless every file the
+  offer is for is the one that keeps it, reading the owner off `Index.scopes` as `_kept_by` does;
+  a variable's panel offers by the files its declarations are in, and `form_for` by the file the
+  new declaration is written into. A type's panel, which is no component's declaration, still
+  lists them all.)*
 - **A description given with `PROJECT` whose record sits beside it reads as generated** (task 4,
   `1:C4`; R2): `ddd_generate()` writes `ddd-build.json` into `OUTPUT_DIRECTORY` with or without
   `PROJECT`, and where that is the description's own directory the record names a hand-written

@@ -138,16 +138,19 @@ def _kept_by(built: Index, name: str) -> str | None:
     return None
 
 
-def form_for(built: Index, kind: str) -> tuple[KeyOffer, ...]:
+def form_for(built: Index, kind: str, file: Path) -> tuple[KeyOffer, ...]:
     """What a new declaration of that kind asks for: one offer per key of ``KEY_ORDER`` the
     kind accepts, each with no value in play and ``required`` as the models have it.
+
+    The choosers offer what a declaration in ``file`` may name, which leaves out another
+    component's locals.
 
     A kind nothing declares answers empty rather than raising: ``definition_keys`` answers two
     empty sets for one, and the endpoint refuses before reaching here.
     """
     accepted, required = definition_keys(kind)
     return tuple(
-        offer_for(built, key, None, required=key in required)
+        offer_for(built, key, None, required=key in required, files={file.resolve()})
         for key in KEY_ORDER
         if key in accepted
     )

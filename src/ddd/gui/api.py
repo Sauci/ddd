@@ -1534,7 +1534,7 @@ class Api:
                         # field, and the contract validates what comes out, so a name that drifts
                         # apart fails here rather than reaching the page.
                         contract.KindForm(
-                            kind=kind, keys=[asdict(offer) for offer in form_for(built, kind)]
+                            kind=kind, keys=[asdict(offer) for offer in form_for(built, kind, file)]
                         )
                         for kind in KINDS
                     ),

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
@@ -147,7 +148,14 @@ def offers(built: Index, declared: Sequence[Declared]) -> tuple[KeyOffer, ...]:
     return tuple(_offer(built, declared, key) for key in KEY_ORDER)
 
 
-def offer_for(built: Index, key: str, raw: str | None, *, required: bool) -> KeyOffer:
+def offer_for(
+    built: Index,
+    key: str,
+    raw: str | None,
+    *,
+    required: bool,
+    files: AbstractSet[Path] | None = None,
+) -> KeyOffer:
     """What one key offers when one value states it, which is a type's whole story.
 
     A variable's panel builds an offer per key from every declaration; a type has one entry, so
@@ -160,7 +168,7 @@ def offer_for(built: Index, key: str, raw: str | None, *, required: bool) -> Key
         values=() if raw is None else (InPlay(raw=raw, components=(), producer=False),),
         disagrees=False,
         editor=EDITORS[key],
-        choices=_choices(built, key),
+        choices=_choices(built, key, files),
     )
 
 
@@ -173,7 +181,7 @@ def _offer(built: Index, declared: Sequence[Declared], key: str) -> KeyOffer:
         values=values,
         disagrees=_disagrees(declared, carried, values, key),
         editor=EDITORS[key],
-        choices=_choices(built, key, declared),
+        choices=_choices(built, key, {entry.site.path for entry in declared}),
     )
 
 
@@ -276,9 +284,13 @@ def _in_play(declared: Sequence[Declared], key: str) -> tuple[InPlay, ...]:
     )
 
 
-def _choices(built: Index, key: str, declared: Sequence[Declared] | None = None) -> tuple[str, ...]:
-    """What the key's editor names, for the editors that name something, for these declarations,
-    or for a declaration no file holds yet when ``declared`` is ``None``."""
+def _choices(built: Index, key: str, files: AbstractSet[Path] | None) -> tuple[str, ...]:
+    """What the key's editor names, for the editors that name something.
+
+    ``files`` are the component files the offer is for: those a variable's declarations are in,
+    or the one a new declaration is written into. ``None`` where the offer is for no component's
+    declaration at all, which a type's panel is.
+    """
     if key == "datatype":
         return DATATYPES
     if key == "typename":
@@ -286,34 +298,34 @@ def _choices(built: Index, key: str, declared: Sequence[Declared] | None = None)
     if key == "size":
         return tuple(sorted(built.constants))
     if key in ("axis", "x_axis", "y_axis"):
-        return _objects(built, ObjectKind.AXIS, declared)
+        return _objects(built, ObjectKind.AXIS, files)
     if key == "input":
-        return _objects(built, ObjectKind.MEASUREMENT, declared)
+        return _objects(built, ObjectKind.MEASUREMENT, files)
     return ()
 
 
-def _objects(
-    built: Index, kind: ObjectKind, declared: Sequence[Declared] | None
-) -> tuple[str, ...]:
-    """Every object of that kind the project declares, by name, that these declarations may name.
+def _objects(built: Index, kind: ObjectKind, files: AbstractSet[Path] | None) -> tuple[str, ...]:
+    """Every object of that kind the project declares, by name, that a declaration in ``files``
+    may name.
 
     A measurement that is an instance of a declared structure is listed with the rest, although
     an ``input`` may not name one: what a name may refer to beyond its kind is the loader's
     answer, and it gives it on the next analysis, exactly as it does for a file edited by hand.
 
     A name some component declares ``local`` is that component's alone, so it is left out unless
-    every declaration is in the component that keeps it: named from any other, it is a
-    ``local-conflict``. Its owner is read off the index, as :func:`ddd.declaration_plans.scopes_for`
-    reads it, which this module cannot import. A form for a declaration no file holds yet
-    (``declared`` of ``None``) has no component to compare, and lists them all.
+    every one of ``files`` is the one that keeps it: named from any other, it is a
+    ``local-conflict``. Files are compared, not component names, because a file is one
+    component: the loader refuses a second file naming a component as ``duplicate-component``
+    and loads none of it. The owner is read off the index, as
+    :func:`ddd.declaration_plans.scopes_for` reads it, which this module cannot import. With
+    ``files`` of ``None`` there is no component to compare, and every name is listed.
     """
-    here = None if declared is None else {entry.site.path for entry in declared}
     return tuple(
         sorted(
             name
             for name, stated in built.kinds.items()
             if stated == kind.value
-            and (here is None or not (owners := _owners(built, name)) or here <= owners)
+            and (files is None or not (owners := _owners(built, name)) or files <= owners)
         )
     )
 

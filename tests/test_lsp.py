@@ -8729,6 +8729,43 @@ class TestAnEditCarriesTheFilesOwnNewline:
         assert written.replace(newline, "").count("\r") == 0
 
     @pytest.mark.parametrize("newline", NEWLINES, ids=["crlf", "cr"])
+    def test_a_value_copied_over_lines_into_a_closed_file_ends_them_as_the_file_does(
+        self, tmp_path: Path, newline: str
+    ) -> None:
+        """The value is copied as the other declaration spelled it, over the lines it was written
+        on: where it replaces one the closed file holds, those lines end as the file's do."""
+        from ddd.lsp.edits import actions
+
+        built = self.built(
+            tmp_path,
+            **{
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "output", "Speed", conversion={"kind": "linear", "factor": 0.5, "offset": 1}
+                    ),
+                ),
+                "b.ddd.json": spelled_with(newline, component("B", declare("input", "Speed"))),
+            },
+        )
+        cache: dict[Path, Document] = {}
+        path = tmp_path / "b.ddd.json"
+        offered = actions(
+            built,
+            path,
+            read(path, cache),
+            "component.interface[0].definition",
+            cache,
+            MISMATCH_REPORTED,
+        )
+        taking = next(entry for entry in offered if entry["title"].startswith("Use the conversion"))
+        (edits,) = taking["edit"]["changes"].values()
+        written = apply_to_the_bytes(path, edits)
+        assert '"factor": 0.5' in written
+        assert written.replace(newline, "").count("\n") == 0
+        assert written.replace(newline, "").count("\r") == 0
+
+    @pytest.mark.parametrize("newline", NEWLINES, ids=["crlf", "cr"])
     def test_a_unit_added_to_a_closed_units_file_ends_its_line_as_the_file_does(
         self, tmp_path: Path, newline: str
     ) -> None:

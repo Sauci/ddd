@@ -65,7 +65,7 @@ from typing import Any, Final, Literal
 
 from ddd.analysis import close_units
 from ddd.editing import EditError, TextEdit, member_addition, removal
-from ddd.identity import insertions
+from ddd.identity import stamp, unstamped
 from ddd.loading import parse_json_text
 from ddd.lsp.navigation import Index, Site, renameable_at
 from ddd.lsp.ranges import Document, read
@@ -73,6 +73,7 @@ from ddd.lsp.units import (
     UnitProject,
     UnitRefusalError,
     add_unit,
+    engine_edit,
     rename_unit,
     text_edits,
     unit_drift,
@@ -203,35 +204,23 @@ def _give_an_identity(
 
     The same answer ``ddd id --assign`` would give. Which declarations want one is
     :mod:`ddd.identity`'s to say (:func:`~ddd.identity.unstamped`), and the key goes right after
-    the name, where the edit engine writes it for the command and for the page's fix and
-    :func:`~ddd.identity.insertions` computes it here; a test holds the three to one text. Only
-    the applying differs - the command rewrites the file, this returns an edit and lets the
-    client do it.
+    the name, where the edit engine writes it for the command, for the page's fix and for this
+    one alike, in the bytes the engine lays out; a test holds the three to one text. Only the
+    applying differs - the command rewrites the file, this returns an edit and lets the client
+    do it. Asked of the one declaration, so the file's text is laid out once.
     """
-    wanted = next(
-        (
-            entry
-            for entry in insertions(document)
-            if entry.pointer in (f"{definition}.name", f"{definition}.id")
-        ),
-        None,
-    )
-    if wanted is None:
+    if all(found != definition for found, _ in unstamped(document)):
         return None
-    # Both readings come from the same recorded spans, and `insertions` only yields a pointer
-    # whose span it already found - so this one is there. Asserted rather than guarded, the way
-    # `DataObject.storage` narrows a union it knows: a branch that cannot be taken is a branch
-    # no test can cover and no reader can trust.
-    span = document.value_range_of(wanted.pointer)
-    assert span is not None
-    # A zero width range at the end of the name's value, so that the key is inserted after
-    # it and nothing already written is replaced - or the value of a stated ``null``, which is.
-    at = span["end"]
-    replaced = {"start": span["start"] if wanted.length else at, "end": at}
+    # The operation the command and the page hand the engine (:func:`~ddd.identity.stamp`),
+    # made as the engine makes it: the key right after the name, or in place of a stated
+    # ``null``, laid out as the object around it is.
+    operation = stamp(definition)
     return {
         "title": f"Give '{name}' an id",
         "kind": QUICK_FIX,
-        "edit": {"changes": {path.as_uri(): [{"range": replaced, "newText": wanted.text}]}},
+        "edit": {
+            "changes": {path.as_uri(): [_protocol_edit(document, engine_edit(document, operation))]}
+        },
     }
 
 
@@ -367,8 +356,10 @@ def _on_the_declaration(
     offered = [_protocol_action(action, cache) for action in reconciled]
     settles = [entry for entry in reported if entry.get("code") in RECONCILED]
     if settles and offered:
-        for action in offered:
-            action["diagnostics"] = settles
+        for action, decision in zip(offered, reconciled, strict=True):
+            carried = [entry for entry in settles if _settles(decision.key, entry)]
+            if carried:
+                action["diagnostics"] = carried
         # The preferred fix is the one a lightbulb applies by itself, so it is the way the
         # ownership rule wants or none: where that way is withheld, the fix in front goes the
         # other way round - a reader's own value sent into its producer's file, or the producer
@@ -387,6 +378,36 @@ def _on_the_declaration(
             identity["diagnostics"] = unstamped
             offered.append(identity)
     return offered
+
+
+_COMPARED: Final = re.compile(
+    r"(?:\(|, )(kind|datatype|unit|shape|conversion|references|volatile|limits): "
+)
+"""Where a ``definition-mismatch`` message names a key it found different, as the checks spell
+it: ``(datatype: uint8 != uint16, unit: 'V' != 'Hz')``."""
+
+_KEYS_OF_A_COMPARED_ONE: Final = {
+    "datatype": frozenset({"datatype", "typename"}),
+    "shape": frozenset({"dimensions", "size"}),
+    "references": frozenset({"axis", "x_axis", "y_axis", "input"}),
+}
+"""The keys one of the compared fields is written by, where it is not the one key of its name."""
+
+
+def _settles(key: str, finding: dict[str, Any]) -> bool:
+    """Whether the fix of one key settles a finding a client sent: one naming that key alone.
+
+    A ``definition-mismatch`` names every key it found different, and a fix writes one
+    (:data:`PROPAGATED_KEYS`): a finding naming two stays after either, and an action carrying a
+    finding it leaves in place is the one :data:`RECONCILED` rules out. A client sending a
+    finding that names no key - less than the server publishes - has it carried by every fix,
+    as it was before the message was read.
+    """
+    message = finding.get("message")
+    named = set(_COMPARED.findall(message if isinstance(message, str) else ""))
+    if not named:
+        return True
+    return all(key in _KEYS_OF_A_COMPARED_ONE.get(compared, {compared}) for compared in named)
 
 
 type _Fix = tuple[str, str]
@@ -1455,7 +1476,10 @@ def _assign(document: Document, definition: str, key: str, raw: str) -> dict[str
         # and the two must not drift into two readings of "already says it".
         if _already(key, existing, raw):
             return None
-        return {"range": document.value_range_of(f"{definition}.{key}"), "newText": raw}
+        return {
+            "range": document.value_range_of(f"{definition}.{key}"),
+            "newText": document.spelled(raw),
+        }
     return _insert(document, definition, key, raw)
 
 
@@ -1478,5 +1502,5 @@ def _protocol_edit(document: Document, edit: TextEdit) -> dict[str, Any]:
     """An edit the engine computed as offsets, as the protocol carries it: a range and a text."""
     return {
         "range": {"start": document.position(edit.start), "end": document.position(edit.end)},
-        "newText": edit.text,
+        "newText": document.spelled(edit.text),
     }

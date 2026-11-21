@@ -673,7 +673,7 @@ def _simultaneous(document: Document, operations: Sequence[Operation]) -> list[T
     current = document
     origins: list[int | None] = list(range(len(document.text)))
     for operation in operations:
-        edit = _engine_edit(current, operation)
+        edit = engine_edit(current, operation)
         origins[edit.start : edit.end] = [None] * len(edit.text)
         text = current.text
         current = Document(f"{text[: edit.start]}{edit.text}{text[edit.end :]}")
@@ -694,7 +694,7 @@ def _simultaneous(document: Document, operations: Sequence[Operation]) -> list[T
     return edits
 
 
-def _engine_edit(document: Document, operation: Operation) -> TextEdit:
+def engine_edit(document: Document, operation: Operation) -> TextEdit:
     """The edit the engine makes for one operation, as :func:`ddd.editing.edit_text` makes it:
     an entry taken out with one comma, an element inserted into an array, a value replaced, or
     a member added to an object that has none of that name. A plan makes no ``move``."""
@@ -716,5 +716,5 @@ def _protocol_edit(document: Document, edit: TextEdit) -> dict[str, Any]:
     :mod:`ddd.lsp.edits` gives its quick fixes."""
     return {
         "range": {"start": document.position(edit.start), "end": document.position(edit.end)},
-        "newText": edit.text,
+        "newText": document.spelled(edit.text),
     }

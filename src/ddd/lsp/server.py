@@ -1685,13 +1685,19 @@ class Server:
 
     @staticmethod
     def _drifted(drifted: set[Path], changed: str) -> str:
-        """Why a rename is refused while a buffer no longer holds what the index found in it,
-        naming every such file."""
+        """Why a rename is refused while a file no longer holds what the index found in it,
+        naming every such file.
+
+        Asked after the unsaved changes of an open document (:meth:`_unseen_refusal`), which a
+        document that differs from its file would otherwise reach first as a moved site, so no
+        file here has any: it changed on disk since the project was read, and is read again
+        at the next open or save, or on the editor's report of the change.
+        """
         names = ", ".join(sorted(path.name for path in drifted))
         verb = "has" if len(drifted) == 1 else "have"
         return (
-            f"{names} {verb} unsaved changes that {changed} this rename would touch; save it "
-            "and rename again"
+            f"{names} {verb} changed on disk since the project was read, which {changed} this "
+            "rename would touch; rename again once it has been read again"
         )
 
     def _actions(self, message: dict[str, Any]) -> list[dict[str, Any]]:

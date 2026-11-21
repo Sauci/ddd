@@ -1938,6 +1938,25 @@ class TestHover:
         assert "the full range of the datatype" in describe(dictionary, "Whole")
         assert "the full range of the datatype" not in describe(dictionary, "Narrow")
 
+    def test_an_enumeration_s_limits_are_not_said_to_be_the_datatype_s_range(
+        self, tmp_path: Path
+    ) -> None:
+        """10:M12. A ``uint8`` enumeration of 0 and 1 reads ``0 .. 1``, the span of its table:
+        that is the range the conversion covers, which is not the range of the datatype."""
+        from ddd.lsp.hover import describe
+
+        dictionary = self.resolved(
+            tmp_path,
+            declare(
+                "output",
+                "State",
+                conversion={"kind": "enum", "name": "StateA", "enumerators": {"OFF": 0, "ON": 1}},
+            ),
+        )
+        described = describe(dictionary, "State")
+        assert "| limits | 0 .. 1" in described
+        assert "the full range of the datatype" not in described
+
     @pytest.mark.parametrize(
         ("scope", "expected"),
         [("output", "read by *nobody*"), ("local", "Local to **A**")],
@@ -3486,10 +3505,10 @@ def documents_built(monkeypatch: pytest.MonkeyPatch, act: Callable[[], object]) 
     built = 0
     scanned = Document.__init__
 
-    def counted(document: Document, text: str) -> None:
+    def counted(document: Document, text: str, *spelling: str) -> None:
         nonlocal built
         built += 1
-        scanned(document, text)
+        scanned(document, text, *spelling)
 
     with monkeypatch.context() as patched:
         patched.setattr(Document, "__init__", counted)
@@ -3816,6 +3835,46 @@ class TestPropagating:
         # Only the finding this actually settles: claiming to fix an unrelated one would put
         # the lightbulb on a squiggle it does nothing about.
         assert [entry["code"] for entry in action["diagnostics"]] == ["definition-mismatch"]
+
+    def test_an_action_carries_the_findings_it_settles_and_no_others(self, tmp_path: Path) -> None:
+        """10:M12. One action settles one key, so of the findings a client sends on a
+        declaration it carries the ones naming that key alone: a finding naming two keys is
+        settled by neither fix, and one naming none this server knows is carried as ever."""
+        from ddd.lsp.edits import actions
+
+        built = self.built(
+            tmp_path,
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": component(
+                    "B", declare("input", "Speed", unit="1/min", datatype="uint16")
+                ),
+            },
+        )
+        cache: dict[Path, Document] = {}
+        path = tmp_path / "b.ddd.json"
+        unit = {"code": "definition-mismatch", "message": "differ (unit: '1/min' != 'rpm')"}
+        both = {
+            "code": "definition-mismatch",
+            "message": "differ (datatype: uint16 != uint8, unit: '1/min' != 'rpm')",
+        }
+        bare = {"code": "definition-mismatch", "message": "differ"}
+        offered = actions(
+            built,
+            path,
+            read(path, cache),
+            "component.interface[0].definition",
+            cache,
+            [unit, both, bare],
+        )
+        tail = " (the code of the readers is not touched)"
+        carried = {entry["title"].removesuffix(tail): entry["diagnostics"] for entry in offered}
+        assert carried == {
+            "Use the datatype declared in a": [bare],
+            "Use the unit declared in a": [unit, bare],
+            "Apply this datatype to 1 other declaration of 'Speed'": [bare],
+            "Apply this unit to 1 other declaration of 'Speed'": [unit, bare],
+        }
 
     def test_a_reconcile_fix_says_the_readers_code_is_not_touched(self, tmp_path: Path) -> None:
         """The check goes green once the descriptions agree, and the readers keep the scale they
@@ -7572,8 +7631,8 @@ class TestServer:
         (answer,) = (message for message in sent(writer) if message.get("id") == 11)
         assert answer["error"] == {
             "code": REQUEST_FAILED,
-            "message": f"reader_one.ddd.json has unsaved changes that {changed} this rename "
-            "would touch; save it and rename again",
+            "message": "reader_one.ddd.json has changed on disk since the project was read, "
+            f"which {changed} this rename would touch; rename again once it has been read again",
         }
 
     def test_a_rename_started_in_a_drifted_buffer_is_refused_rather_than_applied_elsewhere(
@@ -8580,6 +8639,181 @@ class TestOfferingAnIdentity:
             built, path, read(path, cache), "component.interface[0].definition", cache, UNSTAMPED
         )
         assert [entry for entry in offered if "id" in entry["title"]] == []
+
+
+def apply_to_the_bytes(path: Path, edits: list[dict[str, Any]]) -> str:
+    """What a client writes into the file as it stands, line ends and all: :func:`apply_edits`
+    reads the text through universal newlines, which is the spelling these tests look for."""
+    text = path.read_text(encoding="utf-8", newline="")
+    starts = [0]
+    for line in text.splitlines(keepends=True):
+        starts.append(starts[-1] + len(line))
+
+    def offset(position: dict[str, int]) -> int:
+        return starts[position["line"]] + position["character"]
+
+    for edit in sorted(edits, key=lambda e: offset(e["range"]["start"]), reverse=True):
+        text = (
+            text[: offset(edit["range"]["start"])]
+            + edit["newText"]
+            + text[offset(edit["range"]["end"]) :]
+        )
+    return text
+
+
+def spelled_with(newline: str, document: dict[str, Any]) -> str:
+    """A description laid out over lines, each ended with ``newline``."""
+    return json.dumps(document, indent=2).replace("\n", newline) + newline
+
+
+def one_line(document: dict[str, Any]) -> str:
+    return json.dumps(document)
+
+
+class TestAnEditCarriesTheFilesOwnNewline:
+    """10:M12 and B9-37. The server reads a closed file through universal newlines, so an edit it
+    builds says ``\\n`` wherever its text has a line to end; a client writing it into a file of
+    ``\\r\\n`` or bare ``\\r`` mixes. Every edit carries the newline of the file it is made
+    in, and the fix giving an object an id writes what ``ddd id`` writes."""
+
+    NEWLINES: ClassVar[list[str]] = ["\r\n", "\r"]
+
+    def built(self, tmp_path: Path, **files: Any) -> Any:
+        from ddd.lsp.navigation import index
+
+        write_tree(tmp_path, {"p.ddd.json": project("P", *files), **files})
+        return index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
+
+    @pytest.mark.parametrize("newline", NEWLINES, ids=["crlf", "cr"])
+    def test_a_key_added_to_a_closed_file_ends_its_line_as_the_file_does(
+        self, tmp_path: Path, newline: str
+    ) -> None:
+        from ddd.lsp.edits import actions
+
+        built = self.built(
+            tmp_path,
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": spelled_with(newline, component("B", declare("input", "Speed"))),
+            },
+        )
+        cache: dict[Path, Document] = {}
+        path = tmp_path / "b.ddd.json"
+        offered = actions(
+            built,
+            path,
+            read(path, cache),
+            "component.interface[0].definition",
+            cache,
+            MISMATCH_REPORTED,
+        )
+        taking = next(entry for entry in offered if entry["title"].startswith("Use the unit"))
+        (edits,) = taking["edit"]["changes"].values()
+        written = apply_to_the_bytes(path, edits)
+        assert '"unit": "rpm"' in written
+        assert written.replace(newline, "").count("\n") == 0
+        assert written.replace(newline, "").count("\r") == 0
+
+    @pytest.mark.parametrize("newline", NEWLINES, ids=["crlf", "cr"])
+    def test_a_unit_added_to_a_closed_units_file_ends_its_line_as_the_file_does(
+        self, tmp_path: Path, newline: str
+    ) -> None:
+        """A unit's plan, which is made by the engine over the text as the server read it: its
+        edits carry the spelling of the file they are written into."""
+        a = stating(tmp_path, 1, "Nm")
+        units = tmp_path / "units.ddd.json"
+        write_tree(tmp_path, {"units.ddd.json": spelled_with(newline, {"units": ["Nm"]})})
+        offered, _ = fixes_asked(
+            tmp_path, a, reported=UNLISTED, pointer="component.interface[0].definition.unit"
+        )
+        adding = next(entry for entry in offered if entry["title"].startswith("Add 'rpm'"))
+        (edits,) = adding["edit"]["changes"].values()
+        written = apply_to_the_bytes(units, edits)
+        assert '"rpm"' in written
+        assert written.replace(newline, "").count("\n") == 0
+        assert written.replace(newline, "").count("\r") == 0
+
+    def spelling_of_ids(self) -> list[tuple[str, str]]:
+        document = component("A", declare("local", "Speed"), declare("local", "Idle"))
+        return [
+            ("one line", one_line(document) + "\n"),
+            ("lf", spelled_with("\n", document)),
+            ("crlf", spelled_with("\r\n", document)),
+            ("cr", spelled_with("\r", document)),
+            ("one line of cr", one_line(document) + "\r"),
+        ]
+
+    @pytest.mark.parametrize("spelling", range(5), ids=["one-line", "lf", "crlf", "cr", "one-cr"])
+    def test_the_offer_writes_the_bytes_ddd_id_writes(self, tmp_path: Path, spelling: int) -> None:
+        """An id an editor gives and one the command gives differ in the minted characters alone,
+        wherever the object is written on one line and however the file ends its lines."""
+        from ddd.lsp.edits import actions
+
+        _, text = self.spelling_of_ids()[spelling]
+        files = {"a.ddd.json": text}
+        built = self.built(tmp_path / "editor", **files)
+        write_tree(tmp_path / "command", files)
+        assert main(["id", "--assign", str(tmp_path / "command" / "a.ddd.json")]) == EXIT_OK
+        by_the_command = (tmp_path / "command" / "a.ddd.json").read_text(
+            encoding="utf-8", newline=""
+        )
+        path = tmp_path / "editor" / "a.ddd.json"
+        cache: dict[Path, Document] = {}
+        written = path.read_text(encoding="utf-8", newline="")
+        for at in range(2):
+            offered = actions(
+                built,
+                path,
+                read(path, cache),
+                f"component.interface[{at}].definition",
+                cache,
+                UNSTAMPED,
+            )
+            (giving,) = [entry for entry in offered if "id" in entry["title"]]
+            (edits,) = giving["edit"]["changes"].values()
+            path.write_text(written, encoding="utf-8", newline="")
+            written = apply_to_the_bytes(path, edits)
+            path.write_text(written, encoding="utf-8", newline="")
+            cache.clear()
+        assert without_ids(written) == without_ids(by_the_command)
+
+    def test_the_offer_reads_a_one_line_file_once(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Counted by the searches for a line break the layout makes: the edit is laid out
+        once, however many declarations the file states, and not once for each of them."""
+        import ddd.editing as editing
+        from ddd.lsp.edits import actions
+
+        counts = {"layouts": 0}
+        looked_at = editing._break_after
+
+        def counting(text: str, offset: int) -> int:
+            counts["layouts"] += 1
+            return looked_at(text, offset)
+
+        monkeypatch.setattr(editing, "_break_after", counting)
+        made: list[int] = []
+        for declarations in (4, 16):
+            home = tmp_path / str(declarations)
+            document = component(
+                "A", *(declare("local", f"V{number}") for number in range(declarations))
+            )
+            built = self.built(home, **{"a.ddd.json": one_line(document) + "\n"})
+            path = home / "a.ddd.json"
+            cache: dict[Path, Document] = {}
+            counts["layouts"] = 0
+            offered = actions(
+                built,
+                path,
+                read(path, cache),
+                "component.interface[0].definition",
+                cache,
+                UNSTAMPED,
+            )
+            assert [entry["title"] for entry in offered] == ["Give 'V0' an id"]
+            made.append(counts["layouts"])
+        assert max(made) <= 1, made
 
 
 UNLISTED = [
@@ -10575,8 +10809,9 @@ class TestAUnitPlanTheEngineCannotMakeInAText:
         (answer,) = sent(writer)
         assert answer["error"] == {
             "code": REQUEST_FAILED,
-            "message": "u.ddd.json has unsaved changes that moved or respelled a unit this "
-            "rename would touch; save it and rename again",
+            "message": "u.ddd.json has changed on disk since the project was read, which moved "
+            "or respelled a unit this rename would touch; rename again once it has been read "
+            "again",
         }
         assert capsys.readouterr().err == ""
 

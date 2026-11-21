@@ -447,10 +447,14 @@ def _facts(entry: ResolvedObject, dictionary: DataDictionary) -> list[str]:
     rendered = [("unit", _cell(entry.unit) if entry.unit else "*none*")]
     low, high = conversion_range(entry.conversion, entry.datatype)
     limits = f"{format_number(entry.limits.min)} .. {format_number(entry.limits.max)}"
-    if (entry.limits.min, entry.limits.max) == (low, high):
+    if (entry.limits.min, entry.limits.max) == (low, high) and not isinstance(
+        entry.conversion, EnumConversion
+    ):
         # Said rather than guessed at: the dictionary has resolved away whether this was
         # written down or worked out, but that it *is* the whole range is worth knowing,
-        # because it means nothing has been narrowed for the calibration tool.
+        # because it means nothing has been narrowed for the calibration tool. An enumeration
+        # covers the span of its table, whatever its datatype holds: that is its range, not
+        # the datatype's.
         limits += " — the full range of the datatype"
     rendered.append(("limits", limits))
     rendered.append(("conversion", _cell(entry.conversion.describe())))

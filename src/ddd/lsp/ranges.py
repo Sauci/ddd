@@ -76,6 +76,9 @@ _AFTER_ELEMENT: Final = _matcher(f"{_SPACE}(?:(,){_SPACE}|\\])")
 """Consumes what follows an element of an array: whitespace, then either a comma, group 1, and
 the whitespace before the next element, or the closing bracket, with no group."""
 
+_LINE_ENDING: Final = re.compile(r"\r\n|\r|\n")
+"""One line ending, of any of the three spellings: what universal newlines make a line feed of."""
+
 _LINE_FEED: Final = re.compile("\n")
 """Consumes one line feed: a line ends at each, and the next starts just past it."""
 
@@ -88,8 +91,13 @@ class Document:
     diagnostic.
     """
 
-    def __init__(self, text: str) -> None:
+    def __init__(self, text: str, newline: str = "\n") -> None:
         self.text = text
+        self.newline = newline
+        """How the file this document was read from ends its lines: ``text`` is read as python
+        reads a file, every ending a line feed (:func:`read`), and a client applies an edit to the
+        file as it stands, so an edit's line feeds are spelled so (:meth:`spelled`). A buffer a
+        client sent is its own text, line endings and all: the default."""
         self._line_starts = _line_starts(text)
         try:
             self.data: Any = json.loads(text)
@@ -117,6 +125,12 @@ class Document:
             self._spans = scanner.spans
             self._texts = scanner.texts
             self._values = scanner.values
+
+    def spelled(self, text: str) -> str:
+        """``text``, which an edit engine wrote over line feeds, ending its lines as the file
+        this document was read from does. Nothing a json text holds but a line break is a line
+        feed - a string spells one ``\\n`` - so none is changed that is not one."""
+        return text if self.newline == "\n" else text.replace("\n", self.newline)
 
     def range_of(self, pointer: str) -> dict[str, Any]:
         """The range to underline for a finding located at ``pointer``."""
@@ -279,10 +293,14 @@ def read(path: Path, cache: dict[Path, Document]) -> Document:
     found = cache.get(path)
     if found is None:
         try:
-            text = path.read_text(encoding="utf-8-sig")
+            raw = path.read_bytes().decode("utf-8-sig")
         except (OSError, UnicodeDecodeError):
-            text = ""
-        found = Document(text)
+            raw = ""
+        # Through universal newlines, as ``read_text`` reads: a client counts a line at each
+        # of the three endings, so positions are of the text with each one a line feed. The
+        # file's own spelling, the first it uses, goes with the document for the edits made in it.
+        ending = _LINE_ENDING.search(raw)
+        found = Document(_LINE_ENDING.sub("\n", raw), "\n" if ending is None else ending.group())
         cache[path] = found
     return found
 
@@ -352,8 +370,13 @@ class _Scanner:
     compares the two).
     """
 
-    def __init__(self, text: str) -> None:
+    def __init__(self, text: str, newline: str = "\n") -> None:
         self.text = text
+        self.newline = newline
+        """How the file this document was read from ends its lines: ``text`` is read as python
+        reads a file, every ending a line feed (:func:`read`), and a client applies an edit to the
+        file as it stands, so an edit's line feeds are spelled so (:meth:`spelled`). A buffer a
+        client sent is its own text, line endings and all: the default."""
         self.pos = 0
         self.spans: dict[str, tuple[int, int]] = {}
         self.texts: dict[str, tuple[int, int]] = {}

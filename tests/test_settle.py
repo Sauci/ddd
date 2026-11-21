@@ -11,6 +11,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from conftest import (
     FLOAT_BESIDE_ENUM,
     MODE_T,
@@ -262,11 +264,40 @@ class TestLimitsNobodyStates:
             (), (Unsettled(site_in(idx, "b.ddd.json"), "unreachable"),)
         )
 
+    @pytest.mark.parametrize("scope", ["output", "input"], ids=["produced", "nobody-producing"])
     def test_taking_them_out_where_nobody_states_them_is_nothing_to_do(
+        self, tmp_path: Path, scope: str
+    ) -> None:
+        """Nothing is there to take out, and nobody need state a silence: a variable nobody
+        produces is not refused one."""
+        idx = built(
+            tmp_path,
+            **{
+                "a.ddd.json": component("A", declare(scope, "Speed")),
+                "b.ddd.json": component("B", declare("input", "Speed")),
+            },
+        )
+        assert settled(idx, "limits", None) == Settlement((), ())
+
+    def test_a_key_no_reader_leaves_to_the_producer_is_given_to_every_reader(
         self, tmp_path: Path
     ) -> None:
-        idx = built(tmp_path, **{"a.ddd.json": component("A", declare("output", "Speed"))})
-        assert settled(idx, "limits", None) == Settlement((), ())
+        """Only a key a reader may leave to whoever states it waits for a producer: a unit nobody
+        states is given to every declaration of a variable nobody produces, as ever."""
+        idx = built(
+            tmp_path,
+            **{
+                "a.ddd.json": component("A", declare("input", "Speed")),
+                "b.ddd.json": component("B", declare("input", "Speed")),
+            },
+        )
+        assert settled(idx, "unit", '"rpm"') == Settlement(
+            (
+                Settled(site_in(idx, "a.ddd.json"), '"rpm"'),
+                Settled(site_in(idx, "b.ddd.json"), '"rpm"'),
+            ),
+            (),
+        )
 
 
 class TestWhatRefuses:

@@ -137,6 +137,23 @@ class TestSettingAKey:
         )
         assert set_key(built, "Wide_t", "conversion", '{"factor": 0.5}', cache).edits
 
+    def test_a_key_taken_out_is_asked_of_the_entry_without_it(self, tmp_path, cache) -> None:
+        """The entry as the change leaves it: a range its file has come to hold since the analysis,
+        with the maximum below the minimum, is taken out - which mends the entry - rather than
+        refused for the very range the change removes."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "types.ddd.json"),
+                "types.ddd.json": types(scalar_type("Spare_t", limits={"min": 0, "max": 5})),
+            },
+        )
+        built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
+        emptied = types(scalar_type("Spare_t", limits={"min": 5, "max": 0}))
+        write_tree(tmp_path, {"types.ddd.json": emptied})
+        (edit,) = set_key(built, "Spare_t", "limits", None, cache).edits
+        assert [(o.op, o.pointer) for o in edit.operations] == [("remove", "types[0].limits")]
+
     def test_a_value_the_loader_would_not_read_as_json_is_refused_in_its_words(
         self, built, cache
     ) -> None:

@@ -337,23 +337,27 @@ class TestWhatTheWalkFindsAskedOfOnePath:
         }
         assert not walk_finds(root, (tmp_path / "far" / "f.ddd.json").resolve())
 
+    @pytest.mark.parametrize(
+        "locked", ["", "locked"], ids=["the-start-directory", "a-directory-under-it"]
+    )
     def test_a_description_in_a_directory_the_walk_cannot_list_is_not_one_it_finds(
-        self, tmp_path: Path
+        self, tmp_path: Path, locked: str
     ) -> None:
-        """A directory its owner may go through and not list: the walk cannot list it and passes
-        it over, though a path through it reads the description, so neither finds what it holds.
-        Windows keeps no mode that stops its owner listing a directory, and there the two find it
-        alike; so does a process no mode binds."""
+        """A directory its owner may go through and not list - the start directory itself, or
+        one under it: the walk cannot list it and passes it over, though a path through it reads
+        the description, so neither finds what it holds. Windows keeps no mode that stops its
+        owner listing a directory, and there the two find it alike; so does a process no mode
+        binds."""
         root = tmp_path / "root"
-        write_tree(root, {"p.ddd.json": project("P"), "locked/l.ddd.json": project("Locked")})
-        locked = root / "locked"
-        locked.chmod(0o311)
+        write_tree(root, {"locked/l.ddd.json": project("Locked")})
+        description = root / "locked" / "l.ddd.json"
+        (root / locked).chmod(0o311)
         try:
             walked = {found.path for found in find_projects(root).projects}
-            asked = walk_finds(root, locked / "l.ddd.json")
+            asked = walk_finds(root, description)
         finally:
-            locked.chmod(0o755)
-        assert asked is (locked / "l.ddd.json" in walked)
+            (root / locked).chmod(0o755)
+        assert asked is (description in walked)
         if os.name != "nt" and os.geteuid() != 0:
             assert not asked
 

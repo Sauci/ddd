@@ -742,10 +742,15 @@ The commands
        the panel of a unit every component states, which reads each file stating it, each took
        about two seconds; and an analysis took 5.1 to 6.0 s beside a page of findings asked
        every tenth of a second, as scrolling the Findings tab asks them, against 3.8 to 4.5 s
-       alone. A plan can take longer where the file it changes is large: over a generated
-       project of 35,000 declarations, the plan of a variable declared in a component of 1,166
-       of them, 16,331 lines, took 1.3 s asked the same way and 0.8 s with no analysis
-       running, nearly all of it spent finding which of that file's lines the change replaces.
+       alone. A plan stays well within a second where the file it changes is large, the lines
+       it shows read off the places its edit replaces rather than found by comparing the whole
+       file: with no analysis running, the plan of a variable declared in one or two of a
+       generated project's largest components took 34 to 72 ms at 35,000 declarations, each
+       component holding 1,168 of them over 16,359 to 16,943 lines, and 97 to 213 ms at
+       100,000, each holding 3,334 over 46,683 to 48,350 lines. A change reaching every
+       component takes longer: renaming the unit stated in the most files took 1.2 to 1.3 s to
+       plan at 35,000 declarations and 3.5 to 4.1 s at 100,000, and 2.2 to 2.4 s and 6.6 to
+       7.3 s to apply, the project held in memory, where no write waits for a disk.
        The server stopping is reported only once an ask that failed outright - its connection
        refused or reset, never a slow answer alone, which nothing here times out - is asked
        again and fails the same way, not after the first failure by itself.

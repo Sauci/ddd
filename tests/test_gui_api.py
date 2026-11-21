@@ -3388,9 +3388,10 @@ class TestAnEditCannotChangeWhichPluginsTheDescriptionsName:
         assert contents(tmp_path) == before
 
     def test_an_includes_entry_holding_a_nul_is_answered_as_it_was(self, tmp_path: Path) -> None:
-        """The walk for plugins reads what the next analysis reads and raises on nothing it would
-        not: an includes entry the system cannot represent as a path - one holding a NUL - is
-        answered as the analysis answers it, a located finding, never a server error."""
+        """The walk for plugins reads a file as the next analysis reads one: an includes entry the
+        system cannot represent as a path - one holding a NUL - is answered as the analysis
+        answers it, a located finding, never a server error. How deep the walk goes is another
+        matter, which ``_subtree_names_plugins`` says: further than the analysis."""
         api = opened(
             tmp_path, {"p.ddd.json": project("P", "a.ddd.json"), "a.ddd.json": component("A")}
         )

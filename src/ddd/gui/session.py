@@ -1391,7 +1391,15 @@ def _subtree_names_plugins(project: Path, seen: set[Path]) -> bool:
     """Whether the description ``project`` names any plugin, or includes one that does, by the
     loader's reading of json alone - never importing a plugin to find out, which is the very
     thing the refusal is before. ``seen`` holds every description already read, so a tree that
-    includes itself is walked once and the walk ends; a path already in it is passed over."""
+    includes itself is walked once and the walk ends; a path already in it is passed over.
+
+    Each file is read as the next analysis would read it (:func:`read_json`), but the walk goes
+    further than that analysis: nothing caps how deep the includes lead, where the loader reads
+    64 levels and files ``include-depth`` for what lies below. So a change of ``includes`` that
+    brings in or drops a description naming plugins only below that depth is refused, though the
+    analysis would load none of them; and a chain deep enough to raise ``RecursionError`` here,
+    or a tree too large to hold, ``MemoryError``, is answered ``500``, the edit refused with
+    nothing written. Both fail closed."""
     if project in seen:
         return False
     seen.add(project)
@@ -1561,8 +1569,9 @@ def read_json(path: Path) -> Any:
     except (OSError, ValueError):
         # ValueError as much as OSError: a path holding a NUL byte makes `read_bytes` raise, as
         # the loader's own read of a file (`ddd.loading._read_bytes`) and `resolve_path` both
-        # catch it and go on - the walk for plugins reads what the next analysis would read and
-        # raises on nothing the next analysis would not.
+        # catch it and go on, so a file is read here as the next analysis would read it, or is
+        # not read at all. The walk for plugins reading through this goes further than that
+        # analysis goes, which `_subtree_names_plugins` says.
         return None
 
 

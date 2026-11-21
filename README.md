@@ -246,10 +246,11 @@ too while an open document of a project it reaches holds what its file on disk d
 naming it, and when it would rewrite nothing.  It is refused, saying that no project is known,
 for anything but a local variable while none is: a component no record claims, that no
 description above it includes and that declares no project itself is read on its own.  And it
-is refused, naming the description and why, where a description it needs could not be read: a
-plugin stops it.  Where an image the file you started from is not in already declares the
-name, declares the type an external one, or holds a file that did not load, the refusal names
-that image, or its project description where no build record names one.
+is refused for anything but a local variable, naming the description and why, where a
+description it needs could not be read: a plugin stops it.  Where an image the file you started
+from is not in already declares the name, declares the type an external one, or holds a file
+that did not load, the refusal names that image, or its project description where no build
+record names one.
 
 Which project a file belongs to is not something the file can say, so the server reads the
 `ddd-build.json` that `ddd_generate` leaves in the build tree, and applies the same severities

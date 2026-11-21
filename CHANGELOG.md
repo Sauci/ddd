@@ -1532,9 +1532,10 @@ A build of DDD from its sources, and a release of it:
   variable's is refused, saying so, where it rewrote that one file and said nothing, leaving every
   other file spelling the name holding it.  And where a description it needs cannot be read, because
   a plugin of its own stops it, whether a build record names it or the search above a file found it,
-  every rename is refused, a local variable's too, naming the description and why, since the files
-  it holds would be rewritten for no image.  Each costs a step and the rename asked again: save the
-  file, put a project file above the component that includes it or configure the build, or mend the
+  every rename but a local variable's is refused, naming the description and why, since the files
+  it holds would be rewritten for no image, where a local variable is spelled in its own file
+  alone, whichever image holds it.  Each costs a step and the rename asked again: save the file,
+  put a project file above the component that includes it or configure the build, or mend the
   plugin.
 
 * **An external type is not renamed, from the editor or from the page's Types tab.**  An external

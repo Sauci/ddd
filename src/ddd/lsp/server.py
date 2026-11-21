@@ -1460,7 +1460,10 @@ class Server:
         made: dict[str, list[_Made]] = {}
         drifted: set[Path] = set()
         reach = self._reach(path)
-        refused = self._unread_refusal(reach) or self._alone_refusal(path, reach, subject)
+        start = tuple(reach.projects)
+        refused = self._unread_refusal(reach, start, subject) or self._alone_refusal(
+            path, reach, subject
+        )
         if refused is not None:
             return refused
         kind, old = subject or ("variable", "")
@@ -1479,7 +1482,7 @@ class Server:
             clash = self._gather(changes, made, edited.changes, loaded)
             assert clash is None, clash
             reach.touch([*map(uri_to_path, edited.changes), *edited.drifted])
-        refused = self._unread_refusal(reach) or self._unseen_refusal(reach)
+        refused = self._unread_refusal(reach, start, subject) or self._unseen_refusal(reach)
         if refused is not None:
             return refused
         if drifted:
@@ -1609,9 +1612,14 @@ class Server:
             "neither, and rename again"
         )
 
-    def _unread_refusal(self, reach: Reach) -> str | None:
+    def _unread_refusal(
+        self,
+        reach: Reach,
+        start: Sequence[Loaded] = (),
+        subject: tuple[str, str] | None = None,
+    ) -> str | None:
         """Why a rename that meets a description it could not read is refused, or nothing where
-        it met none.
+        it met none, or where it renames a local.
 
         Asked before the first project is looked at, for the descriptions the search for the
         document's projects met, and again once the reach is complete, for those the closure met:
@@ -1619,8 +1627,20 @@ class Server:
         then rewrite one image and leave the other naming what is gone. The component alone is
         what the search answers where its project cannot be read, so it is asked before
         :meth:`_alone_refusal`, which would blame the wrong thing.
+
+        A variable that every project the rename starts from, ``start``, declares ``local`` is
+        spelled in the file declaring it and nowhere else, so its rename rewrites that one file,
+        whichever image holds it, and no description, read or not, can change what it reaches:
+        it is not refused here, as :meth:`_alone_refusal` lets it go on where no project is known.
         """
         if not reach.unread:
+            return None
+        if (
+            subject is not None
+            and subject[0] == "variable"
+            and start
+            and all(is_local(index(loaded.workspace), subject[1]) for loaded in start)
+        ):
             return None
         description, reason = min(reach.unread.items())
         return (

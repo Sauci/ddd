@@ -1908,9 +1908,10 @@ class TestWhatARenameIsRefusedFor:
 
 class TestWhatARenameIsRefusedForWithNoProject:
     """10:I5. With no project known, a rename of anything but a local variable is refused, saying
-    so, and a rename that needs a description which could not be read is refused naming it and
-    why. The three pages that list the refusals say so, and the editor page's first sentence on
-    the rename no longer promises every file where no project is known."""
+    so, and a rename of anything but a local variable that needs a description which could not be
+    read is refused naming it and why, a local's rewriting its own file alone. The three pages
+    that list the refusals say so, and the editor page's first sentence on the rename no longer
+    promises every file where no project is known."""
 
     ALONE: ClassVar[str] = (
         "a component that no build record claims, that no description above it includes and "
@@ -1923,9 +1924,12 @@ class TestWhatARenameIsRefusedForWithNoProject:
                 "A rename of anything but a local variable is refused as well, saying that no "
                 f"project is known, while none is: {ALONE}, and renaming what it shares would "
                 "rewrite that one file and leave every other file spelling the name holding it.",
-                "And a rename is refused, naming the description and why, where a description "
-                "it needs could not be read - one a plugin stops, whether a build record names "
-                "it or the search above a file found it",
+                "And a rename of anything but a local variable is refused, naming the "
+                "description and why, where a description it needs could not be read - one a "
+                "plugin stops, whether a build record names it or the search above a file found "
+                "it: the files it holds would be rewritten for no image, and the others left "
+                "reading a name nothing declares, where a local variable's rewrites the one file "
+                "that spells it, whichever image holds that file.",
             ),
         ),
         "docs/editor_integration.rst": (
@@ -1935,9 +1939,12 @@ class TestWhatARenameIsRefusedForWithNoProject:
                 f"project is known, while none is: {ALONE}, and renaming what it shares would "
                 "rewrite that one file and leave every other file spelling the name holding it. "
                 "Put a project file above it that includes it, or configure the build.",
-                "And a rename is refused, naming the description and why, where a description "
-                "it needs could not be read - one a plugin stops, whether a build record names "
-                "it or the search above a file found it",
+                "And a rename of anything but a local variable is refused, naming the "
+                "description and why, where a description it needs could not be read - one a "
+                "plugin stops, whether a build record names it or the search above a file found "
+                "it: the files it holds would be rewritten for no image, and the others left "
+                "reading a name nothing declares, where a local variable's rewrites the one file "
+                "that spells it, whichever image holds that file.",
                 "across as many files as that takes once the server knows the project holding "
                 "them - a ``local`` variable needs none.",
             ),
@@ -1948,8 +1955,8 @@ class TestWhatARenameIsRefusedForWithNoProject:
                 "It is refused, saying that no project is known, for anything but a local "
                 "variable while none is: a component no record claims, that no description "
                 "above it includes and that declares no project itself is read on its own.",
-                "And it is refused, naming the description and why, where a description it "
-                "needs could not be read: a plugin stops it.",
+                "And it is refused for anything but a local variable, naming the description and "
+                "why, where a description it needs could not be read: a plugin stops it.",
             ),
         ),
     }
@@ -1960,6 +1967,19 @@ class TestWhatARenameIsRefusedForWithNoProject:
         said = flattened(text)
         for phrase in phrases:
             assert phrase in said, f"{page} no longer says: {phrase!r}"
+
+    def test_the_changelog_refuses_no_locals_rename_for_a_description_it_could_not_read(
+        self,
+    ) -> None:
+        """A local is spelled in the file declaring it and nowhere else, all its rename rewrites, so
+        no image is left half renamed."""
+        said = flattened(CHANGELOG)
+        assert "a local variable's too" not in said
+        assert (
+            "every rename but a local variable's is refused, naming the description and why, "
+            "since the files it holds would be rewritten for no image, where a local variable is "
+            "spelled in its own file alone, whichever image holds it." in said
+        )
 
     def test_the_readme_paragraph_is_wrapped_to_its_width(self) -> None:
         """Task 4 joined two of its sentences onto one line, 150 characters long."""

@@ -204,10 +204,12 @@ A rename of anything but a local variable is refused as well, saying that no pro
 while none is: a component that no build record claims, that no description above it includes
 and that declares no project itself is read on its own, and renaming what it shares would
 rewrite that one file and leave every other file spelling the name holding it. Put a project
-file above it that includes it, or configure the build. And a rename is refused, naming the
-description and why, where a description it needs could not be read - one a plugin stops,
-whether a build record names it or the search above a file found it: the files it holds would
-be rewritten for no image, and the others left reading a name nothing declares.
+file above it that includes it, or configure the build. And a rename of anything but a local
+variable is refused, naming the description and why, where a description it needs could not be
+read - one a plugin stops, whether a build record names it or the search above a file found it:
+the files it holds would be rewritten for no image, and the others left reading a name nothing
+declares, where a local variable's rewrites the one file that spells it, whichever image holds
+that file.
 
 A rename reaches every project that holds a file it rewrites: the projects of the file it
 starts from, then every project holding a file their edits rewrite, until none is new. A

@@ -8469,28 +8469,67 @@ class TestServer:
         message = self.answer_to(tmp_path, request)["error"]["message"]
         assert message.startswith("another.ddd.json could not be read")
 
-    def test_a_description_that_could_not_be_read_refuses_a_locals_rename_too(
-        self, tmp_path: Path
-    ) -> None:
-        """The refusal comes before any closure, whatever the kind: a rename that half-applies to
-        an image whose description a plugin stops is the half-renamed project."""
+    def locals_rename(self, tmp_path: Path, *, recorded: bool) -> dict[str, Any]:
+        """The answer to a rename of ``a``'s local ``Y``, where a plugin stops a description: the
+        one above ``a``, whose other component holds the block the plugin stops on; or, where
+        ``recorded``, the one a second build record names, ``a``'s own project reading whole."""
         write_tree(
             tmp_path,
             {
                 "tools/exiting_plugin.py": EXITING_MODEL_PLUGIN,
-                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/exiting_plugin.py"]),
-                "a.ddd.json": component(
-                    "A",
+                "a.ddd.json": component("A", declare("local", "Y"), declare("output", "Out")),
+                "b.ddd.json": component(
+                    "B",
+                    declare("input", "Out"),
                     declare("local", "X", extensions={"exiting": {"tag": "t"}}),
-                    declare("local", "Y"),
                 ),
             },
         )
+        if recorded:
+            write_tree(
+                tmp_path,
+                {
+                    "one/one.ddd.json": project("One", "../a.ddd.json"),
+                    "two/two.ddd.json": project(
+                        "Two",
+                        "../a.ddd.json",
+                        "../b.ddd.json",
+                        plugins=["../tools/exiting_plugin.py"],
+                    ),
+                },
+            )
+            build_record(tmp_path, tmp_path / "one/one.ddd.json", image="one.elf")
+            build_record(tmp_path, tmp_path / "two/two.ddd.json", image="two.elf")
+        else:
+            stopped = project("P", "a.ddd.json", "b.ddd.json", plugins=["tools/exiting_plugin.py"])
+            write_tree(tmp_path, {"project.ddd.json": stopped})
         request = self.rename_request(
-            tmp_path / "a.ddd.json", "component.interface[1].definition.name", "Z"
+            tmp_path / "a.ddd.json", "component.interface[0].definition.name", "Z"
+        )
+        return self.answer_to(tmp_path, request)
+
+    @pytest.mark.parametrize("recorded", [False, True], ids=["above-it", "of-another-image"])
+    def test_a_description_that_could_not_be_read_does_not_refuse_a_locals_rename(
+        self, tmp_path: Path, recorded: bool
+    ) -> None:
+        """A local is spelled in the file declaring it and nowhere else, so its rename rewrites that
+        file alone, whichever image holds it, and no description, read or not, changes what it
+        reaches: it goes through, as it does where no project is known."""
+        answer = self.locals_rename(tmp_path, recorded=recorded)
+        assert "error" not in answer, answer["error"]["message"]
+        assert list(answer["result"]["changes"]) == [(tmp_path / "a.ddd.json").as_uri()]
+
+    def test_a_description_that_could_not_be_read_refuses_any_rename_but_a_locals(
+        self, tmp_path: Path
+    ) -> None:
+        """The control: ``a``'s output, which ``b`` reads in the image the plugin stops, is not
+        renamed, since that image would be left reading a name nothing declares."""
+        self.locals_rename(tmp_path, recorded=True)
+        request = self.rename_request(
+            tmp_path / "a.ddd.json", "component.interface[1].definition.name", "Rate"
         )
         message = self.answer_to(tmp_path, request)["error"]["message"]
-        assert message.startswith("project.ddd.json could not be read")
+        assert message.startswith("two/two.ddd.json of the image two.elf could not be read")
 
     def test_a_unit_rename_is_refused_for_a_description_that_could_not_be_read(
         self, tmp_path: Path

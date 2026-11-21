@@ -2747,15 +2747,32 @@ class TestEdit:
         reply = post(api, "/api/edit", edit)
         assert (reply.status, reply.body["error"]) == (409, "stale")
 
-    def test_an_edit_that_could_not_be_written_is_a_server_error(
+    def test_an_edit_the_disk_refused_is_a_refusal_the_page_can_act_on(
         self, api: Api, root: Path, monkeypatch
     ) -> None:
+        """``unwritable`` names what the disk refused, and the files it could not put back where
+        there are any: the reader's to mend, ``409``, never ddd gui failing on the request."""
+
         def unwritable(changes, label):
             raise EditError(UNWRITABLE, "disk full")
 
         monkeypatch.setattr(api.session, "edit", unwritable)
         reply = post(api, "/api/edit", unit_edit(api, root, "Hz"))
-        assert (reply.status, reply.body["error"]) == (500, "unwritable")
+        assert (reply.status, reply.body["error"]) == (409, "unwritable")
+
+    def test_an_edit_refused_with_a_code_no_page_acts_on_is_a_server_error(
+        self, api: Api, root: Path, monkeypatch
+    ) -> None:
+        """A code missing from :data:`~ddd.gui.api.REFUSALS` is the server's own failure, ``500``:
+        a refusal added to the engine and not to that list is said to be a fault, not a refusal
+        the page can act on."""
+
+        def unlisted(changes, label):
+            raise EditError("unlisted", "a refusal no page acts on")
+
+        monkeypatch.setattr(api.session, "edit", unlisted)
+        reply = post(api, "/api/edit", unit_edit(api, root, "Hz"))
+        assert reply == Reply(500, {"error": "unlisted", "message": "a refusal no page acts on"})
 
     def test_an_edit_of_a_read_only_file_is_refused_in_a_sentence_saying_nothing_was_written(
         self, api: Api, root: Path
@@ -2763,14 +2780,15 @@ class TestEdit:
         """A checkout kept read-only is refused on every system, as the rename of a stage over
         it was on Windows alone, after a second and with its stage left beside the file: the
         sentence is the engine's, which the page shows as it stands, and nothing is written, or
-        staged, or left to undo."""
+        staged, or left to undo. A refusal the reader mends by making the file writable, so
+        ``409``, as every other refusal the page can act on is."""
         edit = unit_edit(api, root, "Hz")
         target = root / "b.ddd.json"
         before = target.read_bytes()
         target.chmod(0o444)
         reply = post(api, "/api/edit", edit)
         assert reply == Reply(
-            500,
+            409,
             {"error": "unwritable", "message": f"{target} is read-only, so nothing was written"},
         )
         assert target.read_bytes() == before
@@ -3818,7 +3836,7 @@ class TestUndoing:
         assert (reply.status, reply.body["error"]) == (409, "stale")
         assert reply.body["message"] == "b.ddd.json changed on disk since it was written"
 
-    def test_a_preview_that_could_not_be_built_is_a_server_error(
+    def test_a_preview_the_disk_refused_is_a_refusal_the_page_can_act_on(
         self, api: Api, root: Path, monkeypatch
     ) -> None:
         assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
@@ -3828,7 +3846,7 @@ class TestUndoing:
 
         monkeypatch.setattr("ddd.gui.api.unchanged", unwritable)
         reply = get(api, "/api/undo")
-        assert (reply.status, reply.body["error"]) == (500, "unwritable")
+        assert (reply.status, reply.body["error"]) == (409, "unwritable")
 
     def test_an_undo_puts_the_files_back_and_answers_its_own_number(
         self, api: Api, root: Path
@@ -3848,7 +3866,7 @@ class TestUndoing:
         assert (reply.status, reply.body["error"]) == (409, "stale")
         assert get(api, "/api/state").body["undoable"] == {"at": 1, "label": "the unit of Speed"}
 
-    def test_an_undo_that_could_not_be_written_is_a_server_error(
+    def test_an_undo_the_disk_refused_is_a_refusal_the_page_can_act_on(
         self, api: Api, monkeypatch
     ) -> None:
         def unwritable(at):
@@ -3856,7 +3874,27 @@ class TestUndoing:
 
         monkeypatch.setattr(api.session, "undo", unwritable)
         reply = post(api, "/api/undo", {"at": 1})
-        assert (reply.status, reply.body["error"]) == (500, "unwritable")
+        assert (reply.status, reply.body["error"]) == (409, "unwritable")
+
+    def test_an_undo_of_a_read_only_file_is_refused_in_a_sentence_saying_nothing_was_put_back(
+        self, api: Api, root: Path
+    ) -> None:
+        """The undo's half of the edit's own refusal of a read-only file: asked before any file is
+        staged, ``409``, and the edit stays on top to be put back once the file is writable."""
+        assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
+        target = root / "b.ddd.json"
+        written = target.read_bytes()
+        target.chmod(0o444)
+        try:
+            reply = post(api, "/api/undo", {"at": 1})
+        finally:
+            target.chmod(0o644)
+        assert reply == Reply(
+            409,
+            {"error": "unwritable", "message": f"{target} is read-only, so nothing was put back"},
+        )
+        assert target.read_bytes() == written
+        assert get(api, "/api/state").body["undoable"] == {"at": 1, "label": "the unit of Speed"}
 
     def test_an_undo_takes_a_number(self, api: Api) -> None:
         reply = post(api, "/api/undo", {})

@@ -47,6 +47,7 @@ from ddd.editing import (
     STALE,
     UNREADABLE,
     UNVERIFIED,
+    UNWRITABLE,
     EditError,
     FileChange,
     Operation,
@@ -248,8 +249,14 @@ ANALYSING: Final = "analysing"
 its first analysis has landed, or a plan changing a file an edit wrote that no analysis has read
 yet. Answered 409, and answered differently once the analysis lands."""
 
-REFUSALS: Final = frozenset({STALE, UNREADABLE, INVALID, UNVERIFIED, ANALYSING, GENERATED, PLUGINS})
-"""The edit refusals a page can act on, answered 409; anything else an edit raises is a 500."""
+REFUSALS: Final = frozenset(
+    {STALE, UNREADABLE, INVALID, UNVERIFIED, UNWRITABLE, ANALYSING, GENERATED, PLUGINS}
+)
+"""The edit refusals a page can act on, answered 409; anything else an edit raises is a 500.
+
+``unwritable`` among them: a file read-only to this process is refused before anything is staged,
+for the reader to make writable, and a write the disk refused names any file it could not put
+back - a refusal, in a sentence of its own, never ddd gui failing on the request."""
 
 _UNSEEN: Final = {
     "rename": "renaming '{name}' could not reach every place that names it",

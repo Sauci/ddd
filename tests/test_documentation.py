@@ -11374,6 +11374,10 @@ class TestWhatTheTypesTabAndTheRangeFieldsSend:
                 "maximum below its minimum, a factor of 0 - is refused there before it is planned, "
                 "in the words ``ddd check`` files it in, since a types file that does not load "
                 "takes every type it declares with it.",
+                # A refusal the entry carries already is its own, and no change's.
+                "A type ``ddd check`` refuses already is not refused again for it: a change that "
+                "leaves that refusal as it was is planned, the value a row holds among them, and "
+                "so is one that mends it.",
                 "A bound is sent in the digits it was typed in, ``1e3`` as ``1e3`` and ``12.50`` "
                 "as ``12.50``, a float's given a point where it was typed whole.",
             ),
@@ -11386,6 +11390,9 @@ class TestWhatTheTypesTabAndTheRangeFieldsSend:
                 "``type`` and, for a scalar type, holds the limits its datatype and conversion "
                 "derive finite, as the analysis does, and ``set_key`` refuses what it refuses, "
                 "``invalid``, in the models' words.",
+                "It is asked of the entry as it stands too, and an answer the change leaves as it "
+                "was refuses nothing: a type the analysis refuses already is planned a change "
+                "leaving that refusal as it was, and one mending it.",
             ),
         ),
     }

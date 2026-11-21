@@ -19,9 +19,9 @@ Apply as well.
 
 What a key is set to is asked of the models as the entry would be left
 (:func:`ddd.models.type_problem`), the question a variable's settlement asks of a definition
-(:func:`ddd.lsp.edits.loading_problem`): a value the loader would refuse is refused before it is
-planned, in the models' words, rather than written into a types file that would then take every
-type it declares with it.
+(:func:`ddd.lsp.edits.loading_problem`), and of the entry as it stands: a value bringing the entry
+a refusal it did not carry is refused before it is planned, in the models' words, rather than
+written into a types file that would then take every type it declares with it.
 """
 
 from __future__ import annotations
@@ -102,10 +102,17 @@ def set_key(
     in above it or taken out moves it, and both the kind that decides which keys may be set and
     the key set would be another type's.
 
-    Refused ``invalid`` where the entry, as the change would leave it, is one the project refuses
-    (:func:`_loading_problem`): a datatype that is none, a range whose maximum is below its
-    minimum, a conversion that cannot be undone, limits derived past the largest float - in the
-    sentence ``ddd check`` files it in, naming the type and its file.
+    Refused ``invalid`` where the change brings the entry a refusal it did not carry: where the
+    project refuses the entry as the change would leave it (:func:`_loading_problem`) and the
+    entry as it stands not at all, or in another sentence - a datatype that is none, a range whose
+    maximum is below its minimum, a conversion that cannot be undone, limits derived past the
+    largest float - in the sentence ``ddd check`` files it in, naming the type and its file. The
+    entry is asked of :func:`ddd.models.type_problem` before the change and after. A type the
+    analysis refuses already - a ``float64`` scaled past the largest float loads, and is refused
+    at its conversion - is planned a change leaving that refusal as it was, its unit, its
+    description, or the value a row holds, which the Types tab asks the moment the row is
+    selected; and a change mending it. The refusal is the entry's, and the sentence would blame
+    whichever key the reader chose.
     """
     site = _entry(built, name)
     if not type_in_place(built, name, cache):
@@ -119,7 +126,7 @@ def set_key(
     if raw is None and document.value_at(f"{site.pointer}.{key}") is None:
         return TypePlan(())
     problem = _loading_problem(document, site.pointer, key, raw)
-    if problem is not None:
+    if problem is not None and problem != type_problem(document.value_at(site.pointer)):
         raise TypeRefusalError(
             "invalid",
             f"the type '{name}' in {site.path.name} would not load with that {key}: {problem}",

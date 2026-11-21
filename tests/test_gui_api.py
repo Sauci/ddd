@@ -6213,6 +6213,28 @@ class TestTheTypesTab:
         )
         assert contents(root) == before
 
+    @pytest.mark.parametrize("raw", ['"rpm"', '"Nm"'], ids=["its-own-unit", "another-unit"])
+    def test_a_type_the_analysis_refuses_already_is_planned_a_change_leaving_that_as_it_was(
+        self, tmp_path: Path, raw: str
+    ) -> None:
+        """A double scaled by two runs past the largest float, which the analysis refuses at the
+        type's conversion while its file loads. The tab asks a plan of a selected row's own value
+        at once, and every row of the type was answered with a refusal blaming its own key: the
+        refusal is the entry's, and a change leaving it as it was is planned."""
+        doubled = {"kind": "linear", "factor": 2}
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "t.ddd.json"),
+                "t.ddd.json": types(
+                    scalar_type("Wide_t", "float64", unit="rpm", conversion=doubled)
+                ),
+            },
+        )
+        reply = get(api, "/api/type-plan", action="set", name="Wide_t", key="unit", raw=raw)
+        assert reply.status == 200
+        assert "error" not in reply.body
+
     def test_renaming_rewrites_the_type_and_every_name_reaching_it(self, structures) -> None:
         api, root = structures
         preview = get(api, "/api/type-plan", action="rename", name="Sensor_t", to="Probe_t").body

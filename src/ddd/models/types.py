@@ -557,6 +557,11 @@ def type_problem(entry: Mapping[str, object]) -> str | None:
     reports, and so does a structure member's own derived limits, held finite by the analysis as a
     scalar type's are: a structure's members are nothing a change of a type is planned for. The
     caller's mapping is read and not changed.
+
+    :func:`ddd.type_plans.set_key` asks it of the entry as it stands as well as of the entry as the
+    change would leave it, and refuses only an answer after that is not the one before: a type the
+    analysis refuses already - a derived range past the largest float leaves its file loading -
+    can still be changed, and mended, its refusal being its own and not the change's.
     """
     try:
         accepted = _TYPE.validate_python(entry)

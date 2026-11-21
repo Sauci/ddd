@@ -480,7 +480,9 @@ The commands
        would not load with - a datatype that is none, a maximum below its minimum, a
        factor of 0 - is refused there before it is planned, in the words ``ddd check``
        files it in, since a types file that does not load takes every type it declares
-       with it.
+       with it. A type ``ddd check`` refuses already is not refused again for it: a change
+       that leaves that refusal as it was is planned, the value a row holds among them,
+       and so is one that mends it.
        Every change is written into the files in their own layout and checked
        the way ``ddd check`` checks them. A change is refused as a whole, every file
        left as it was, where a file it changes was saved from elsewhere since it was

@@ -1405,7 +1405,9 @@ the page applies through ``POST /api/edit`` and the undo puts back. A key set is
 models as the entry would be left, as ``settled_at`` asks of a definition:
 ``ddd.models.type_problem`` validates the entry by its ``type`` and, for a scalar type, holds the
 limits its datatype and conversion derive finite, as the analysis does, and ``set_key`` refuses
-what it refuses, ``invalid``, in the models' words.
+what it refuses, ``invalid``, in the models' words. It is asked of the entry as it stands too,
+and an answer the change leaves as it was refuses nothing: a type the analysis refuses already
+is planned a change leaving that refusal as it was, and one mending it.
 
 ``ddd.declaration_plans`` sits beside ``ddd.type_plans`` and ``ddd.project_units``: a
 component may add a declaration of a variable the project already declares or of a new

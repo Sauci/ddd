@@ -10,7 +10,7 @@ from conftest import component, declare, project, scalar_type, types, write_tree
 from ddd.diagnostics import DiagnosticBag
 from ddd.loading import load_workspace
 from ddd.lsp.navigation import Index, index
-from ddd.lsp.ranges import Document
+from ddd.lsp.ranges import Document, read
 from ddd.type_plans import TypePlan, TypeRefusalError, rename_type, set_key
 
 EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
@@ -196,6 +196,69 @@ class TestSettingAKey:
             "stale",
             "types.ddd.json changed since the project was analysed, so 'B_t' cannot be changed "
             "until the project is analysed again",
+        )
+
+
+class TestATypeTheAnalysisRefusesAlready:
+    """A scalar type whose derived limits run past the largest float - a ``float64`` doubled -
+    loads, and the analysis refuses it, at its conversion. Every key set on it was refused all the
+    same, its sentence blaming whichever key the reader chose; and the Types tab asks a plan of a
+    row's own value the moment the row is selected. A change is refused where it brings the entry
+    a refusal it did not carry: one leaving the entry's own as it was is planned, and so is one
+    mending it."""
+
+    TYPE_IN_FILE = "types[0]"
+
+    @pytest.fixture
+    def wide(self, tmp_path: Path) -> Index:
+        doubled = {"kind": "linear", "factor": 2}
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "types.ddd.json"),
+                "types.ddd.json": types(
+                    scalar_type("Wide_t", "float64", unit="rpm", conversion=doubled)
+                ),
+            },
+        )
+        return index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
+
+    @pytest.mark.parametrize(
+        ("key", "raw"),
+        [
+            ("unit", '"Nm"'),
+            ("description", '"doubled"'),
+            ("limits", '{"min": 0, "max": 1}'),
+            ("conversion", '{"kind": "linear", "factor": 0.5}'),
+        ],
+        ids=["its-unit", "its-description", "its-limits", "a-conversion-mending-it"],
+    )
+    def test_a_change_that_brings_no_refusal_of_its_own_is_planned(
+        self, wide, cache, key, raw
+    ) -> None:
+        (edit,) = set_key(wide, "Wide_t", key, raw, cache).edits
+        assert [(o.op, o.pointer, o.raw) for o in edit.operations] == [
+            ("set", f"{self.TYPE_IN_FILE}.{key}", raw)
+        ]
+
+    @pytest.mark.parametrize("key", ["unit", "conversion"])
+    def test_a_row_s_own_value_merely_asked_is_planned(self, wide, cache, tmp_path, key) -> None:
+        """What the Types tab asks the moment a row is selected, the conversion's among them:
+        the value the file holds, which leaves the entry's refusal as it was."""
+        own = read(tmp_path / "types.ddd.json", {}).raw_at(f"{self.TYPE_IN_FILE}.{key}")
+        assert own is not None
+        assert set_key(wide, "Wide_t", key, own, cache).edits
+
+    def test_a_datatype_bringing_a_refusal_of_its_own_is_refused_naming_it(
+        self, wide, cache
+    ) -> None:
+        with pytest.raises(TypeRefusalError) as refused:
+            set_key(wide, "Wide_t", "datatype", '"uint7"', cache)
+        assert (refused.value.code, refused.value.message) == (
+            "invalid",
+            "the type 'Wide_t' in types.ddd.json would not load with that datatype: Input should "
+            "be 'boolean', 'uint8', 'sint8', 'uint16', 'sint16', 'uint32', 'sint32', 'uint64', "
+            "'sint64', 'float32' or 'float64'",
         )
 
 

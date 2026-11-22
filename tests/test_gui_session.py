@@ -2325,6 +2325,37 @@ class TestWhatThePollWatches:
         assert session.poll() is True
         assert capsys.readouterr().err.splitlines() == [line]
 
+    def test_a_record_refused_again_for_another_reason_is_told_again(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """14:M11. The line says why the record is ignored, so the same record refused for
+        another reason, with no mending between, is a new line."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        project_file = tmp_path / "p.ddd.json"
+        record = build_record(tmp_path, project_file, format=99).resolve()
+        session = opened_and_settled(project_file)
+        first = capsys.readouterr().err.splitlines()
+        assert len(first) == 1 and "format 99" in first[0]
+        build_record(tmp_path, project_file, severity=["nonesuch"])
+        component_file = tmp_path / "a.ddd.json"
+        component_file.write_text(
+            component_file.read_text(encoding="utf-8").replace('"rpm"', '"Hz"'), encoding="utf-8"
+        )
+        assert session.poll() is True
+        assert session.revision is not None and len(session.revision.refused) == 1
+        refused, reason = session.revision.refused[0]
+        assert refused == record and "format 99" not in reason
+        assert capsys.readouterr().err.splitlines() == [
+            f"ddd gui: {record}: {reason}; this record is ignored, so its severities apply to "
+            "no analysis"
+        ]
+
     def test_a_refused_record_s_line_that_cannot_be_printed_ends_nothing(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

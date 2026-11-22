@@ -1083,10 +1083,15 @@ class TestWhatAnEditMayPost:
         text = flattened(PAGES["docs/developer_documentation.rst"])
         assert (
             "The ``chain`` shape's, which these runs leave out, is 4,213,186 bytes at 100,000 "
-            "declarations"
+            "declarations clean and 4,706,936 findings-heavy"
         ) in text
         assert (
-            f"held, as each of theirs is, by the {EDIT_BODY:,} bytes ``POST /api/edit`` takes"
+            "The most the generator makes at any density of findings is the chain shape's at "
+            "``--unread 0.625`` or ``0.875``, 4,725,352 bytes"
+        ) in text
+        assert (
+            f"Each is held, as the runs' bodies are, by the {EDIT_BODY:,} bytes ``POST /api/edit`` "
+            "takes"
         ) in text
 
 

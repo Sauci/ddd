@@ -96,16 +96,20 @@ few dozen bytes."""
 
 EDIT_BODY: Final = 8 * 1024 * 1024
 """The largest body ``POST /api/edit`` accepts, eight times :data:`MAX_BODY`: an Apply posts every
-change of its plan, each file's path, fingerprint and operations (15:I4). Every shape the
+change of its plan, each file's path, fingerprint and operations (15:I4). Every project the
 project's own generator makes (``tools/generate_project.py``) fits under it at 100,000
-declarations, measured over all four renaming the unit stated in the most files, as the
-benchmark's applied rename does (``tools/bench_gui.py``): up to 1,948,716 bytes from the
-``mixed``, ``large`` and ``many`` shapes, and the most from the ``chain`` one, 50,000 components of
-two declarations each, 4,213,186 bytes over 12,502 files whose paths take 1,875,288 of them, 138
-to 150 bytes each. Within this limit each of those paths could be 483 bytes long, (8,388,608 -
-4,213,186 + 1,875,288) / 12,502: past the 259 bytes a stock Windows' longest path, 259
-characters, takes in ASCII, though not the 777 of one of three-byte characters, which each of
-the ``many`` shape's 3,334 paths could take, 2,109 bytes long.
+declarations, whatever its shape and its density of findings, measured renaming the unit stated
+in the most files, as the benchmark's applied rename does (``tools/bench_gui.py``), at the
+densities that reach the most declarations of it. The ``mixed``, ``large`` and ``many`` shapes post
+up to 1,948,716 bytes clean or findings-heavy and 2,352,764 at the most, ``many`` at
+``--unread 0.375``. The ``chain`` one, 50,000 components of two declarations each, posts the most:
+4,213,186 bytes clean, 4,706,936 findings-heavy, and 4,725,352 at ``--unread 0.625`` or
+``0.875``, which reach as many declarations and rename ``Nm``, a character longer than the ``A``
+the others rename: 18,751 operations over 12,501 files, their paths taking 1,875,138 bytes, 138
+to 150 each. Within this limit each of those paths could be 443 bytes long, (8,388,608 -
+4,725,352 + 1,875,138) / 12,501: past the 259 bytes a stock Windows' longest path, 259
+characters, takes in ASCII, though not the 777 of one of three-byte characters, which each of the
+``many`` shape's 3,334 paths could take, 1,959 bytes long at its most.
 
 Read only once a request has shown this server's token and its own origin (:meth:`_Handler._route`):
 every other body is read up to :data:`MAX_BODY`, ``POST /open``'s among them, and every body

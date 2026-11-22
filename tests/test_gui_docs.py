@@ -238,9 +238,9 @@ def test_the_page_says_how_much_an_edit_may_post_once_it_has_shown_the_token() -
         "posts every change of its plan"
     ) in _prose()
     assert (
-        "up to 4,213,186 bytes to rename a unit across a generated project of 100,000 "
-        "declarations, measured over each of the generator's four shapes, the chain shape's the "
-        "most"
+        "up to 4,725,352 bytes to rename a unit across a generated project of 100,000 "
+        "declarations, measured over each of the generator's four shapes and its densities of "
+        "findings, the chain shape's the most"
     ) in _prose()
     assert (
         "but only once it has shown the token and this server's own origin: refused before "

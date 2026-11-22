@@ -1323,10 +1323,12 @@ command line answered in 9 to 17 ms and in 1 to 51 ms, within its second. The re
 1,211 to 1,311 ms and 3,459 to 4,073 ms, and its Apply 2,242 to 2,388 ms and 6,635 to 7,261 ms, each
 missing its budget. The applied rename's body was 505,526 to 647,308 bytes at 35,000 declarations
 and 1,029,010 to 1,948,716 bytes at 100,000, the most from the ``mixed`` shape, findings-heavy.
-The ``chain`` shape's, which these runs leave out, is 4,213,186 bytes at 100,000 declarations, its
-rename changing 12,502 files, replayed with the benchmark's own steps up to the body: the largest
-of the generator's four shapes, and held, as each of theirs is, by the 8,388,608 bytes
-``POST /api/edit`` takes (``ddd.gui.server.EDIT_BODY``).
+The ``chain`` shape's, which these runs leave out, is 4,213,186 bytes at 100,000 declarations clean
+and 4,706,936 findings-heavy, its rename changing 12,502 files, replayed with the benchmark's own
+steps up to the body. The most the generator makes at any density of findings is the chain shape's
+at ``--unread 0.625`` or ``0.875``, 4,725,352 bytes, where the unit renamed is ``Nm`` rather than
+``A``; the ``many`` shape's most is 2,352,764 bytes, at ``--unread 0.375``. Each is held, as the
+runs' bodies are, by the 8,388,608 bytes ``POST /api/edit`` takes (``ddd.gui.server.EDIT_BODY``).
 
 The page half needs the pages built first, and a channel
 naming an installed browser: ``cd gui && npm run build && PLAYWRIGHT_CHANNEL=chrome npm run

@@ -11474,16 +11474,19 @@ class TestATypeAndWhatItFixesAreOneThing:
 
 class TestTheLinesCountEachStatementOnce:
     """14:M1, decision 14.3. A disagreement is filed on each of the files it concerns, and the
-    line above the Findings tab's table counted it on each: its totals were not ``ddd check``'s,
-    and no page said they differ. The lines count each finding once now, the tables still holding
-    it on each file, and the command page says so, on its gui row."""
+    line above the Findings tab's table counted it on each, as the Compare tab's did a baseline's:
+    their totals were not the commands', and no page said they differ. Every line above a table of
+    findings counts each finding once now, the tables still holding it on each file, and the
+    command page says so, on its gui row."""
 
     def test_the_command_page_says_a_disagreement_is_counted_once(self) -> None:
+        said = flattened(COMMAND_LINE_INTERFACE)
         assert (
-            "The Findings tab lists a disagreement on each file it concerns, as the component "
-            "table counts it on each, and the line above either table counts it once, as ``ddd "
-            "check`` does."
-        ) in flattened(COMMAND_LINE_INTERFACE)
+            "The Findings and Compare tabs list a disagreement on each file it concerns, as the "
+            "component table counts it on each, and the line above each of the three tables "
+            "counts it once, as ``ddd check`` and ``ddd compare`` do."
+        ) in said
+        assert "the line above either table" not in said
 
 
 class TestLimitsAreOneValueExactly:

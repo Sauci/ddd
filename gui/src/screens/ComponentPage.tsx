@@ -11,6 +11,7 @@ import {
   declarationKey,
   declarationsShown,
   filterLine,
+  filterOn,
   tableDrawn,
 } from "../lib/filter";
 import { leadsElsewhere, routeHref, routeOf } from "../lib/findings";
@@ -79,9 +80,9 @@ export function ComponentPage({
   const [adding, setAdding] = useState(false);
   if (undeclared !== null && undeclared.file !== file) setUndeclared(null);
   // What the filter above the table holds, and the component it was typed on: read as nothing on
-  // another's page.
+  // another's page (`filterOn`).
   const [filtering, setFiltering] = useState({ file, text: "" });
-  const filter = filtering.file === file ? filtering.text : "";
+  const filter = filterOn(filtering, file);
   const content = useQuery({
     queryKey: ["file", file, state.revision],
     queryFn: () => getFile(file),

@@ -30,6 +30,14 @@ export function filterText(typed: string): string {
   return typed.trim();
 }
 
+/** What a component page's filter holds (16:I14): the text typed into it (`filtering`), on the
+ * page of the component it was typed on, and nothing on another's - the page stays drawn from one
+ * component to the next, a finding's link or the go-to, and each component starts with no filter
+ * of its own. */
+export function filterOn(filtering: { file: string; text: string }, file: string): string {
+  return filtering.file === file ? filtering.text : "";
+}
+
 /** The rows a filter leaves, in their order: each one of whose texts holds what is typed, whatever
  * its case; and every row while nothing is typed - the very list, so that a table handed it draws
  * as it did. */

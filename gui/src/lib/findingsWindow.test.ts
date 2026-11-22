@@ -15,6 +15,7 @@ import {
   pendingKeys,
   type RevisionWindow,
   ROW_HEIGHT,
+  scrolledTop,
   spacersOf,
   spanOf,
   windowLine,
@@ -209,6 +210,21 @@ describe("the rows nobody can select", () => {
     const rows = windowRows({ first: 98, last: 102 }, new Map([[0, page(0)]]));
     expect(pendingKeys(rows)).toEqual(["pending-100", "pending-101"]);
     expect(pendingKeys(windowRows({ first: 0, last: 3 }, new Map([[0, page(0)]])))).toEqual([]);
+  });
+});
+
+describe("where the box stands for the listing asked", () => {
+  test("where it was scrolled to, under the very text asked", () => {
+    expect(scrolledTop({ text: "c00500", top: 990 }, "c00500")).toBe(990);
+    expect(scrolledTop({ text: "", top: 824_967 }, "")).toBe(824_967);
+  });
+
+  test("at its top for a text newly asked, whose table is drawn anew", () => {
+    // Scrolled to the last of 25,000 findings, then filtered: the listing starts at its first row.
+    expect(scrolledTop({ text: "", top: 824_967 }, "c00500")).toBe(0);
+    // And back to every finding, or on to another text.
+    expect(scrolledTop({ text: "c00500", top: 990 }, "")).toBe(0);
+    expect(scrolledTop({ text: "c00500", top: 990 }, "missing-id")).toBe(0);
   });
 });
 

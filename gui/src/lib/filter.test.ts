@@ -9,6 +9,7 @@ import {
   declarationsShown,
   FINDINGS,
   filterLine,
+  filterOn,
   filterText,
   PLACES,
   placeKey,
@@ -50,6 +51,18 @@ describe("what a filter asks for", () => {
     expect(filterText("  C00500 ")).toBe("C00500");
     expect(filterText("Value A")).toBe("Value A");
     expect(filterText("   ")).toBe("");
+  });
+});
+
+describe("what a component page's filter holds", () => {
+  const typed = { file: "/work/demo/components/controller.ddd.json", text: "Value" };
+
+  test("the text typed on that component's page", () => {
+    expect(filterOn(typed, "/work/demo/components/controller.ddd.json")).toBe("Value");
+  });
+
+  test("nothing on another component's page, the page staying drawn from one to the next", () => {
+    expect(filterOn(typed, "/work/demo/components/sensor_hub.ddd.json")).toBe("");
   });
 });
 

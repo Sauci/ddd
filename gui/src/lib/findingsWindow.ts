@@ -124,6 +124,14 @@ export function keeps(index: number, scrollTop: number, height: number): boolean
   return span.first <= index && index < span.last;
 }
 
+/** Where the Findings tab's box stands for the listing asked under `asking`, the filter's text
+ * (16:I14): where it was last scrolled to under that very text (`view`), and at its top for a text
+ * newly asked, whose table is drawn anew - so that a filter typed with the box scrolled far down
+ * starts at its first row, not at the place of rows the listing before it had. */
+export function scrolledTop(view: { text: string; top: number }, asking: string): number {
+  return view.text === asking ? view.top : 0;
+}
+
 /** One listing's window: which revision it is of, and the filter's text it was asked under - `""`
  * where none is typed (16:I14) - how many rows its table has in all (`listingTotal`, `null` while
  * a filtered listing's first page has not come), how many its revision files unfiltered - every

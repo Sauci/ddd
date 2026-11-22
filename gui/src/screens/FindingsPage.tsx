@@ -33,6 +33,7 @@ import {
   listingTotal,
   pageQuery,
   pagesOf,
+  scrolledTop,
   spacersOf,
   spanOf,
   windowLine,
@@ -81,13 +82,13 @@ export function FindingsPage({ state, stopped, onOpen }: Props) {
   const asking = useDebounced(filterText(typed));
   // Where the box is scrolled to and how tall it is, and the filter it was scrolled under: at the
   // top and one box high, until the box says otherwise - and at the top again for a filter newly
-  // asked, whose table is drawn anew (`key`, below).
+  // asked, whose table is drawn anew (`scrolledTop`, and `key` below).
   const [view, setView] = useState({ text: "", top: 0, height: BOX_HEIGHT });
   const onScroll = useCallback(
     (top: number, height: number) => setView({ text: asking, top, height }),
     [asking],
   );
-  const top = view.text === asking ? view.top : 0;
+  const top = scrolledTop(view, asking);
   // A filtered listing's first page, which says how many rows the listing has: asked as soon as the
   // filter is, whatever the box covers - the same query as the window's own first page.
   const head = useQuery({

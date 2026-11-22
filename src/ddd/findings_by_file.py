@@ -10,6 +10,12 @@ spec's section 2 probe: 1,200 components, 66,005 findings, about two a declarati
 here once, a question reads only the findings of the files it is about, and gets them in the
 order they were given - the revision's own - so that an answer asked this way is the answer asked
 of them all.
+
+One finding about a name is shown on a file none of the name's places is in: the loader's refusal
+of a later entry repeating a name, shown on that entry's file, which no index records, the
+analysis keeping nothing of it - and naming the first entry by a note. So the findings are grouped
+by the place each of their notes names too, once, as they are by file
+(:meth:`FindingsByFile.noting`).
 """
 
 from __future__ import annotations
@@ -26,8 +32,9 @@ type Pair = tuple[Path, Diagnostic]
 
 class FindingsByFile:
     """The findings of one analysis, each with the file it is shown on, grouped by that file
-    resolved: each distinct file resolved once, however many findings it carries - or not at all,
-    where ``resolved`` says already what it resolves to.
+    resolved, and by the place each of their notes names: each distinct file resolved once,
+    however many findings it carries or notes name it - or not at all, where ``resolved`` says
+    already what it resolves to.
 
     ``resolved`` is what each of some paths is known to resolve to: a revision's own record, made
     by the analysis (:attr:`ddd.gui.session.Revision.resolved_paths`). Every path asked about -
@@ -45,14 +52,28 @@ class FindingsByFile:
             known = resolved
         self._known = known
         seen: dict[Path, Path] = {}
-        grouped: dict[Path, list[int]] = {}
-        for index, (file, _) in enumerate(self._pairs):
-            key = seen.get(file)
+
+        def once(path: Path) -> Path:
+            """``path`` resolved, each spelling of it once however often it is named."""
+            key = seen.get(path)
             if key is None:
-                key = self.resolve(file)
-                seen[file] = key
-            grouped.setdefault(key, []).append(index)
+                key = self.resolve(path)
+                seen[path] = key
+            return key
+
+        grouped: dict[Path, list[int]] = {}
+        noted: dict[tuple[Path, str], list[int]] = {}
+        for index, (file, found) in enumerate(self._pairs):
+            grouped.setdefault(once(file), []).append(index)
+            for _, note in found.notes:
+                if note is None:
+                    continue
+                held = noted.setdefault((once(note.path), note.pointer), [])
+                # Once however many of its notes name the place: they are listed in order.
+                if not held or held[-1] != index:
+                    held.append(index)
         self._grouped = {key: tuple(indexes) for key, indexes in grouped.items()}
+        self._noted = {place: tuple(indexes) for place, indexes in noted.items()}
 
     def __iter__(self) -> Iterator[Pair]:
         """Every finding, in the order given."""
@@ -78,6 +99,14 @@ class FindingsByFile:
         """Where in the order given the findings shown on ``path`` stand, however it is spelled:
         what a page of one file's findings is read from."""
         return self._grouped.get(self.resolve(path), ())
+
+    def noting(self, path: Path, pointer: str) -> tuple[Pair, ...]:
+        """The findings a note of which names ``pointer`` of ``path``, however the file is
+        spelled, each once, in the order given: what ties a finding to a place it is not shown on,
+        as the loader's refusal of a later entry repeating a name names the first entry."""
+        return tuple(
+            self._pairs[index] for index in self._noted.get((self.resolve(path), pointer), ())
+        )
 
     def on_any(self, paths: Iterable[Path]) -> list[Pair]:
         """The findings shown on any of ``paths``, each once, in the order given - never in the

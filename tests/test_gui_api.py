@@ -1969,6 +1969,101 @@ def every_severity(tmp_path: Path, *, two_builds: bool = False) -> Api:
     return Api(session, root / "demo.ddd.json", wait_seconds=0.05)
 
 
+PANEL_ROUTES: Final = {
+    "variable": "/api/variable",
+    "values": "/api/values",
+    "unit": "/api/unit",
+    "type": "/api/type",
+    "constant": "/api/constant",
+    "section": "/api/section",
+    "raster": "/api/raster",
+}
+"""The route of the api each kind of a finding's route opens its panel from, by ``?name=``: what
+the panel lists is that answer's ``findings``."""
+
+REPEATED: Final = {
+    "constants": ({"name": "CELLS", "value": 4}, {"name": "CELLS", "value": 5}),
+    "sections": (
+        {"section": ".calib", "access": "read-only", "alignment": 4},
+        {"section": ".calib", "access": "read-write", "alignment": 8},
+    ),
+    "rasters": ({"raster": "10ms", "event": 1}, {"raster": "10ms", "event": 2}),
+}
+"""A name each vocabulary declares twice: the loader refuses the second entry as repeating the
+first."""
+
+
+class TestAFindingLeadsToAPanelThatListsIt:
+    """14:M8: the panel a finding leads to lists it - the copy pressed, at its own file and
+    place, not another copy of it, or nothing."""
+
+    @staticmethod
+    def unlisted(api: Api) -> list[tuple[str, str, str]]:
+        """Each finding of the revision whose route opens a panel that does not list it, by its
+        file's name, its place and its check - failing where no finding opens a panel at all,
+        which no panel could fail."""
+        unlisted: list[tuple[str, str, str]] = []
+        asked = 0
+        for finding in every_finding(api):
+            route = finding["route"]
+            if route is None or route["kind"] not in PANEL_ROUTES:
+                continue
+            asked += 1
+            panel = get(api, PANEL_ROUTES[route["kind"]], name=route["name"])
+            assert panel.status == 200, (route, panel.body)
+            listed = {(f["file"], f["pointer"], f["check"]) for f in panel.body["findings"]}
+            if (finding["file"], finding["pointer"], finding["check"]) not in listed:
+                unlisted.append((Path(finding["file"]).name, finding["pointer"], finding["check"]))
+        assert asked, "no finding of the revision opens a panel"
+        return unlisted
+
+    def test_a_reader_s_init_leads_to_its_variable_s_panel(self, tmp_path: Path) -> None:
+        """The values grid is the producer's, read from another file, and lists nothing filed at
+        a reader's ``init``: the reader's ``consumer-storage`` there leads to the variable's
+        panel, which lists it."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "w.ddd.json", "r.ddd.json"),
+                "w.ddd.json": component("W", declare("output", "Gain", init=3)),
+                "r.ddd.json": component("R", declare("input", "Gain", init=4)),
+            },
+        )
+        assert self.unlisted(api) == []
+        stated = [found for found in every_finding(api) if found["check"] == "consumer-storage"]
+        assert [(Path(found["file"]).name, found["route"]) for found in stated] == [
+            ("r.ddd.json", {"kind": "variable", "name": "Gain"})
+        ]
+
+    @pytest.mark.parametrize("vocabulary", sorted(REPEATED))
+    @pytest.mark.parametrize("apart", [False, True])
+    def test_an_entry_repeating_a_name_leads_to_a_panel_listing_both_copies(
+        self, tmp_path: Path, vocabulary: str, apart: bool
+    ) -> None:
+        """The repetition is filed at the later entry and at the first's own record, where its
+        note points: the later copy led to the first's panel, which listed the other alone, and
+        the row counted one of the two - in one file, or ``apart``, the first in one file and the
+        later in another."""
+        first, later = REPEATED[vocabulary]
+        tree: dict[str, object] = {
+            "p.ddd.json": project("P", "v.ddd.json"),
+            "v.ddd.json": {vocabulary: [first, later]},
+        }
+        if apart:
+            tree = {
+                "p.ddd.json": project("P", "v.ddd.json", "w.ddd.json"),
+                "v.ddd.json": {vocabulary: [first]},
+                "w.ddd.json": {vocabulary: [later]},
+            }
+        api = opened(tmp_path, tree)
+        kind = vocabulary.removesuffix("s")
+        repeated = [found for found in every_finding(api) if found["check"] == f"duplicate-{kind}"]
+        assert len(repeated) == 2
+        assert self.unlisted(api) == []
+        rows = [row for row in get(api, "/api/shared").body["entries"] if row["kind"] == kind]
+        assert [row["findings"] for row in rows] == [2]
+
+
 DEMO_FILES: Final = {
     "controller": "components/controller.ddd.json",
     "user_interface": "components/user_interface.ddd.json",
@@ -7714,7 +7809,11 @@ class TestSection:
         until this part, and `_finding` builds that model for every finding of every request - so
         this panel raised a `pydantic.ValidationError` before a test could reach the assertion,
         exactly as part 13's `constant` nearly shipped. Every other test of this class asks about a
-        section carrying no section-routed finding, which is why only this one catches it."""
+        section carrying no section-routed finding, which is why only this one catches it.
+
+        Both copies are listed, each leading back here (14:M8): the repeat's, filed at the later
+        entry and naming this one by its note, and the one filed again at this entry's own
+        record, where the note points."""
         api = opened(
             tmp_path,
             {
@@ -7728,8 +7827,9 @@ class TestSection:
             },
         )
         body = get(api, "/api/section", name=".calib").body
-        assert [(f["check"], f["route"]) for f in body["findings"]] == [
-            ("duplicate-section", {"kind": "section", "name": ".calib"})
+        assert [(f["check"], f["pointer"], f["route"]) for f in body["findings"]] == [
+            ("duplicate-section", "sections[1]", {"kind": "section", "name": ".calib"}),
+            ("duplicate-section", "sections[0]", {"kind": "section", "name": ".calib"}),
         ]
 
     def test_a_consumers_stray_section_key_is_neither_counted_nor_listed_on_the_section(
@@ -8298,13 +8398,15 @@ class TestRaster:
         test of this class asks about a raster carrying no raster-routed finding, which is why only
         this one catches it.
 
-        The copy the panel lists is the one filed at the *first* entry - `duplicate-raster` is
-        filed at the repeat and again at the entry it repeats - since the index registers the first
-        and `located_on` asks about that one's pointer."""
+        The panel is the *first* entry's, the one the index registers, and lists both copies
+        (14:M8) - `duplicate-raster` is filed at the repeat and again at the entry it repeats: the
+        repeat's, at an entry no place the index records is, by its note naming the first, and the
+        other at the first's own pointer."""
         body = get(opened(tmp_path, DECLARED_TWICE), "/api/raster", name="10ms").body
         assert body["pointer"] == "rasters[0]"
-        assert [(f["check"], f["route"]) for f in body["findings"]] == [
-            ("duplicate-raster", {"kind": "raster", "name": "10ms"})
+        assert [(f["check"], f["pointer"], f["route"]) for f in body["findings"]] == [
+            ("duplicate-raster", "rasters[1]", {"kind": "raster", "name": "10ms"}),
+            ("duplicate-raster", "rasters[0]", {"kind": "raster", "name": "10ms"}),
         ]
 
     def test_an_unknown_raster_leads_to_the_name_the_definition_names(self, tmp_path: Path) -> None:

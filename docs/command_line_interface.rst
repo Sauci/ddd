@@ -598,7 +598,10 @@ The commands
        there by ``dimension-value`` rather than refused: the interface does not invent a rule
        the format itself does not have. A finding
        naming a constant, a section or a raster leads to the tab, a name no file declares
-       landing on the form that declares it.
+       landing on the form that declares it. An entry repeating a name declared before it,
+       which the analysis leaves out, is that name's: the repetition, filed at the entry and
+       again at the first, is listed on that name's panel and counted on its row at both, as
+       the Units tab lists a unit listed twice.
        A file an ``includes`` entry names by a plain path that no file answers is listed in
        ``State.files`` as a file of no kind that did not load, and the description holding the
        entry, which parsed and matched its shape, as one that did: a refusal naming the files that

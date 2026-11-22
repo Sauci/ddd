@@ -22,6 +22,7 @@ from typing import Final, Literal
 from ddd.loading import resolve_path
 from ddd.lsp.edits import WITHIN_DECLARATION
 from ddd.lsp.ranges import Document, read
+from ddd.models.component import Scope
 
 UNIT_CHECKS: Final = frozenset({"unknown-unit", "duplicate-unit"})
 """The checks filed where a unit is written, whose finding leads to that unit's own panel.
@@ -159,11 +160,13 @@ the place the analysis chose on purpose.
 
 Its sibling agrees. ``PRODUCER_KEYS`` gives this check exactly two keys, ``init`` and ``section``;
 the other three entries in that table belong to ``consumer-raster``, ``consumer-identity`` and
-``consumer-extension``, one key each. The ``init`` copy is claimed by :data:`WITHIN_INIT`, which
-opens the values grid - the variable's own screen - so both of this check's keys lead to the
-variable, and a third destination for one of the two would break a pattern that is currently
-whole. ``test_the_same_check_at_its_other_key_opens_that_object_s_values`` is what pins the
-``init`` half, which nothing asserted until the branch's final review asked.
+``consumer-extension``, one key each. The ``init`` copy is a reader's, as every copy of the check
+is, and :data:`WITHIN_INIT` opens the values grid for a producing declaration alone: the grid is
+the producer's, read from another file, and never listed this finding. So it falls through to the
+declaration's own route as the ``section`` copy does, and both of this check's keys lead to the
+variable's panel, which lists every finding under the reader's declaration.
+``test_the_same_check_at_its_other_key_leads_to_the_declaration_too`` is what pins the ``init``
+half.
 
 ``consumer-raster`` is the same rule at the raster's key, and it is here for the counting half
 rather than the routing one. :data:`RASTER_CHECKS` does not name it, so it was already left to the
@@ -190,12 +193,19 @@ says *whose* it is.
 """
 
 WITHIN_INIT: Final = re.compile(r"^(component\.interface\[\d+\])\.definition\.init\b")
-"""A pointer inside a declaration's ``init``: the values grid is what opens on it.
+"""A pointer inside a declaration's ``init``: the values grid is what opens on it, where the
+declaration produces the variable - an output or a local.
 
 Measured: ``init-invalid`` is filed at ``component.interface[0].definition.init`` - the whole
 init, with no element index, because the check folds every value wrong in the same way into
 one finding. So the route names the object and the grid opens; which cell is wrong is not
 something the finding says.
+
+The grid is the producer's: read from the one declaration producing the variable, it lists the
+findings filed at that declaration's ``init`` and no other (:func:`ddd.gui.api._grid_findings`).
+A reader's ``init`` - its ``consumer-storage``, the reader stating what only the producer may, and
+whatever else is filed beside it - leads to the declaration's own route instead, whose variable's
+panel lists every finding under the reader's declaration (14:M8).
 """
 
 
@@ -353,9 +363,13 @@ def route_of(
     within_init = WITHIN_INIT.match(pointer)
     if within_init is not None:
         # Tried ahead of WITHIN_DECLARATION below, which a pointer inside an ``init`` also
-        # matches, being broader: caught here first or the values grid would never open.
-        name = read(path, cache).value_at(f"{within_init.group(1)}.definition.name")
-        return Route("values", name) if isinstance(name, str) else None
+        # matches, being broader: caught here first or the values grid would never open. A
+        # reader's ``init`` falls through to it, the grid being the producer's (WITHIN_INIT).
+        declaration = within_init.group(1)
+        document = read(path, cache)
+        if _produces(document, declaration):
+            name = document.value_at(f"{declaration}.definition.name")
+            return Route("values", name) if isinstance(name, str) else None
     within = WITHIN_DECLARATION.match(pointer)
     if within is None:
         # Somewhere else in a component: its own page is what there is to open.
@@ -364,3 +378,12 @@ def route_of(
     name = read(path, cache).value_at(f"{declaration}.definition.name")
     # The pointer is where the analysis found the declaration; the file may have moved on since.
     return Route("variable", name) if isinstance(name, str) else None
+
+
+def _produces(document: Document, declaration: str) -> bool:
+    """Whether the declaration at ``declaration`` of ``document`` produces what it declares, by
+    the scope its file states now: an ``output`` or a ``local``, as
+    :attr:`ddd.models.component.Scope.is_producer` has it. A scope the file no longer states as
+    one - saved since the analysis - is no producer's."""
+    scope = document.value_at(f"{declaration}.scope")
+    return any(scope == each.value and each.is_producer for each in Scope)

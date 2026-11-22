@@ -75,3 +75,57 @@ def test_a_file_the_record_names_is_never_resolved_again(tmp_path: Path, monkeyp
     assert resolved == []
     assert grouped.positions(spelled) == (0,)
     assert resolved == [spelled]
+
+
+def noted(path: Path, pointer: str, at: Path, there: str) -> Diagnostic:
+    """A finding shown at ``pointer`` of ``path``, with a note naming ``there`` of ``at``."""
+    return Diagnostic(
+        "duplicate-constant",
+        Severity.ERROR,
+        "declared already",
+        Location(path, pointer),
+        notes=(("first declared here", Location(at, there)),),
+    )
+
+
+def test_the_findings_noting_a_place_come_back_however_it_is_spelled(tmp_path: Path) -> None:
+    """What ties a finding to a place it is not shown on: the loader's refusal of a later entry
+    repeating a name is shown on that entry's file, and names the first entry by its note. In the
+    order given, each once however many of its notes name the place, however the place's file is
+    spelled - and none for a place no note names, a note naming no place among them."""
+    (tmp_path / "sub").mkdir()
+    c, w = tmp_path / "c.ddd.json", tmp_path / "w.ddd.json"
+    spelled = tmp_path / "sub" / ".." / "c.ddd.json"
+    twice = Diagnostic(
+        "duplicate-constant",
+        Severity.ERROR,
+        "declared already",
+        Location(w, "constants[1]"),
+        notes=(
+            ("first declared here", Location(spelled, "constants[0]")),
+            ("hint", None),
+            ("and here", Location(c, "constants[0]")),
+        ),
+    )
+    pairs = [
+        (w, noted(w, "constants[0]", c, "constants[0]")),
+        (c, found(c, "constants[0]")),
+        (w, twice),
+        (w, noted(w, "constants[2]", c, "constants[1]")),
+    ]
+    grouped = FindingsByFile(pairs)
+    assert grouped.noting(spelled, "constants[0]") == (pairs[0], pairs[2])
+    assert grouped.noting(c, "constants[1]") == (pairs[3],)
+    assert grouped.noting(c, "constants") == ()
+    assert grouped.noting(w, "constants[0]") == ()
+
+
+def test_a_note_s_file_is_resolved_once_as_a_finding_s_is(tmp_path: Path, monkeypatch) -> None:
+    a, c = tmp_path / "a.ddd.json", tmp_path / "c.ddd.json"
+    resolved: list[Path] = []
+    real = Path.resolve
+    monkeypatch.setattr(
+        Path, "resolve", lambda self, strict=False: resolved.append(self) or real(self, strict)
+    )
+    FindingsByFile([(a, noted(a, str(n), c, "constants[0]")) for n in range(5)])
+    assert resolved == [a, c]

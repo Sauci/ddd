@@ -104,6 +104,12 @@ class Vocabulary:
     name_key: str
     """What the entry calls its name: ``name`` for a constant, ``section``, ``raster``."""
 
+    repeated: str
+    """The check the loader files a later entry under that repeats a name the vocabulary declares
+    already - ``duplicate-constant``, ``duplicate-section``, ``duplicate-raster`` - filed at that
+    entry, of which the analysis keeps nothing, with a note naming the first: the one finding
+    filed where no place the index records is that is the entry's (:func:`located_on`)."""
+
     keys: tuple[str, ...]
     """Every key a reader may change, ``description`` among them, in the order the panel draws
     them."""
@@ -333,6 +339,11 @@ def located_on(
     finding in its panel that routed away from it. That column is what a reader scans for what
     needs attention; a count they can do nothing about is worse than no count.
 
+    And filed at a later entry repeating the name, which the loader refuses with a note naming the
+    first (:func:`_repeats`): the panel the finding leads to is this entry's, the later one's name
+    being this one's, and it lists the finding at both places it is filed - its note's, this
+    entry's own record, being the other - as a unit listed twice is listed (14:M8).
+
     ``resolve`` resolves both paths compared; :func:`entry_findings` passes its findings' own
     (:meth:`ddd.findings_by_file.FindingsByFile.resolve`), which resolves no path a revision's
     analysis resolved already.
@@ -342,9 +353,32 @@ def located_on(
     if found.location is None:
         return False
     wanted = resolve(file)
-    return any(
+    if any(
         _at(place, wanted, found.location.pointer, resolve)
         for place in _places(vocabulary, built, name)
+    ):
+        return True
+    return _repeats(vocabulary, built, name, found, resolve)
+
+
+def _repeats(
+    vocabulary: Vocabulary,
+    built: Index,
+    name: str,
+    found: Diagnostic,
+    resolve: Callable[[Path], Path],
+) -> bool:
+    """Whether ``found`` is the loader's refusal of a later entry repeating ``name``
+    (:attr:`Vocabulary.repeated`), naming by its note the entry the index records: filed at that
+    later entry, of which the analysis keeps nothing, so that no place the index records is it.
+    A name no file declares has no entry to be repeated."""
+    entry = vocabulary.entries(built).get(name)
+    if entry is None or found.check != vocabulary.repeated:
+        return False
+    first = resolve(entry.path)
+    return any(
+        note is not None and note.pointer == entry.pointer and resolve(note.path) == first
+        for _, note in found.notes
     )
 
 
@@ -427,11 +461,17 @@ def entry_findings(
 ) -> list[Pair]:
     """Every finding that entry of ``vocabulary`` owns, in the order given: what
     :func:`located_on` keeps of every finding, asked only of the findings on the files its places
-    are in, which are the only ones it can keep. Every entry asked every finding was
-    O(entries x findings), each asking resolving two paths."""
+    are in, and on the files of the findings naming its own record by a note
+    (:meth:`~ddd.findings_by_file.FindingsByFile.noting`) - a later entry repeating its name is on
+    one of those, and on no file of its places - which are the only ones it can keep. Every entry
+    asked every finding was O(entries x findings), each asking resolving two paths."""
+    files = [place.path for place in _places(vocabulary, built, name)]
+    entry = vocabulary.entries(built).get(name)
+    if entry is not None:
+        files.extend(file for file, _ in findings.noting(entry.path, entry.pointer))
     return [
         (file, found)
-        for file, found in findings.on_any(place.path for place in _places(vocabulary, built, name))
+        for file, found in findings.on_any(files)
         if located_on(vocabulary, built, name, file, found, findings.resolve)
     ]
 
@@ -727,6 +767,7 @@ CONSTANTS: Final = Vocabulary(
     kind=CONSTANT,
     containers=("constants", "component.constants"),
     name_key="name",
+    repeated="duplicate-constant",
     keys=("value", "description"),
     strings=frozenset({"description"}),
     entries=lambda built: built.constants,
@@ -804,6 +845,7 @@ SECTIONS: Final = Vocabulary(
     kind=SECTION,
     containers=("sections",),
     name_key="section",
+    repeated="duplicate-section",
     keys=("access", "alignment", "description"),
     strings=frozenset({"access", "description"}),
     entries=lambda built: built.sections,
@@ -999,6 +1041,7 @@ RASTERS: Final = Vocabulary(
     kind=RASTER,
     containers=("rasters",),
     name_key="raster",
+    repeated="duplicate-raster",
     keys=("event", "cycle", "description"),
     strings=frozenset({"cycle", "description"}),
     entries=lambda built: built.rasters,

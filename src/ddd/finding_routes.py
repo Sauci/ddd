@@ -201,8 +201,8 @@ init, with no element index, because the check folds every value wrong in the sa
 one finding. So the route names the object and the grid opens; which cell is wrong is not
 something the finding says.
 
-The grid is the producer's: read from the one declaration producing the variable, it lists the
-findings filed at that declaration's ``init`` and no other (:func:`ddd.gui.api._grid_findings`).
+The grid is the producers': read from each declaration producing the variable, it lists the
+findings filed at each one's ``init`` and no other (:func:`ddd.gui.api._grid_findings`).
 A reader's ``init`` - its ``consumer-storage``, the reader stating what only the producer may, and
 whatever else is filed beside it - leads to the declaration's own route instead, whose variable's
 panel lists every finding under the reader's declaration (14:M8).

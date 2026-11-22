@@ -2122,6 +2122,25 @@ class TestAFindingLeadsToAPanelThatListsIt:
             ("w.ddd.json", "Other"),
         ]
 
+    def test_a_grid_of_two_producers_lists_the_findings_at_each_one_s_init(
+        self, tmp_path: Path
+    ) -> None:
+        """Both declarations state a wrong ``init``: the grid lists the finding at each, which
+        the rule of the one producing declaration listed none, there being no one."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "w.ddd.json", "v.ddd.json"),
+                "w.ddd.json": component("W", block_of("Gain", 1, 2, 3)),
+                "v.ddd.json": component("V", block_of("Gain", 1, 2, 3, 4)),
+            },
+        )
+        revision, built = analysed(api)
+        grid = get(api, "/api/values", name="Gain").body
+        names = sorted(Path(f["file"]).name for f in grid["findings"])
+        assert names == ["v.ddd.json", "w.ddd.json"]
+        assert grid["findings"] == as_listed(api, filed_at_inits(revision, built, "Gain"))
+
 
 DEMO_FILES: Final = {
     "controller": "components/controller.ddd.json",
@@ -14463,6 +14482,25 @@ def analysed(api: Api) -> tuple[Revision, Index]:
     return revision, revision.index
 
 
+def filed_at_inits(revision: Revision, built: Index, name: str) -> list[Filed]:
+    """The findings a grid lists: those at the ``init`` of each declaration producing ``name``,
+    each at its own file and place."""
+    places = {
+        (site.path.resolve().as_posix(), f"{site.pointer}.init")
+        for site in built.producers.get(name, ())
+    }
+    return [
+        filed
+        for filed in revision.findings
+        if filed.diagnostic.location is not None
+        and (filed.file.resolve().as_posix(), filed.diagnostic.location.pointer) in places
+    ]
+
+
+def block_of(name: str, *init: int) -> dict[str, Any]:
+    return declare("output", name, kind="value_block", dimensions=[2], init=list(init))
+
+
 def as_listed(api: Api, found: Iterable[Filed]) -> list[dict[str, Any]]:
     """Findings as a panel lists them, each with where it leads: what the api answered for the
     findings a predicate kept, before it indexed a revision's findings by file."""
@@ -14628,19 +14666,7 @@ class TestEachAnswerIsEveryFindingAskedAlone:
             reply = get(api, "/api/values", name=name)
             if reply.status != 200:
                 continue
-            grid = grid_of(revision.dictionary, built, name)
-            at = f"{grid.pointer}.definition.init"
-            expected = as_listed(
-                api,
-                [
-                    filed
-                    for filed in revision.findings
-                    if grid.pointer is not None
-                    and filed.file.resolve().as_posix() == grid.file
-                    and filed.diagnostic.location is not None
-                    and filed.diagnostic.location.pointer == at
-                ],
-            )
+            expected = as_listed(api, filed_at_inits(revision, built, name))
             assert reply.body["findings"] == expected, name
             answered += len(expected)
         assert answered

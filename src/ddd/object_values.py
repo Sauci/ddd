@@ -143,8 +143,9 @@ class Grid:
     pointer: str | None
     """The producing declaration's own pointer - ``component.interface[N]`` - paired with
     :attr:`file` and ``None`` for the same reason. A finding about this object's ``init`` is
-    filed at this pointer with ``.definition.init`` appended, which is how
-    :mod:`ddd.gui.api` tells one object's own finding from another's in the same file."""
+    filed at this pointer with ``.definition.init`` appended. Nothing reads it in production:
+    :mod:`ddd.gui.api` takes each producing declaration's place from the index, so that a
+    grid several declarations produce lists the findings at every one's ``init``."""
 
 
 def grid_of(dictionary: DataDictionary, built: Index, name: str) -> Grid:

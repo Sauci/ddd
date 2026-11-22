@@ -66,7 +66,7 @@ export function definitionOf(
   for (const key of keysOf(kind, reply)) {
     const raw = values[key.key];
     if (raw === undefined || raw === "") {
-      if (key.carried[0]?.required === true) return null;
+      if (requires(key)) return null;
       continue;
     }
     try {
@@ -130,6 +130,9 @@ export function declareSentence(
   if (mode === "read") {
     const producer = chosenName(typed, reply.names)?.producer;
     const whose = producer === null || producer === undefined ? "this project" : producer;
+    // The verb follows the scope chosen: reading is what an input does, and the other two write.
+    if (scope === "output") return `Produces ${typed} as ${whose} declares it.`;
+    if (scope === "local") return `Keeps ${typed} to itself as ${whose} declares it.`;
     return `Reads ${typed} as ${whose} declares it.`;
   }
   if (kind === "") return `Choose a kind for ${typed}.`;
@@ -166,9 +169,16 @@ function listed(names: string[]): string {
 /** The label a key's field shows for its committed value, `shortValue`'s own wording - the same
  * idea `labelOfRaw` reads for an existing variable's chooser, adapted for `values`' "absent
  * means unstated" instead of a `VariableReply` to read `null` from: a declaration being drafted
- * has none yet. */
-export function labelOf(key: string, raw: string | undefined): string {
-  return raw === undefined || raw === "" ? "state nothing" : shortValue(key, raw);
+ * has none yet. A key the kind requires, stated nowhere, reads empty rather than "state nothing":
+ * that is a choice the list never held (`stillNeeded`). */
+export function labelOf(key: string, raw: string | undefined, required = false): string {
+  if (raw === undefined || raw === "") return required ? "" : "state nothing";
+  return shortValue(key, raw);
+}
+
+/** Whether a kind requires this key of the declaration (`keysOf`'s first group). */
+export function requires(key: VariableKeyOffer): boolean {
+  return key.carried[0]?.required === true;
 }
 
 /** Whether the text typed into a key's field is not the value the form states for it
@@ -177,8 +187,9 @@ export function keyUnsettled(
   key: string,
   typed: Record<string, string | undefined>,
   values: Record<string, string>,
+  required = false,
 ): boolean {
-  return unsettled(typed[key], labelOf(key, values[key]));
+  return unsettled(typed[key], labelOf(key, values[key], required));
 }
 
 /** Whether any key's field of this kind's form holds text not yet taken: the form then offers no
@@ -190,5 +201,45 @@ export function formUnsettled(
   typed: Record<string, string | undefined>,
   values: Record<string, string>,
 ): boolean {
-  return keysOf(kind, reply).some((key) => keyUnsettled(key.key, typed, values));
+  return keysOf(kind, reply).some((key) => keyUnsettled(key.key, typed, values, requires(key)));
+}
+
+/** The values the form has stated, a value block's rows among them: the rows are folded in under
+ * the one key `definitionOf` reads them through, once every row states something. */
+export function statedValues(
+  values: Record<string, string>,
+  dimensions: string[],
+): Record<string, string> {
+  const raw = dimensionsRaw(dimensions);
+  return raw === null ? values : { ...values, dimensions: raw };
+}
+
+/** The one line saying what a new declaration still needs before the form can add it, `null`
+ * while it needs nothing, or is not one being declared (a name the project already has is read,
+ * a kind is chosen first). It is the reason `definitionOf` returns `null`, said in words: each
+ * key the kind requires and the form leaves unstated, the storage - `datatype` or `typename`,
+ * exactly one - as the one choice it is, and each field holding text not yet taken
+ * (`formUnsettled`), which holds Add back as much. */
+export function stillNeeded(
+  name: string,
+  kind: string,
+  values: Record<string, string>,
+  typed: Record<string, string | undefined>,
+  reply: DeclarableReply,
+): string | null {
+  if (name === "" || kind === "" || chosenName(name, reply.names) !== null) return null;
+  const keys = keysOf(kind, reply);
+  const stated = (key: string) => values[key] !== undefined && values[key] !== "";
+  const needs = keys.filter((key) => requires(key) && !stated(key.key)).map((key) => key.key);
+  const storage = keys.filter((key) => key.key === "datatype" || key.key === "typename");
+  if (storage.length > 0 && !storage.some((key) => stated(key.key))) {
+    needs.push(storage.map((key) => key.key).join(" or "));
+  }
+  const text = keys
+    .filter((key) => keyUnsettled(key.key, typed, values, requires(key)))
+    .map((key) => key.key);
+  const lines: string[] = [];
+  if (needs.length > 0) lines.push(`Still needs ${listed(needs)}.`);
+  if (text.length > 0) lines.push(`Text left in ${listed(text)} is not taken yet.`);
+  return lines.length === 0 ? null : lines.join(" ");
 }

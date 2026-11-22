@@ -11,11 +11,11 @@ import { useDebounced } from "../app/useDebounced";
 import { DeclarePanelView } from "../components/DeclarePanelView";
 import {
   definitionOf,
-  dimensionsRaw,
   followedScope,
   type Mode,
   modeOf,
   scopesOf,
+  statedValues,
 } from "../lib/declarations";
 import { planEdit } from "../lib/projectUnits";
 import { planShown } from "../lib/typing";
@@ -53,9 +53,7 @@ function requestOf(
   // The value block's rows have no chooser of their own (`DeclarePanelView`'s own `dimensions`);
   // folded in here under the one key `definitionOf` reads them through, for whichever kind - if
   // any - actually carries a `dimensions` key.
-  const raw = dimensionsRaw(dimensions);
-  const withDimensions = raw === null ? values : { ...values, dimensions: raw };
-  const definition = definitionOf(typed, kind, withDimensions, reply);
+  const definition = definitionOf(typed, kind, statedValues(values, dimensions), reply);
   return definition === null ? null : { action: "declare", file, scope, definition };
 }
 

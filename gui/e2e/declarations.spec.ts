@@ -97,6 +97,35 @@ test("a new measurement is declared and stamped", async ({ page, gui }) => {
   expect(text).toMatch(/"name": "Pressure",\s*"id": "[0-9a-z]{12}"/);
 });
 
+test("a new declaration says what it still needs, its required field empty until one is stated", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("button", { name: "Add a declaration" }).click();
+  const adding = page.getByRole("complementary", { name: "Add a declaration" });
+  const name = adding.getByRole("combobox", { name: "Name" });
+  await name.fill("BrandNewSignal");
+  await name.press("Enter");
+  const kind = adding.getByRole("combobox", { name: "Kind" });
+  await kind.fill("measurement");
+  await kind.press("Enter");
+  const volatile = adding.getByRole("combobox", { name: "Volatile of BrandNewSignal" });
+  await expect(volatile).toHaveValue("");
+  await expect(adding.getByText("Still needs volatile and datatype or typename.")).toBeVisible();
+  await expect(adding.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+
+  await volatile.fill("false");
+  await volatile.press("Enter");
+  await expect(adding.getByText("Still needs datatype or typename.")).toBeVisible();
+  const datatype = adding.getByRole("combobox", { name: "Datatype of BrandNewSignal" });
+  await datatype.fill("uint16");
+  await datatype.press("Enter");
+  await expect(adding.getByText(/Still needs/)).toHaveCount(0);
+  await expect(adding.getByRole("button", { name: "Apply to 1 file" })).toBeEnabled();
+});
+
 test("text left in a key's field of the form offers no Add, until it is taken", async ({
   page,
   gui,

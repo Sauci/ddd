@@ -14,6 +14,8 @@ import {
   modeOf,
   removalSentence,
   scopesOf,
+  statedValues,
+  stillNeeded,
 } from "./declarations";
 
 function offer(key: string, required: boolean, editor = "none") {
@@ -239,6 +241,15 @@ describe("the sentence that tells reading from declaring", () => {
     );
   });
 
+  test("a listed name's sentence follows the scope chosen, not the verb reading it", () => {
+    expect(declareSentence("Orphan", "", "output", REPLY)).toBe(
+      "Produces Orphan as this project declares it.",
+    );
+    expect(declareSentence("ValueC", "", "local", REPLY)).toBe(
+      "Keeps ValueC to itself as SensorHub declares it.",
+    );
+  });
+
   test("nothing typed asks for a name", () => {
     expect(declareSentence("", "", "input", REPLY)).toBe("Choose a variable, or type a new name.");
   });
@@ -304,8 +315,8 @@ describe("what removing a declaration leaves behind", () => {
 
 describe("text left in a key's field", () => {
   test("a field with no text typed reads its value, and typed text equal to that reads as taken", () => {
-    expect(labelOf("volatile", undefined)).toBe("state nothing");
-    expect(labelOf("volatile", "")).toBe("state nothing");
+    expect(labelOf("unit", undefined)).toBe("state nothing");
+    expect(labelOf("unit", "")).toBe("state nothing");
     expect(labelOf("volatile", "false")).toBe("false");
     expect(keyUnsettled("volatile", {}, { volatile: "false" })).toBe(false);
     expect(keyUnsettled("volatile", { volatile: "false" }, { volatile: "false" })).toBe(false);
@@ -313,7 +324,15 @@ describe("text left in a key's field", () => {
 
   test("typed text that is not what the form states is not taken", () => {
     expect(keyUnsettled("volatile", { volatile: "fal" }, { volatile: "false" })).toBe(true);
-    expect(keyUnsettled("volatile", { volatile: "" }, {})).toBe(true);
+    expect(keyUnsettled("unit", { unit: "" }, {})).toBe(true);
+  });
+
+  test("a required key nothing states reads empty, not a choice the list never held", () => {
+    expect(labelOf("volatile", undefined, true)).toBe("");
+    expect(labelOf("volatile", "", true)).toBe("");
+    expect(labelOf("volatile", "false", true)).toBe("false");
+    expect(keyUnsettled("volatile", { volatile: "" }, {}, true)).toBe(false);
+    expect(keyUnsettled("volatile", { volatile: "fal" }, {}, true)).toBe(true);
   });
 
   test("the form is unsettled while a key it asks for holds such text, and only then", () => {
@@ -322,5 +341,62 @@ describe("text left in a key's field", () => {
     expect(formUnsettled("measurement", REPLY, { volatile: undefined }, {})).toBe(false);
     // A key this kind does not ask for is not in the form.
     expect(formUnsettled("value_block", REPLY, { datatype: "uin" }, {})).toBe(false);
+  });
+});
+
+describe("what the form still needs before it can add", () => {
+  test("a required key left unstated is named, and the storage as the one choice it is", () => {
+    expect(stillNeeded("Pressure", "measurement", {}, {}, REPLY)).toBe(
+      "Still needs volatile and datatype or typename.",
+    );
+  });
+
+  test("a key stated is no longer named", () => {
+    expect(stillNeeded("Pressure", "measurement", { volatile: "false" }, {}, REPLY)).toBe(
+      "Still needs datatype or typename.",
+    );
+    expect(
+      stillNeeded("Pressure", "measurement", { volatile: "false", typename: '"T"' }, {}, REPLY),
+    ).toBeNull();
+    expect(
+      stillNeeded("Pressure", "measurement", { volatile: "false", datatype: '"uint8"' }, {}, REPLY),
+    ).toBeNull();
+  });
+
+  test("a kind with no storage key names only its required keys", () => {
+    expect(stillNeeded("Block", "value_block", {}, {}, REPLY)).toBe(
+      "Still needs dimensions and volatile.",
+    );
+    expect(
+      stillNeeded("Block", "value_block", { dimensions: "[3]", volatile: "true" }, {}, REPLY),
+    ).toBeNull();
+  });
+
+  test("text left in a field is named too, the form holding Add back for it", () => {
+    const stated = { volatile: "false", datatype: '"uint8"' };
+    expect(stillNeeded("Pressure", "measurement", stated, { datatype: "uin" }, REPLY)).toBe(
+      "Text left in datatype is not taken yet.",
+    );
+    expect(
+      stillNeeded("Pressure", "measurement", {}, { volatile: "tr", datatype: "uin" }, REPLY),
+    ).toBe(
+      "Still needs volatile and datatype or typename. Text left in volatile and datatype is not taken yet.",
+    );
+  });
+
+  test("a name read, or no name or kind yet, needs nothing named", () => {
+    expect(stillNeeded("ValueC", "", {}, {}, REPLY)).toBeNull();
+    expect(stillNeeded("ValueC", "measurement", {}, {}, REPLY)).toBeNull();
+    expect(stillNeeded("", "measurement", {}, {}, REPLY)).toBeNull();
+    expect(stillNeeded("Pressure", "", {}, {}, REPLY)).toBeNull();
+    expect(stillNeeded("Pressure", "mystery", {}, {}, REPLY)).toBeNull();
+  });
+
+  test("a value block's rows state its dimensions once every row does", () => {
+    expect(statedValues({ volatile: "true" }, ["3", "N"])).toEqual({
+      volatile: "true",
+      dimensions: '[3,"N"]',
+    });
+    expect(statedValues({ volatile: "true" }, ["3", ""])).toEqual({ volatile: "true" });
   });
 });

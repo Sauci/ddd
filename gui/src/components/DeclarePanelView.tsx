@@ -6,7 +6,10 @@ import {
   keyUnsettled,
   labelOf,
   modeOf,
+  requires,
   scopesOf,
+  statedValues,
+  stillNeeded,
 } from "../lib/declarations";
 import { shownChanges } from "../lib/units";
 import { Button } from "../ui/Button";
@@ -85,6 +88,13 @@ export function DeclarePanelView(props: DeclarePanelViewProps) {
   const scopeChoices = scopesOf(props.typed, reply);
   // Text left in a key's field is no value yet (decision 15.3): no plan and no Add until it is.
   const unsettledForm = formUnsettled(props.kind, reply, props.typed_, props.values);
+  const needs = stillNeeded(
+    props.typed,
+    props.kind,
+    statedValues(props.values, props.dimensions),
+    props.typed_,
+    reply,
+  );
   return (
     <Panel title="Add a declaration" onClose={props.onClose}>
       <div className="declare-fields">
@@ -173,7 +183,9 @@ export function DeclarePanelView(props: DeclarePanelViewProps) {
                   inPlay={NOTHING_IN_PLAY}
                   keyName={key.key}
                   units={NO_UNITS}
-                  typed={props.typed_[key.key] ?? labelOf(key.key, props.values[key.key])}
+                  typed={
+                    props.typed_[key.key] ?? labelOf(key.key, props.values[key.key], requires(key))
+                  }
                   narrow={props.typed_[key.key] ?? ""}
                   onTyped={(text) => props.onTyped_(key.key, text)}
                   onChosen={(raw) => {
@@ -181,7 +193,7 @@ export function DeclarePanelView(props: DeclarePanelViewProps) {
                     props.onTyped_(key.key, undefined);
                   }}
                   onPickerClosed={() => props.onTyped_(key.key, undefined)}
-                  unsettled={keyUnsettled(key.key, props.typed_, props.values)}
+                  unsettled={keyUnsettled(key.key, props.typed_, props.values, requires(key))}
                   range={NO_RANGE}
                   onRange={() => undefined}
                   note={undefined}
@@ -195,6 +207,7 @@ export function DeclarePanelView(props: DeclarePanelViewProps) {
         )}
       </div>
       <p className="consequence">{declareSentence(props.typed, props.kind, props.scope, reply)}</p>
+      {needs !== null && <p className="quiet">{needs}</p>}
       {props.refusal !== null && !unsettledForm && (
         <p className="panel-refusal" role="status">
           {props.refusal}

@@ -1,4 +1,7 @@
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
+import { dump } from "./demo";
 import { expect, test } from "./fixtures";
 
 /**
@@ -210,4 +213,45 @@ test("the keyboard walks past the rows drawn", async ({ page, generatedGui }) =>
   const focused = page.locator('[data-index="60"]');
   await expect.poll(() => withinFindingsWindow(page, focused)).toBe(true);
   await expect(first).toHaveCount(0);
+});
+
+/**
+ * Compare's table of a verdict filing two thousand findings (16:M1): drawn through `LongTable`, as
+ * every long table but the Findings one is, it holds the rows in view, not the 2,000 the reply
+ * carries - every one of which was in the document before - and scrolled to its end it draws the
+ * last of them. The baseline is a dump of the chained project, whose analysis files nothing (the
+ * generated project's 25,000 findings would overflow the dump's captured output), with every unit
+ * it states spelled otherwise: each of its 2,000 objects is then no longer the same object.
+ */
+test("Compare's table draws the rows in view, of a verdict filing two thousand findings", async ({
+  page,
+  chainedGui,
+}) => {
+  dump(chainedGui.directory, "project.ddd.json", "baseline.json");
+  const baseline = join(chainedGui.directory, "baseline.json");
+  const text = readFileSync(baseline, "utf8");
+  writeFileSync(baseline, text.replaceAll('"unit": "', '"unit": "x'), "utf8");
+
+  await page.goto(chainedGui.address);
+  await page.getByRole("link", { name: "Compare" }).click();
+  await page.getByRole("textbox", { name: "Baseline" }).fill("baseline.json");
+  await page.getByRole("button", { name: "Compare" }).click();
+  await expect(page.getByText("2000 findings · 2000 errors")).toBeVisible();
+
+  const table = page.getByRole("grid", { name: "Findings" });
+  await expect(table.getByRole("row", { name: "changed-interface" }).first()).toBeVisible();
+  // The header and the rows of the box's 60vh, with React Aria's margin: 19 rows measured, where
+  // all 2,001 were in the document. The table still tells assistive technology of every row.
+  expect(await table.getByRole("row").count()).toBeLessThan(50);
+  await expect(table).toHaveAttribute("aria-rowcount", "2001");
+
+  // The box is the table itself (`.long`, ui.css): one large wheel takes it to its end.
+  const bounds = await table.boundingBox();
+  if (bounds === null) throw new Error("no table to scroll");
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  await page.mouse.wheel(0, 200_000);
+  const last = table.locator('[aria-rowindex="2001"]');
+  await expect(last).toBeVisible();
+  await expect(last).toContainText("'C01999_O0000' is not the same object any more");
+  expect(await table.getByRole("row").count()).toBeLessThan(50);
 });

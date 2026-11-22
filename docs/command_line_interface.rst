@@ -841,9 +841,9 @@ The commands
        always goes out at once, first time or later. The
        Findings tab asks for its findings a page at a time as the reader scrolls it,
        rather than every one at once, and every long table - the component table, the
-       Types, Units, Shared files and Files tabs' own, a component's own declarations, a
-       unit's own places and a variable's keys - draws only the rows in view, in a box of
-       its own.
+       Types, Units, Shared files, Files and Compare tabs' own, a component's own
+       declarations, a unit's own places and a variable's keys - draws only the rows in view,
+       in a box of its own.
        A build record this DDD cannot use - written by a newer DDD, or naming a check this one
        has not got - applies its severities to no analysis: the start page lists it with its
        reason, as the language server logs one, the state the page reads carries it beside the

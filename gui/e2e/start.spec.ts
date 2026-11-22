@@ -73,13 +73,22 @@ function unreadable(directory: string): void {
  * (`slowAnalyses`). */
 const SLOW = "slow";
 
+/** The file whose presence in the copy's directory holds every analysis of the copy until the
+ * journey takes it away (`slowAnalyses`): a window the journey closes itself, once it has seen
+ * what it waits for, where `SLOW`'s is a few seconds whatever the journey has seen by then. */
+const HELD = "held";
+
+/** The longest an analysis waits on `HELD`, in seconds: far past any stall of a runner, so that a
+ * file a journey failed to take away holds a server no longer than this. */
+const HELD_SECONDS = 60;
+
 /** The demo changed - or the project `description` names, in `directory` - before `ddd gui`
  * starts on it, so that every analysis takes seconds more while a file named `SLOW` lies in
- * `directory`: a project plugin, `slow.py`, whose check sleeps, named in the description's
- * `plugins`. The examples analyse in a few milliseconds, which leaves a journey no moment to see
- * the page between an edit and the analysis that follows it. The journey creates `SLOW` just
- * before the press that edits, so that the analyses `ddd gui` starts with are fast. The plugin
- * reports no finding.
+ * `directory`, and waits while one named `HELD` does: a project plugin, `slow.py`, whose check
+ * sleeps, named in the description's `plugins`. The examples analyse in a few milliseconds, which
+ * leaves a journey no moment to see the page between an edit and the analysis that follows it.
+ * The journey creates either file just before the press that edits or opens, so that the analyses
+ * `ddd gui` starts with are fast. The plugin reports no finding.
  *
  * Not `generatedGui`, whose analysis runs for about a second: the panel of a variable just
  * declared there opens only once the add panel's own reads have answered (`DeclarePanel`'s
@@ -97,6 +106,10 @@ function slowAnalyses(directory: string, description = "demo.ddd.json"): void {
     "def check(context):",
     `    if Path(__file__).with_name("${SLOW}").exists():`,
     "        time.sleep(3)",
+    `    held = Path(__file__).with_name("${HELD}")`,
+    `    deadline = time.monotonic() + ${HELD_SECONDS}`,
+    "    while held.exists() and time.monotonic() < deadline:",
+    "        time.sleep(0.05)",
     "",
     "",
     'PLUGIN = Plugin(name="slow", check=check)',
@@ -512,15 +525,16 @@ test("a project a second page opens is the one the first names, on a component's
   // only the state it follows to name the project by.
   const releaseSession = await held(page, "/api/session");
   const other = await page.context().newPage();
+  const hold = join(started.directory, SECOND, HELD);
   try {
     await other.goto(started.address);
     await other.getByRole("button", { name: "Projects", exact: true }).click();
     const second = other.getByRole("button", { name: /^SecondDevice/ });
     await expect(second).toBeVisible();
-    // From here on SecondDevice's analyses take seconds, the first one opening it starts among
-    // them: the examples analyse in milliseconds, too soon for the page to be seen between.
-    const slow = join(started.directory, SECOND, SLOW);
-    writeFileSync(slow, "");
+    // From here on SecondDevice's analyses wait until the journey takes `HELD` away, the first
+    // one opening it starts among them: the examples analyse in milliseconds, too soon for the
+    // page to be seen between, and a wait of a few seconds is one a stalled runner can outlast.
+    writeFileSync(hold, "");
     await second.click();
     // While that analysis runs, the first page says so where the component's own page stood,
     // under the name of the project the state is of: the state says which from its first answer,
@@ -535,9 +549,9 @@ test("a project a second page opens is the one the first names, on a component's
         })
         .filter({ hasText: "Analysing the project…" }),
     ).toBeVisible();
-    rmSync(slow);
-    releaseSession();
   } finally {
+    // Taken away once the page has been seen, or the journey has failed: the analysis lands now.
+    rmSync(hold, { force: true });
     releaseSession();
     await other.close();
   }

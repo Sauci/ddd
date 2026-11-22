@@ -1061,10 +1061,10 @@ class TestWhoMayAsk:
 
 class TestTheBodyAnEditPosts:
     """An Apply posts every change of its plan as ``POST /api/edit``'s body, each file's path,
-    fingerprint and operations: renaming the unit stated in the most files of a project of 100,000
-    declarations posts up to 1,948,716 bytes, the benchmark's largest applied rename (15:I4). Over
-    the socket, as the page posts it: the benchmark applies through ``Api.handle``, which no limit
-    on a body reaches."""
+    fingerprint and operations: renaming the unit stated in the most files of a generated project
+    of 100,000 declarations, of the mixed, large or many shape, posts up to 1,948,716 bytes, the
+    benchmark's largest applied rename (15:I4). Over the socket, as the page posts it: the
+    benchmark applies through ``Api.handle``, which no limit on a body reaches."""
 
     @staticmethod
     def unit_set(project_file: Path, size: int) -> bytes:

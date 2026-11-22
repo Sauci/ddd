@@ -89,9 +89,10 @@ What it defends against
   which can erase the refusal before the browser reads it. That close follows an answer
   already given, unlike the thirty seconds above, which follows none at all.
   ``POST /api/edit`` alone may promise more, up to 4,194,304 bytes, since an Apply posts
-  every change of its plan - up to 1,948,716 bytes to rename a unit across a generated
-  project of 100,000 declarations - but only once it has shown the token and this server's
-  own origin: refused before that, it is read and drained as any other ``POST`` is.
+  every change of its plan - up to 1,948,716 bytes to rename a unit across the generated
+  projects of 100,000 declarations the benchmark measures, of the mixed, large and many
+  shapes - but only once it has shown the token and this server's own origin: refused
+  before that, it is read and drained as any other ``POST`` is.
   ``POST /open``, which anyone who reaches the port may send without the token, takes at
   most 1,024 bytes - a sign-in body is a few dozen - and a longer one is refused ``413``
   before it is parsed, so no json parser ever runs on a body large or deep enough to

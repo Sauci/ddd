@@ -96,15 +96,15 @@ few dozen bytes."""
 
 EDIT_BODY: Final = 4 * 1024 * 1024
 """The largest body ``POST /api/edit`` accepts, four times :data:`MAX_BODY`: an Apply posts every
-change of its plan, each file's path, fingerprint and operations (15:I4). Renaming the unit stated
-in the most files of a project of 100,000 declarations posts up to 1,948,716 bytes, the
-benchmark's applied rename (``tools/bench_gui.py``), from the ``mixed`` shape, findings-heavy, its
-1,682 paths 138 to 150 bytes long. The ``many`` shape's rename changes the most files of the
-shapes the benchmark runs, 3,334, in 1,852,844 bytes, and within this limit each of its paths
-could be 851 bytes long: past the 777 bytes a stock Windows' longest path takes in UTF-8, 259
-characters of three bytes each. The generator's ``chain`` shape, 50,000 components of two
-declarations each, which no budget names, posts more at 100,000 declarations, 4,213,186 bytes over
-12,502 files, and is refused.
+change of its plan, each file's path, fingerprint and operations (15:I4). The benchmark's applied
+rename (``tools/bench_gui.py``), of the unit stated in the most files, posts up to 1,948,716
+bytes over generated projects of 100,000 declarations in the ``mixed``, ``large`` and ``many``
+shapes: the most from the ``mixed`` one, findings-heavy, its 1,682 paths 138 to 150 bytes long.
+The ``many`` shape's changes the most files of the three, 3,334, in 1,852,844 bytes, and within
+this limit each of its paths could be 851 bytes long: past the 777 bytes a stock Windows' longest
+path takes in UTF-8, 259 characters of three bytes each. The generator's ``chain`` shape, 50,000
+components of two declarations each, which no budget names, posts more at 100,000 declarations,
+4,213,186 bytes over 12,502 files, and is refused.
 
 Read only once a request has shown this server's token and its own origin (:meth:`_Handler._route`):
 every other body is read up to :data:`MAX_BODY`, ``POST /open``'s among them, and every body

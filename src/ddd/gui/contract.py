@@ -1516,7 +1516,9 @@ class ValuesReply(_Frozen):
     exactly one of them, which is a grid that can be read and not changed."""
 
     findings: tuple[Finding, ...]
-    """Every finding filed on the object's own ``init``."""
+    """Every finding filed at the ``init`` of a declaration producing the object - of each one,
+    where several do and ``file`` is ``None`` - which is where a finding at a producer's ``init``
+    leads; a reader's leads to the variable's panel instead."""
 
 
 # --- GET /api/compare ------------------------------------------------------------------------

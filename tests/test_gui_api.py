@@ -2090,6 +2090,38 @@ class TestAFindingLeadsToAPanelThatListsIt:
         rows = [row for row in get(api, "/api/types").body["types"] if row["name"] == "Speed_t"]
         assert [row["findings"] for row in rows] == [2]
 
+    def test_an_init_of_one_of_two_producers_leads_to_a_grid_listing_it(
+        self, tmp_path: Path
+    ) -> None:
+        """A variable two declarations produce has a values grid of no one file, which can be read
+        and not changed, and which listed no finding at all: a finding at either producer's
+        ``init`` led there all the same. The grid lists what is filed at the ``init`` of each
+        declaration producing it - each at its own file and place: ``Other``'s, filed in one
+        producer's file at the place the other producer's declaration has in its own, is not."""
+
+        def block(name: str, *init: int) -> dict[str, Any]:
+            return declare("output", name, kind="value_block", dimensions=[2], init=list(init))
+
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "w.ddd.json", "v.ddd.json"),
+                "w.ddd.json": component("W", block("Other", 1, 2, 3), block("Gain", 1, 2)),
+                "v.ddd.json": component("V", block("Gain", 1, 2, 3)),
+            },
+        )
+        grid = get(api, "/api/values", name="Gain").body
+        assert grid["file"] is None
+        assert [(Path(f["file"]).name, f["pointer"], f["check"]) for f in grid["findings"]] == [
+            ("v.ddd.json", "component.interface[0].definition.init", "init-invalid")
+        ]
+        assert self.unlisted(api) == []
+        invalid = [found for found in every_finding(api) if found["check"] == "init-invalid"]
+        assert sorted((Path(found["file"]).name, found["route"]["name"]) for found in invalid) == [
+            ("v.ddd.json", "Gain"),
+            ("w.ddd.json", "Other"),
+        ]
+
 
 DEMO_FILES: Final = {
     "controller": "components/controller.ddd.json",

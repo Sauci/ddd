@@ -303,3 +303,16 @@ class TestFindingsComeAPageAtATime:
 
     def test_both_are_published_beside_every_other_model(self) -> None:
         assert {"FindingsReply", "ListedFinding"} <= set(contract.__all__)
+
+
+class TestAFindingLeadsToAPanelThatListsIt:
+    """14:M8: what the panels a finding leads to list, which the page's types publish."""
+
+    def test_the_values_grid_lists_the_findings_at_every_producer_s_init(self) -> None:
+        """A grid two declarations produce has no one file and listed nothing, though a finding
+        at either producer's ``init`` leads there."""
+        assert _described("ValuesReply")["findings"] == (
+            "Every finding filed at the ``init`` of a declaration producing the object - of each "
+            "one, where several do and ``file`` is ``None`` - which is where a finding at a "
+            "producer's ``init`` leads; a reader's leads to the variable's panel instead."
+        )

@@ -1615,7 +1615,7 @@ class Api:
                     unshown=grid.unshown,
                     owner=grid.owner,
                     file=grid.file,
-                    findings=_listed(derived, _grid_findings(derived, grid), cache),
+                    findings=_listed(derived, _grid_findings(derived, built, grid), cache),
                 )
             ),
         )
@@ -2473,18 +2473,19 @@ def _listed(
     ]
 
 
-def _grid_findings(derived: Derived, grid: Grid) -> list[Pair]:
-    """The findings about a grid's own ``init``, filed at its declaration's ``definition.init``:
-    asked only of the findings on the file the grid is read from, which is resolved already.
-    None for a grid that not exactly one declaration produces, which has no file and no place of
-    its own to hold one."""
-    if grid.pointer is None or grid.file is None:
-        return []
-    at = f"{grid.pointer}.definition.init"
+def _grid_findings(derived: Derived, built: Index, grid: Grid) -> list[Pair]:
+    """The findings about the ``init`` of each declaration producing a grid's object, filed at its
+    ``definition.init``: asked only of the findings on those declarations' files. Every
+    producer's, not the grid's file's alone: a finding at a producing declaration's ``init`` leads
+    to this grid (:data:`ddd.finding_routes.WITHIN_INIT`), and one that several declarations
+    produce, which has no file of its own and can be read and not changed, listed none of them
+    (14:M8)."""
+    sites = built.producers.get(grid.name, ())
+    places = {(derived.resolve(site.path), f"{site.pointer}.init") for site in sites}
     return [
         (file, found)
-        for file, found in derived.findings.on(Path(grid.file))
-        if found.location is not None and found.location.pointer == at
+        for file, found in derived.findings.on_any(site.path for site in sites)
+        if found.location is not None and (derived.resolve(file), found.location.pointer) in places
     ]
 
 

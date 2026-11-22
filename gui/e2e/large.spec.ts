@@ -515,3 +515,96 @@ test("the masthead's go-to opens a variable on the page of the component produci
   await expect(page.getByRole("heading", { name: "C00500", level: 1 })).toBeVisible();
   await expect(page.getByRole("complementary", { name: "C00500_X0013" })).toBeVisible();
 });
+
+/** The go-to's ask of the server for the names holding `text`, `GET /api/names?text=`. */
+function namesOf(text: string): (url: URL) => boolean {
+  return (url) => url.pathname === "/api/names" && url.searchParams.get("text") === text;
+}
+
+/**
+ * Enter on a name typed faster than its names come (16:I14): the go-to asks for the names of what
+ * is typed once typing pauses, so Enter pressed on `C00530_O0000` before then meets the names of
+ * the first text asked, `C`'s fifty, which hold none of it. Enter is a commit: it asks for the text
+ * at once, and goes once the answer holding the name has come - held here until the page has
+ * asked for it, Enter pressed.
+ */
+test("Enter on a name typed faster than its names come goes to it once they come", async ({
+  page,
+  generatedGui,
+}) => {
+  await page.goto(generatedGui.address);
+  const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+  const asked = page.waitForRequest((request) => namesOf("C00530_O0000")(new URL(request.url())));
+  const release = await held(page, namesOf("C00530_O0000"));
+  try {
+    await goTo.pressSequentially("C00530_O0000");
+    await goTo.press("Enter");
+    await asked;
+    await expect(page.getByRole("heading", { name: "C00530", level: 1 })).toHaveCount(0);
+  } finally {
+    release();
+  }
+  await expect(page).toHaveURL(/\/component\?file=[^&]*c00530\.ddd\.json&variable=C00530_O0000$/);
+  await expect(page.getByRole("heading", { name: "C00530", level: 1 })).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "C00530_O0000" })).toBeVisible();
+  await expect(goTo).toHaveValue("");
+});
+
+/**
+ * Enter asks at once for the names of the text it is pressed on (16:I14), as a commit does,
+ * where they once waited for typing to pause: Escape, pressed right after Enter, ends the text
+ * before any pause, and they have been asked for all the same.
+ */
+test("Enter asks at once for the names of the text it is pressed on", async ({
+  page,
+  generatedGui,
+}) => {
+  await page.goto(generatedGui.address);
+  const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+  const asked = page.waitForRequest((request) => namesOf("C00530_O0000")(new URL(request.url())), {
+    timeout: 5_000,
+  });
+  const release = await held(page, namesOf("C00530_O0000"));
+  try {
+    await goTo.pressSequentially("C00530_O0000");
+    await goTo.press("Enter");
+    await goTo.press("Escape");
+    await expect(goTo).toHaveValue("");
+    await asked;
+  } finally {
+    release();
+  }
+});
+
+/**
+ * Enter on a text no name spells exactly (16:I14) opens the list on the names its answer holds,
+ * where it closed the list and said nothing, the field holding the text as though it had been
+ * taken. `c00530_o0000`, Enter pressed before its names have come, holds `C00530_O0000` in another
+ * case, which the list then offers, and a pick goes to; `nothing like it`, its answer come, still
+ * says that no variable matches once Enter is pressed on it.
+ */
+test("Enter on a text no name spells exactly opens the list on what its answer holds", async ({
+  page,
+  generatedGui,
+}) => {
+  await page.goto(generatedGui.address);
+  const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+  const offered = page
+    .getByRole("listbox")
+    .getByRole("option", { name: "C00530_O0000", exact: true });
+  await goTo.pressSequentially("c00530_o0000");
+  await goTo.press("Enter");
+  await expect(offered).toBeVisible();
+  await expect(goTo).toHaveValue("c00530_o0000");
+  await expect(page.getByRole("heading", { name: "C00530", level: 1 })).toHaveCount(0);
+  await offered.click();
+  await expect(page).toHaveURL(/\/component\?file=[^&]*c00530\.ddd\.json&variable=C00530_O0000$/);
+  await expect(goTo).toHaveValue("");
+
+  const none = page.getByRole("listbox").getByText("no variable matches", { exact: true });
+  await goTo.pressSequentially("nothing like it");
+  await expect(none).toBeVisible();
+  await goTo.press("Enter");
+  await expect(none).toBeVisible();
+  await expect(goTo).toHaveValue("nothing like it");
+});

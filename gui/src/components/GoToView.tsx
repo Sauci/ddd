@@ -16,6 +16,9 @@ export interface GoToViewProps {
   /** Why no name can be listed: the server's refusal, said under the field. */
   note?: string | undefined;
   isDisabled: boolean;
+  /** Opens the list when this changes to a new value: Enter took nothing, and the answer of what
+   * it was pressed on has come (`entered`, lib/goTo.ts). */
+  listing?: number | null;
   /** Opens the list as the field takes the focus, and takes it: a story's, to photograph the list
    * open. */
   opened?: boolean;
@@ -40,6 +43,7 @@ export function GoToView(props: GoToViewProps) {
         note={props.note}
         isDisabled={props.isDisabled}
         autoFocus={props.opened === true ? 1 : null}
+        open={props.listing ?? null}
         menuTrigger={props.opened === true ? "focus" : "input"}
       />
     </div>

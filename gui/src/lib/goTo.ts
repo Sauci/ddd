@@ -66,3 +66,40 @@ export function goToRoute(reply: NamesReply | undefined, name: string): Route | 
   if (named === undefined) return null;
   return { page: "component", file: named.file, variable: named.name };
 }
+
+/** What Enter does on the go-to's text: goes to the name; waits for the text's own answer
+ * (`"ask"`), asked at once; or opens the list on that answer (`"list"`). */
+export type Entered = { go: Route } | "ask" | "list";
+
+/**
+ * What Enter on `name`, the text the go-to holds, does (16:I14). Enter is a commit, which moves at
+ * once (`useDebounced`): it goes to the name where the answer in hand holds it spelled exactly -
+ * `reply`, the text's own answer or an earlier text's, kept listed while the next is asked. Where
+ * it does not, and the text's own answer (`own`) has not come, the text is asked for at once and
+ * Enter waits for its answer; where that answer has come and does not hold it either, the list
+ * opens on what it holds, its names or that none matches. Enter never ends in a closed list over a
+ * field holding a text as though it had been taken. Nothing for a field holding nothing.
+ */
+export function entered(
+  name: string,
+  reply: NamesReply | undefined,
+  own: NamesReply | undefined,
+): Entered | null {
+  if (filterText(name) === "") return null;
+  const route = goToRoute(reply, name);
+  if (route !== null) return { go: route };
+  return own === undefined ? "ask" : "list";
+}
+
+/** The answer of the very text the go-to holds (`typed`), `undefined` until it has come: an answer
+ * is the text's own once it is no earlier text's kept listed while the next is asked
+ * (`placeholder`), and was asked for this text (`asked`, what was last asked for), not one typing
+ * has since gone past. */
+export function ownAnswer(
+  reply: NamesReply | undefined,
+  placeholder: boolean,
+  asked: string,
+  typed: string,
+): NamesReply | undefined {
+  return !placeholder && asked === filterText(typed) ? reply : undefined;
+}

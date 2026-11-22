@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { NamedVariable, NamesReply } from "../api/types";
-import { FINDING_NAMES, GO_TO, goToList, goToRoute, NO_NAME } from "./goTo";
+import { entered, FINDING_NAMES, GO_TO, goToList, goToRoute, NO_NAME, ownAnswer } from "./goTo";
 
 const named = (name: string, component: string, kind = "measurement"): NamedVariable => ({
   name,
@@ -91,5 +91,51 @@ describe("the masthead's go-to", () => {
     expect(goToRoute(REPLY, "C00530")).toBeNull();
     expect(goToRoute(REPLY, "c00530_o0000")).toBeNull();
     expect(goToRoute(undefined, "C00530_O0000")).toBeNull();
+  });
+});
+
+describe("Enter in the masthead's go-to", () => {
+  /** What `GET /api/names` answers of `C`, the first text asked: fifty names, none of C00530. */
+  const FIRST: NamesReply = { revision: 3, total: 20000, names: [named("C00000_O0000", "C00000")] };
+
+  test("goes at once where the answer in hand holds the name, an earlier text's included", () => {
+    const route = {
+      page: "component",
+      file: "C:/work/large/components/c00530.ddd.json",
+      variable: "C00530_O0000",
+    };
+    expect(entered("C00530_O0000", REPLY, REPLY)).toEqual({ go: route });
+    // The answer of `C00530` kept listed while `C00530_O0000`'s own is asked: it holds the name.
+    expect(entered("C00530_O0000", REPLY, undefined)).toEqual({ go: route });
+  });
+
+  test("waits for the text's own answer where the answer in hand is another's, without it", () => {
+    expect(entered("C00530_O0000", FIRST, undefined)).toBe("ask");
+    expect(entered("C00530_O0000", undefined, undefined)).toBe("ask");
+  });
+
+  test("opens the list where the text's own answer does not spell the name, its case included", () => {
+    expect(entered("c00530_o0000", REPLY, REPLY)).toBe("list");
+    const none: NamesReply = { revision: 3, total: 0, names: [] };
+    expect(entered("nothing like it", none, none)).toBe("list");
+  });
+
+  test("does nothing in a field holding nothing", () => {
+    expect(entered("", REPLY, REPLY)).toBeNull();
+    expect(entered("   ", undefined, undefined)).toBeNull();
+  });
+
+  test("takes an answer as the text's own once it is no earlier text's, asked for this text", () => {
+    expect(ownAnswer(REPLY, false, "C00530", "C00530")).toBe(REPLY);
+    // Asked for the text without the white space around it, as the field's text is asked for.
+    expect(ownAnswer(REPLY, false, "C00530", " C00530 ")).toBe(REPLY);
+  });
+
+  test("takes no answer as the text's own while it is an earlier text's, or another text's", () => {
+    // Kept listed while the text's own is asked (TanStack Query's placeholder).
+    expect(ownAnswer(REPLY, true, "C00530", "C00530")).toBeUndefined();
+    // Asked for the text before: typing has not paused since.
+    expect(ownAnswer(REPLY, false, "C0053", "C00530")).toBeUndefined();
+    expect(ownAnswer(undefined, false, "C00530", "C00530")).toBeUndefined();
   });
 });

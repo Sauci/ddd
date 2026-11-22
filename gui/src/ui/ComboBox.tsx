@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   Button as AriaButton,
   ComboBox as AriaComboBox,
   Collection,
+  ComboBoxStateContext,
   Group,
   Header,
   Input,
@@ -75,6 +76,12 @@ interface Props {
    */
   autoFocus?: number | null;
   /**
+   * Open the list when this changes to a new value, as `autoFocus` takes the focus: the go-to's,
+   * once the answer of a text Enter took nothing on has come (`entered`, lib/goTo.ts), so that the
+   * list says what that answer holds where Enter closed it. `null` opens nothing.
+   */
+  open?: number | null;
+  /**
    * What opens the list: typing, ArrowDown or ▾ ("input"), or also the field taking the focus
    * ("focus") - which only a story wants, to photograph the list open. Opened on focus, the list
    * covers what is below the field and hides the rest of the page from assistive technology.
@@ -104,6 +111,7 @@ export function ComboBox({
   empty,
   isDisabled = false,
   autoFocus = null,
+  open = null,
   menuTrigger = "input",
 }: Props) {
   const input = useRef<HTMLInputElement>(null);
@@ -138,6 +146,7 @@ export function ComboBox({
       isDisabled={isDisabled}
     >
       <Label>{label}</Label>
+      <OpensOn request={open} />
       {/* A Group, so that the list is placed against the whole field and as wide as it: without
           one, React Aria measures the input and its button alone. */}
       <Group className="combo-field">
@@ -216,4 +225,21 @@ export function ComboBox({
       </Popover>
     </AriaComboBox>
   );
+}
+
+/**
+ * Opens the list each time `request` changes to a new value (`open`). React Aria's own state, read
+ * inside its ComboBox, is the one way to open a list from outside it; opened as ▾ opens it
+ * ("manual"), whatever `menuTrigger` says while the caller's value is being put back. Before the
+ * page is painted, so that a list Enter closed is never drawn closed in between.
+ */
+function OpensOn({ request }: { request: number | null }) {
+  const state = useContext(ComboBoxStateContext);
+  const opened = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    if (request === null || request === opened.current) return;
+    opened.current = request;
+    state?.open(null, "manual");
+  }, [request, state]);
+  return null;
 }

@@ -242,6 +242,16 @@ def test_the_page_says_how_much_an_edit_may_post_once_it_has_shown_the_token() -
     ) in _prose()
 
 
+def test_the_page_says_the_standard_library_s_refusals_are_drained_before_their_close() -> None:
+    """``send_error``'s drain (12:M7, the plan's *Left open* entry), said beside the shapes the
+    standard library refuses."""
+    assert (
+        "Each of the standard library's refusals closes its connection behind the answer as "
+        "``ddd gui``'s own do, reading and throwing away what still arrives first, so that the "
+        "close is no reset to erase the answer."
+    ) in _prose()
+
+
 def test_the_page_says_a_wait_for_the_state_gives_its_slot_back_once_the_page_has_gone() -> None:
     assert (
         "A wait for the state to change, which the page keeps open, looks every second whether "

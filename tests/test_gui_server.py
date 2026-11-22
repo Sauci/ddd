@@ -2898,8 +2898,9 @@ class TestTheStandardLibrarysLimits:
     headers. Pinned here, each on a connection of its own, so that a server that stopped
     answering them would be caught.
 
-    A refused request is sent only as far as the line it is refused at: a connection closed
-    with bytes it never read is reset, and the answer can be lost with it."""
+    A refused request is sent only as far as the line it is refused at: each refusal's status is
+    what is pinned here, and what follows one is drained before its close, pinned with the
+    standard library's answers (``TestTheStandardLibrarysAnswers``)."""
 
     def test_a_request_line_of_more_than_65536_bytes_is_answered_414(self, server) -> None:
         assert status_of(server, request_line(65537)) == 414
@@ -3007,6 +3008,26 @@ class TestTheStandardLibrarysAnswers:
             "Content-Length": str(len(body)),
         }
         assert f"Error code: {code}".encode("ascii") in body
+
+    @pytest.mark.parametrize("refused", REFUSED)
+    def test_each_refusal_keeps_its_answer_while_more_of_the_request_arrives(
+        self, server, refused
+    ) -> None:
+        """Its answer arrived but not yet read when 64 KiB more of the request are sent: what
+        arrives is taken - drained before the close, as a refusal of ``ddd gui``'s own is (12:M7,
+        the plan's *Left open* entry) - not refused with a reset, and the answer is read whole
+        after it. Closed with them unread, the close is a reset: on Linux one of these sends
+        fails (``BrokenPipeError``), and on Windows it can lose the answer before the browser
+        reads it, as it lost a refusal too long to read before ``ddd gui``'s own were drained."""
+        code, sent = refusals_of(server)[refused]
+        with socket.create_connection(("127.0.0.1", server.port), timeout=10) as connection:
+            connection.sendall(sent)
+            arrived(connection)  # the answer, written before anything after it was read
+            for _ in range(64):
+                connection.sendall(b"x" * 1024)  # taken, where a reset fails it
+            answered = read_to_the_end(connection)
+        assert answered.startswith(f"HTTP/1.1 {code} ".encode("ascii"))
+        assert f"Error code: {code}".encode("ascii") in answered
 
     def test_a_refusal_says_its_reason_in_its_status_line(self, server) -> None:
         status, _, _ = whole_answer(server, b"GET / x HTTP/1.1\r\n")

@@ -108,7 +108,9 @@ What it defends against
   sees them at all: a request line over 65,536 bytes answers ``414``, and a header line
   over 65,536 bytes, or a request carrying 100 header lines or more - the blank line
   that ends them counted - answers ``431``; ninety-nine is the most ``ddd gui`` ever
-  reads.
+  reads. Each of the standard library's refusals closes its connection behind the answer
+  as ``ddd gui``'s own do, reading and throwing away what still arrives first, so that the
+  close is no reset to erase the answer.
 
 * **The address printed, opened as** ``localhost``. When it listens on loopback, as it
   does by default, ``ddd gui`` listens on ``[::1]`` too, on the very same port, and answers

@@ -36,7 +36,9 @@ this one trusts nothing it did not hand out itself:
   1,048,576 bytes of it, rather than left unread; where its length cannot be read this way, the
   connection closes behind the answer instead, draining until the client closes, two seconds
   pass, or 1,048,576 bytes are read, whichever is first. Closing one with bytes still unread
-  resets it on Windows, which can lose the refusal before it reaches the browser.
+  resets it on Windows, which can lose the refusal before it reaches the browser. A request the
+  standard library refuses before this server reads it - ``400``, ``414``, ``431``, ``501`` or
+  ``505`` - is drained the same way behind its answer.
 
 The pages are served with an explicit content type per extension. The platform's guess is not
 used: on Windows ``mimetypes`` reads the registry, which can map ``.js`` to ``text/plain``, and a
@@ -87,9 +89,10 @@ ask, short enough that a code a local reader of ``/proc`` raced from the launch 
 for long."""
 
 MAX_BODY: Final = 1024 * 1024
-"""The largest request body accepted but an edit's (:data:`EDIT_BODY`), and the most a body
-refused before it is read is drained by (:meth:`_Handler._send`, :func:`_linger`): a sign-in, an
-open or an undo posts a few dozen bytes."""
+"""The largest request body accepted but an edit's (:data:`EDIT_BODY`), and the most drained
+behind a refusal - of a body refused before it is read, or of what follows a request the standard
+library refused (:meth:`_Handler._send`, :func:`_linger`): a sign-in, an open or an undo posts a
+few dozen bytes."""
 
 EDIT_BODY: Final = 4 * 1024 * 1024
 """The largest body ``POST /api/edit`` accepts, four times :data:`MAX_BODY`: an Apply posts every
@@ -108,9 +111,10 @@ every other body is read up to :data:`MAX_BODY`, ``POST /open``'s among them, an
 refused before it is read is drained by that."""
 
 LINGER_SECONDS: Final = 2.0
-"""How long a connection closed with a body still arriving is drained before its close (P18-31):
-long enough for the client to read the answer it was written first, short enough that a sender
-who never stops holds its thread no longer than that."""
+"""How long a connection closed with a body, or the rest of a refused request, still arriving is
+drained before its close (P18-31, :meth:`_Handler.send_error`): long enough for the client to
+read the answer it was written first, short enough that a sender who never stops holds its
+thread no longer than that."""
 
 OPEN_BODY: Final = 1024
 """The largest body ``POST /open`` accepts, far tighter than :data:`MAX_BODY`: a sign-in body
@@ -326,7 +330,8 @@ def _refuse(request: socket.socket) -> None:
 
 
 def _linger(connection: socket.socket) -> None:
-    """Shut the writing side of a connection closed with a body still arriving, and drain what
+    """Shut the writing side of a connection closed with a body still arriving, or what follows
+    a request the standard library refused (:meth:`_Handler.send_error`), and drain what
     arrives before the close - until the client closes, :data:`LINGER_SECONDS` pass, or
     :data:`MAX_BODY` bytes have been read, whichever is first - so that the close is no reset
     that could throw the answer away before the client reads it (P18-31). The time is counted
@@ -661,7 +666,8 @@ class _Handler(BaseHTTPRequestHandler):
 
     _linger = False
     """Whether this connection is closed with a request's body unread - too long to read, of no
-    length to read by, or sent with a ``Transfer-Encoding``. Its answer is written, its writing
+    length to read by, or sent with a ``Transfer-Encoding`` - or with what follows a request the
+    standard library refused unread (:meth:`send_error`). Its answer is written, its writing
     side shut, and what still arrives drained before the close (:meth:`finish`), so that the
     close is no reset."""
 
@@ -999,7 +1005,13 @@ class _Handler(BaseHTTPRequestHandler):
         the page served, ``nosniff``, no referrer, and ``no-store`` as every refusal here has it
         (12:M7). Nothing is logged, as nothing is by this server (:meth:`log_message`). Never by
         way of :meth:`_send`: the request may be one whose headers were never read, and
-        :meth:`_send` reads them for a ``POST``'s body."""
+        :meth:`_send` reads them for a ``POST``'s body.
+
+        What follows the line it is refused at - the rest of a line too long, the headers after
+        it, a body - is left unread, and drained before the close (:meth:`finish`), as a refusal
+        of this server's own is: closed with it unread, the close is a reset, which can lose the
+        answer before the browser reads it (12:M7, the plan's *Left open* entry)."""
+        self._linger = True
         short, long = self.responses.get(code, ("???", "???"))
         reason = short if message is None else message
         page = self.error_message_format % {
@@ -1022,7 +1034,8 @@ class _Handler(BaseHTTPRequestHandler):
 
     def finish(self) -> None:
         """Close the files the connection was read and written through, then - if its last
-        answer left a body unread - drain it before the server closes it (:func:`_linger`)."""
+        answer left a body, or the rest of a request the standard library refused, unread -
+        drain it before the server closes it (:func:`_linger`)."""
         super().finish()
         if self._linger:
             _linger(self.request)

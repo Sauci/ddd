@@ -103,6 +103,32 @@ TEXT_READER = {
     "r.ddd.json": component("R", declare("input", "V", "uint8", conversion=TEXT, dimensions=[8])),
 }
 
+# A plugin whose check files one finding twice in a run: `ddd check` prints it twice, and the
+# Findings tab lists it once, as `group_findings` keeps one of several equal findings.
+SAID_TWICE_PLUGIN = """
+from ddd.diagnostics import CheckInfo, Severity
+from ddd.plugins import CheckContext, Plugin
+
+
+def check(context: CheckContext) -> None:
+    for _ in range(2):
+        context.bag.add("twice/said", "said twice of the project")
+
+
+PLUGIN = Plugin(
+    name="twice",
+    checks=(CheckInfo("twice/said", Severity.WARNING, "a finding its run files twice"),),
+    check=check,
+)
+"""
+
+# A project naming that plugin, whose one component reports nothing of its own.
+SAID_TWICE = {
+    "tools/twice.py": SAID_TWICE_PLUGIN,
+    "p.ddd.json": project("P", "a.ddd.json", plugins=["tools/twice.py"]),
+    "a.ddd.json": component("A", declare("local", "X", id="aaaaaaaaaaaa")),
+}
+
 # A project whose one file declaring `Torque` was saved half-edited, as an editor saves a file
 # being typed into: it no longer parses, so `Torque` is in no index while the file is like this.
 HALF_SAVED = {
@@ -1710,6 +1736,32 @@ class TestState:
         body = get(every_severity(tmp_path, two_builds=True), "/api/state").body
         assert body["statements"] == {"error": 2, "warning": 1, "info": 2}
         assert body["counts"] == {"error": 4, "warning": 2, "info": 3}
+
+    def test_a_finding_its_run_files_twice_is_two_statements_as_ddd_check_prints_it(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``ddd check`` prints every finding its run files, one filed twice twice, and the state
+        counts it so - though the table lists it once, as an editor underlines it once."""
+        api = opened(tmp_path, SAID_TWICE)
+        assert main(["check", str(tmp_path / "p.ddd.json"), "--format", "json"]) == EXIT_OK
+        checked = json.loads(capsys.readouterr().out)["summary"]
+        body = get(api, "/api/state").body
+        assert body["statements"] == checked == {"error": 0, "warning": 2, "info": 0}
+        assert body["counts"] == {"error": 0, "warning": 1, "info": 0}
+
+    def test_a_finding_two_builds_file_twice_each_is_counted_as_one_of_them_prints_it(
+        self, tmp_path: Path
+    ) -> None:
+        """Two builds alike each print the finding twice: the state counts it as often as the
+        build filing it most often does, twice, and never once per build besides."""
+        write_tree(tmp_path, SAID_TWICE)
+        for image in ("a.elf", "b.elf"):
+            build_record(tmp_path, tmp_path / "p.ddd.json", image=image)
+        session = Session(tmp_path)
+        session.open(tmp_path / "p.ddd.json")
+        body = get(Api(session, tmp_path / "p.ddd.json"), "/api/state").body
+        assert body["statements"] == {"error": 0, "warning": 2, "info": 0}
+        assert body["counts"] == {"error": 0, "warning": 1, "info": 0}
 
     def test_a_disagreement_carries_its_pointer_and_its_note(self, api: Api, root: Path) -> None:
         assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200

@@ -240,9 +240,10 @@ class Revision:
     files: tuple[SourceFile, ...]
     findings: tuple[Filed, ...]
     statements: tuple[int, int, int]
-    """How many errors, warnings and informational findings the analysis made: each once, as
-    ``ddd check`` counts them (decision 14.3), however many files :attr:`findings` files it on -
-    a disagreement on each of the files it concerns - and however many runs made it."""
+    """How many errors, warnings and informational findings the analysis made, as ``ddd check``
+    counts them (decision 14.3): once however many files :attr:`findings` files one on - a
+    disagreement on each of the files it concerns - and as often as the run filing it most often
+    does, however many runs made it (:func:`_statements`)."""
 
     resolved: Resolved | None
     """What the analysis resolved the project to, or ``None`` when it did not get that far.
@@ -1097,16 +1098,22 @@ def _grouped(runs: Sequence[Run], project: Path) -> tuple[dict[Path, list[Diagno
 
 def _statements(runs: Sequence[Run]) -> tuple[int, int, int]:
     """:attr:`Revision.statements` of ``runs``: their findings counted before :func:`_grouped`
-    files each on every file it concerns, and each once however many of the runs made it - the
-    same check, severity, place and words, as :func:`~ddd.lsp.diagnostics.group_findings` keeps
-    one of them (:func:`~ddd.lsp.diagnostics.finding_identity`). A finding two builds grade apart
-    is two, one under each severity, as the rows are.
+    files each on every file it concerns, each run's as ``ddd check`` counts the one it makes -
+    every finding, one its run files twice twice - and each finding of several runs as often as
+    the run filing it most often does: builds alike are one ``ddd check``, and a finding two of
+    them grade apart is two, one under each severity, as the rows are. Equal is the same check,
+    severity, place and words (:func:`~ddd.lsp.diagnostics.finding_identity`), and the rows keep
+    one of several equal findings, even of one run (:func:`~ddd.lsp.diagnostics.group_findings`).
 
     Measured on the Linux development PC over the 125,000 findings of a generated project of
-    100,000 declarations (``--shape mixed --missing-ids 1 --unread 0.5``): 50 to 55 ms, beside the
-    193 to 204 ms the grouping of the same run takes - three runs each."""
-    made = {finding_identity(finding) for run in runs for finding in run.bag}
-    counted = Counter(severity for _, severity, _, _ in made)
+    100,000 declarations (``--shape mixed --missing-ids 1 --unread 0.5``): 53 to 54 ms, beside the
+    197 to 207 ms the grouping of the same run takes - three runs each."""
+    made: Counter[tuple[str, Severity, Location | None, str]] = Counter()
+    for run in runs:
+        made |= Counter(finding_identity(finding) for finding in run.bag)
+    counted: Counter[Severity] = Counter()
+    for (_, severity, _, _), times in made.items():
+        counted[severity] += times
     return (counted[Severity.ERROR], counted[Severity.WARNING], counted[Severity.INFO])
 
 

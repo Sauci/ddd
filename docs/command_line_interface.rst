@@ -761,14 +761,15 @@ The commands
        A plan that would change a file an edit wrote since the revision it is judged
        against was analysed is refused until that edit's own analysis has landed, naming
        the file - ``an edit that wrote pump.ddd.json has not been analysed yet, so this
-       change can be planned once it has`` - and so is a plan pointing at a place such an
-       edit moved, in a file the plan reads, rather than refused ``stale`` as below.
-       Renaming, describing or taking out a unit,
+       change can be planned once it has`` - and so is a plan refused for a place that
+       moved, below, where it reads a file such an edit wrote, whichever file the place is
+       in, rather than refused ``stale``. Renaming, describing or taking out a unit,
        changing or renaming a type, changing, renaming or taking out a constant, a section
-       or a raster, setting an object's values and reading a variable into a component are
-       refused ``stale`` where a file no longer holds, at a place the plan points at, what
-       the analysis found there - the file saved from elsewhere since, an entry or a
-       declaration put in above or taken out - until the project is analysed again, naming
+       or a raster, setting an object's values, reading a variable into a component and
+       describing a declaration are refused ``stale`` where a file no longer holds, at a
+       place the plan points at, what the analysis found there - the file saved from
+       elsewhere since, an entry or a declaration put in above or taken out - until the
+       project is analysed again, naming
        the file - ``units.ddd.json changed since the project was analysed, so renaming
        'rpm' cannot be planned until the project is analysed again`` - rather than made
        where another now stands. While a file of the project did not load, a plan that

@@ -8917,6 +8917,21 @@ class TestAPlanWhosePlaceMovedSinceTheAnalysis:
             "units.ddd.json", "the description of 'rpm' cannot be set"
         )
 
+    def test_a_plan_a_save_moved_waits_while_an_edit_of_another_file_it_reads_waits(
+        self, gated: Callable[[Path], Api], tmp_path: Path
+    ) -> None:
+        """The place moved by a save from elsewhere, while an edit of ``p.ddd.json`` - which a
+        unit's plans read, to find the units files - waits for its analysis: refused
+        ``analysing``, naming the description, whichever file the place is in. The plan asked
+        once that analysis lands is judged against what it read."""
+        root = self.written(tmp_path)
+        asked = {"action": "describe", "unit": "rpm", "description": "revolutions"}
+        api = gated(root / "p.ddd.json")
+        assert get(api, "/api/unit-plan", **asked).status == 200
+        left_waiting(api, touching(root / "p.ddd.json", "project.description"))
+        write_tree(root, {"units.ddd.json": self.MOVED["units.ddd.json"]})
+        assert get(api, "/api/unit-plan", **asked) == waiting_for("p.ddd.json")
+
     def test_a_plan_refused_for_what_it_asks_says_so_while_an_edit_of_a_file_it_read_waits(
         self, gated: Callable[[Path], Api], tmp_path: Path
     ) -> None:

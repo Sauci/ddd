@@ -247,8 +247,8 @@ its next analysis."""
 ANALYSING: Final = "analysing"
 """The refusal of a request the analysis has not caught up with: asked of the open project before
 its first analysis has landed, or a plan changing a file an edit wrote that no analysis has read
-yet, or pointing at a place such a file it reads no longer holds. Answered 409, and answered
-differently once the analysis lands."""
+yet - or refused for a place that moved while it reads such a file, whichever file the place is
+in. Answered 409, and answered differently once the analysis lands."""
 
 REFUSALS: Final = frozenset(
     {STALE, UNREADABLE, INVALID, UNVERIFIED, UNWRITABLE, ANALYSING, GENERATED, PLUGINS}

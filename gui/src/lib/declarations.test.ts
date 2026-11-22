@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { DeclarableReply } from "../api/types";
+import type { DeclarableName, DeclarableReply } from "../api/types";
 import {
   chosenName,
   declareSentence,
@@ -12,6 +12,8 @@ import {
   keyUnsettled,
   labelOf,
   modeOf,
+  NAMES_SHOWN,
+  nameList,
   removalSentence,
   scopesOf,
   statedValues,
@@ -68,6 +70,83 @@ describe("which of the two verbs the name field has landed on", () => {
   test("a name it does not is declared", () => {
     expect(modeOf("Pressure", REPLY.names)).toBe("declare");
     expect(chosenName("Pressure", REPLY.names)).toBeNull();
+  });
+});
+
+describe("the Name list, narrowed by what is typed and drawn to a cap", () => {
+  /** `count` names a generated project could offer, `C00000_O0000` on, a hundred to a component. */
+  function generated(count: number): DeclarableName[] {
+    return Array.from({ length: count }, (_, index) => ({
+      name: `C${String(Math.floor(index / 100)).padStart(5, "0")}_O${String(index % 100).padStart(4, "0")}`,
+      kind: "measurement",
+      producer: `C${String(Math.floor(index / 100)).padStart(5, "0")}`,
+      scopes: ["input"],
+    }));
+  }
+  const labels = (typed: string, names: DeclarableName[]) =>
+    nameList(names, typed).sections.flatMap((section) => section.choices.map((c) => c.label));
+
+  test("every name holding the text is listed, whatever its case, as the unit picker narrows", () => {
+    const names: DeclarableName[] = [
+      ...REPLY.names,
+      { name: "valueD", kind: "measurement", producer: null, scopes: ["input"] },
+    ];
+    expect(labels("VALUE", names)).toEqual(["ValueC", "valueD"]);
+    expect(labels("", names)).toEqual(["ValueC", "Orphan", "valueD"]);
+  });
+
+  // Pinned by the literal, not by the constant, which a test comparing against it would follow.
+  test("fifty at most are drawn, and the line under them says how many more match", () => {
+    expect(NAMES_SHOWN).toBe(50);
+    const list = nameList(generated(120), "");
+    expect(list.sections.flatMap((section) => section.choices)).toHaveLength(50);
+    expect(list.footnote).toBe("70 more names match: type to narrow the list.");
+  });
+
+  test("the cap holds whatever narrows the list, and the line counts what it narrowed to", () => {
+    // `_O0010` to `_O0019` of each of 263 components: 2,630 names, fifty of them drawn.
+    const list = nameList(generated(26300), "_o001");
+    expect(list.sections.flatMap((section) => section.choices)).toHaveLength(50);
+    expect(list.footnote).toBe("2,580 more names match: type to narrow the list.");
+  });
+
+  test("one more is said in the singular", () => {
+    expect(nameList(generated(51), "").footnote).toBe(
+      "1 more name matches: type to narrow the list.",
+    );
+  });
+
+  test("the name the text spells exactly comes first, so the cap never hides it", () => {
+    // Each of the eighty holds "O00", and so does the name spelling it, last in the server's order.
+    const names: DeclarableName[] = [
+      ...generated(80),
+      { name: "O00", kind: "measurement", producer: null, scopes: ["input"] },
+    ];
+    const listed = labels("O00", names);
+    expect(listed).toHaveLength(50);
+    expect(listed.slice(0, 3)).toEqual(["O00", "C00000_O0000", "C00000_O0001"]);
+  });
+
+  test("a list drawing every name that matches says nothing more", () => {
+    expect(nameList(generated(120), "C00001_O001").footnote).toBeUndefined();
+    expect(nameList(generated(50), "").footnote).toBeUndefined();
+  });
+
+  test("no name holding the text lists nothing, and no section is left empty", () => {
+    expect(nameList(generated(120), "Pressure")).toEqual({ sections: [], footnote: undefined });
+  });
+
+  test("each entry is the name, under the project's variables, with its kind and its producer", () => {
+    expect(nameList(REPLY.names, "").sections).toEqual([
+      {
+        id: "names",
+        title: "This project's variables",
+        choices: [
+          { id: "ValueC", label: "ValueC", detail: "measurement from SensorHub" },
+          { id: "Orphan", label: "Orphan", detail: "measurement from no producer" },
+        ],
+      },
+    ]);
   });
 });
 

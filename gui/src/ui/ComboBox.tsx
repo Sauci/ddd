@@ -53,6 +53,13 @@ interface Props {
   onClose: () => void;
   /** A line under the field, such as that a typed unit is not one of the project's. */
   note?: string | undefined;
+  /**
+   * A line at the foot of the open list, under its entries: how many more match than a list drawn
+   * to a cap draws (`nameList`, lib/declarations.ts). The entries then scroll inside the list's
+   * box, above the line, so that the line stays in view however many are drawn: the page scrolled
+   * instead, React Aria would close the list.
+   */
+  footnote?: string | undefined;
   isDisabled?: boolean;
   /**
    * Take the focus when this changes to a new value: a unit cell hands the reader over, even on
@@ -86,6 +93,7 @@ export function ComboBox({
   onEnter,
   onClose,
   note,
+  footnote,
   isDisabled = false,
   autoFocus = null,
   menuTrigger = "input",
@@ -164,7 +172,10 @@ export function ComboBox({
       </Text>
       {/* No offset of React Aria's own: the gap under the field is ui.css's margin alone, the
           chosen mockup's. Measured from the Group, React Aria's 8px would add to it. */}
-      <Popover className="combo-popover" offset={0}>
+      <Popover
+        className={footnote === undefined ? "combo-popover" : "combo-popover footed"}
+        offset={0}
+      >
         <ListBox<ComboSection> className="combo-list">
           {(section) => (
             <ListBoxSection id={section.id}>
@@ -187,6 +198,7 @@ export function ComboBox({
             </ListBoxSection>
           )}
         </ListBox>
+        {footnote !== undefined && <p className="combo-footnote">{footnote}</p>}
       </Popover>
     </AriaComboBox>
   );

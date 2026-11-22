@@ -153,6 +153,41 @@ test("the Findings table scrolled to its end", async ({ page, generatedGui }) =>
 });
 
 /**
+ * The declare form's Name list, over the generated project's names (16:I7): React Aria
+ * draws every entry of a list it is handed, so the list is narrowed by what is typed, as the unit
+ * picker's is, and drawn to fifty (`NAMES_SHOWN`, lib/declarations.ts), its foot saying how many
+ * more match. Opened on C00000 with nothing typed, it draws fifty of every name it could read;
+ * typed key by key, `C00500_O` narrows it to that component's 15 outputs of the name, the first of
+ * them first, all drawn, with nothing more to say.
+ */
+test("the declare form's Name list is narrowed by what is typed, and drawn to a cap", async ({
+  page,
+  generatedGui,
+}) => {
+  await page.goto(generatedGui.address);
+  await page.getByRole("link", { name: "Table" }).click();
+  await page.getByRole("button", { name: "C00000", exact: true }).click();
+  await page.getByRole("button", { name: "Add a declaration" }).click();
+  const adding = page.getByRole("complementary", { name: "Add a declaration" });
+  await adding.getByRole("button", { name: "Show the choices for Name" }).click();
+
+  const options = page.getByRole("listbox").getByRole("option");
+  await expect(options).toHaveCount(50);
+  // The names are the server's, sorted, without the component's own (`declarable`).
+  await expect(options.first()).toHaveAccessibleName("C00001_O0000");
+  // 14,968 names, measured before the cap: every one was drawn.
+  await expect(
+    page.getByText("14,918 more names match: type to narrow the list.", { exact: true }),
+  ).toBeVisible();
+
+  await adding.getByRole("combobox", { name: "Name" }).pressSequentially("C00500_O");
+  await expect(options).toHaveCount(15);
+  await expect(options.first()).toHaveAccessibleName("C00500_O0000");
+  await expect(options.last()).toHaveAccessibleName("C00500_O0014");
+  await expect(page.getByText(/more names? match/)).toHaveCount(0);
+});
+
+/**
  * The keyboard walks past the rows drawn (task 9's window, MARGIN included): a row selected -
  * focusing it, the way React Aria's own table always does - then ArrowDown sixty times, well past
  * both the box's own dozen-odd rows in view and the MARGIN of twenty drawn beyond them

@@ -6,6 +6,7 @@ import {
   keyUnsettled,
   labelOf,
   modeOf,
+  nameList,
   requires,
   scopesOf,
   statedValues,
@@ -95,6 +96,8 @@ export function DeclarePanelView(props: DeclarePanelViewProps) {
     props.typed_,
     reply,
   );
+  // Narrowed by what the field holds and drawn to a cap, with a line saying how many more match.
+  const names = nameList(reply.names, props.typed);
   return (
     <Panel title="Add a declaration" onClose={props.onClose}>
       <div className="declare-fields">
@@ -102,17 +105,8 @@ export function DeclarePanelView(props: DeclarePanelViewProps) {
           label="Name"
           inputValue={props.typed}
           onInputChange={props.onTyped}
-          sections={[
-            {
-              id: "names",
-              title: "This project's variables",
-              choices: reply.names.map((entry) => ({
-                id: entry.name,
-                label: entry.name,
-                detail: `${entry.kind} from ${entry.producer ?? "no producer"}`,
-              })),
-            },
-          ]}
+          sections={names.sections}
+          footnote={names.footnote}
           onPick={props.onTyped}
           onEnter={props.onTyped}
           onClose={() => undefined}

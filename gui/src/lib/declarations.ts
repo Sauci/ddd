@@ -1,5 +1,5 @@
 import type { DeclarableName, DeclarableReply, VariableKeyOffer } from "../api/types";
-import { decimalText, readNumber } from "./numbers";
+import { countText, decimalText, readNumber } from "./numbers";
 import { unsettled } from "./typing";
 import { shortValue } from "./variableKeys";
 
@@ -242,4 +242,62 @@ export function stillNeeded(
   if (needs.length > 0) lines.push(`Still needs ${listed(needs)}.`);
   if (text.length > 0) lines.push(`Text left in ${listed(text)} is not taken yet.`);
   return lines.length === 0 ? null : lines.join(" ");
+}
+
+/** How many names the Name list draws at most. React Aria draws every entry of a list it is
+ * handed, and the list was drawn whole: over the journeys' generated project of 20,000
+ * declarations, C00000's opened on 14,968 names, every one of them in the document, and typing
+ * narrowed none. Past fifty the line under them says how many more match, and to type to narrow
+ * them (`nameList`). */
+export const NAMES_SHOWN = 50;
+
+/** One name the Name list offers: the variable, with its kind and the component producing it. */
+export interface NameChoice {
+  id: string;
+  label: string;
+  detail: string;
+}
+
+/** The Name list's one section, the project's variables. */
+export interface NameSection {
+  id: "names";
+  title: string;
+  choices: NameChoice[];
+}
+
+/** The Name list as the field's text leaves it: what it draws, and the line at its foot. */
+export interface NameList {
+  /** The list's one section, or none where no name holds the text: an empty list closes. */
+  sections: NameSection[];
+  /** How many more names hold the text than the list draws, and to type to narrow them; `undefined`
+   * while it draws every one. */
+  footnote: string | undefined;
+}
+
+/** The declare form's Name list for the text its field holds: every name of the project holding
+ * that text, whatever its case, as the unit picker narrows its own (`pickerSections`,
+ * lib/units.ts), drawn to `NAMES_SHOWN` - the name spelling the text exactly first, so that the cap
+ * never hides the very name typed - with the line saying how many more match. Only the names drawn
+ * are made into entries, so that a key typed costs the page fifty entries, not thousands. */
+export function nameList(names: readonly DeclarableName[], typed: string): NameList {
+  const wanted = typed.toLowerCase();
+  const exact = names.find((entry) => entry.name === typed);
+  const others = names.filter(
+    (entry) => entry !== exact && entry.name.toLowerCase().includes(wanted),
+  );
+  const matching = exact === undefined ? others : [exact, ...others];
+  const choices = matching.slice(0, NAMES_SHOWN).map((entry) => ({
+    id: entry.name,
+    label: entry.name,
+    detail: `${entry.kind} from ${entry.producer ?? "no producer"}`,
+  }));
+  const more = matching.length - choices.length;
+  return {
+    sections:
+      choices.length === 0 ? [] : [{ id: "names", title: "This project's variables", choices }],
+    footnote:
+      more === 0
+        ? undefined
+        : `${countText(more)} more ${more === 1 ? "name matches" : "names match"}: type to narrow the list.`,
+  };
 }

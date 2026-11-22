@@ -372,6 +372,25 @@ tr.changing td {
   color: var(--ink-quiet);
   text-align: right;
 }
+/* A list drawn to a cap, with its footnote (ComboBox.tsx): React Aria bounds the popover's height
+   to the room it has, so the entries scroll in that box and the footnote stays at its foot. Kept to
+   a footed list, so that every other list is drawn as it was. */
+.combo-popover.footed {
+  display: flex;
+  flex-direction: column;
+}
+.combo-popover.footed .combo-list {
+  min-height: 0;
+  overflow-y: auto;
+}
+.combo-footnote {
+  flex: none;
+  margin: 0;
+  padding: var(--space-2) var(--space-3) var(--space-1);
+  border-top: 1px solid var(--rule);
+  color: var(--ink-quiet);
+  font-size: var(--text-small);
+}
 
 /* Table: React Aria's, under the names it gives its own parts when a screen takes it as it
    comes (ui/Table.tsx re-exports it with no className of its own). */

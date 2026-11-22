@@ -180,6 +180,9 @@ def saving_while_analysing(file: Path, unit: bytes) -> Callable[..., Run]:
 NUL_ENTRY = "b\u0000.ddd.json"
 """An include entry naming a path no system lets a program even look at: it holds a NUL byte."""
 
+NUL_PLUGIN = NUL_ENTRY.removesuffix(".ddd.json") + ".py"
+"""A plugin named by a path no system lets a program look at, as :data:`NUL_ENTRY` is."""
+
 
 def unreachable(base: Path) -> Path:
     """A project including a component and :data:`NUL_ENTRY`; returns the project file."""
@@ -2240,6 +2243,51 @@ class TestWhatThePollWatches:
         assert "plugin-invalid" in {filed.diagnostic.check for filed in revision.findings}
         assert revision.watched == (record_beside(tmp_path / "p.ddd.json"),)
         assert Path(json.__file__).resolve() in {file.path for file in revision.files}
+
+    def test_a_nul_in_a_plugin_path_beside_a_schema_error_ends_no_analysis(
+        self, tmp_path: Path
+    ) -> None:
+        """A description that does not validate loads none of the plugins it names, and ``ddd
+        check`` reports the error it does not validate for, ``schema``: so does the analysis,
+        the description naming a plugin by a path holding a NUL beside that error. The watch
+        reads every description's ``plugins``, one that does not validate among them, and
+        resolving that path raised, so that every analysis failed, at every poll."""
+        write_tree(tmp_path, {"p.ddd.json": project("P", plugins=[NUL_PLUGIN], unknown=1)})
+        session = opened_and_settled(tmp_path / "p.ddd.json")
+        assert checks_of(session) == {"schema": Severity.ERROR}
+        assert session.poll() is False
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            OSError(40, "Too many levels of symbolic links"),
+            ValueError("embedded null byte"),
+            RuntimeError("Symlink loop from 'loop.py'"),
+            RecursionError("maximum recursion depth exceeded"),
+        ],
+        ids=["an-os-error", "a-nul", "a-loop-on-python-3.12", "a-chain-of-links-on-python-3.12"],
+    )
+    def test_a_plugin_path_that_cannot_be_resolved_is_not_watched(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error: Exception
+    ) -> None:
+        """Each exception ``Path.resolve`` raises for a path the system will not resolve, as the
+        loader's ``resolve_path`` lists them, one test each, so that none drops out of the watch's
+        guard unseen: the path names no file to watch, and the analysis reports what ``ddd
+        check`` reports of the description, here that it does not validate."""
+        write_tree(tmp_path, {"p.ddd.json": project("P", plugins=["loop.py"], unknown=1)})
+        real = Path.resolve
+
+        def refuse(self: Path, *args: Any, **kwargs: Any) -> Path:
+            if self.name == "loop.py":
+                raise error
+            return real(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "resolve", refuse)
+        session = opened_and_settled(tmp_path / "p.ddd.json")
+        assert checks_of(session) == {"schema": Severity.ERROR}
+        revision = session.revision
+        assert revision is not None
+        assert revision.watched == (record_beside(tmp_path / "p.ddd.json"),)
 
     def test_a_build_record_rewritten_makes_a_new_revision_under_its_severities(
         self, tmp_path: Path

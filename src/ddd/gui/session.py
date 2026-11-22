@@ -1788,7 +1788,13 @@ def _watched(
     list it read, and a description saved since its run read it is a file the revision stamps
     already, whose change makes the next analysis. A plugin named as a module is no path, and is
     passed over: finding its file can import its parents, running code no analysis ran - a
-    description that does not validate loads none of the plugins it names."""
+    description that does not validate loads none of the plugins it names. So is a path the
+    system will not resolve, for each reason ``Path.resolve`` raises that the loader's
+    :func:`~ddd.loading.resolve_path` lists - a NUL in it, on Windows an error its walk does not
+    list, on python 3.12 a loop of links or a chain of them, whose ``RecursionError`` is a
+    ``RuntimeError`` already. It names no file to watch, and raised here, it ended every analysis
+    where a description that does not validate names it, ``ddd check`` reporting that
+    description's error."""
     watched = set(records)
     plugins: set[Path] = set()
     for described in descriptions:
@@ -1796,7 +1802,8 @@ def _watched(
         watched |= _expanded_by(described, data)
         for spelling in _listed(data, "plugins"):
             if spelling.endswith(".py"):
-                plugins.update(plugin_files(spelling, described.parent))
+                with contextlib.suppress(OSError, ValueError, RuntimeError):
+                    plugins.update(plugin_files(spelling, described.parent))
     return tuple(sorted(watched | plugins)), tuple(sorted(plugins))
 
 

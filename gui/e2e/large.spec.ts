@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
-import { dump } from "./demo";
+import { dump, held } from "./demo";
 import { expect, test } from "./fixtures";
 
 /**
@@ -254,4 +254,42 @@ test("Compare's table draws the rows in view, of a verdict filing two thousand f
   await expect(last).toBeVisible();
   await expect(last).toContainText("'C01999_O0000' is not the same object any more");
   expect(await table.getByRole("row").count()).toBeLessThan(50);
+});
+
+/**
+ * A rename reaching every file of the generated project (16:M17): `rpm`, which every one of its
+ * 666 components states. While the plan is asked for, the Rename section says "Planning…" where it
+ * said nothing, looking as it had before Enter; once the plan has come, its sentence names three
+ * of the files it writes and counts the rest, where it named every one of them above Apply.
+ */
+test("a rename reaching every file says it is planning, then names three files and counts the rest", async ({
+  page,
+  generatedGui,
+}) => {
+  await page.goto(generatedGui.address);
+  await page.getByRole("link", { name: "Units" }).click();
+  await page.getByRole("row", { name: "rpm", exact: true }).click();
+  const renaming = page
+    .getByRole("complementary", { name: "rpm" })
+    .getByRole("region", { name: "Rename" });
+  const picker = renaming.getByRole("combobox", { name: "Rename rpm to" });
+  await picker.clear();
+  await picker.pressSequentially("revs");
+
+  const release = await held(page, "/api/unit-plan");
+  try {
+    await picker.press("Enter");
+    await expect(renaming.getByText("Planning…", { exact: true })).toBeVisible();
+  } finally {
+    release();
+  }
+  await expect(renaming.getByText("Planning…")).toHaveCount(0);
+  await expect(
+    renaming.getByText(
+      "Changes 667 files: c00000.ddd.json, c00001.ddd.json, c00002.ddd.json and 664 more. " +
+        "rpm is renamed in units.ddd.json too.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(renaming.getByRole("button", { name: "Apply to 667 files" })).toBeEnabled();
 });

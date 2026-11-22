@@ -182,11 +182,46 @@ export function rawOf(unit: string | null): string | null {
   return unit === null ? null : JSON.stringify(unit);
 }
 
-/** What a preview changes, in one sentence naming the files. */
+/** How many files a consequence names before it counts the rest. A rename of a unit every
+ * component states changes every file of the project: named one by one, the sentence ran to a
+ * wall of names, with Apply below it. */
+export const FILES_NAMED = 3;
+
+/** What a preview changes, in one sentence: how many files, then their names - three of them and
+ * a count of the rest past four, since a count standing for one file is no shorter than its name.
+ * Its counts are written as the Apply under it writes its own, so that the two read alike. */
 export function consequence(changes: readonly PlannedChange[]): string {
   if (changes.length === 0) return "Nothing to change";
-  const files = changes.map((change) => baseName(change.file));
-  return `Changes ${files.length} file${files.length === 1 ? "" : "s"}: ${files.join(", ")}`;
+  const files = fileNames(changes);
+  const named =
+    files.length <= FILES_NAMED + 1
+      ? files.join(", ")
+      : `${files.slice(0, FILES_NAMED).join(", ")} and ${files.length - FILES_NAMED} more`;
+  return `Changes ${files.length} file${files.length === 1 ? "" : "s"}: ${named}`;
+}
+
+/** The names a consequence gives the files a preview changes, in its order: the one place they are
+ * made, all of them, before `consequence` keeps the first few - so that a name telling two files
+ * of one name apart is made here, among every file the change writes. */
+function fileNames(changes: readonly PlannedChange[]): string[] {
+  return changes.map((change) => baseName(change.file));
+}
+
+/** What a panel says in place of a plan's consequence while the plan is asked for and has not come
+ * (`planning`): a rename of the unit stated in the most files takes seconds to plan on a large
+ * project - the reference page measures 1.2 to 4.1 s - and the panel looked meanwhile as it had
+ * before it was asked. */
+export const PLANNING = "Planning…";
+
+/** Whether a panel says `PLANNING` where an offer's consequence stands: its plan is pending - asked
+ * for, or about to be once the reader's typing pauses (`planShown`, lib/typing.ts) - and neither
+ * the plan nor why it was refused has come. */
+export function planning(offer: {
+  plan: unknown;
+  refusal: string | null;
+  pending: boolean;
+}): boolean {
+  return offer.pending && offer.plan === null && offer.refusal === null;
 }
 
 /** What a settlement's plan says of the files it would leave unable to load, as the panel draws it

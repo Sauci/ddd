@@ -26,7 +26,7 @@ import { planEdit } from "../lib/projectUnits";
 import { panelShows, type Refused, refusalSentence, refusalShown } from "../lib/refusals";
 import { planShown, unsettled } from "../lib/typing";
 import { removeLabel, settleLabel } from "../lib/undo";
-import { editOf, outsideVocabulary, textOf } from "../lib/units";
+import { editOf, outsideVocabulary, planning, textOf } from "../lib/units";
 import {
   type Choice,
   type Held,
@@ -499,6 +499,8 @@ export function VariablePanel({
       // the debounced request's own answer, while it is not yet what `target` now says
       // (`shownSettle.plan`) - that answer is an earlier target's, same as while any plan loads.
       preview={broken === null && !unsettledText ? shownSettle.plan : null}
+      // Said while that plan is on its way, as long as nothing is said in its place instead.
+      planning={broken === null && !unsettledText && planning(shownSettle)}
       // A settlement refused is about the value that was asked for; while the fields make no
       // value, nothing was asked, and the note is the whole of what the panel has to say - nor
       // once the fields have moved past the target this refusal was about (`shownSettle.refusal`).

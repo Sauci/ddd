@@ -2,7 +2,7 @@ import type { PlanReply, RasterReply } from "../api/types";
 import { distinctFindings, keyedFindings } from "../lib/findings";
 import type { Route } from "../lib/route";
 import { rasterRemovable, rasterRemoveBlocked, rasterUseRoute, rasterUseWhat } from "../lib/shared";
-import { baseName, consequence, shownChanges } from "../lib/units";
+import { baseName, consequence, PLANNING, planning, shownChanges } from "../lib/units";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
 import { Panel } from "../ui/Panel";
@@ -50,7 +50,8 @@ export interface Offer {
    * debounced request has not yet caught up with what the fields now say, or the server has not
    * yet answered the one that has (`planShown`, `lib/typing.ts` - never an earlier request's
    * answer, kept on screen in its place). `plan` is drawn, and Apply offered, only once this is
-   * `false`. */
+   * `false`; until then, with no refusal to say, the panel says `PLANNING` in its place
+   * (`planning`, lib/units.ts). */
   pending: boolean;
 }
 
@@ -297,6 +298,7 @@ function Outcome({
         </p>
       )}
       {plan !== null && <p className="consequence">{consequence(plan.changes)}</p>}
+      {planning(offer) && <p className="consequence">{PLANNING}</p>}
       {plan !== null && plan.changes.length > 0 && (
         <>
           {shown && <Changes changes={shownChanges(plan.changes)} />}

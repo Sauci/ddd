@@ -37,7 +37,7 @@ import {
   wanted,
 } from "../lib/objectValues";
 import { commaAsked, offerName, offerSentence, typedOffer } from "../lib/typedCells";
-import { consequence, NO_UNIT, shownChanges } from "../lib/units";
+import { consequence, NO_UNIT, PLANNING, shownChanges } from "../lib/units";
 import { shortValue } from "../lib/variableKeys";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
@@ -67,6 +67,9 @@ export interface ValuesGridViewProps {
    * owns the offer, or nothing has been typed. */
   typed: readonly TypedCell[];
   plan: PlanReply | null;
+  /** Whether the offer's plan is asked for and has not come: the offer then says `PLANNING`
+   * where its consequence stands, while it says no refusal (`planning`, lib/units.ts). */
+  planning?: boolean;
   refusal: string | null;
   /** The value of a pasted block whose comma could be a decimal point or a thousands separator,
    * which is what the block is refused for (`Pasted.ambiguous`); `null` otherwise, and while no
@@ -415,7 +418,7 @@ export function ValuesGridView(props: ValuesGridViewProps) {
           ))}
         </ul>
       )}
-      {(refused !== null || plan !== null) && (
+      {(refused !== null || plan !== null || props.planning === true) && (
         // Gated on what there is to show rather than on the cells typed alone: a pasted table
         // owns this same section too, with no cell of its own to name (spec 2: "one edit, one
         // preview, one entry in the undo stack" either way). Held at the window's foot while it
@@ -443,6 +446,9 @@ export function ValuesGridView(props: ValuesGridViewProps) {
                 </Button>
               ))}
             </div>
+          )}
+          {refused === null && plan === null && props.planning === true && (
+            <p className="consequence">{PLANNING}</p>
           )}
           {plan !== null && sentence !== null && (
             // What it sets, and the file it lands in - the way `renameConsequence` folds

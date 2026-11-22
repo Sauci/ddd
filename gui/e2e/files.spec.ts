@@ -226,6 +226,8 @@ test("the row the page was opened on waits for the reader before its removal is 
   const ask = unitsRemoving.getByRole("button", { name: "Plan its removal" });
   await expect(ask).toBeVisible();
   expect(planned).toEqual([]);
+  // Its press stands in place of the preview: nothing says it is planning (16:M17).
+  await expect(unitsRemoving.getByText("Planning…")).toHaveCount(0);
 
   // The address set to itself with a fragment, as any window holding a handle on this one can set
   // it - a cross-origin opener among them: a navigation within the page that fires `popstate` and
@@ -455,6 +457,33 @@ test("a Remove applied while the description changed on disk is refused, and goe
  * it brings an error. Written into the copy `vocabularyGui` hands the journey, before the page
  * opens, as `EXTRA` is - which brings none. */
 const READER = "reader.ddd.json";
+
+/** An Add's plan on its way (16:M17): the panel says so where its consequence will stand, and says
+ * the consequence once the plan has come, held until then. */
+test("an Add a file says it is planning while its plan is on its way", async ({
+  page,
+  vocabularyGui,
+}) => {
+  writeFileSync(
+    join(vocabularyGui.directory, EXTRA),
+    JSON.stringify({ component: { name: "Extra", interface: [] } }),
+    "utf8",
+  );
+  await page.goto(vocabularyGui.address);
+  await page.getByRole("link", { name: "Files", exact: true }).click();
+  await page.getByRole("button", { name: "Add a file" }).click();
+  const adding = page.getByRole("complementary", { name: "Add a file" });
+
+  const release = await held(page, "/api/files-plan");
+  try {
+    await adding.getByRole("textbox", { name: "Path" }).fill(EXTRA);
+    await expect(adding.getByText("Planning…", { exact: true })).toBeVisible();
+  } finally {
+    release();
+  }
+  await expect(adding.getByText("Changes 1 file: project.ddd.json")).toBeVisible();
+  await expect(adding.getByText("Planning…")).toHaveCount(0);
+});
 
 test("the errors a file would bring are listed in the Add a file preview, which still offers to add it", async ({
   page,

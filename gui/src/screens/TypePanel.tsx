@@ -16,7 +16,7 @@ import { panelShows, type Refused, refusalShown } from "../lib/refusals";
 import type { Route } from "../lib/route";
 import { planShown, unsettled } from "../lib/typing";
 import { typeLabel } from "../lib/undo";
-import { textOf, unitLabel } from "../lib/units";
+import { planning, textOf, unitLabel } from "../lib/units";
 import {
   limitsOf,
   limitsRaw,
@@ -220,7 +220,8 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
   // has since typed past. This panel has no separate `pending` flag of its own (unlike
   // `UnitPanel`'s `Offer`):
   // `TypePanelView`'s own gate (`pending && preview !== null`) draws neither a consequence nor an
-  // Apply once `preview` below is `null`, which is exactly when `shown.pending` holds.
+  // Apply once `preview` below is `null` - its plan pending, or none asked for - and says
+  // `PLANNING` in their place while the plan is on its way (`planning`, lib/units.ts).
   const shown =
     active === null
       ? { plan: null, refusal: null, pending: false }
@@ -382,6 +383,8 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
         }
       }}
       preview={unsettledText ? null : shown.plan}
+      // Said while that plan is on its way, as long as nothing is said in its place instead.
+      planning={!unsettledText && planning(shown)}
       changesShown={changesShown}
       onChangesShown={setChangesShown}
       onApply={() => {

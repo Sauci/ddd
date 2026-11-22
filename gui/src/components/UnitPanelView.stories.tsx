@@ -16,6 +16,16 @@ import {
 } from "../stories/fixtures";
 import { type Offer, type UnitAction, UnitPanelView } from "./UnitPanelView";
 
+/** MERGE's change to the first of its files, made to each of 1,200 components of a large project,
+ * `c00000.ddd.json` on: the plan of a rename reaching every file. */
+const WIDE_MERGE: PlanReply = {
+  ...MERGE,
+  changes: Array.from({ length: 1200 }, (_, index) => ({
+    ...(MERGE.changes[0] as PlanReply["changes"][number]),
+    file: `C:/work/large/components/c${String(index).padStart(5, "0")}.ddd.json`,
+  })),
+};
+
 export default { title: "Components / UnitPanelView" };
 
 interface Props {
@@ -130,6 +140,28 @@ export const Refused = () => (
         pending: false,
       },
     }}
+  />
+);
+
+/** RPM renamed to rpm in every one of 1200 components (16:M17): the sentence names three of the
+ * files the rename writes and counts the rest, where it named every one of them above Apply. */
+export const AWideRename = () => (
+  <View
+    unit={UNKNOWN_RPM}
+    reply={UNKNOWN_RPM_PANEL}
+    vocabulary={ADDITION}
+    rename={{ to: "rpm", offer: { plan: WIDE_MERGE, refusal: null, pending: false } }}
+  />
+);
+
+/** The same rename while its plan is asked for (16:M17): the panel says so where the sentence will
+ * stand, and offers no Apply yet. */
+export const ARenameBeingPlanned = () => (
+  <View
+    unit={UNKNOWN_RPM}
+    reply={UNKNOWN_RPM_PANEL}
+    vocabulary={ADDITION}
+    rename={{ to: "rpm", offer: { plan: null, refusal: null, pending: true } }}
   />
 );
 

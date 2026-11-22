@@ -1,7 +1,7 @@
 import { useRef } from "react";
 import type { FilesPlanReply } from "../api/types";
 import { asksComponentName, type FileRemoval, previewOf } from "../lib/files";
-import { shownChanges } from "../lib/units";
+import { PLANNING, shownChanges } from "../lib/units";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
 import { ComboBox } from "../ui/ComboBox";
@@ -35,7 +35,8 @@ export function FileActionsView({ onNewFile, onAddFile }: FileActionsViewProps) 
  * Where one of the three actions stands: its plan once it has come, and why it cannot be applied -
  * the two facts `ConstantPanelView`'s own `Offer` keeps for each of a constant's changes, less its
  * `pending`: these plans are never kept on screen while the next is asked for, as `SharedAdd`'s
- * own three - debounced the same way (spec §6) - keep none of theirs either (fix round 2).
+ * own three - debounced the same way (spec §6) - keep none of theirs either (fix round 2). What
+ * `pending` would say of a plan on its way, `planning` says.
  */
 export interface FileOffer {
   /** The plan; `null` while it is being asked for, when it was refused, and while the form does
@@ -44,6 +45,9 @@ export interface FileOffer {
   /** Why the plan was refused when asked for - the server's own sentence - or why applying it
    * was; `null` when neither was (`refusalShown`, `lib/refusals.ts`, chose which). */
   refusal: string | null;
+  /** Whether the plan is asked for and has not come: the preview then says `PLANNING` where its
+   * consequence stands, while it says no refusal (`planning`, lib/units.ts). */
+  planning?: boolean;
 }
 
 export interface NewFileViewProps {
@@ -323,6 +327,9 @@ function Preview({
         <p className="panel-refusal" role="status">
           {refusal}
         </p>
+      )}
+      {refusal === null && plan === null && offer.planning === true && (
+        <p className="consequence">{PLANNING}</p>
       )}
       {plan !== null && preview !== null && (
         <>

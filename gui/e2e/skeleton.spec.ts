@@ -1,7 +1,15 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { CONTROLLER, chooseUnit, drift, SENSOR_HUB, withUnitOfValueA, writeUnseen } from "./demo";
+import {
+  CONTROLLER,
+  chooseUnit,
+  drift,
+  held,
+  SENSOR_HUB,
+  withUnitOfValueA,
+  writeUnseen,
+} from "./demo";
 import { expect, test } from "./fixtures";
 
 const COMPONENTS = ["Controller", "SensorHub", "UserInterface", "EventLogger"];
@@ -60,6 +68,34 @@ test("a unit set from the panel is written as one value in every file declaring 
   for (const [index, file] of files.entries()) {
     await expect.poll(() => readFileSync(file).equals(before[index] as Buffer)).toBe(true);
   }
+});
+
+/** A unit's settlement on its way (16:M17): the panel says so where its consequence will stand,
+ * and says the consequence once the plan has come, held until then. */
+test("a unit chosen says it is planning while its settlement is on its way", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("button", { name: "Set the unit of ValueA" }).click();
+  const panel = page.getByRole("complementary", { name: "ValueA" });
+  const settle = panel.getByRole("region", { name: "Settle the key" });
+  const picker = panel.getByRole("combobox", { name: "Unit of ValueA" });
+  await picker.clear();
+  await picker.pressSequentially("rpm");
+
+  const release = await held(page, "/api/settle");
+  try {
+    await page.getByRole("option", { name: "rpm", exact: true }).first().click();
+    await expect(settle.getByText("Planning…", { exact: true })).toBeVisible();
+  } finally {
+    release();
+  }
+  await expect(
+    settle.getByText("Changes 2 files: controller.ddd.json, sensor_hub.ddd.json"),
+  ).toBeVisible();
+  await expect(settle.getByText("Planning…")).toHaveCount(0);
 });
 
 test("a unit chosen but not applied changes nothing", async ({ page, gui }) => {

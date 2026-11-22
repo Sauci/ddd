@@ -445,6 +445,25 @@ test("a cell's field shows the whole number it holds, and the whole of what is t
 // The offer a typed cell made stood under the grid and its plot, past the bottom of the window for
 // a map, and nothing in view said a value was waiting to be applied. It is held at the window's
 // foot while it is drawn.
+/** A typed cell's plan on its way (16:M17): the offer says so where its consequence will stand,
+ * and says the consequence once the plan has come. Every plan is held until then: each key typed
+ * asks again, the first at once. */
+test("a cell typed says it is planning while its plan is on its way", async ({ page, gui }) => {
+  await openValues(page, gui.address, "MapA");
+  const offer = page.getByRole("region", { name: "Set the cell" });
+  const release = await held(page, "/api/value-plan", { every: true });
+  try {
+    await typed(page.getByRole("textbox", { name: "element 2, 4" }), "50");
+    await expect(offer.getByText("Planning…", { exact: true })).toBeVisible();
+  } finally {
+    release();
+  }
+  await expect(
+    offer.getByText(/^Sets element 2, 4 of MapA to 50 %\. Changes 1 file: /),
+  ).toBeVisible();
+  await expect(offer.getByText("Planning…")).toHaveCount(0);
+});
+
 test("the sentence, Show changes and Apply a typed map cell offers are in view", async ({
   page,
   gui,
@@ -2186,6 +2205,35 @@ test("a declaration's description is read in its panel, written, put back, and t
 // Spec 2026-09-30 §6: what an edit wrote shows at once. The file is read again after the write; the
 // field holds what was applied meanwhile, and a read held back by the journey is the interim state
 // that an auto-retrying assertion cannot otherwise see.
+/** A description's plan on its way (16:M17): the panel says so where its consequence will stand,
+ * and says the consequence once the plan has come, held until then. */
+test("a description typed says it is planning while its plan is on its way", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("row", { name: /ParameterA/ }).click();
+  const panel = page.getByRole("complementary", { name: "ParameterA" });
+  const describing = panel.getByRole("region", { name: "Describe the declaration" });
+
+  const release = await held(page, "/api/description-plan");
+  try {
+    await panel
+      .getByRole("textbox", { name: "Description in Controller" })
+      .fill("Engine speed gain");
+    await expect(describing.getByText("Planning…", { exact: true })).toBeVisible();
+  } finally {
+    release();
+  }
+  await expect(
+    describing.getByText(
+      "Sets the description of ParameterA in Controller. Changes 1 file: controller.ddd.json",
+    ),
+  ).toBeVisible();
+  await expect(describing.getByText("Planning…")).toHaveCount(0);
+});
+
 test("the description field shows what an Apply wrote while the file is still being read again", async ({
   page,
   gui,

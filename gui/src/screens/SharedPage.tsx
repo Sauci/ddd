@@ -23,6 +23,7 @@ import {
 } from "../lib/shared";
 import { planShown } from "../lib/typing";
 import { constantLabel, rasterLabel, sectionLabel } from "../lib/undo";
+import { planning } from "../lib/units";
 import { Banner } from "../ui/Banner";
 import { ConstantPanel, useConstantPlan } from "./ConstantPanel";
 import { RasterPanel, useRasterPlan } from "./RasterPanel";
@@ -382,6 +383,7 @@ function SharedAdd({
         setRefusal(null);
       }}
       plan={shown.plan}
+      planning={planning(shown)}
       refusal={addFormRefusal(kind, { raw, alignment, event }, refusal, shown.refusal)}
       changesShown={changesShown}
       onChangesShown={setChangesShown}

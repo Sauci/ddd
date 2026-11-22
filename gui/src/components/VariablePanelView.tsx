@@ -2,7 +2,14 @@ import type { SettleReply, UnitsReply, VariableReply } from "../api/types";
 import { removalSentence } from "../lib/declarations";
 import { describeSentence, EDITED_ELSEWHERE } from "../lib/description";
 import { distinctFindings, keyedFindings, namesThisVariable, routeHref } from "../lib/findings";
-import { consequence, declaredUnits, shownChanges, unloadableOf } from "../lib/units";
+import {
+  consequence,
+  declaredUnits,
+  PLANNING,
+  planning,
+  shownChanges,
+  unloadableOf,
+} from "../lib/units";
 import { describeVariable, offerOf } from "../lib/variableKeys";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
@@ -26,6 +33,9 @@ export interface VariablePanelViewProps
    * reload. */
   onOpenConstant: (name: string) => void;
   preview: SettleReply | null;
+  /** Whether the plan of the value chosen is asked for and has not come, with no refusal to say:
+   * the panel then says `PLANNING` where its consequence stands (`planning`, lib/units.ts). */
+  planning?: boolean;
   /** Why the chosen value cannot be applied, or why applying it was refused. */
   refusal: string | null;
   changesShown: boolean;
@@ -140,7 +150,11 @@ export function VariablePanelView(props: VariablePanelViewProps) {
           </p>
         ) : (
           selected !== undefined &&
-          preview !== null && <p className="consequence">{consequence(changes)}</p>
+          (preview !== null ? (
+            <p className="consequence">{consequence(changes)}</p>
+          ) : (
+            props.planning === true && <p className="consequence">{PLANNING}</p>
+          ))
         )}
         {/* What the server says of the files this plan would leave unable to load, in its words:
             drawn with the plan, above Apply, which stays - the value is the reader's to write.
@@ -180,6 +194,7 @@ export function VariablePanelView(props: VariablePanelViewProps) {
               {description.offer.refusal}
             </p>
           )}
+          {planning(description.offer) && <p className="consequence">{PLANNING}</p>}
           {description.offer.refusal === null &&
             description.offer.plan !== null &&
             description.offer.plan.changes.length > 0 && (

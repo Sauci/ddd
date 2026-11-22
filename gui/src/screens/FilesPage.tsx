@@ -29,6 +29,7 @@ import { type FilesHold, filesHoldAfter, filesHoldOf, filesShown } from "../lib/
 import { planEdit } from "../lib/shared";
 import { planShown } from "../lib/typing";
 import { filesLabel } from "../lib/undo";
+import { planning } from "../lib/units";
 import { ownEdits } from "../state/edits";
 import { Banner } from "../ui/Banner";
 import { refusalOf } from "./UnitPanel";
@@ -229,6 +230,9 @@ function useFilesApply(
     // An Apply refused takes precedence, as it always did - it is about an Apply already made,
     // not a plan still loading, so it is not affected by `shown`.
     refusal: refused ?? shown.refusal,
+    /** Whether the plan is on its way (`planning`, lib/units.ts). A removal waiting for the
+     * reader's press draws the press in place of its preview, and says nothing of it. */
+    planning: planning(shown),
     /** The reader chose again: what an earlier Apply was refused for says nothing of this plan. */
     chose: () => setRefused(null),
   };
@@ -270,6 +274,7 @@ function NewFile({
     apply,
     plan: offerPlan,
     refusal,
+    planning: offerPlanning,
     chose,
   } = useFilesApply(request, asked, project, plan, onClose, onHeld);
   return (
@@ -299,7 +304,7 @@ function NewFile({
         setTypedKind(true);
         chose();
       }}
-      offer={{ plan: offerPlan, refusal }}
+      offer={{ plan: offerPlan, refusal, planning: offerPlanning }}
       changesShown={changesShown}
       onChangesShown={setChangesShown}
       onApply={() => apply.mutate()}
@@ -335,6 +340,7 @@ function AddFile({
     apply,
     plan: offerPlan,
     refusal,
+    planning: offerPlanning,
     chose,
   } = useFilesApply(request, asked, project, plan, onClose, onHeld);
   return (
@@ -345,7 +351,7 @@ function AddFile({
         setPath(text);
         chose();
       }}
-      offer={{ plan: offerPlan, refusal }}
+      offer={{ plan: offerPlan, refusal, planning: offerPlanning }}
       changesShown={changesShown}
       onChangesShown={setChangesShown}
       onApply={() => apply.mutate()}
@@ -395,13 +401,14 @@ function RemoveFile({
     apply,
     plan: offerPlan,
     refusal,
+    planning: offerPlanning,
   } = useFilesApply(removal.request, requested, project, plan, onClose, onHeld);
   return (
     <RemoveFileView
       removal={removal}
       project={project}
       waiting={asked ? undefined : () => setPressed(true)}
-      offer={{ plan: offerPlan, refusal }}
+      offer={{ plan: offerPlan, refusal, planning: offerPlanning }}
       changesShown={changesShown}
       onChangesShown={setChangesShown}
       onApply={() => apply.mutate()}

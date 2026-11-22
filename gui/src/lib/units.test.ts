@@ -6,9 +6,12 @@ import {
   declaredUnits,
   editOf,
   enteredUnit,
+  FILES_NAMED,
   hunkLines,
   outsideVocabulary,
+  PLANNING,
   pickerSections,
+  planning,
   rawOf,
   shownChanges,
   textOf,
@@ -97,7 +100,12 @@ const ONE_FILE: SettleReply = {
   unloadable: [],
 };
 const ONE_FILE_CHANGE = ONE_FILE.changes[0];
+
 if (ONE_FILE_CHANGE === undefined) throw new Error("ONE_FILE must have one change");
+
+/** Four changes, to a.ddd.json, b.ddd.json, c.ddd.json and d.ddd.json in that order. */
+const files4 = (): PlannedChange[] =>
+  ["a", "b", "c", "d"].map((name) => ({ ...ONE_FILE_CHANGE, file: `/p/${name}.ddd.json` }));
 
 const CREATED_FILE_CHANGE: PlannedChange = {
   file: UNITS_FILE,
@@ -277,6 +285,47 @@ group("what a preview says and sends", () => {
     const two = [...ONE_FILE.changes, { ...ONE_FILE_CHANGE, file: HUB }];
     expect(consequence(two)).toBe("Changes 2 files: controller.ddd.json, sensor_hub.ddd.json");
     expect(baseName("a.ddd.json")).toBe("a.ddd.json");
+  });
+
+  // Pinned by the literal, not by the constant, which a test comparing against it would follow.
+  test("past a few files the consequence names three and counts the rest", () => {
+    expect(FILES_NAMED).toBe(3);
+    const files = (count: number) =>
+      Array.from({ length: count }, (_, index) => ({
+        ...ONE_FILE_CHANGE,
+        file: `C:/w/components/c${String(index).padStart(5, "0")}.ddd.json`,
+      }));
+    expect(consequence(files(5))).toBe(
+      "Changes 5 files: c00000.ddd.json, c00001.ddd.json, c00002.ddd.json and 2 more",
+    );
+    // Written as the Apply under it writes its own count, "Apply to 1200 files".
+    expect(consequence(files(1200))).toBe(
+      "Changes 1200 files: c00000.ddd.json, c00001.ddd.json, c00002.ddd.json and 1197 more",
+    );
+  });
+
+  test("a file the count would stand for alone is named instead: never one more", () => {
+    expect(consequence(files4())).toBe(
+      "Changes 4 files: a.ddd.json, b.ddd.json, c.ddd.json, d.ddd.json",
+    );
+    expect(consequence(files4().slice(0, 3))).toBe(
+      "Changes 3 files: a.ddd.json, b.ddd.json, c.ddd.json",
+    );
+  });
+
+  test("a plan asked for and not come yet says so where its consequence stands", () => {
+    expect(PLANNING).toBe("Planning…");
+    expect(planning({ plan: null, refusal: null, pending: true })).toBe(true);
+  });
+
+  test("a plan come, a refusal said, or nothing asked for is no planning", () => {
+    expect(planning({ plan: ONE_FILE, refusal: null, pending: false })).toBe(false);
+    expect(
+      planning({ plan: null, refusal: "units.ddd.json is there already", pending: true }),
+    ).toBe(false);
+    expect(planning({ plan: null, refusal: null, pending: false })).toBe(false);
+    // A plan drawn is never said to be planning, whatever its offer says of the next.
+    expect(planning({ plan: ONE_FILE, refusal: null, pending: true })).toBe(false);
   });
 
   test("a plan says which files it would leave unable to load, in the server's words and order", () => {

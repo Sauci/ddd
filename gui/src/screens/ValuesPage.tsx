@@ -11,6 +11,7 @@ import { planEdit } from "../lib/projectUnits";
 import { planOffered, typedOffer, typedPlan, withComma, withTyped } from "../lib/typedCells";
 import { gated, planShown } from "../lib/typing";
 import { pasteLabel, valuesLabel } from "../lib/undo";
+import { planning } from "../lib/units";
 import {
   appliesOver,
   holdAfter,
@@ -185,6 +186,14 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   // A plan that changes nothing is no offer at all (`planOffered`): the server answers one with no
   // file to change (15:M4).
   const shownPlan = planOffered(pasting ? (table.data ?? null) : shownCell.plan);
+  // Whether the offer's plan is on its way (`planning`, lib/units.ts): a pasted table's is asked
+  // at once, as `table` is keyed, and a typed cell's once its debounce and its gate let it.
+  const shownTable = planShown(
+    pastedRows === null || !current ? null : pastedRows,
+    pastedRows,
+    table,
+  );
+  const offerPlanning = planning(pasting ? shownTable : shownCell);
   // The pre-apply refusal each offer can find for itself - a pasted block's own sentence, or the
   // server's, for the one thing the parser cannot check - ahead of an apply refused either way.
   // A typed cell's own refusal is `ValuesGridView`'s to find, from the cells directly
@@ -286,6 +295,7 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
       physical={physical}
       typed={typed}
       plan={shownPlan}
+      planning={offerPlanning}
       refusal={shownSentence}
       changesShown={changesShown}
       busy={stopped || apply.isPending}

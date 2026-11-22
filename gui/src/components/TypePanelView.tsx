@@ -2,7 +2,7 @@ import type { PlanReply, TypeReply, TypeUse, UnitsReply } from "../api/types";
 import { distinctFindings, keyedFindings, routeOf } from "../lib/findings";
 import { keyRowsOfType, memberRows } from "../lib/projectTypes";
 import type { Route } from "../lib/route";
-import { baseName, consequence, shownChanges, textOf } from "../lib/units";
+import { baseName, consequence, PLANNING, shownChanges, textOf } from "../lib/units";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
 import { Panel } from "../ui/Panel";
@@ -39,6 +39,9 @@ export interface TypePanelViewProps {
   onRenameTo: (to: string | null) => void;
   /** The preview of whichever change is pending, or `null` while there is none. */
   preview: PlanReply | null;
+  /** Whether that preview is asked for and has not come, with no refusal to say: the panel then
+   * says `PLANNING` where its consequence stands (`planning`, lib/units.ts). */
+  planning?: boolean;
   changesShown: boolean;
   onChangesShown: (shown: boolean) => void;
   onApply: () => void;
@@ -171,7 +174,12 @@ export function TypePanelView(props: TypePanelViewProps) {
       ) : (
         // As the variable panel's own consequence line stays with `selected !== undefined`: a
         // stale preview says nothing once nothing is pending.
-        pending && preview !== null && <p className="consequence">{consequence(preview.changes)}</p>
+        pending &&
+        (preview !== null ? (
+          <p className="consequence">{consequence(preview.changes)}</p>
+        ) : (
+          props.planning === true && <p className="consequence">{PLANNING}</p>
+        ))
       )}
       {refusal === null && pending && preview !== null && preview.changes.length > 0 && (
         <>

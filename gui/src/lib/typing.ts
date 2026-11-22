@@ -65,10 +65,14 @@ export function gated<T>(debounced: T | null, typed: T | null, open: boolean): T
  * unaffected by it, exactly as before this function existed.
  *
  * `pending` also holds once both do, while the query is still settling its first answer to the
- * current request (`query.data` not arrived yet) - harmless where it is read only to withhold
- * Apply, since `plan` is `null` then regardless, but it is why `refusal` is read straight from
- * `query.error`, never gated on `pending`: a settled refusal of the *current* request must still
- * be shown, and would otherwise be swallowed by "still loading" meaning the same `pending`. */
+ * current request (`query.data` not arrived yet), and for a refusal of it too, which is why
+ * `refusal` is read straight from `query.error`, never gated on `pending`: a settled refusal of
+ * the *current* request must still be shown, and would otherwise be swallowed by "still loading"
+ * meaning the same `pending`. A panel says `PLANNING` (`planning`, lib/units.ts) where `pending`
+ * holds with neither a plan nor a refusal to draw - so nothing is pending while the fields ask for
+ * no plan at all (`typed` is `null`): a query that is never sent never settles. A plan the fields
+ * ask for and not asked yet - a pause in typing still waited out, a gate closed while a revision
+ * lands (`gated`) - is pending: it is on its way. */
 export function planShown<T>(
   asked: unknown,
   typed: unknown,
@@ -78,7 +82,7 @@ export function planShown<T>(
   return {
     plan: trusted ? (query.data ?? null) : null,
     refusal: trusted ? (query.error?.message ?? null) : null,
-    pending: !trusted || query.data === undefined,
+    pending: typed !== null && (!trusted || query.data === undefined),
   };
 }
 

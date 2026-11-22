@@ -185,6 +185,30 @@ function entryOf(directory: string, name: string): Record<string, unknown> {
   return entry;
 }
 
+/** A rename's plan on its way (16:M17): the panel says so where its consequence will stand, and
+ * says the consequence once the plan has come, held until then. */
+test("a type's rename says it is planning while its plan is on its way", async ({
+  page,
+  structuresGui,
+}) => {
+  await page.goto(structuresGui.address);
+  await page.getByRole("link", { name: "Types" }).click();
+  await page.getByRole("row", { name: "Sensor_t", exact: true }).click();
+  const panel = page.getByRole("complementary", { name: "Sensor_t" });
+
+  const release = await held(page, "/api/type-plan");
+  try {
+    await panel.getByRole("textbox", { name: "Rename Sensor_t to" }).fill("Probe_t");
+    await expect(panel.getByText("Planning…", { exact: true })).toBeVisible();
+  } finally {
+    release();
+  }
+  await expect(
+    panel.getByText("Changes 3 files: monitoring.ddd.json, sensing.ddd.json, types.ddd.json"),
+  ).toBeVisible();
+  await expect(panel.getByText("Planning…")).toHaveCount(0);
+});
+
 test("text typed past a type's chosen unit offers no Apply for the earlier one, until it is taken", async ({
   page,
   structuresGui,

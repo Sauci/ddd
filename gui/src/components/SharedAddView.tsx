@@ -6,7 +6,7 @@ import {
   SHARED_VOCABULARIES,
   vocabularyOf,
 } from "../lib/shared";
-import { consequence, shownChanges } from "../lib/units";
+import { consequence, PLANNING, shownChanges } from "../lib/units";
 import { Button } from "../ui/Button";
 import { ComboBox } from "../ui/ComboBox";
 import { Panel } from "../ui/Panel";
@@ -38,6 +38,9 @@ export interface SharedAddViewProps {
   event: string;
   onEvent: (text: string) => void;
   plan: PlanReply | null;
+  /** Whether the plan is asked for and has not come: the form then says `PLANNING` where its
+   * consequence stands, while it says no refusal (`planning`, lib/units.ts). */
+  planning?: boolean;
   refusal: string | null;
   changesShown: boolean;
   onChangesShown: (shown: boolean) => void;
@@ -193,6 +196,9 @@ export function SharedAddView(props: SharedAddViewProps) {
       )}
       {props.refusal === null && props.plan !== null && (
         <p className="consequence">{consequence(props.plan.changes)}</p>
+      )}
+      {props.refusal === null && props.plan === null && props.planning === true && (
+        <p className="consequence">{PLANNING}</p>
       )}
       {props.refusal === null && props.plan !== null && props.plan.changes.length > 0 && (
         <>

@@ -58,6 +58,91 @@ async function openEntry(page: Page, gui: Gui, name: string): Promise<Locator> {
   return page.getByRole("complementary", { name });
 }
 
+/** Each panel of the tab, and its form, while its plan is on its way (16:M17): it says so where
+ * the consequence will stand, and says the consequence once the plan has come, held until then. */
+test("a constant's value typed says it is planning while its plan is on its way", async ({
+  page,
+  vocabularyGui,
+}) => {
+  const value = (await openEntry(page, vocabularyGui, "TREND_SAMPLES")).getByRole("region", {
+    name: "Value",
+  });
+  const release = await held(page, "/api/constant-plan");
+  try {
+    await value.getByRole("textbox", { name: "Value" }).fill("32");
+    await expect(value.getByText("Planning…", { exact: true })).toBeVisible();
+  } finally {
+    release();
+  }
+  await expect(value.getByText("Changes 1 file: constants.ddd.json")).toBeVisible();
+  await expect(value.getByText("Planning…")).toHaveCount(0);
+});
+
+test("a section's access picked says it is planning while its plan is on its way", async ({
+  page,
+  vocabularyGui,
+}) => {
+  const access = (await openEntry(page, vocabularyGui, ".calib")).getByRole("region", {
+    name: "Access",
+  });
+  await access.getByRole("combobox", { name: "Access" }).press("ArrowDown");
+  const release = await held(page, "/api/section-plan");
+  try {
+    await page.getByRole("option", { name: "read-write", exact: true }).click();
+    await expect(access.getByText("Planning…", { exact: true })).toBeVisible();
+  } finally {
+    release();
+  }
+  await expect(access.getByText("Changes 1 file: sections.ddd.json")).toBeVisible();
+  await expect(access.getByText("Planning…")).toHaveCount(0);
+});
+
+test("a raster's event typed says it is planning while its plan is on its way", async ({
+  page,
+  vocabularyGui,
+}) => {
+  const event = (await openEntry(page, vocabularyGui, "100ms")).getByRole("region", {
+    name: "Event",
+  });
+  const release = await held(page, "/api/raster-plan");
+  try {
+    await event.getByRole("textbox", { name: "Event" }).fill("5");
+    await expect(event.getByText("Planning…", { exact: true })).toBeVisible();
+  } finally {
+    release();
+  }
+  await expect(event.getByText("Changes 1 file: rasters.ddd.json")).toBeVisible();
+  await expect(event.getByText("Planning…")).toHaveCount(0);
+});
+
+test("a constant declared says it is planning while its plan is on its way", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Shared files", exact: true }).click();
+  await page.getByRole("button", { name: "Declare an entry" }).click();
+  await page
+    .getByRole("complementary", { name: "Declare an entry" })
+    .getByRole("combobox", { name: "Vocabulary" })
+    .press("ArrowDown");
+  await page.getByRole("option", { name: "constants", exact: true }).click();
+  const form = page.getByRole("complementary", { name: "Declare a constant" });
+  await form.getByRole("textbox", { name: "Name" }).fill("SPARE_SLOTS");
+  // Nothing is asked for while the value is empty, and nothing says it is planning.
+  await expect(form.getByText("Planning…")).toHaveCount(0);
+
+  const release = await held(page, "/api/constant-plan");
+  try {
+    await form.getByRole("textbox", { name: "Value" }).fill("4");
+    await expect(form.getByText("Planning…", { exact: true })).toBeVisible();
+  } finally {
+    release();
+  }
+  await expect(form.getByText("Changes 2 files: constants.ddd.json, demo.ddd.json")).toBeVisible();
+  await expect(form.getByText("Planning…")).toHaveCount(0);
+});
+
 test("a raster nothing measures in is removed, row and panel", async ({ page, vocabularyGui }) => {
   const kept = entriesOf(vocabularyGui.directory, "rasters").filter(
     (entry) => entry.raster !== "100ms",

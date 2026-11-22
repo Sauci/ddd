@@ -12,7 +12,12 @@ The entries are read by the loader's own rule, :func:`ddd.loading.included_files
 list a reader is shown and the files a run checks cannot come to two answers. A plan is the
 operations of :mod:`ddd.editing` each file takes, made and never written: a file is created by
 :func:`ddd.lsp.units.created_beside`, the one recipe every plan creates a file by, and an entry
-is added or removed by one edit of the description.
+is added or removed by one edit of the description. A change that is not made raises
+:class:`~ddd.plans.PlanRefusalError`, as every other plan does: ``not-found`` where the file to
+add is not there, or no entry has the path to remove; ``invalid`` where the change cannot be
+made - a kind or a name a new file may not take, a file of that name there already, a file the
+project has already, a file only a pattern brings in; ``unreadable`` where a first units file
+cannot list every unit, a file of the project not having loaded.
 
 No rule here says which kinds of file a project may do without. :func:`new_errors` counts the
 errors of two analyses of one project, the second with the root's list changed, place by place,
@@ -30,7 +35,7 @@ from collections import Counter
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePath
-from typing import Any, Final, Literal
+from typing import Any, Final
 
 from pydantic import TypeAdapter, ValidationError
 
@@ -40,11 +45,12 @@ from ddd.file_names import uncreatable
 from ddd.findings_by_file import Pair
 from ddd.loading import included_files, resolve_path
 from ddd.lsp.diagnostics import finding_identity
-from ddd.lsp.navigation import Index
+from ddd.lsp.navigation import Index, told_apart
 from ddd.lsp.ranges import Document, read
-from ddd.lsp.units import PlannedEdit, UnitProject, created_beside, entry_appended
+from ddd.lsp.units import VocabularyProject, created_beside, entry_appended
 from ddd.models.common import Identifier
 from ddd.models.reserved import is_reserved_identifier
+from ddd.plans import PlannedEdit, PlanRefusalError
 
 
 def new_errors(before: Sequence[Pair], after: Sequence[Pair]) -> tuple[Pair, ...]:
@@ -236,26 +242,6 @@ would not load, and no second spelling of the rule can drift from the first. The
 core schema from the annotation."""
 
 
-class FileRefusalError(Exception):
-    """A change of the project's files that is not made, and why - as the other plan modules'
-    refusals."""
-
-    code: Literal["unreadable", "invalid", "not-found"]
-    """``not-found``: the file to add is not there, or no entry has the path to remove.
-    ``invalid``: the change cannot be made - a kind or a name a new file may not take, a file
-    of that name there already, a file the project has already, a file only a pattern brings
-    in. ``unreadable``: a first units file cannot list every unit, a file of the project not
-    having loaded."""
-
-    message: str
-    """The sentence the refusal is shown with."""
-
-    def __init__(self, code: Literal["unreadable", "invalid", "not-found"], message: str) -> None:
-        super().__init__(message)
-        self.code = code
-        self.message = message
-
-
 @dataclass(frozen=True, slots=True)
 class IncludedEntry:
     """One entry of the root's ``includes``, as the loader's own rule reads it."""
@@ -351,7 +337,7 @@ def create_plan(
     name: str,
     component: str | None,
     taken: Collection[str],
-    units: UnitProject,
+    units: VocabularyProject,
     built: Index | None,
     cache: dict[Path, Document],
     *,
@@ -388,7 +374,7 @@ def create_plan(
     :func:`ddd.lsp.units.adoption` refuses adopting.
 
     ``checks_units`` says whether a file of the project's tree is a units file already, and
-    :attr:`~ddd.lsp.units.UnitProject.units_files` cannot: it is read out of the description's
+    :attr:`~ddd.lsp.units.VocabularyProject.files` cannot: it is read out of the description's
     own ``includes``, where what opts a project in is a units file anywhere in its tree, a
     sub-project's included (:attr:`ddd.loading.Workspace.units_files`). A project whose one
     units file is a sub-project's is opted in already, and a root units file listing its units
@@ -399,13 +385,13 @@ def create_plan(
     """
     described = resolve_path(project)
     if kind not in CREATABLE:
-        raise FileRefusalError(
+        raise PlanRefusalError(
             "invalid",
             f"no file of kind '{kind}' can be created here; the kinds that can are "
             f"{', '.join(CREATABLE[:-1])} and {CREATABLE[-1]}",
         )
     if FILE_NAME.fullmatch(name) is None:
-        raise FileRefusalError(
+        raise PlanRefusalError(
             "invalid",
             f"'{name}' cannot name a new file: a name is one or more of the letters a to z and "
             f"A to Z, the digits 0 to 9, '_' and '-', and {_SUFFIX} is added to it",
@@ -413,9 +399,9 @@ def create_plan(
     filename = f"{name}{_SUFFIX}"
     refused = uncreatable(filename)
     if refused is not None:
-        raise FileRefusalError("invalid", f"{filename} cannot be created: {refused}")
+        raise PlanRefusalError("invalid", f"{filename} cannot be created: {refused}")
     if (described.parent / filename).exists():
-        raise FileRefusalError("invalid", f"{filename} is there already, beside {described.name}")
+        raise PlanRefusalError("invalid", f"{filename} is there already, beside {described.name}")
     content = _content(described, kind, component, taken, units, built, checks_units=checks_units)
     edits = created_beside(described, filename, json.dumps(content, ensure_ascii=False), cache)
     return tuple(sorted(edits, key=lambda edit: edit.path.as_posix()))
@@ -426,7 +412,7 @@ def _content(
     kind: str,
     component: str | None,
     taken: Collection[str],
-    units: UnitProject,
+    units: VocabularyProject,
     built: Index | None,
     *,
     checks_units: bool,
@@ -474,26 +460,26 @@ def _component_name(component: str | None, taken: Collection[str]) -> str:
     same on every run.
     """
     if component is None:
-        raise FileRefusalError("invalid", "a new component needs a name, besides its file's")
+        raise PlanRefusalError("invalid", "a new component needs a name, besides its file's")
     try:
         _COMPONENT_NAME.validate_python(component)
     except ValidationError as refused:
-        raise FileRefusalError(
+        raise PlanRefusalError(
             "invalid", f"'{component}' cannot name a component, not being a usable c identifier"
         ) from refused
     if is_reserved_identifier(component):
-        raise FileRefusalError(
+        raise PlanRefusalError(
             "invalid",
             f"'{component}' cannot name a component, being reserved by c or by a header DDD "
             "generates",
         )
     if component in taken:
-        raise FileRefusalError(
+        raise PlanRefusalError(
             "invalid", f"this project has a component called '{component}' already"
         )
     for other in sorted(taken):
         if other.lower() == component.lower():
-            raise FileRefusalError(
+            raise PlanRefusalError(
                 "invalid",
                 f"this project has a component called '{other}' already, and '{component}' "
                 "differs from it only in upper and lower case, so the two would ask for the same "
@@ -502,17 +488,17 @@ def _component_name(component: str | None, taken: Collection[str]) -> str:
     return component
 
 
-def _stated_units(described: Path, units: UnitProject, built: Index | None) -> list[str]:
+def _stated_units(described: Path, units: VocabularyProject, built: Index | None) -> list[str]:
     """Every unit the project states, by code point, as :func:`ddd.lsp.units.adoption` lists
     them - or the refusal where the list could not be complete."""
     if units.unread:
-        raise FileRefusalError(
+        raise PlanRefusalError(
             "unreadable",
-            f"{', '.join(file.name for file in units.unread)} did not load, so a first units "
+            f"{', '.join(told_apart(units.unread))} did not load, so a first units "
             "file could not list every unit in use",
         )
     if built is None:
-        raise FileRefusalError(
+        raise PlanRefusalError(
             "unreadable",
             f"{described.name} did not load, so a first units file could not list every unit "
             "in use",
@@ -558,11 +544,11 @@ def add_plan(project: Path, entry: str, cache: dict[Path, Document]) -> FilePlan
     # 3.12 Path.is_file re-raises ENAMETOOLONG, a name past what a file system takes, where
     # os.path's answers false for whatever it cannot read, and never raises.
     if not os.path.isfile(added):  # noqa: PTH113
-        raise FileRefusalError(
+        raise PlanRefusalError(
             "not-found", f"{entry} names no file; a file not there yet is created, not added"
         )
     if added == described:
-        raise FileRefusalError(
+        raise PlanRefusalError(
             "invalid", f"{entry} is this project's own description, which it cannot include"
         )
     entries = included_entries(described, cache)
@@ -570,11 +556,11 @@ def add_plan(project: Path, entry: str, cache: dict[Path, Document]) -> FilePlan
         if added not in included.files:
             continue
         if included.names:
-            raise FileRefusalError(
+            raise PlanRefusalError(
                 "invalid",
                 f"{entry} is part of this project already, as the entry '{included.entry}'",
             )
-        raise FileRefusalError(
+        raise PlanRefusalError(
             "invalid",
             f"{entry} is part of this project already: the pattern '{included.entry}' brings it in",
         )
@@ -598,7 +584,7 @@ def add_plan(project: Path, entry: str, cache: dict[Path, Document]) -> FilePlan
             except ValueError:
                 # Windows, a file on another drive than the description: no relative path leads
                 # there.
-                raise FileRefusalError(
+                raise PlanRefusalError(
                     "invalid",
                     f"{entry} is on another drive than {described.name}, so no entry can name it",
                 ) from None
@@ -650,12 +636,12 @@ def remove_plan(project: Path, path: Path, cache: dict[Path, Document]) -> FileP
             removed=tuple(gone.entry for gone in removed),
         )
     if brought_by is not None:
-        raise FileRefusalError(
+        raise PlanRefusalError(
             "invalid",
             f"{path.name} has no entry of its own: the pattern '{brought_by}' brings it in, and "
             "only the whole pattern can be removed",
         )
-    raise FileRefusalError(
+    raise PlanRefusalError(
         "not-found",
         f"no entry of {described.name}'s includes names {path.name}, and none of its patterns "
         "matches it",

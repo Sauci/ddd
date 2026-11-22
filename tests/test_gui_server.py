@@ -53,6 +53,7 @@ from ddd.gui.server import (
     _SIGN_IN,
     BUSY,
     CODE_SECONDS,
+    EDIT_BODY,
     LINGER_SECONDS,
     MAX_BODY,
     MAX_CONNECTIONS,
@@ -567,8 +568,10 @@ class TestTheSignInExchange:
         )
 
     def test_a_body_past_the_limit_is_refused_before_it_is_read(self, server) -> None:
-        """At most ``MAX_BODY``, as every ``POST`` here: refused on its length, and its
-        connection closed, since the body is left unread on it."""
+        """At most ``MAX_BODY``, as every ``POST`` here but an edit: refused on its length, and
+        its connection closed, since the body is left unread on it. Never the edit's own limit,
+        which is read only once a request has shown the token: anyone who reaches the port can
+        post here."""
         response, data = exchange(
             server, {"token": server.token}, headers={"Content-Length": str(MAX_BODY + 1)}
         )
@@ -1012,7 +1015,7 @@ class TestWhoMayAsk:
             "/api/edit",
             body=b"{}",
             origin=f"http://127.0.0.1:{server.port}",
-            headers={"Content-Length": str(MAX_BODY + 1)},
+            headers={"Content-Length": str(EDIT_BODY + 1)},
         )
         assert response.status == 413
 
@@ -1024,7 +1027,7 @@ class TestWhoMayAsk:
         status, body = raw_answer(server, posted(server, "9" * 4301))
         assert (status, json.loads(body)) == (
             413,
-            {"error": "too-large", "message": f"a request body is at most {MAX_BODY} bytes"},
+            {"error": "too-large", "message": f"a request body is at most {EDIT_BODY} bytes"},
         )
         assert capsys.readouterr().err == ""
 
@@ -1037,8 +1040,8 @@ class TestWhoMayAsk:
         """Zeros alone are a length of 0, however many there are, and zeros before a length
         are no part of it: each is answered exactly as the same request spelling its length
         plainly. ``00000002`` converted before ``_body`` stripped anything, so it pins that a
-        length is not refused for its digits alone, eight of them where ``MAX_BODY`` has
-        seven."""
+        length is not refused for its digits alone, eight of them where the edit's own limit,
+        ``EDIT_BODY``, has seven."""
         plainly = raw_answer(server, posted(server, str(len(body)), body))
         assert raw_answer(server, posted(server, length, body)) == plainly
         assert capsys.readouterr().err == ""
@@ -1054,6 +1057,140 @@ class TestWhoMayAsk:
         connection.endheaders()
         assert connection.getresponse().status == 400
         connection.close()
+
+
+class TestTheBodyAnEditPosts:
+    """An Apply posts every change of its plan as ``POST /api/edit``'s body, each file's path,
+    fingerprint and operations: renaming the unit stated in the most files of a generated project
+    of 100,000 declarations posts up to 4,725,352 bytes, the chain shape's at its worst density of
+    findings, the most of the generator's four shapes, and up to 1,948,716 from the mixed, large
+    and many shapes clean or findings-heavy, the benchmark's largest applied rename (15:I4). Over
+    the socket, as the page posts it: the benchmark applies through ``Api.handle``, which no limit
+    on a body reaches."""
+
+    @staticmethod
+    def unit_set(project_file: Path, size: int) -> bytes:
+        """The unit of ``Speed`` set to ``Hz``, as the page posts an edit, padded with the spaces
+        json reads past to ``size`` bytes."""
+        target = project_file.parent / "a.ddd.json"
+        edit = {
+            "changes": [
+                {
+                    "file": target.as_posix(),
+                    "fingerprint": fingerprint(target.read_bytes()),
+                    "operations": [
+                        {
+                            "op": "set",
+                            "pointer": "component.interface[0].definition.unit",
+                            "raw": '"Hz"',
+                        }
+                    ],
+                }
+            ],
+            "label": "the unit of Speed",
+        }
+        body = json.dumps(edit, separators=(",", ":")).encode("utf-8")
+        return body + b" " * (size - len(body))
+
+    def applied(self, server: GuiServer, project_file: Path, size: int) -> None:
+        """An edit of ``size`` bytes, posted signed in from this server's own page, answered
+        ``200`` and written."""
+        target = project_file.parent / "a.ddd.json"
+        before = target.read_bytes()
+        body = self.unit_set(project_file, size)
+        assert len(body) == size
+        origin = f"http://127.0.0.1:{server.port}"
+        response, data = ask(server, "POST", "/api/edit", body=body, origin=origin)
+        assert response.status == 200, data
+        assert target.read_bytes() == before.replace(b'"unit": "rpm"', b'"unit": "Hz"')
+
+    def test_an_edit_as_large_as_the_benchmarks_largest_rename_is_applied(
+        self, server, project_file
+    ) -> None:
+        """1,948,716 bytes, the applied rename of the ``mixed`` shape, findings-heavy, at 100,000
+        declarations: read and applied, where a body past ``MAX_BODY`` was refused ``413``."""
+        self.applied(server, project_file, 1_948_716)
+
+    def test_an_edit_as_large_as_the_chain_shapes_rename_is_applied(
+        self, server, project_file
+    ) -> None:
+        """4,725,352 bytes, the applied rename of the generator's ``chain`` shape at 100,000
+        declarations, 50,000 components of two declarations each, at ``--unread 0.625``: 18,751
+        operations over 12,501 files, the largest body any shape or density of the generator's
+        makes, read whole and applied."""
+        self.applied(server, project_file, 4_725_352)
+
+    def test_an_edit_of_its_own_limit_is_applied(self, server, project_file) -> None:
+        """``EDIT_BODY`` bytes exactly: the limit is the boundary, not below it."""
+        self.applied(server, project_file, EDIT_BODY)
+
+    def test_an_edit_past_its_own_limit_is_refused_before_it_is_read(self, server) -> None:
+        """One byte past it, refused on its length and its connection closed, its body left
+        unread - in words pinned as text, the limit's value among them: compared against
+        ``EDIT_BODY`` itself, they would move with it and catch no change of either."""
+        response, data = ask(
+            server,
+            "POST",
+            "/api/edit",
+            body=b"{}",
+            origin=f"http://127.0.0.1:{server.port}",
+            headers={"Content-Length": str(EDIT_BODY + 1)},
+        )
+        assert (response.status, json.loads(data)) == (
+            413,
+            {"error": "too-large", "message": "a request body is at most 8388608 bytes"},
+        )
+        assert response.getheader("Connection") == "close"
+
+    @pytest.mark.parametrize("path", ["/api/open", "/api/undo"])
+    def test_every_other_post_of_the_api_is_read_no_further_than_max_body(
+        self, server, path
+    ) -> None:
+        """An open and an undo post a few dozen bytes: one byte past ``MAX_BODY``, each is refused
+        ``413`` as before, the edit's limit its own alone."""
+        response, data = ask(
+            server,
+            "POST",
+            path,
+            body=b"{}",
+            origin=f"http://127.0.0.1:{server.port}",
+            headers={"Content-Length": str(MAX_BODY + 1)},
+        )
+        assert (response.status, json.loads(data)) == (
+            413,
+            {"error": "too-large", "message": "a request body is at most 1048576 bytes"},
+        )
+
+    @pytest.mark.parametrize(
+        ("headers", "status"),
+        [
+            ("", 401),
+            ("SIGNED Sec-Fetch-Site: cross-site\r\n", 403),
+            ("SIGNED OWN Content-Type: text/plain\r\n", 403),
+        ],
+        ids=["unsigned", "from-elsewhere", "not-json"],
+    )
+    def test_an_edit_refused_before_its_token_and_origin_are_read_is_drained_by_max_body(
+        self, server, monkeypatch, headers, status
+    ) -> None:
+        """The edit's own limit is read only once the request has shown the token and this
+        server's own origin. Refused before that, an edit declaring a byte past ``MAX_BODY``,
+        within its own limit, is answered once and closed, its body never read but drained by
+        ``MAX_BODY`` as any ``POST``'s is, and the request sent after it never answered. Read up
+        to the edit's limit instead, its body would be waited for, and nothing answered once the
+        connection's idle time - half a second here - was up."""
+        monkeypatch.setattr(module._Handler, "timeout", 0.5)
+        signed = f"Authorization: Bearer {server.token}\r\n"
+        own = f"Origin: http://127.0.0.1:{server.port}\r\n"
+        headers = headers.replace("SIGNED ", signed).replace("OWN ", own)
+        refused = (
+            f"POST /api/edit HTTP/1.1\r\nHost: 127.0.0.1:{server.port}\r\n{headers}"
+            f"Content-Length: {MAX_BODY + 1}\r\n\r\n"
+        ).encode("ascii") + TestABodyLeftUnread.SMUGGLED
+        answered = every_answer(server, refused)
+        assert answered.count(b"HTTP/1.1 ") == 1
+        assert answered.startswith(f"HTTP/1.1 {status} ".encode("ascii"))
+        assert b"\r\nConnection: close\r\n" in answered.partition(b"\r\n\r\n")[0]
 
 
 def _hashed(text: str) -> str:
@@ -1816,7 +1953,7 @@ class TestABodyLeftUnread:
 
     @pytest.mark.parametrize(
         ("length", "status"),
-        [(str(MAX_BODY + 1), 413), ("ten", 400)],
+        [(str(EDIT_BODY + 1), 413), ("ten", 400)],
         ids=["too-long", "no-length"],
     )
     def test_a_post_whose_length_is_refused_is_answered_once_and_closed(
@@ -1885,7 +2022,7 @@ class TestABodyLeftUnread:
         still sending 4 MiB while the answer is read, as a browser posting a large body would,
         never lost the answer on any of the six legs: hence this order, which no thread's timing
         decides."""
-        head = posted(server, str(MAX_BODY + 1)).replace(b"Connection: close\r\n", b"")
+        head = posted(server, str(EDIT_BODY + 1)).replace(b"Connection: close\r\n", b"")
         with socket.create_connection(("127.0.0.1", server.port), timeout=10) as connection:
             connection.sendall(head)
             arrived(connection)  # the answer, written before a byte of the body was read
@@ -1895,7 +2032,7 @@ class TestABodyLeftUnread:
         assert answered.startswith(b"HTTP/1.1 413 ")
         assert answered.endswith(
             json.dumps(
-                {"error": "too-large", "message": f"a request body is at most {MAX_BODY} bytes"}
+                {"error": "too-large", "message": f"a request body is at most {EDIT_BODY} bytes"}
             ).encode()
         )
 
@@ -2016,7 +2153,7 @@ class TestABodyLeftUnread:
             assert server.slots.acquire(timeout=10)
             server.slots.release()
             assert lingered == []
-            assert raw_answer(server, posted(server, str(MAX_BODY + 1)))[0] == 413
+            assert raw_answer(server, posted(server, str(EDIT_BODY + 1)))[0] == 413
             assert server.slots.acquire(timeout=10)
             server.slots.release()
             assert len(lingered) == 1
@@ -2772,8 +2909,9 @@ class TestTheStandardLibrarysLimits:
     headers. Pinned here, each on a connection of its own, so that a server that stopped
     answering them would be caught.
 
-    A refused request is sent only as far as the line it is refused at: a connection closed
-    with bytes it never read is reset, and the answer can be lost with it."""
+    A refused request is sent only as far as the line it is refused at: each refusal's status is
+    what is pinned here, and what follows one is drained before its close, pinned with the
+    standard library's answers (``TestTheStandardLibrarysAnswers``)."""
 
     def test_a_request_line_of_more_than_65536_bytes_is_answered_414(self, server) -> None:
         assert status_of(server, request_line(65537)) == 414
@@ -2881,6 +3019,26 @@ class TestTheStandardLibrarysAnswers:
             "Content-Length": str(len(body)),
         }
         assert f"Error code: {code}".encode("ascii") in body
+
+    @pytest.mark.parametrize("refused", REFUSED)
+    def test_each_refusal_keeps_its_answer_while_more_of_the_request_arrives(
+        self, server, refused
+    ) -> None:
+        """Its answer arrived but not yet read when 64 KiB more of the request are sent: what
+        arrives is taken - drained before the close, as a refusal of ``ddd gui``'s own is (12:M7,
+        the plan's *Left open* entry) - not refused with a reset, and the answer is read whole
+        after it. Closed with them unread, the close is a reset: on Linux one of these sends
+        fails (``BrokenPipeError``), and on Windows it can lose the answer before the browser
+        reads it, as it lost a refusal too long to read before ``ddd gui``'s own were drained."""
+        code, sent = refusals_of(server)[refused]
+        with socket.create_connection(("127.0.0.1", server.port), timeout=10) as connection:
+            connection.sendall(sent)
+            arrived(connection)  # the answer, written before anything after it was read
+            for _ in range(64):
+                connection.sendall(b"x" * 1024)  # taken, where a reset fails it
+            answered = read_to_the_end(connection)
+        assert answered.startswith(f"HTTP/1.1 {code} ".encode("ascii"))
+        assert f"Error code: {code}".encode("ascii") in answered
 
     def test_a_refusal_says_its_reason_in_its_status_line(self, server) -> None:
         status, _, _ = whole_answer(server, b"GET / x HTTP/1.1\r\n")

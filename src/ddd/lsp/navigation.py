@@ -602,7 +602,7 @@ def _unread(bag: DiagnosticBag) -> tuple[tuple[Path, ...], tuple[Path, ...]]:
         if finding.severity is not Severity.ERROR or location is None:
             continue
         path, unread = location.path, finding.check in LOAD_CHECKS
-        named = _named_at(finding.check, location)
+        named = named_at(finding.check, location)
         if named is not None and len(named) == 1:
             path = named[0]
         elif named is not None:
@@ -613,7 +613,7 @@ def _unread(bag: DiagnosticBag) -> tuple[tuple[Path, ...], tuple[Path, ...]]:
     return tuple(sorted(about)), tuple(sorted(unloaded))
 
 
-def _named_at(check: str, location: Location) -> list[Path] | None:
+def named_at(check: str, location: Location) -> list[Path] | None:
     """The files the include entry at ``location`` names, by the loader's own reading of it,
     where ``check`` is one it reports there for a file it could not read; ``None`` for any other
     error, which is about the file it sits in."""

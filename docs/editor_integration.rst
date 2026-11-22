@@ -81,8 +81,8 @@ The server asks the editor to watch every description file and every build recor
 workspace, once the editor has said it is initialized, where its client takes such a
 registration while the session runs, as VS Code's does; a client that does not is asked for
 nothing, and a file changed behind it is read again at the next open or save. A description
-changing is checked again where its findings are on screen, whatever is open, and while none is
-open whether they are or not: with a document of another project open, a pull that mended a
+changing is checked again where its findings are on screen or a check ran from it, whatever is
+open, and while none is open whether they are or not: with a document of another project open, a pull that mended a
 project nobody had open left its findings on screen as they were. A build record changing is a
 change of which projects there are and of their severities: the open documents and every file
 whose findings are on screen are checked again under the records as they now read.

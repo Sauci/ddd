@@ -1,7 +1,7 @@
 import { readFileSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { CONTROLLER, failing, held, restamp, SERVER_FAILED } from "./demo";
+import { CONTROLLER, failing, held, restamp, SERVER_FAILED, writeUnseen } from "./demo";
 import { expect, test } from "./fixtures";
 
 /** A route the page never asks on its own (no caller in gui/src), so that only the asks below
@@ -235,6 +235,33 @@ test("a file restamped has a later modification time and the same bytes", async 
   restamp(gui.directory, CONTROLLER);
   expect(statSync(path).mtimeMs).toBeGreaterThan(old.getTime() + 1000);
   expect(readFileSync(path).equals(bytes)).toBe(true);
+});
+
+test("a file written unseen keeps its stamp and its directory's, and holds the new bytes", async ({
+  gui,
+}) => {
+  // The watcher stamps the directory the demo's `components/*.ddd.json` expands in as well as the
+  // file (`Revision.watched`, session.py), and a rename into a directory moves its time: both
+  // stamps are as they were, to the nanosecond, so only a fresh read of the file sees the write.
+  const path = join(gui.directory, CONTROLLER);
+  const directory = join(gui.directory, "components");
+  const original = readFileSync(path, "utf8");
+  const changed = original.replace(
+    '"description": "Consumes the raw values and produces the derived ones"',
+    '"description":"Consumes the raw values and produces the derived ones."',
+  );
+  expect(changed).not.toBe(original);
+  const fileBefore = statSync(path, { bigint: true });
+  const directoryBefore = statSync(directory, { bigint: true });
+  writeUnseen(gui.directory, CONTROLLER, changed);
+  const fileAfter = statSync(path, { bigint: true });
+  const directoryAfter = statSync(directory, { bigint: true });
+  expect([fileAfter.mtimeNs, fileAfter.size]).toEqual([fileBefore.mtimeNs, fileBefore.size]);
+  expect([directoryAfter.mtimeNs, directoryAfter.size]).toEqual([
+    directoryBefore.mtimeNs,
+    directoryBefore.size,
+  ]);
+  expect(readFileSync(path, "utf8")).toBe(changed);
 });
 
 test("a string that is not a pathname is refused, rather than holding or failing nothing", async ({

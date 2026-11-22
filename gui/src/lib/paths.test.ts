@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { shownPath } from "./paths";
+import { shownPath, toldApart } from "./paths";
 
 // Every expected path below is what Python's own `relpath` answers for the same two paths
 // (`posixpath.relpath`, and `ntpath.relpath` for the Windows ones), checked when these were
@@ -52,5 +52,44 @@ describe("a file's path as the Table tab's File column shows it", () => {
     expect(shownPath("C:/work/demo/demo.ddd.json", "//server/share/x.ddd.json")).toBe(
       "//server/share/x.ddd.json",
     );
+  });
+});
+
+describe("a file as a sentence naming several names it", () => {
+  // The server's own case (`tests/test_lsp.py`, `told_apart`): every path named among all six
+  // answers what `ddd.lsp.navigation.told_apart` answers for them.
+  const among = [
+    "/w/one/units.ddd.json",
+    "/w/two/units.ddd.json",
+    "/w/a.ddd.json",
+    "/a/x/v.ddd.json",
+    "/b/x/v.ddd.json",
+    "/v.ddd.json",
+  ];
+
+  test("by its name, unless another shares it, then by as much of its path as it takes", () => {
+    expect(among.map((path) => toldApart(path, among))).toEqual([
+      "one/units.ddd.json",
+      "two/units.ddd.json",
+      "a.ddd.json",
+      "a/x/v.ddd.json",
+      "b/x/v.ddd.json",
+      "/v.ddd.json",
+    ]);
+  });
+
+  test("alone, or listed twice, a file is named by its name", () => {
+    expect(toldApart("C:/work/demo/types.ddd.json", [])).toBe("types.ddd.json");
+    expect(
+      toldApart("C:/work/demo/types.ddd.json", [
+        "C:/work/demo/types.ddd.json",
+        "C:/work/demo/types.ddd.json",
+      ]),
+    ).toBe("types.ddd.json");
+  });
+
+  test("two files that differ only by their drive are named in full", () => {
+    const drives = ["C:/work/types.ddd.json", "D:/work/types.ddd.json"];
+    expect(drives.map((path) => toldApart(path, drives))).toEqual(drives);
   });
 });

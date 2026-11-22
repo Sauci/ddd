@@ -180,6 +180,41 @@ def plugin_files(spelling: str, base: Path) -> tuple[Path, ...]:
     return tuple(sorted(path.resolve() for path in source.parent.rglob("*.py")))
 
 
+_RUN_FROM: Final[dict[str, str]] = {}
+"""The SHA-256, in hex, of the bytes each module :func:`_load_from_path` ran was read from, by the
+name ``sys.modules`` holds it under: what :func:`changed_since_imported` compares its file with.
+Kept once the module has run, so that one whose body failed, which no load hands out, has none."""
+
+
+def changed_since_imported(path: Path) -> bool:
+    """Whether a load of the plugin file ``path`` - resolved, as :func:`plugin_files` names a path
+    spelling's file - hands out a module run from other bytes than the file holds now.
+
+    A module is imported once per process: the first load of a file runs it, and every later one,
+    whatever spelling reaches the file, hands that module out again (:func:`_load_from_path`), so
+    a plugin edited since runs its old code until the process starts again. ``ddd gui``, which
+    runs for as long as its reader works, asks this of every plugin its project names by its path
+    and says so (``plugin-changed``); ``ddd check`` imports afresh, in a process of its own.
+
+    Told by the bytes, never by a stamp: the same bytes written again are no change. False for a
+    file no module was run from - never loaded, or one whose module failed to run, which the next
+    load runs afresh - and for one that is gone, which a load reports as not found rather than
+    hand its module out; true for one that cannot be read now, whose module a load still hands out
+    where an import afresh would fail to read it. Two statements rather than one condition for the
+    first two, so that coverage counts a branch for each.
+    """
+    imported = _RUN_FROM.get(_module_name(path))
+    if imported is None:
+        return False
+    if not path.is_file():
+        return False
+    try:
+        held = path.read_bytes()
+    except OSError:
+        return True
+    return hashlib.sha256(held).hexdigest() != imported
+
+
 def _located(spelling: str) -> str | None:
     """Where the finder says the module ``spelling`` is, without running it.
 
@@ -208,6 +243,18 @@ def _exit_text(error: SystemExit) -> str:
     return f"SystemExit({error.code!r})"
 
 
+def _module_name(path: Path) -> str:
+    """The name ``sys.modules`` holds the module of the plugin file ``path`` under, ``path``
+    resolved (:func:`_load_from_path` says why it is this one).
+
+    Digested as UTF-8 with lone surrogates passed through, so that a path naming a directory or a
+    file in no UTF-8 - one named in Latin-1, as an old archive leaves one, which python spells with
+    a lone surrogate on a POSIX system, and NTFS can hold - names a module as any other does, where
+    a strict encode raised; the name of every other path is what that encode gave."""
+    digest = hashlib.sha256(path.as_posix().encode("utf-8", "surrogatepass")).hexdigest()[:16]
+    return f"ddd_plugin_{re.sub(r'\W', '_', path.stem)}_{digest}"
+
+
 def _load_from_path(spelling: str, base: Path) -> Any:
     path = _path_of(spelling, base)
     if not path.is_file():
@@ -218,8 +265,7 @@ def _load_from_path(spelling: str, base: Path) -> Any:
     # "two plugins claiming one name".
     # Keyed on a digest of the path rather than on a sanitised spelling of it, which folded
     # 'my-plugin.py' and 'my_plugin.py' into one name and handed the second the first's module.
-    digest = hashlib.sha256(path.as_posix().encode("utf-8")).hexdigest()[:16]
-    name = f"ddd_plugin_{re.sub(r'\W', '_', path.stem)}_{digest}"
+    name = _module_name(path)
     cached = sys.modules.get(name)
     if cached is not None:
         return cached
@@ -231,6 +277,11 @@ def _load_from_path(spelling: str, base: Path) -> Any:
     # resolving its own forward references, for one - would otherwise find nothing there.
     sys.modules[name] = module
     try:
+        # Read before the module runs, for the bytes it is kept as run from (`_RUN_FROM`): a
+        # save landing between this read and the loader's own is then told a change the module
+        # does not hold - a restart asked for in vain - and never a change it holds told as none.
+        # Inside the guard, so that a file that cannot be read fails to import as it always has.
+        source = path.read_bytes()
         spec.loader.exec_module(module)
     except (Exception, SystemExit) as error:
         # Not left cached half-run: a second load must retry it and report again, rather than
@@ -252,6 +303,7 @@ def _load_from_path(spelling: str, base: Path) -> Any:
         # body at all, rather than trying again.
         sys.modules.pop(name, None)
         raise
+    _RUN_FROM[name] = hashlib.sha256(source).hexdigest()
     return module
 
 

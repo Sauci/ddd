@@ -471,13 +471,124 @@ describe("requests to the server", () => {
     // The server reads a request line of at most 65536 bytes and answers 414 beyond it, which
     // the grid would show as `Request-URI Too Long` - true, and no use to a reader holding a
     // table. Nine thousand five-digit counts cost five characters each and three more for the
-    // `%2C` before them, which is past the line on its own.
+    // `%2C` before them, which is past the line on its own. A table that large is not one
+    // ddd gui takes (decision 3.6), and the sentence says how else to set it.
     const calls = recorded();
     const raw = Array.from({ length: 9000 }, () => 12345);
-    await expect(getValuesPlan({ name: "Huge", raw }, calls.fetch)).rejects.toThrow(
-      "'Huge' has too many values to plan in one request: its counts need 72028 characters " +
-        "of address, and ddd gui reads at most 65521",
+    const refused = getValuesPlan({ name: "Huge", raw }, calls.fetch);
+    await expect(refused).rejects.toBeInstanceOf(ApiError);
+    await expect(refused).rejects.toMatchObject({
+      status: 414,
+      code: "too-long",
+      message:
+        "'Huge' has too many values to plan at once: a table past about 10,000 counts is not " +
+        "one ddd gui takes; set its values cell by cell, or in its file in an editor",
+    });
+    expect(calls.urls).toEqual([]);
+  });
+
+  test("a 90 by 90 table of five-digit counts is asked for, and a 91 by 91 one refused", async () => {
+    // Where the values plan's comment says the address runs out: a count of five digits costs
+    // eight characters, its `%2C` among them, and the line holds 8,186 of them beside `Map`.
+    const calls = recorded();
+    const square = (side: number) => ({
+      name: "Map",
+      raw: Array.from({ length: side * side }, () => 12345),
+    });
+    await getValuesPlan(square(90), calls.fetch);
+    expect(calls.urls).toHaveLength(1);
+    await expect(getValuesPlan(square(91), calls.fetch)).rejects.toMatchObject({
+      status: 414,
+      code: "too-long",
+      message:
+        "'Map' has too many values to plan at once: a table past about 10,000 counts is not one " +
+        "ddd gui takes; set its values cell by cell, or in its file in an editor",
+    });
+    expect(calls.urls).toHaveLength(1);
+  });
+
+  test("any other ask whose address outgrows one request line is refused, naming its route", async () => {
+    // A plan of any route asked by GET: a description of seventy thousand characters, which its
+    // query carries as they are. Sent, it was answered 414 and shown as `http-414`.
+    const calls = recorded();
+    const description = "x".repeat(70_000);
+    const refused = getDescriptionPlan(
+      { file: "/tmp/c.ddd.json", name: "ParameterA", description },
+      calls.fetch,
     );
+    await expect(refused).rejects.toBeInstanceOf(ApiError);
+    await expect(refused).rejects.toMatchObject({
+      status: 414,
+      code: "too-long",
+      message:
+        "/api/description-plan cannot be asked in one request: its address needs 70075 " +
+        "characters, and ddd gui reads at most 65521",
+    });
+    expect(calls.urls).toEqual([]);
+  });
+
+  test("a GET's address of the line's own limit is sent, and one character more is not", async () => {
+    // `GET `, the address, ` HTTP/1.1` and a CRLF: 65536 bytes at most, the address 65521 of them.
+    const calls = recorded();
+    const at = (length: number) => `/api/state?${"a".repeat(length - "/api/state?".length)}`;
+    await request(at(65521), {}, calls.fetch);
+    expect(calls.urls).toHaveLength(1);
+    await expect(request(at(65522), {}, calls.fetch)).rejects.toMatchObject({
+      status: 414,
+      message:
+        "/api/state cannot be asked in one request: its address needs 65522 characters, and " +
+        "ddd gui reads at most 65521",
+    });
+    expect(calls.urls).toHaveLength(1);
+  });
+
+  test("an address its apostrophes carry past the line is refused, counted as it is sent", async () => {
+    // A browser sends `'` in the query of an http address as `%27`, three bytes, where
+    // `encodeURIComponent` leaves it as it is: counted as one, this address of 65,521 characters
+    // as typed was let through, sent as 65,541 and answered 414.
+    const calls = recorded();
+    const head = "/api/description-plan?file=%2Ftmp%2Fc.ddd.json&name=ParameterA&description=";
+    const description = `${"'".repeat(10)}${"x".repeat(65521 - head.length - 10)}`;
+    const refused = getDescriptionPlan(
+      { file: "/tmp/c.ddd.json", name: "ParameterA", description },
+      calls.fetch,
+    );
+    await expect(refused).rejects.toMatchObject({
+      status: 414,
+      code: "too-long",
+      message:
+        "/api/description-plan cannot be asked in one request: its address needs 65541 " +
+        "characters, and ddd gui reads at most 65521",
+    });
+    expect(calls.urls).toEqual([]);
+  });
+
+  test("an apostrophe in a query is asked for as %27, as a browser sends it", async () => {
+    // Both builders of a query: the routes' own (`queryOf`) and the findings page's.
+    const calls = recorded();
+    await getDescriptionPlan(
+      { file: "/tmp/c.ddd.json", name: "ParameterA", description: "the driver's" },
+      calls.fetch,
+    );
+    await getFindings({ file: "C:/p/o'brien.ddd.json" }, calls.fetch);
+    expect(calls.urls).toEqual([
+      [
+        "/api/description-plan?file=%2Ftmp%2Fc.ddd.json&name=ParameterA&description=the%20driver%27s",
+        { credentials: "omit" },
+      ],
+      ["/api/findings?file=C%3A%2Fp%2Fo%27brien.ddd.json", { credentials: "omit" }],
+    ]);
+  });
+
+  test("a POST's address is held to its own line, one byte shorter for its method", async () => {
+    const calls = recorded();
+    const address = `/api/edit?${"a".repeat(65521 - "/api/edit?".length)}`;
+    await expect(request(address, { method: "POST" }, calls.fetch)).rejects.toMatchObject({
+      status: 414,
+      message:
+        "/api/edit cannot be asked in one request: its address needs 65521 characters, and " +
+        "ddd gui reads at most 65520",
+    });
     expect(calls.urls).toEqual([]);
   });
 });

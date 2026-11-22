@@ -109,6 +109,11 @@ CHECKS: Final[dict[str, CheckInfo]] = {
         _check("plugin-invalid", Severity.ERROR,
                "a plugin module does not expose a well formed PLUGIN, or two plugins claim "
                "one name", overridable=False),
+        # Filed by `ddd gui` alone, which imports a plugin once for as long as it runs
+        # (`ddd.gui.session`): an error, since every finding after the edit is the old code's.
+        _check("plugin-changed", Severity.ERROR,
+               "a plugin named by its path changed since ddd gui imported it, so ddd gui runs "
+               "the old code until it is restarted"),
         _check("duplicate-component", Severity.ERROR,
                "two different files declare the same component name"),
         _check("duplicate-type", Severity.ERROR,

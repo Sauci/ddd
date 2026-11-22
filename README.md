@@ -606,6 +606,7 @@ carries the same three as `overridable`, `needs_every_component` and `comparison
 | error | `include-cycle`, `include-depth`, `file-not-found`, `file-kind`, `json-syntax`, `schema`, `plugin-not-found`, `plugin-invalid` | the file tree cannot be read, or nests deeper than the 64 levels of includes DDD follows; these eight cannot be relaxed |
 | error | `include-empty` | an include pattern matches no file; relaxable, unlike the eight above |
 | error | `unknown-extension` | an `extensions` block names a plugin the project does not load |
+| error | `plugin-changed` | filed by `ddd gui` alone: a plugin named by its path changed since the server imported it, so the server runs the old code until it is restarted |
 | warning | `storage-mismatch` | components disagree on how the a2l shows the object; the producer wins |
 | warning | `section-alignment` | an object needs stricter alignment than its section guarantees |
 | warning | `condition-mismatch` | declarations of one variable, or an object and what it refers to, use different conditions |

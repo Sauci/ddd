@@ -78,15 +78,8 @@ from ddd.lsp.protocol import (
 )
 from ddd.lsp.ranges import Document, differs_from_disk, read
 from ddd.lsp.server import Server, uri_to_path
-from ddd.lsp.units import (
-    PlannedEdit,
-    UnitPlan,
-    UnitRefusalError,
-    rename_unit,
-    text_edits,
-    unit_drift,
-    unit_project,
-)
+from ddd.lsp.units import rename_unit, text_edits, unit_drift, vocabulary_project
+from ddd.plans import Plan, PlannedEdit, PlanRefusalError
 from test_variable_keys import edited
 
 
@@ -3423,7 +3416,7 @@ class TestAUnitPlanAsTextEdits:
         out the same, or the editor and ddd gui would write two different things. The edits come
         in the order of the text, whichever order the operations are in."""
         path = self.vocabulary(tmp_path)
-        plan = UnitPlan((PlannedEdit(path, operations),))
+        plan = Plan((PlannedEdit(path, operations),))
         (edits,) = text_edits(plan, {}).values()
         assert apply_edits(path, edits) == edit_text(path.read_text(encoding="utf-8"), operations)
         starts = [
@@ -3436,7 +3429,7 @@ class TestAUnitPlanAsTextEdits:
         claim the one between them: two overlapping edits, which a client refuses whole."""
         path = self.vocabulary(tmp_path)
         removed = (Operation("remove", "units[3]"), Operation("remove", "units[2]"))
-        (edits,) = text_edits(UnitPlan((PlannedEdit(path, removed),)), {}).values()
+        (edits,) = text_edits(Plan((PlannedEdit(path, removed),)), {}).values()
         assert len(edits) == 1
         assert json.loads(apply_edits(path, edits))["units"] == ["rpm", {"unit": "Nm"}]
 
@@ -3444,7 +3437,7 @@ class TestAUnitPlanAsTextEdits:
         """The client applies it to what it shows, which one blank line puts a line lower."""
         path = self.vocabulary(tmp_path)
         disk = path.read_text(encoding="utf-8")
-        plan = UnitPlan((PlannedEdit(path, (Operation("set", "units[0]", '"1/min"'),)),))
+        plan = Plan((PlannedEdit(path, (Operation("set", "units[0]", '"1/min"'),)),))
         (edits,) = text_edits(plan, {path: Document("\n" + disk)}).values()
         on_disk = Document(disk).value_range_of("units[0]")
         assert on_disk is not None
@@ -3459,7 +3452,7 @@ class TestAUnitPlanAsTextEdits:
             creates=True,
         )
         with pytest.raises(EditError) as refused:
-            text_edits(UnitPlan((created,)), {})
+            text_edits(Plan((created,)), {})
         assert refused.value.code == INVALID
 
     def built(self, tmp_path: Path) -> Any:
@@ -3560,7 +3553,7 @@ class TestAUnitPlanRendersInLinearTime:
         cache: dict[Path, Document] = {}
         workspace = load_workspace(tmp_path / "p.ddd.json", DiagnosticBag())
         assert workspace is not None
-        project_of = unit_project(tmp_path / "p.ddd.json", (), cache)
+        project_of = vocabulary_project(tmp_path / "p.ddd.json", "units", (), cache, skims=True)
         plan = rename_unit(navigation.index(workspace), project_of, "rpm", "RPM", cache)
         read(a, cache)
         rendered: dict[str, list[dict[str, Any]]] = {}
@@ -6518,12 +6511,12 @@ class TestServer:
         assert speed["definition"]["unit"] == "rpm"
         assert len(changes[(tmp_path / "units.ddd.json").as_uri()]) == 1
 
-    def refusal_of(self, document: Path, old: str, new: str) -> UnitRefusalError:
+    def refusal_of(self, document: Path, old: str, new: str) -> PlanRefusalError:
         """The plan's own refusal of this rename, which is what the server has to answer."""
         (loaded,) = navigation.workspaces([], document, document.parent)
         built = navigation.index(loaded.workspace)
-        project = unit_project(loaded.path, loaded.unloaded, {})
-        with pytest.raises(UnitRefusalError) as refused:
+        project = vocabulary_project(loaded.path, "units", loaded.unloaded, {}, skims=True)
+        with pytest.raises(PlanRefusalError) as refused:
             rename_unit(built, project, old, new, {})
         return refused.value
 
@@ -9205,7 +9198,7 @@ class TestFixingAnUnknownUnit:
         assert workspace is not None
         built = navigation.index(workspace)
         path = root.parent / source
-        project = unit_project(root, (), cache)
+        project = vocabulary_project(root, "units", (), cache, skims=True)
         return actions(built, path, read(path, cache), pointer, cache, reported, project)
 
     def titles(self, offered: list[dict[str, Any]]) -> list[str]:
@@ -12682,6 +12675,38 @@ class TestWhatNoRunReportsOnLeavesTheScreen:
         assert server._handle(changed_on_disk(b1))
         assert "definition-mismatch" not in self.last_codes(writer, a1)
         assert "definition-mismatch" not in self.last_codes(writer, b1)
+
+    def test_a_description_a_check_ran_from_is_checked_again_with_none_of_its_own_on_screen(
+        self, tmp_path: Path
+    ) -> None:
+        """Project one has been opened and closed, and a document of project two is open: one's
+        components show findings, and one itself shows none. It is rewritten behind the editor to
+        include one component no more, and the watcher reports it: a check ran from it and
+        reported on those components, so the findings its change removed are withdrawn."""
+        write_tree(
+            tmp_path,
+            {
+                "one/p1.ddd.json": project("One", "a1.ddd.json", "b1.ddd.json"),
+                **self.disagreeing(Path("one/a1.ddd.json"), Path("one/b1.ddd.json")),
+                "two/p2.ddd.json": project("Two", "a2.ddd.json"),
+                "two/a2.ddd.json": component("A2", declare("output", "Rate")),
+            },
+        )
+        p1, p2 = tmp_path / "one" / "p1.ddd.json", tmp_path / "two" / "p2.ddd.json"
+        a1, b1 = tmp_path / "one" / "a1.ddd.json", tmp_path / "one" / "b1.ddd.json"
+        writer = io.BytesIO()
+        server = Server(io.BytesIO(), writer, root=tmp_path)
+        assert server._handle(opening(tmp_path))
+        assert server._handle(holding(p1, p1.read_text(encoding="utf-8")))
+        assert server._handle(closing(p1))
+        assert server._handle(holding(p2, p2.read_text(encoding="utf-8")))
+        assert "definition-mismatch" in self.last_codes(writer, a1)
+        assert "definition-mismatch" in self.last_codes(writer, b1)
+        assert p1.resolve() not in server._published, "p1 has nothing of its own on screen"
+        write_tree(tmp_path, {"one/p1.ddd.json": project("One", "a1.ddd.json")})
+        assert server._handle(changed_on_disk(p1))
+        assert published(writer)[b1.as_uri()] == [], "b1 kept what p1's run no longer says"
+        assert "definition-mismatch" not in self.last_codes(writer, a1)
 
     def test_a_component_inside_a_folder_inside_the_removed_one_keeps_nothing_it_gave(
         self, tmp_path: Path

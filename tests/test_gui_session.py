@@ -13,7 +13,7 @@ import threading
 from collections.abc import Callable, Sequence
 from dataclasses import replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import pytest
 
@@ -26,6 +26,7 @@ from conftest import (
     collected_project,
     component,
     declare,
+    directory_link,
     first_revision,
     landed,
     lying_under,
@@ -35,8 +36,8 @@ from conftest import (
     stopped,
     write_tree,
 )
-from ddd.build_info import BuildInfo, build_info_text
-from ddd.diagnostics import Severity, SeverityPolicy, UnknownCheckError
+from ddd.build_info import BUILD_INFO_FORMAT, BuildInfo, build_info_text
+from ddd.diagnostics import Diagnostic, Severity, SeverityPolicy, UnknownCheckError
 from ddd.editing import (
     INVALID,
     STALE,
@@ -47,6 +48,7 @@ from ddd.editing import (
     Operation,
     fingerprint,
 )
+from ddd.gui import queries
 from ddd.gui import session as module
 from ddd.gui.session import (
     MAX_UNDO,
@@ -59,6 +61,7 @@ from ddd.gui.session import (
     Snapshot,
     find_projects,
     findings_with,
+    walk_finds,
 )
 from ddd.lsp.diagnostics import Run, run_build
 
@@ -177,6 +180,9 @@ def saving_while_analysing(file: Path, unit: bytes) -> Callable[..., Run]:
 NUL_ENTRY = "b\u0000.ddd.json"
 """An include entry naming a path no system lets a program even look at: it holds a NUL byte."""
 
+NUL_PLUGIN = NUL_ENTRY.removesuffix(".ddd.json") + ".py"
+"""A plugin named by a path no system lets a program look at, as :data:`NUL_ENTRY` is."""
+
 
 def unreachable(base: Path) -> Path:
     """A project including a component and :data:`NUL_ENTRY`; returns the project file."""
@@ -267,6 +273,119 @@ class TestFindingProjects:
         assert [reason for _, reason in found.refused] == [str(expected.value)]
 
 
+class TestWhatTheWalkFindsAskedOfOnePath:
+    """``walk_finds``, which ``POST /api/open`` asks of a path it holds before it walks (14:M14):
+    held to the walk's own answer over every path of a tree holding each kind of place the walk
+    leaves out, and each one's reason asked of it alone."""
+
+    TREE: Final = {
+        "p.ddd.json": project("Top"),
+        ".hidden.ddd.json": project("Hidden file"),
+        "a.ddd.json": component("A"),
+        "notes.json": project("Not a description's name"),
+        "cut.ddd.json": '{"project": {"name": "Cut"',
+        "1/2/3/4/deep.ddd.json": project("Four deep"),
+        "1/2/3/4/5/deeper.ddd.json": project("Five deep"),
+        "src/s.ddd.json": project("Source"),
+        ".git/g.ddd.json": project("Hidden"),
+        "node_modules/m.ddd.json": project("Modules"),
+        "build/b.ddd.json": project("Build"),
+        "cmake-build-debug/c.ddd.json": project("CMake build"),
+        "out/o.ddd.json": project("Out"),
+        "elsewhere/e.ddd.json": project("Linked to"),
+    }
+    """A project description at each kind of place, and a file at each kind the walk passes."""
+
+    def linked(self, tmp_path: Path) -> Path:
+        """:attr:`TREE` under ``tmp_path / "root"``, its ``linked`` directory a link to its
+        ``elsewhere``; returns the root."""
+        root = tmp_path / "root"
+        write_tree(root, self.TREE)
+        directory_link(root / "linked", root / "elsewhere")
+        return root
+
+    def test_it_finds_what_the_walk_finds_and_nothing_else(self, tmp_path: Path) -> None:
+        """The description reached through the link included, whichever way the platform's
+        walk takes the link: a symbolic link is passed over, and so is Windows' junction, which
+        ``directory_link`` makes there (``Path.walk`` on 3.13 and later takes it for a file;
+        the walk states the rule itself for the 3.12 that would go into it). A path through a
+        file is one no walk lists on any platform."""
+        root = self.linked(tmp_path)
+        walked = {found.path for found in find_projects(root).projects}
+        paths = {path for path in root.rglob("*") if path.is_file()}
+        paths |= {
+            root / "linked" / "e.ddd.json",
+            root / "a.ddd.json" / "x.ddd.json",
+            root,
+            root.parent / "p.ddd.json",
+        }
+        asked = {path for path in paths if walk_finds(root, path)}
+        assert asked == walked
+        assert sorted(
+            path.relative_to(root).as_posix() for path in asked if "linked" not in path.parts
+        ) == [
+            ".hidden.ddd.json",
+            "1/2/3/4/deep.ddd.json",
+            "elsewhere/e.ddd.json",
+            "p.ddd.json",
+            "src/s.ddd.json",
+        ]
+
+    def test_a_junction_on_the_way_is_passed_over_as_the_walk_passes_it(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A directory answering ``is_junction()`` is not gone into, by the walk or by the
+        question: Linux has no junctions, so one directory is made to answer so, as Windows'
+        answers for the one ``directory_link`` makes there."""
+        root = tmp_path / "root"
+        write_tree(root, {"joined/j.ddd.json": project("Joined"), "p.ddd.json": project("Plain")})
+        junction = root / "joined"
+        is_junction = Path.is_junction
+
+        def answering(self: Path) -> bool:
+            return self == junction or is_junction(self)
+
+        monkeypatch.setattr(Path, "is_junction", answering)
+        walked = {found.path for found in find_projects(root).projects}
+        assert walked == {root / "p.ddd.json"}
+        assert walk_finds(root, root / "p.ddd.json")
+        assert not walk_finds(root, junction / "j.ddd.json")
+
+    def test_a_project_only_a_record_offers_is_not_one_it_finds(self, tmp_path: Path) -> None:
+        """The walk offers it by the record, which this does not read."""
+        root = tmp_path / "root"
+        write_tree(tmp_path, {"far/f.ddd.json": project("Far"), "root/p.ddd.json": project("P")})
+        build_record(root, tmp_path / "far" / "f.ddd.json")
+        assert (tmp_path / "far" / "f.ddd.json").resolve() in {
+            found.path for found in find_projects(root).projects
+        }
+        assert not walk_finds(root, (tmp_path / "far" / "f.ddd.json").resolve())
+
+    @pytest.mark.parametrize(
+        "locked", ["", "locked"], ids=["the-start-directory", "a-directory-under-it"]
+    )
+    def test_a_description_in_a_directory_the_walk_cannot_list_is_not_one_it_finds(
+        self, tmp_path: Path, locked: str
+    ) -> None:
+        """A directory its owner may go through and not list - the start directory itself, or
+        one under it: the walk cannot list it and passes it over, though a path through it reads
+        the description, so neither finds what it holds. Windows keeps no mode that stops its
+        owner listing a directory, and there the two find it alike; so does a process no mode
+        binds."""
+        root = tmp_path / "root"
+        write_tree(root, {"locked/l.ddd.json": project("Locked")})
+        description = root / "locked" / "l.ddd.json"
+        (root / locked).chmod(0o311)
+        try:
+            walked = {found.path for found in find_projects(root).projects}
+            asked = walk_finds(root, description)
+        finally:
+            (root / locked).chmod(0o755)
+        assert asked is (description in walked)
+        if os.name != "nt" and os.geteuid() != 0:
+            assert not asked
+
+
 class TestOpening:
     def test_a_file_that_is_not_a_project_description_is_refused(self, shared: Path) -> None:
         with pytest.raises(ValueError, match="not a project description"):
@@ -323,6 +442,32 @@ class TestOpening:
         kinds = {f.path.name: f.kind for f in revision.files}
         assert kinds["demo_plugin.py"] == "plugin"
 
+    def test_a_record_naming_it_by_a_network_path_in_its_own_directory_feeds_its_analysis(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A project outside the start directory, on a share, its build record naming it by a
+        network path there: the record is read under every directory a request is served, the
+        project's own among them, and its severities apply. The project's directory is taken for
+        the share by its spelling, as Windows reads ``//server/share``: a network path is readable
+        only under a directory spelled as one, and no directory a test makes is spelled so."""
+        start = tmp_path / "start"
+        far = tmp_path / "far"
+        write_tree(
+            far,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Unread")),
+            },
+        )
+        start.mkdir()
+        project_file = (far / "p.ddd.json").resolve()
+        build_record(start, project_file, strict=True)
+        monkeypatch.setattr(queries, "_NETWORK", re.compile(re.escape(far.resolve().as_posix())))
+        revision = first_revision(start, project_file)
+        assert [b.image for b in revision.builds] == ["firmware.elf"]
+        unused = [f.diagnostic for f in revision.findings if f.diagnostic.check == "unused-output"]
+        assert [d.severity.value for d in unused] == ["error"]
+
     @pytest.mark.parametrize("content", UNPARSED)
     def test_a_file_that_does_not_parse_is_listed_as_not_loaded(
         self, shared: Path, content: str
@@ -332,6 +477,61 @@ class TestOpening:
         broken = next(f for f in revision.files if f.path.name == "b.ddd.json")
         assert (broken.kind, broken.name, broken.loaded) == ("unknown", None, False)
         assert revision.dictionary is None
+
+    def test_an_include_naming_a_file_that_is_not_there_is_the_file_that_did_not_load(
+        self, tmp_path: Path
+    ) -> None:
+        """The description holding the entry read and matched its shape, and the file the entry
+        names is the one nothing could read: listed the other way round, every route told the
+        reader the project description was what to repair."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "gone.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        revision = first_revision(tmp_path, tmp_path / "p.ddd.json")
+        described = {f.path.name: (f.kind, f.loaded) for f in revision.files}
+        assert described == {
+            "p.ddd.json": ("project", True),
+            "a.ddd.json": ("component", True),
+            "gone.ddd.json": ("unknown", False),
+        }
+        # The finding stays where the entry is: the description is the file to open to mend it.
+        assert [(f.file.name, f.diagnostic.check) for f in revision.findings] == [
+            ("p.ddd.json", "file-not-found")
+        ]
+
+    def test_an_include_naming_several_files_leaves_the_error_on_the_description(
+        self, tmp_path: Path
+    ) -> None:
+        """A pattern does not say which of the files it matches could not be read, so none is
+        named for it: the description holding it stays the file that did not load."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "lib/*.ddd.json"),
+                "lib/a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        (tmp_path / "lib" / "bad.ddd.json").write_bytes(b"\xff\xfe{")
+        revision = first_revision(tmp_path, tmp_path / "p.ddd.json")
+        assert {f.path.name: f.loaded for f in revision.files} == {
+            "p.ddd.json": False,
+            "a.ddd.json": True,
+            "bad.ddd.json": True,
+        }
+
+    def test_a_load_error_that_names_no_place_is_the_file_it_is_filed_on(
+        self, tmp_path: Path
+    ) -> None:
+        """A finding with no place goes on the project description, and is about it."""
+        project_file = tmp_path / "p.ddd.json"
+        refusal = Diagnostic("schema", Severity.ERROR, "refused")
+        warning = Diagnostic("schema", Severity.WARNING, "only a warning")
+        assert module._unloaded({project_file: [refusal]}) == {project_file}
+        assert module._unloaded({project_file: [warning]}) == set()
 
     def test_a_file_that_cannot_be_read_is_described_as_empty(self, tmp_path: Path) -> None:
         described = module._described(tmp_path / "gone.ddd.json", [], None)
@@ -480,6 +680,41 @@ class TestFollowingTheDisk:
         assert revision is not None and len(ran) == 2
         described = next(f for f in revision.files if f.path.name == "b.ddd.json")
         assert described.fingerprint == fingerprint(read)
+
+    def test_a_file_two_builds_read_differently_is_fingerprinted_as_the_index_s_run_read_it(
+        self, shared: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The revision's index is the first run's that built one: where the first run read the
+        project description no further - its ``includes`` no list - it is the second run's. The
+        description, saved whole between the two runs and put back after, is fingerprinted as the
+        index's run read it, so that a plan made from that index is refused as stale against the
+        bytes put back, rather than applied to bytes the index does not describe."""
+        build_record(shared.parent, shared, image="one.elf")
+        build_record(shared.parent, shared, image="two.elf")
+        whole = shared.read_bytes()
+        cut = json.dumps({"project": {"name": "P", "includes": 7}}).encode()
+        shared.write_bytes(cut)
+        real = module.run_build
+        ran: list[str] = []
+
+        def run(info: BuildInfo, *, includes: Sequence[str] | None = None) -> Run:
+            answer = real(info, includes=includes)
+            ran.append(info.image)
+            if len(ran) == 1:
+                shared.write_bytes(whole)
+            elif len(ran) == 2:
+                shared.write_bytes(cut)
+            return answer
+
+        monkeypatch.setattr(module, "run_build", run)
+        session = Recording(shared.parent)
+        session.open(shared)
+        monkeypatch.undo()
+        first = session.left[0].revision
+        assert first is not None and first.index is not None
+        assert ran[:2] == ["one.elf", "two.elf"]
+        described = next(f for f in first.files if f.path == shared.resolve())
+        assert described.fingerprint == fingerprint(whole)
 
     def test_a_root_read_no_further_is_fingerprinted_as_read_though_saved_since(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -695,8 +930,10 @@ class Recording(Session):
         super().__init__(root, poll_interval=3600)
         self.left: list[Snapshot] = []
 
-    def _finished(self, begun: module._Begun, revision: Revision | None) -> None:
-        super()._finished(begun, revision)
+    def _finished(
+        self, begun: module._Begun, revision: Revision | None, failed: str | None
+    ) -> None:
+        super()._finished(begun, revision, failed)
         self.left.append(self._snapshot())
 
 
@@ -884,6 +1121,130 @@ class TestTheAnalyser:
         finally:
             stopped(session)
 
+    def test_an_analysis_failing_on_the_thread_is_said_until_one_succeeds(
+        self, shared: Path
+    ) -> None:
+        """14:M7. The reason an analysis raised is part of what the session says, the revision
+        before it standing as the newest meanwhile - not that revision alone, as though no
+        analysis had been asked for - until an analysis succeeds."""
+        session = SecondFails(shared.parent)
+        session.gate.set()
+        session.start()
+        try:
+            session.open(shared)
+            first = landed(session)
+            assert first.failed is None
+            session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+            failed = landed(session)
+            assert (failed.revision, failed.failed) == (first.revision, "boom")
+            assert failed.version > first.version
+            assert session.poll() is True
+            mended = landed(session)
+            assert mended.revision is not first.revision and mended.failed is None
+        finally:
+            stopped(session)
+
+    def test_a_first_analysis_failing_is_said_with_no_revision_to_stand(self, shared: Path) -> None:
+        """14:M7. Before any revision the page was told the project was being analysed, and
+        nothing else, for as long as each analysis failed."""
+
+        class FirstFails(Gated):
+            def _analysed(self, project: Path) -> Revision:
+                revision = super()._analysed(project)
+                if self.analyses == 1:
+                    raise RuntimeError("boom")
+                return revision
+
+        session = FirstFails(shared.parent)
+        session.gate.set()
+        session.start()
+        try:
+            session.open(shared)
+            failed = landed(session)
+            assert (failed.revision, failed.failed) == (None, "boom")
+            assert session.poll() is True
+            mended = landed(session)
+            assert mended.revision is not None and mended.failed is None
+        finally:
+            stopped(session)
+
+    def test_where_no_analyser_runs_a_failure_is_said_as_well_as_raised(self, shared: Path) -> None:
+        """The call that asked for the analysis is told by the exception, and every other reader
+        of the session by what it says, as from the analyser's thread."""
+
+        class Failing(Session):
+            analyses = 0
+
+            def _analysed(self, project: Path) -> Revision:
+                self.analyses += 1
+                if self.analyses == 2:
+                    raise RuntimeError("boom")
+                return super()._analysed(project)
+
+        session = Failing(shared.parent)
+        session.open(shared)
+        with pytest.raises(RuntimeError, match=r"^boom$"):
+            session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+        assert session.snapshot().failed == "boom"
+        assert session.poll() is True
+        assert session.snapshot().failed is None
+
+    def test_a_failure_with_no_words_is_said_by_its_class(
+        self, shared: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """An exception raised with nothing to say - ``RuntimeError()`` - is said by its class's
+        name, in the terminal and in what the session says alike, rather than as nothing: an
+        empty reason reads as no failure at all."""
+
+        class Wordless(SecondFails):
+            def _analysed(self, project: Path) -> Revision:
+                try:
+                    return super()._analysed(project)
+                except RuntimeError:
+                    raise RuntimeError() from None
+
+        session = Wordless(shared.parent)
+        session.gate.set()
+        session.start()
+        try:
+            session.open(shared)
+            landed(session)
+            session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+            assert landed(session).failed == "RuntimeError"
+            assert capsys.readouterr().err.splitlines()[-1] == (
+                "ddd gui: analysing the project failed: RuntimeError"
+            )
+        finally:
+            stopped(session)
+
+    def test_opening_a_project_lets_go_of_the_last_ones_failure(self, shared: Path) -> None:
+        """The failure is the open project's: another opened is said not to have failed while
+        its own first analysis runs."""
+        write_tree(shared.parent, {"other/q.ddd.json": project("Q")})
+
+        class FirstFails(Gated):
+            def _analysed(self, project: Path) -> Revision:
+                revision = super()._analysed(project)
+                if self.analyses == 1:
+                    raise RuntimeError("boom")
+                return revision
+
+        session = FirstFails(shared.parent)
+        session.gate.set()
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            assert landed(session).failed == "boom"
+            session.gate.clear()
+            session.open(shared.parent / "other" / "q.ddd.json")
+            begun(session)
+            opened = session.snapshot()
+            assert (opened.revision, opened.analysing, opened.failed) == (None, True, None)
+        finally:
+            session.gate.set()
+            stopped(session)
+
     def test_where_no_analyser_runs_a_failing_analysis_is_raised_to_the_call_that_asked(
         self, shared: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -1009,8 +1370,8 @@ class TestTheAnalyser:
     def test_where_no_analyser_runs_a_project_including_a_path_no_system_reads_opens_all_the_same(
         self, tmp_path: Path
     ) -> None:
-        """Opening answers with the revision, the path listed as an empty file of no kind and its
-        refusal filed where the project names it, which leaves the project not loaded."""
+        """Opening answers with the revision, the path listed as an empty file of no kind that did
+        not load, and its refusal filed where the project names it."""
         project_file = unreachable(tmp_path)
         session = Session(tmp_path)
         session.open(project_file)
@@ -1018,9 +1379,9 @@ class TestTheAnalyser:
         assert revision is not None and findings_of(revision) == [unreadable(project_file)]
         described = {f.path.name: (f.kind, f.loaded, f.fingerprint) for f in revision.files}
         assert described == {
-            "p.ddd.json": ("project", False, fingerprint(project_file.read_bytes())),
+            "p.ddd.json": ("project", True, fingerprint(project_file.read_bytes())),
             "a.ddd.json": ("component", True, fingerprint((tmp_path / "a.ddd.json").read_bytes())),
-            NUL_ENTRY: ("unknown", True, fingerprint(b"")),
+            NUL_ENTRY: ("unknown", False, fingerprint(b"")),
         }
         (filed,) = revision.findings
         assert filed.diagnostic.location is not None
@@ -1106,7 +1467,7 @@ class TestWhatTheSessionSays:
     edit wrote that no analysis has read yet."""
 
     def test_a_session_with_nothing_open_says_so_at_version_nought(self, tmp_path: Path) -> None:
-        assert Session(tmp_path).snapshot() == Snapshot(0, None, None, False, None)
+        assert Session(tmp_path).snapshot() == Snapshot(0, None, None, False, None, None)
 
     def test_a_snapshot_reads_the_undo_entry_with_the_stack_empty_and_with_one(
         self, shared: Path
@@ -1481,6 +1842,850 @@ class TestStamps:
         assert session.revision is not None and session.revision.edits == undone
 
 
+def moved(path: Path) -> None:
+    """``path``'s modification time moved back ten seconds, its access time kept: what creating or
+    removing an entry does to a directory's time, made sure of. A directory written in the tick
+    its stamp was taken in can keep the time it had, the clock's granularity deciding, and its
+    size says nothing on most systems; a test of what the poll stamps leaves neither to chance."""
+    status = path.stat()
+    os.utime(path, ns=(status.st_atime_ns, status.st_mtime_ns - 10**10))
+
+
+def checks_of(session: Session) -> dict[str, Severity]:
+    """Each check the newest revision reports, at the severity it reports it at."""
+    revision = session.revision
+    assert revision is not None
+    return {filed.diagnostic.check: filed.diagnostic.severity for filed in revision.findings}
+
+
+NAMED_PLUGIN = 'from ddd.plugins import Plugin\n\nPLUGIN = Plugin(name="named")\n'
+"""A plugin that loads and does nothing."""
+
+MODELLED_PLUGIN = """
+from pydantic import BaseModel, field_validator
+
+from ddd.plugins import Plugin
+
+
+class Settings(BaseModel):
+    level: int = 0
+
+    @field_validator("level")
+    @classmethod
+    def broken(cls, value: int) -> int:
+        raise RuntimeError("the model is broken")
+
+
+PLUGIN = Plugin(name="modelled", project_model=Settings)
+"""
+"""A plugin whose own model raises on the project's block: what ends the read of a project naming
+it, ``plugin-invalid``, the run covering the project description alone."""
+
+
+def a_pattern_of_writers(base: Path, pattern: str, first: str) -> Path:
+    """A project including ``pattern``, and the file ``first`` it matches, writing ``Speed``;
+    returns the project file."""
+    write_tree(
+        base,
+        {
+            "p.ddd.json": project("P", pattern),
+            first: component("W", declare("output", "Speed", unit="rpm")),
+        },
+    )
+    return base / "p.ddd.json"
+
+
+def a_second_writer(path: Path) -> None:
+    """A component at ``path`` writing ``Speed`` too: ``multiple-producers``, once it is read."""
+    write_tree(path.parent, {path.name: component("X", declare("output", "Speed", unit="rpm"))})
+
+
+def record_beside(project_file: Path) -> Path:
+    """The build record every revision watches beside its project description, there or not:
+    the one that says whether a build generates it."""
+    return project_file.resolve().parent / "ddd-build.json"
+
+
+class TestWhatThePollWatches:
+    """Beside the files an analysis read, the poll stamps what decides which files there are and
+    how they are graded (14:I5): the directory each wildcard include expands in, every file a
+    ``plugins`` list names by its path, loaded or not, and every build record the search finds, a
+    refused one among them. A change none of the files shows makes a new revision all the same,
+    and it says what ``ddd check`` says then."""
+
+    def test_a_component_added_on_a_pattern_makes_a_new_revision(self, tmp_path: Path) -> None:
+        """``comps/*.ddd.json`` matches a second writer of ``Speed`` once it is saved there, which
+        ``ddd check`` reports as ``multiple-producers``: so does the next revision, the directory
+        the pattern expands in having moved."""
+        project_file = a_pattern_of_writers(tmp_path, "comps/*.ddd.json", "comps/w.ddd.json")
+        session = opened_and_settled(project_file)
+        assert "multiple-producers" not in checks_of(session)
+        a_second_writer(tmp_path / "comps" / "x.ddd.json")
+        moved(tmp_path / "comps")
+        assert session.poll() is True
+        assert checks_of(session)["multiple-producers"] is Severity.ERROR
+
+    def test_a_file_saved_where_a_recursive_pattern_walks_makes_a_new_revision(
+        self, tmp_path: Path
+    ) -> None:
+        """``lib/**/*.ddd.json`` expands in every directory it walks, the ones below ``lib``
+        among them."""
+        project_file = a_pattern_of_writers(tmp_path, "lib/**/*.ddd.json", "lib/a/w.ddd.json")
+        session = opened_and_settled(project_file)
+        a_second_writer(tmp_path / "lib" / "a" / "x.ddd.json")
+        moved(tmp_path / "lib" / "a")
+        assert session.poll() is True
+        assert "multiple-producers" in checks_of(session)
+
+    def test_a_directory_made_where_a_recursive_pattern_walks_makes_a_new_revision(
+        self, tmp_path: Path
+    ) -> None:
+        """``lib/**/c.ddd.json`` looks ``c.ddd.json`` up in every directory the ``**`` walks, and
+        lists each of them for its subdirectories: one made below ``lib/a``, holding one, is
+        noticed by the time of ``lib/a``."""
+        project_file = a_pattern_of_writers(tmp_path, "lib/**/c.ddd.json", "lib/a/c.ddd.json")
+        session = opened_and_settled(project_file)
+        a_second_writer(tmp_path / "lib" / "a" / "b" / "c.ddd.json")
+        moved(tmp_path / "lib" / "a")
+        assert session.poll() is True
+        assert "multiple-producers" in checks_of(session)
+
+    def test_a_file_saved_where_a_second_wildcard_matches_makes_a_new_revision(
+        self, tmp_path: Path
+    ) -> None:
+        """``lib/*/*.ddd.json`` matches its last name in each directory its first wildcard
+        matches: a writer saved in ``lib/a`` is noticed by the time of ``lib/a``."""
+        project_file = a_pattern_of_writers(tmp_path, "lib/*/*.ddd.json", "lib/a/w.ddd.json")
+        session = opened_and_settled(project_file)
+        a_second_writer(tmp_path / "lib" / "a" / "x.ddd.json")
+        moved(tmp_path / "lib" / "a")
+        assert session.poll() is True
+        assert "multiple-producers" in checks_of(session)
+
+    def test_a_directory_made_where_a_wildcard_matches_makes_a_new_revision(
+        self, tmp_path: Path
+    ) -> None:
+        """``comps/*/c.ddd.json`` lists ``comps`` for the directories its wildcard matches, and
+        looks ``c.ddd.json`` up in each: a directory made there, holding one, is noticed by the
+        time of ``comps``."""
+        project_file = a_pattern_of_writers(tmp_path, "comps/*/c.ddd.json", "comps/a/c.ddd.json")
+        session = opened_and_settled(project_file)
+        a_second_writer(tmp_path / "comps" / "b" / "c.ddd.json")
+        moved(tmp_path / "comps")
+        assert session.poll() is True
+        assert "multiple-producers" in checks_of(session)
+
+    def test_a_file_saved_in_a_directory_a_wildcard_matched_makes_a_new_revision(
+        self, tmp_path: Path
+    ) -> None:
+        """``c.ddd.json`` is looked up in every directory ``comps/*`` matches, there or not: one
+        saved in ``comps/b``, which held none, is noticed by its own stamp, though no directory
+        the pattern lists gained an entry."""
+        project_file = a_pattern_of_writers(tmp_path, "comps/*/c.ddd.json", "comps/a/c.ddd.json")
+        (tmp_path / "comps" / "b").mkdir()
+        session = opened_and_settled(project_file)
+        a_second_writer(tmp_path / "comps" / "b" / "c.ddd.json")
+        assert session.poll() is True
+        assert "multiple-producers" in checks_of(session)
+
+    def test_the_directory_a_pattern_names_made_with_a_file_in_it_makes_a_new_revision(
+        self, tmp_path: Path
+    ) -> None:
+        """``extra/*.ddd.json`` names a directory that is not there yet: stamped as not there, it
+        is noticed once it is made, a second writer of ``Speed`` in it."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "extra/*.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        session = opened_and_settled(tmp_path / "p.ddd.json")
+        assert "include-empty" in checks_of(session)
+        a_second_writer(tmp_path / "extra" / "x.ddd.json")
+        assert session.poll() is True
+        assert "multiple-producers" in checks_of(session)
+
+    def test_the_directory_a_recursive_pattern_starts_in_made_makes_a_new_revision(
+        self, tmp_path: Path
+    ) -> None:
+        """``extra/**/*.ddd.json`` walks nothing while ``extra`` is not there, so ``extra`` is
+        watched itself, stamped as not there: made with a writer below it, it is noticed."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "extra/**/*.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        session = opened_and_settled(tmp_path / "p.ddd.json")
+        a_second_writer(tmp_path / "extra" / "a" / "x.ddd.json")
+        assert session.poll() is True
+        assert "multiple-producers" in checks_of(session)
+
+    def test_a_file_saved_where_no_pattern_expands_asks_for_nothing(self, tmp_path: Path) -> None:
+        """An editor's swap file beside the description: ``comps/*.ddd.json`` looks ``comps`` up
+        there and lists nothing else, so that directory's time is no stamp of the project."""
+        project_file = a_pattern_of_writers(tmp_path, "comps/*.ddd.json", "comps/w.ddd.json")
+        session = opened_and_settled(project_file)
+        (tmp_path / ".p.ddd.json.swp").write_bytes(b"")
+        moved(tmp_path)
+        assert session.poll() is False
+
+    def test_a_file_saved_in_a_directory_a_pattern_only_passes_through_asks_for_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        """``src/components/*.ddd.json`` looks ``src`` up on its way to ``components`` and lists
+        only that: a swap file of a C source saved in ``src`` is no change of the project. The
+        path ``src/components`` is stamped there or not, so its being made is noticed all the
+        same."""
+        project_file = a_pattern_of_writers(
+            tmp_path, "src/components/*.ddd.json", "src/components/w.ddd.json"
+        )
+        session = opened_and_settled(project_file)
+        (tmp_path / "src" / ".main.c.swp").write_bytes(b"")
+        moved(tmp_path / "src")
+        assert session.poll() is False
+        assert session.revision is not None and session.revision.number == 1
+
+    def test_a_file_saved_beside_the_checkout_a_pattern_climbs_out_of_asks_for_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        """``../shared/*.ddd.json`` climbs out of the project's directory to ``shared``: the
+        directory holding the checkout, where a sibling clone lies, is only passed through."""
+        checkout = tmp_path / "project"
+        write_tree(
+            tmp_path,
+            {
+                "project/p.ddd.json": project("P", "../shared/*.ddd.json"),
+                "shared/w.ddd.json": component("W", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        session = opened_and_settled(checkout / "p.ddd.json")
+        (tmp_path / "sibling").mkdir()
+        moved(tmp_path)
+        assert session.poll() is False
+        a_second_writer(tmp_path / "shared" / "x.ddd.json")
+        moved(tmp_path / "shared")
+        assert session.poll() is True
+        assert "multiple-producers" in checks_of(session)
+
+    @pytest.mark.parametrize(
+        ("pattern", "other"),
+        [("lib/**/*.ddd.json", "lib/a/notes.txt"), ("lib/*/*.ddd.json", "lib/n")],
+    )
+    def test_a_file_no_pattern_matches_rewritten_where_one_walks_asks_for_nothing(
+        self, tmp_path: Path, pattern: str, other: str
+    ) -> None:
+        """A pattern's walk is watched by its directories alone: a file it passes over, rewritten
+        in place, is no change of the project, though pathlib's walk meets it - ``**`` yields
+        files too from python 3.13 on, and a wildcard followed by a name matches them as well.
+        The directory it lies in keeps its time, as a write in place leaves it."""
+        project_file = a_pattern_of_writers(tmp_path, pattern, "lib/a/w.ddd.json")
+        passed_over = tmp_path / other
+        passed_over.write_text("notes", encoding="utf-8")
+        session = opened_and_settled(project_file)
+        status = passed_over.parent.stat()
+        passed_over.write_text("notes, longer", encoding="utf-8")
+        os.utime(passed_over.parent, ns=(status.st_atime_ns, status.st_mtime_ns))
+        assert session.poll() is False
+
+    def test_a_pattern_with_its_wildcards_in_its_last_name_is_listed_by_the_loader_alone(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``comps/*.ddd.json`` expands in ``comps``, which its names lead to: watching it lists no
+        directory, and the one listing of ``comps`` an analysis makes is the loader's own, over
+        what is most of a large project's files."""
+        project_file = a_pattern_of_writers(tmp_path, "comps/*.ddd.json", "comps/w.ddd.json")
+        session = opened_and_settled(project_file)
+        globbed: list[str] = []
+        real = Path.glob
+
+        def counted(self: Path, pattern: str, *arguments: Any, **keywords: Any) -> object:
+            globbed.append(pattern)
+            return real(self, pattern, *arguments, **keywords)
+
+        monkeypatch.setattr(Path, "glob", counted)
+        project_file.write_bytes(project_file.read_bytes() + b" ")
+        assert session.poll() is True
+        revision = session.revision
+        assert revision is not None
+        assert revision.watched == ((tmp_path / "comps").resolve(), record_beside(project_file))
+        assert globbed.count("comps/*.ddd.json") == 1
+
+    def test_an_analysis_reads_the_descriptions_again_and_no_component(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """What a revision watches is read off the project descriptions its analysis read, read
+        again for their lists: never off a component, which states neither and is most of a large
+        project's bytes."""
+        project_file = a_pattern_of_writers(tmp_path, "comps/*.ddd.json", "comps/w.ddd.json")
+        session = opened_and_settled(project_file)
+        read: list[str] = []
+        real = module.read_json
+
+        def recorded(path: Path) -> Any:
+            read.append(path.name)
+            return real(path)
+
+        monkeypatch.setattr(module, "read_json", recorded)
+        (tmp_path / "comps" / "w.ddd.json").write_text(
+            json.dumps(component("W", declare("output", "Speed", unit="Hz"))), encoding="utf-8"
+        )
+        assert session.poll() is True
+        assert "p.ddd.json" in read
+        assert "w.ddd.json" not in read
+
+    def test_an_entry_naming_a_file_not_there_watches_no_directory(self, tmp_path: Path) -> None:
+        """``sub/gone.ddd.json`` names a file, stamped as not there by the revision's files: the
+        directory ``sub`` it would lie in is not watched, and a file saved there is no change."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "sub/gone.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "sub/kept.txt": "kept",
+            },
+        )
+        session = opened_and_settled(tmp_path / "p.ddd.json")
+        (tmp_path / "sub" / "other.txt").write_text("other", encoding="utf-8")
+        moved(tmp_path / "sub")
+        assert session.poll() is False
+
+    def test_an_entry_naming_a_file_watches_no_directory(self, tmp_path: Path) -> None:
+        """``v[2].ddd.json`` names the file of that name, which the loader reads before it reads
+        the entry as a pattern: ``v2.ddd.json`` saved beside it is no file of the project."""
+        write_tree(
+            tmp_path,
+            {"p.ddd.json": project("P", "v[2].ddd.json"), "v[2].ddd.json": component("V")},
+        )
+        session = opened_and_settled(tmp_path / "p.ddd.json")
+        a_second_writer(tmp_path / "v2.ddd.json")
+        moved(tmp_path)
+        assert session.poll() is False
+
+    def test_a_pattern_the_platform_refuses_to_expand_is_analysed_all_the_same(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Platforms disagree about which patterns they accept: the analysis reports one refused
+        as ``include-empty``, and it watches no directory. Refused for the include's pattern
+        alone, the search for build records globbing its own."""
+        project_file = a_pattern_of_writers(tmp_path, "lib/**/*.ddd.json", "lib/a/w.ddd.json")
+        real = Path.glob
+
+        def refuse(self: Path, pattern: str, *arguments: Any, **keywords: Any) -> object:
+            if pattern.startswith("lib/"):
+                msg = "Non-relative patterns are unsupported"
+                raise NotImplementedError(msg)
+            return real(self, pattern, *arguments, **keywords)
+
+        monkeypatch.setattr(Path, "glob", refuse)
+        session = Session(tmp_path)
+        session.open(project_file)
+        assert "include-empty" in checks_of(session)
+        revision = session.revision
+        assert revision is not None and revision.watched == (record_beside(project_file),)
+
+    def test_a_plugin_named_and_then_created_makes_a_new_revision(self, tmp_path: Path) -> None:
+        write_tree(tmp_path, {"p.ddd.json": project("P", plugins=["named.py"])})
+        session = opened_and_settled(tmp_path / "p.ddd.json")
+        assert "plugin-not-found" in checks_of(session)
+        (tmp_path / "named.py").write_text(NAMED_PLUGIN, encoding="utf-8")
+        assert session.poll() is True
+        assert checks_of(session) == {}
+
+    def test_a_plugin_that_failed_to_import_and_is_mended_makes_a_new_revision(
+        self, tmp_path: Path
+    ) -> None:
+        write_tree(tmp_path, {"p.ddd.json": project("P", plugins=["named.py"])})
+        (tmp_path / "named.py").write_text('raise RuntimeError("broken")\n', encoding="utf-8")
+        session = opened_and_settled(tmp_path / "p.ddd.json")
+        assert "plugin-invalid" in checks_of(session)
+        (tmp_path / "named.py").write_text(NAMED_PLUGIN, encoding="utf-8")
+        assert session.poll() is True
+        assert checks_of(session) == {}
+
+    def test_a_plugin_named_beside_one_that_ends_the_read_is_watched_all_the_same(
+        self, tmp_path: Path
+    ) -> None:
+        """A plugin whose model raises on the project's block ends the read, and the run covers
+        the project description alone: another plugin the description names by its path, missing
+        then created, is watched though no run noted its file."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project(
+                    "P",
+                    plugins=["modelled.py", "named.py"],
+                    extensions={"modelled": {"level": 1}},
+                ),
+            },
+        )
+        (tmp_path / "modelled.py").write_text(MODELLED_PLUGIN, encoding="utf-8")
+        session = opened_and_settled(tmp_path / "p.ddd.json")
+        revision = session.revision
+        assert revision is not None and [file.path.name for file in revision.files] == [
+            "p.ddd.json"
+        ]
+        assert "plugin-not-found" in checks_of(session)
+        (tmp_path / "named.py").write_text(NAMED_PLUGIN, encoding="utf-8")
+        assert session.poll() is True
+        assert "plugin-not-found" not in checks_of(session)
+
+    def test_a_plugin_named_as_a_module_is_watched_by_the_files_its_run_noted(
+        self, tmp_path: Path
+    ) -> None:
+        """A module is no path: finding its file can import its parents, so the watch passes it
+        over, and its files are the ones the run noted, which the revision's files stamp. The
+        standard library's ``json`` is a module no plugin is made of: ``plugin-invalid``."""
+        write_tree(tmp_path, {"p.ddd.json": project("P", plugins=["json"])})
+        revision = first_revision(tmp_path, tmp_path / "p.ddd.json")
+        assert "plugin-invalid" in {filed.diagnostic.check for filed in revision.findings}
+        assert revision.watched == (record_beside(tmp_path / "p.ddd.json"),)
+        assert Path(json.__file__).resolve() in {file.path for file in revision.files}
+
+    def test_a_nul_in_a_plugin_path_beside_a_schema_error_ends_no_analysis(
+        self, tmp_path: Path
+    ) -> None:
+        """A description that does not validate loads none of the plugins it names, and ``ddd
+        check`` reports the error it does not validate for, ``schema``: so does the analysis,
+        the description naming a plugin by a path holding a NUL beside that error. The watch
+        reads every description's ``plugins``, one that does not validate among them, and
+        resolving that path raised, so that every analysis failed, at every poll."""
+        write_tree(tmp_path, {"p.ddd.json": project("P", plugins=[NUL_PLUGIN], unknown=1)})
+        session = opened_and_settled(tmp_path / "p.ddd.json")
+        assert checks_of(session) == {"schema": Severity.ERROR}
+        assert session.poll() is False
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            OSError(40, "Too many levels of symbolic links"),
+            ValueError("embedded null byte"),
+            RuntimeError("Symlink loop from 'loop.py'"),
+            RecursionError("maximum recursion depth exceeded"),
+        ],
+        ids=["an-os-error", "a-nul", "a-loop-on-python-3.12", "a-chain-of-links-on-python-3.12"],
+    )
+    def test_a_plugin_path_that_cannot_be_resolved_is_not_watched(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error: Exception
+    ) -> None:
+        """Each exception ``Path.resolve`` raises for a path the system will not resolve, as the
+        loader's ``resolve_path`` lists them, one test each, so that none drops out of the watch's
+        guard unseen: the path names no file to watch, and the analysis reports what ``ddd
+        check`` reports of the description, here that it does not validate."""
+        write_tree(tmp_path, {"p.ddd.json": project("P", plugins=["loop.py"], unknown=1)})
+        real = Path.resolve
+
+        def refuse(self: Path, *args: Any, **kwargs: Any) -> Path:
+            if self.name == "loop.py":
+                raise error
+            return real(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "resolve", refuse)
+        session = opened_and_settled(tmp_path / "p.ddd.json")
+        assert checks_of(session) == {"schema": Severity.ERROR}
+        revision = session.revision
+        assert revision is not None
+        assert revision.watched == (record_beside(tmp_path / "p.ddd.json"),)
+
+    def test_a_build_record_rewritten_makes_a_new_revision_under_its_severities(
+        self, tmp_path: Path
+    ) -> None:
+        """A reconfigure with ``--strict``: ``ddd check --strict`` reports the output nobody reads
+        as an error, and so does the next revision."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        project_file = tmp_path / "p.ddd.json"
+        record = build_record(tmp_path, project_file)
+        session = opened_and_settled(project_file)
+        assert checks_of(session)["unused-output"] is Severity.WARNING
+        build_record(tmp_path, project_file, strict=True)
+        assert session.poll() is True
+        assert checks_of(session)["unused-output"] is Severity.ERROR
+        assert record.is_file()
+
+    def test_a_refused_build_record_mended_makes_a_new_revision_under_its_severities(
+        self, tmp_path: Path
+    ) -> None:
+        """A record a newer DDD wrote is refused, and the project analysed under the defaults; the
+        record written again by this one's build applies."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        project_file = tmp_path / "p.ddd.json"
+        build_record(tmp_path, project_file, format=99)
+        session = opened_and_settled(project_file)
+        assert session.revision is not None and session.revision.builds == ()
+        build_record(tmp_path, project_file, strict=True)
+        assert session.poll() is True
+        assert session.revision is not None and len(session.revision.builds) == 1
+        assert checks_of(session)["unused-output"] is Severity.ERROR
+
+    def test_a_refused_build_record_is_carried_by_its_revision_and_printed_once(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """14:M11. A record this DDD cannot use was said on the start page alone, which a project
+        opened on the command line never draws, and the terminal said nothing: the revision
+        carries it now, with its reason, and the terminal gets its line as the language server
+        logs one - once, and again whenever that changes, never at every analysis."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        project_file = tmp_path / "p.ddd.json"
+        record = build_record(tmp_path, project_file, format=99).resolve()
+        reason = (
+            f"written in format 99 by a newer DDD, and this one understands up to format "
+            f"{BUILD_INFO_FORMAT}"
+        )
+        line = (
+            f"ddd gui: {record}: {reason}; this record is ignored, so its severities apply to "
+            "no analysis"
+        )
+        session = opened_and_settled(project_file)
+        assert session.revision is not None and session.revision.refused == ((record, reason),)
+        assert capsys.readouterr().err.splitlines() == [line]
+        component_file = tmp_path / "a.ddd.json"
+        component_file.write_text(
+            component_file.read_text(encoding="utf-8").replace('"rpm"', '"Hz"'), encoding="utf-8"
+        )
+        assert session.poll() is True
+        assert session.revision.refused == ((record, reason),)
+        assert capsys.readouterr().err == ""
+        build_record(tmp_path, project_file)
+        assert session.poll() is True
+        assert session.revision.refused == ()
+        assert capsys.readouterr().err == ""
+        build_record(tmp_path, project_file, format=99)
+        assert session.poll() is True
+        assert capsys.readouterr().err.splitlines() == [line]
+
+    def test_a_record_refused_again_for_another_reason_is_told_again(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """14:M11. The line says why the record is ignored, so the same record refused for
+        another reason, with no mending between, is a new line."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        project_file = tmp_path / "p.ddd.json"
+        record = build_record(tmp_path, project_file, format=99).resolve()
+        session = opened_and_settled(project_file)
+        first = capsys.readouterr().err.splitlines()
+        assert len(first) == 1 and "format 99" in first[0]
+        build_record(tmp_path, project_file, severity=["nonesuch"])
+        component_file = tmp_path / "a.ddd.json"
+        component_file.write_text(
+            component_file.read_text(encoding="utf-8").replace('"rpm"', '"Hz"'), encoding="utf-8"
+        )
+        assert session.poll() is True
+        assert session.revision is not None and len(session.revision.refused) == 1
+        refused, reason = session.revision.refused[0]
+        assert refused == record and "format 99" not in reason
+        assert capsys.readouterr().err.splitlines() == [
+            f"ddd gui: {record}: {reason}; this record is ignored, so its severities apply to "
+            "no analysis"
+        ]
+
+    def test_a_refused_record_s_line_that_cannot_be_printed_ends_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The line is printed by whichever call made the analysis - opening the project, here,
+        where no analyser runs - and lost where standard error cannot be written, as a failure's
+        is: the call is answered all the same, and the revision published (14:M11)."""
+
+        class Unwritable(io.StringIO):
+            def write(self, text: str) -> int:
+                raise OSError("standard error is closed")
+
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        project_file = tmp_path / "p.ddd.json"
+        build_record(tmp_path, project_file, format=99)
+        session = Session(tmp_path)
+        monkeypatch.setattr(sys, "stderr", Unwritable())
+        session.open(project_file)
+        assert session.revision is not None and len(session.revision.refused) == 1
+
+    def test_a_revision_watches_every_description_s_patterns_its_plugins_and_the_records(
+        self, tmp_path: Path
+    ) -> None:
+        """A sub-project's pattern as much as the project's own, the plugin a description names
+        by its path, the records the search finds and the one beside the project description,
+        which is not there."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "comps/*.ddd.json", "sub/s.ddd.json"),
+                "comps/w.ddd.json": component("W", declare("output", "Speed", unit="rpm")),
+                "sub/s.ddd.json": project("S", "lib/*.ddd.json", plugins=["named.py"]),
+                "sub/named.py": NAMED_PLUGIN,
+            },
+        )
+        project_file = tmp_path / "p.ddd.json"
+        record = build_record(tmp_path, project_file)
+        revision = first_revision(tmp_path, project_file)
+        root = tmp_path.resolve()
+        assert revision.watched == tuple(
+            sorted(
+                {
+                    root / "comps",
+                    root / "sub" / "lib",
+                    root / "sub" / "named.py",
+                    record.resolve(),
+                    record_beside(project_file),
+                }
+            )
+        )
+
+    def test_opening_a_project_with_a_pattern_and_a_build_record_analyses_it_once(
+        self, tmp_path: Path
+    ) -> None:
+        """Opening stamps the directories its own patterns expand in, and the build records the
+        search finds, before the first analysis reads anything, as it stamps the files its own
+        includes name: watched from that analysis on, they cost it no second one."""
+        project_file = a_pattern_of_writers(tmp_path, "comps/*.ddd.json", "comps/w.ddd.json")
+        build_record(tmp_path, project_file)
+        session = Session(tmp_path)
+        session.open(project_file)
+        assert session.revision is not None and session.revision.number == 1
+        assert session.poll() is False
+
+
+SAYING_PLUGIN = """
+from ddd.diagnostics import CheckInfo, Severity
+from ddd.plugins import CheckContext, Plugin
+
+
+def check(context: CheckContext) -> None:
+    context.bag.add("plug/say", "{words}")
+
+
+PLUGIN = Plugin(
+    name="plug",
+    checks=(CheckInfo("plug/say", Severity.WARNING, "says the words its file holds"),),
+    check=check,
+)
+"""
+"""A plugin filing ``plug/say`` in the words its file holds, ``{words}`` filled in: what a revision
+says of it tells which bytes of it the analysis ran."""
+
+
+def a_saying_plugin(base: Path, words: str) -> Path:
+    """A project naming ``plug.py`` by its path, which files ``plug/say`` in ``words``; returns the
+    plugin's file."""
+    write_tree(base, {"p.ddd.json": project("P", plugins=["plug.py"])})
+    plugin = base / "plug.py"
+    plugin.write_text(SAYING_PLUGIN.format(words=words), encoding="utf-8")
+    return plugin
+
+
+def said(session: Session) -> list[str]:
+    """What the newest revision's ``plug/say`` findings say."""
+    revision = session.revision
+    assert revision is not None
+    return [
+        filed.diagnostic.message
+        for filed in revision.findings
+        if filed.diagnostic.check == "plug/say"
+    ]
+
+
+def told_changed(session: Session) -> list[tuple[Path, Severity, str]]:
+    """The newest revision's ``plugin-changed`` findings: the file each is filed on, its severity
+    and its words."""
+    revision = session.revision
+    assert revision is not None
+    return [
+        (filed.file, filed.diagnostic.severity, filed.diagnostic.message)
+        for filed in revision.findings
+        if filed.diagnostic.check == "plugin-changed"
+    ]
+
+
+def changed_words(name: str) -> str:
+    """What ``plugin-changed`` says of the plugin file named ``name``."""
+    return (
+        f"'{name}' changed since ddd gui imported it: a module is imported once per process, so "
+        "ddd gui runs the old code until it is restarted"
+    )
+
+
+class TestAPluginChangedSinceItWasImported:
+    """A module is imported once per process (14:I4, decision 14.2): a plugin saved with other
+    bytes once the server imported it is noticed by the poll, which stamps its file, and the
+    revision that follows runs the module imported first. It carries ``plugin-changed`` on the
+    plugin's file, an error by default, saying the server has to be restarted."""
+
+    def test_a_plugin_edited_is_told_changed_on_its_file_as_an_error(self, tmp_path: Path) -> None:
+        """``plug.py`` files ``OLD WORDS``, then is saved filing ``NEW WORDS``: the next revision
+        still says the old words, its module being the one imported first, and says why, on the
+        plugin's own file, which counts the error."""
+        plugin = a_saying_plugin(tmp_path, "OLD WORDS")
+        session = opened_and_settled(tmp_path / "p.ddd.json")
+        assert (said(session), told_changed(session)) == (["OLD WORDS"], [])
+        plugin.write_text(SAYING_PLUGIN.format(words="NEW WORDS"), encoding="utf-8")
+        moved(plugin)
+        assert session.poll() is True
+        assert said(session) == ["OLD WORDS"]
+        assert told_changed(session) == [
+            (plugin.resolve(), Severity.ERROR, changed_words("plug.py"))
+        ]
+        revision = session.revision
+        assert revision is not None
+        assert [
+            (file.kind, file.errors) for file in revision.files if file.path.name == "plug.py"
+        ] == [("plugin", 1)]
+
+    def test_a_plugin_written_again_with_the_same_bytes_is_told_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        """Its stamp moves, so the poll asks for an analysis, and the module the server holds was
+        imported from the very bytes the file holds: no change."""
+        plugin = a_saying_plugin(tmp_path, "OLD WORDS")
+        session = opened_and_settled(tmp_path / "p.ddd.json")
+        plugin.write_bytes(plugin.read_bytes())
+        moved(plugin)
+        assert session.poll() is True
+        assert (said(session), told_changed(session)) == (["OLD WORDS"], [])
+
+    def test_a_plugin_given_back_the_bytes_it_was_imported_from_is_told_nothing_again(
+        self, tmp_path: Path
+    ) -> None:
+        """Saved back as it was imported, its file holds the very bytes the server's module was run
+        from: ``plugin-changed`` goes with the next revision, no restart taken. Moved back twice,
+        so that its stamp cannot be the one the edit left, whatever the clock's granularity."""
+        plugin = a_saying_plugin(tmp_path, "OLD WORDS")
+        session = opened_and_settled(tmp_path / "p.ddd.json")
+        imported = plugin.read_bytes()
+        plugin.write_text(SAYING_PLUGIN.format(words="NEW WORDS"), encoding="utf-8")
+        moved(plugin)
+        assert session.poll() is True
+        assert [severity for _, severity, _ in told_changed(session)] == [Severity.ERROR]
+        plugin.write_bytes(imported)
+        moved(plugin)
+        moved(plugin)
+        assert session.poll() is True
+        assert (said(session), told_changed(session)) == (["OLD WORDS"], [])
+
+    def test_a_plugin_whose_model_ended_the_read_is_told_changed_once_mended(
+        self, tmp_path: Path
+    ) -> None:
+        """A plugin whose own model raises on the project's block ends the read, and the run covers
+        the project description alone. Mended, its file is noticed, and the analysis runs the model
+        the server imported, which raises again: ``plugin-changed`` is filed on that file all the
+        same, no run having noted it."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project(
+                    "P", plugins=["modelled.py"], extensions={"modelled": {"level": 1}}
+                ),
+            },
+        )
+        plugin = tmp_path / "modelled.py"
+        plugin.write_text(MODELLED_PLUGIN, encoding="utf-8")
+        session = opened_and_settled(tmp_path / "p.ddd.json")
+        assert told_changed(session) == []
+        mended = MODELLED_PLUGIN.replace(
+            'raise RuntimeError("the model is broken")', "return value"
+        )
+        assert mended != MODELLED_PLUGIN
+        plugin.write_text(mended, encoding="utf-8")
+        moved(plugin)
+        assert session.poll() is True
+        assert checks_of(session)["plugin-invalid"] is Severity.ERROR
+        assert told_changed(session) == [
+            (plugin.resolve(), Severity.ERROR, changed_words("modelled.py"))
+        ]
+
+    def test_each_build_grades_it_as_it_grades_any_other_check(self, tmp_path: Path) -> None:
+        """``SEVERITY plugin-changed=warning`` in one build and nothing in the other: each build's
+        run files it under that build's severities, and both grades are told, as two builds
+        grading any finding apart are."""
+        plugin = a_saying_plugin(tmp_path, "OLD WORDS")
+        project_file = tmp_path / "p.ddd.json"
+        build_record(tmp_path, project_file, image="fw1", severity=["plugin-changed=warning"])
+        build_record(tmp_path, project_file, image="fw2")
+        session = opened_and_settled(project_file)
+        assert session.revision is not None and len(session.revision.builds) == 2
+        plugin.write_text(SAYING_PLUGIN.format(words="NEW WORDS"), encoding="utf-8")
+        moved(plugin)
+        assert session.poll() is True
+        told = told_changed(session)
+        assert len(told) == 2
+        assert set(told) == {
+            (plugin.resolve(), Severity.WARNING, changed_words("plug.py")),
+            (plugin.resolve(), Severity.ERROR, changed_words("plug.py")),
+        }
+
+    def test_a_project_walking_a_directory_named_in_no_utf_8_is_analysed(
+        self, tmp_path: Path
+    ) -> None:
+        """``comps/**/*.ddd.json`` walks ``comps/caf\\xe9``, a directory named in Latin-1 as an old
+        archive leaves one, which python spells with a lone surrogate: the revision watches it, as
+        it watches every directory such a pattern walks, and asks nothing of it."""
+        project_file = a_pattern_of_writers(tmp_path, "comps/**/*.ddd.json", "comps/w.ddd.json")
+        unnamed = tmp_path / "comps" / "caf\udce9"
+        unnamed.mkdir()
+        revision = first_revision(tmp_path, project_file)
+        assert revision.number == 1
+        assert unnamed.resolve() in revision.watched
+        assert {filed.diagnostic.check for filed in revision.findings} == {
+            "missing-id",
+            "unused-output",
+        }
+
+    def test_of_what_a_revision_watches_its_plugin_files_alone_are_asked(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A directory a pattern expands in, a build record found, the record beside the project
+        description and a plugin file are each watched; only the plugin is asked whether it changed
+        since it was imported, which no directory or record could be."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "comps/*.ddd.json", plugins=["named.py"]),
+                "comps/w.ddd.json": component("W", declare("output", "Speed", unit="rpm")),
+                "named.py": NAMED_PLUGIN,
+            },
+        )
+        build_record(tmp_path, tmp_path / "p.ddd.json")
+        asked: list[Path] = []
+        real = module.changed_since_imported
+
+        def recorded(path: Path) -> bool:
+            asked.append(path)
+            return real(path)
+
+        monkeypatch.setattr(module, "changed_since_imported", recorded)
+        revision = first_revision(tmp_path, tmp_path / "p.ddd.json")
+        assert len(revision.watched) == 4
+        assert asked and set(asked) == {(tmp_path / "named.py").resolve()}
+
+
 class TestEachPathResolvedOnce:
     def test_a_revision_names_each_of_its_paths_resolved_by_the_loaders_rule(
         self, tmp_path: Path
@@ -1684,8 +2889,8 @@ class TestNothingIsReadHoldingTheLock:
         session = Session(shared.parent)
         session.open(shared)
         before = session.snapshot()
-        held = Held(module._named_by, "opening")
-        monkeypatch.setattr(module, "_named_by", held)
+        held = Held(module.named_by, "opening")
+        monkeypatch.setattr(module, "named_by", held)
         opening = threading.Thread(target=lambda: session.open(shared), name="opening", daemon=True)
         opening.start()
         try:
@@ -1859,6 +3064,62 @@ class TestReadingAndEditing:
         assert session.revision is first
         assert session.poll() is True
 
+    def test_a_wordless_failure_after_a_stale_refusal_is_printed_as_the_state_says_it(
+        self, shared: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The refusal's line says the reason in the words the session says it: an exception
+        raised with nothing to say by its class's name, never an empty reason (14:M7)."""
+
+        class Failing(Session):
+            analyses = 0
+
+            def _analysed(self, project: Path) -> Revision:
+                self.analyses += 1
+                if self.analyses == 2:
+                    raise RuntimeError()
+                return super()._analysed(project)
+
+        session = Failing(shared.parent)
+        session.open(shared)
+        old = unit_of_b(shared, "Hz")
+        (shared.parent / "b.ddd.json").write_text("{}", encoding="utf-8")
+        with pytest.raises(EditError):
+            session.edit([old], "the unit of Torque")
+        assert capsys.readouterr().err.splitlines()[-1] == (
+            "ddd gui: analysing the project failed: RuntimeError"
+        )
+        assert session.snapshot().failed == "RuntimeError"
+
+    def test_a_failure_after_a_stale_refusal_that_cannot_be_printed_leaves_the_refusal(
+        self, shared: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Where standard error cannot be written - closed, or a pipe nobody reads any more - the
+        line is lost, as the analyser loses its own, and the caller still gets the ``stale``
+        refusal: what the page acts on, never the failing print in its place."""
+
+        class Failing(Session):
+            analyses = 0
+
+            def _analysed(self, project: Path) -> Revision:
+                self.analyses += 1
+                if self.analyses == 2:
+                    raise RuntimeError("boom")
+                return super()._analysed(project)
+
+        class Unwritable(io.StringIO):
+            def write(self, text: str) -> int:
+                raise OSError("standard error is closed")
+
+        session = Failing(shared.parent)
+        session.open(shared)
+        old = unit_of_b(shared, "Hz")
+        (shared.parent / "b.ddd.json").write_text("{}", encoding="utf-8")
+        monkeypatch.setattr(sys, "stderr", Unwritable())
+        with pytest.raises(EditError) as refused:
+            session.edit([old], "the unit of Torque")
+        assert refused.value.code == STALE
+        assert session.analyses == 2
+
     def test_a_refusal_that_is_not_stale_asks_for_no_analysis(self, shared: Path) -> None:
         session = Session(shared.parent)
         session.open(shared)
@@ -1874,15 +3135,44 @@ class TestReadingAndEditing:
         assert refused.value.code == UNWRITABLE
         assert session.current() is first
 
-    def test_a_stale_refusal_of_an_undo_asks_for_an_analysis_too(self, shared: Path) -> None:
+    def test_an_undo_of_an_edit_no_longer_on_top_is_refused_asking_no_analysis(
+        self, shared: Path
+    ) -> None:
+        """A second window's undo of an edit this one has undone or covered since: the stack
+        moved, and no file did, so the refusal is ``stale`` and asks for nothing - not the
+        analysis a write refused ``stale`` asks for, which would read the disk as the session
+        already knows it. Neither does an undo with nothing left to undo."""
         session = Session(shared.parent)
         session.open(shared)
         at, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of Torque")
+        for asked in (at + 5, at - 1, None):
+            if asked is None:
+                session.undo(at)
+                asked = at
+            revision, said = session.current(), session.snapshot().version
+            with pytest.raises(EditError) as refused:
+                session.undo(asked)
+            assert refused.value.code == STALE
+            assert session.current() is revision
+            assert session.snapshot().version == said
+
+    def test_an_undo_whose_put_back_is_refused_stale_asks_for_an_analysis(
+        self, shared: Path
+    ) -> None:
+        """The undo of the edit on top, refused because its file was saved since, is a write
+        refused ``stale``: it asks for the analysis that reads what is on disk, as an edit's
+        refusal does, whether or not the poll could see the save."""
+        session = Session(shared.parent)
+        session.open(shared)
+        at, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of Torque")
+        b = shared.parent / "b.ddd.json"
+        b.write_bytes(b.read_bytes().replace(b'"Hz"', b'"rad"'))
         first = session.current().number
         with pytest.raises(EditError) as refused:
-            session.undo(at + 5)
+            session.undo(at)
         assert refused.value.code == STALE
         assert session.current().number > first
+        assert session.undoable is not None and session.undoable.at == at
 
     def test_an_edit_needs_an_open_project(self, shared: Path) -> None:
         with pytest.raises(NoProjectError):
@@ -2045,6 +3335,18 @@ def refusal_of(session: Session, changes: Sequence[FileChange]) -> tuple[str, st
     return refused.value.code, str(refused.value)
 
 
+def unread_beside(root: Path) -> str:
+    """What a change writing under the build tree of :func:`conftest.collected_project`'s project
+    is refused with while the record beside its description does not read as one: the record
+    named, and the tree nothing is written under."""
+    record = (root / "b" / "ddd" / "fw" / "ddd-build.json").resolve().as_posix()
+    return (
+        f"Fw.ddd.json may be generated by a build: the build record beside it, {record}, does not "
+        f"read as one, so nothing under {(root / 'b').resolve().as_posix()} is written from here "
+        "until it does"
+    )
+
+
 def a_unit_set(path: Path, unit: str) -> FileChange:
     """The unit of the first declaration of the component ``path`` set to ``unit``."""
     pointer = "component.interface[0].definition.unit"
@@ -2085,16 +3387,49 @@ class TestAProjectTheBuildGenerates:
         assert first_revision(tmp_path, described).generated is None
 
     @pytest.mark.parametrize(
-        "record",
-        ["{", '{"format": 1, "image": "fw"}', '{"format": 1, "project": 7, "image": "fw"}'],
+        "record", ['{"format": 1, "image": "fw"}', '{"format": 1, "project": 7, "image": "fw"}']
     )
     def test_a_record_beside_it_naming_no_description_does_not_either(
         self, tmp_path: Path, record: str
     ) -> None:
-        """One that does not parse, one naming no project, and one naming it by no path."""
+        """One naming no project, and one naming it by no path."""
         described = collected_project(tmp_path, *collected_sources(tmp_path))
         (described.parent / "ddd-build.json").write_text(record, encoding="utf-8")
         assert first_revision(tmp_path, described).generated is None
+
+    @pytest.mark.parametrize("record", ['{"format": 1, "project": "', "", "[]"])
+    def test_a_record_beside_it_that_does_not_read_is_refused_as_the_builds_naming_it(
+        self, tmp_path: Path, record: str
+    ) -> None:
+        """A record cut short - a write of it that died - an empty one, and one that is no object:
+        whether the build writes the description beside it cannot be told, so it is refused as
+        though the build did, the sentence naming the record, and nothing is written."""
+        described = collected_project(tmp_path, *collected_sources(tmp_path))
+        beside = described.parent / "ddd-build.json"
+        beside.write_text(record, encoding="utf-8")
+        session = Session(tmp_path)
+        session.open(described)
+        before = described.read_bytes()
+        refused = refusal_of(session, [an_include_taken_out(described)])
+        assert refused == ("generated", unread_beside(tmp_path))
+        assert described.read_bytes() == before
+
+    def test_a_record_beside_it_mended_is_read_again(self, tmp_path: Path) -> None:
+        """Watched whether or not the search for build records finds it - ``b`` is no name a
+        build directory is looked for under - so its repair makes a new revision, which reads the
+        build it names."""
+        described = collected_project(tmp_path, *collected_sources(tmp_path))
+        beside = described.parent / "ddd-build.json"
+        whole = beside.read_text(encoding="utf-8")
+        beside.write_text(whole[: len(whole) // 2], encoding="utf-8")
+        session = Session(tmp_path)
+        session.open(described)
+        assert session.poll() is False
+        assert refusal_of(session, [an_include_taken_out(described)])[1] == unread_beside(tmp_path)
+        beside.write_text(whole, encoding="utf-8")
+        assert session.poll() is True
+        refused = refusal_of(session, [an_include_taken_out(described)])
+        assert refused == ("generated", membership(tmp_path))
 
     @pytest.mark.parametrize(
         "unusable",
@@ -2353,6 +3688,22 @@ class TestAProjectTheBuildGenerates:
         described = collected_project(tmp_path, *collected_sources(tmp_path), cache=False)
         cache = tmp_path / "b" / "CMakeCache.txt"
         cache.write_text("# This is the CMakeCache file.\n", encoding="utf-8")
+        generated = first_revision(tmp_path, described).generated
+        assert generated is not None
+        assert generated.tree == described.parent.resolve()
+
+    def test_an_empty_source_tree_in_the_cache_names_none(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``CMAKE_HOME_DIRECTORY`` spelling nothing says nothing, as no entry does: read as a
+        path, it was the directory ``ddd gui`` was started in, which decided how much of the
+        build tree was refused."""
+        described = collected_project(tmp_path, *collected_sources(tmp_path), cache=False)
+        cache = tmp_path / "b" / "CMakeCache.txt"
+        cache.write_text(
+            "# This is the CMakeCache file.\nCMAKE_HOME_DIRECTORY:INTERNAL=\n", encoding="utf-8"
+        )
+        monkeypatch.chdir(tmp_path)
         generated = first_revision(tmp_path, described).generated
         assert generated is not None
         assert generated.tree == described.parent.resolve()

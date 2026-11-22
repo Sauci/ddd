@@ -1,7 +1,13 @@
 import { describe, expect, test } from "vitest";
-import type { Finding, FindingsReply, FixReply, ListedFinding, State } from "../api/types";
+import type {
+  Finding,
+  FindingCounts,
+  FindingsReply,
+  FixReply,
+  ListedFinding,
+  State,
+} from "../api/types";
 import {
-  countsOf,
   distinctFindings,
   findingCounts,
   findingsTotal,
@@ -10,6 +16,7 @@ import {
   leadsElsewhere,
   namesThisVariable,
   noRouteReason,
+  placeOf,
   routeHref,
   routeLabel,
   routeOf,
@@ -18,6 +25,7 @@ import {
   unreadable,
 } from "./findings";
 import { SHARED_KINDS } from "./shared";
+import { baseName } from "./units";
 
 const SENSOR_HUB = "C:/work/demo/components/sensor_hub.ddd.json";
 const TYPES = "C:/work/demo/types.ddd.json";
@@ -34,6 +42,8 @@ function finding(fields: Partial<Finding> = {}): Finding {
     severity: "error",
     message: "'ValueA' is declared differently by component 'Controller'",
     pointer: "component.interface[2].definition",
+    line: null,
+    column: null,
     notes: [],
     route: { kind: "variable", name: "ValueA" },
     ...fields,
@@ -51,7 +61,17 @@ function fileRow(path: string, kind: string, loaded: boolean) {
   };
 }
 
-/** A state whose findings are these: counted, as `GET /api/state` counts a revision's. */
+/** How many of `findings` there are of each severity, as `GET /api/state` counts a revision's. */
+function countedBySeverity(findings: readonly Finding[]): FindingCounts {
+  const counts = { error: 0, warning: 0, info: 0 };
+  for (const each of findings) {
+    if (each.severity !== "ignore") counts[each.severity] += 1;
+  }
+  return counts;
+}
+
+/** A state whose findings are these: counted, as `GET /api/state` counts a revision's, each a
+ * statement of its own. */
 function state(findings: Finding[]): State {
   return {
     revision: 7,
@@ -75,7 +95,10 @@ function state(findings: Finding[]): State {
         findings: { error: 1, warning: 0, info: 0 },
       },
     ],
-    counts: countsOf(findings),
+    counts: countedBySeverity(findings),
+    statements: countedBySeverity(findings),
+    failed: null,
+    refused: [],
     undoable: null,
     analysing: false,
     edits: 0,
@@ -131,7 +154,7 @@ describe("what the tab says about how many there are", () => {
     [{ error: 0, warning: 0, info: 2 }, "2 findings · 2 notes"],
     [{ error: 0, warning: 1, info: 0 }, "1 finding · 1 warning"],
     [{ error: 3, warning: 0, info: 1 }, "4 findings · 3 errors, 1 note"],
-  ])("%#: from the state's counts", (counts, says) => {
+  ])("%#: from the statements the state counts", (counts, says) => {
     expect(findingCounts(counts, false)).toBe(says);
   });
 
@@ -152,20 +175,6 @@ describe("what the tab says about how many there are", () => {
     expect(findingsTotal({ error: 0, warning: 0, info: 0 })).toBe(0);
   });
 
-  // The Compare tab's line: its findings come in one reply, which it counts itself, and the words
-  // are the ones it said before the Findings tab's came from the state's counts.
-  test.each([
-    [[], "Nothing to report"],
-    [[finding()], "1 finding · 1 error"],
-    [
-      [finding(), finding({ severity: "warning" }), finding({ severity: "info" })],
-      "3 findings · 1 error, 1 warning, 1 note",
-    ],
-    [[finding(), finding()], "2 findings · 2 errors"],
-  ])("%#: from a list of its own", (findings, says) => {
-    expect(findingCounts(countsOf(findings), false)).toBe(says);
-  });
-
   // The Table tab's line: errors and warnings, each counted even at none, as the table's own two
   // columns count them - a note has no column, and the line says nothing of notes.
   test.each([
@@ -183,18 +192,6 @@ describe("what the tab says about how many there are", () => {
     [{ error: 3, warning: 1, info: 7 }, "3 errors, 1 warning · updating"],
   ])("%#: the Table tab's line, about to change", (counts, says) => {
     expect(tableLine(counts, true)).toBe(says);
-  });
-
-  test("a list is counted by severity, and a finding nobody reports under none", () => {
-    expect(
-      countsOf([
-        finding({ severity: "info" }),
-        finding({ severity: "error" }),
-        finding({ severity: "info" }),
-        finding({ severity: "warning" }),
-        finding({ severity: "ignore" }),
-      ]),
-    ).toEqual({ error: 1, warning: 1, info: 2 });
   });
 });
 
@@ -610,6 +607,69 @@ describe("why a finding leads nowhere", () => {
     expect(unreadable(null, ["types"])).toEqual({ own: [], untold: [] });
   });
 
+  describe("two files of one name that did not load", () => {
+    // By their names alone, both read `types.ddd.json`, and a reader sent to repair one opened
+    // whichever came first. Named as the server's refusals name them (`ddd.gui.api._unread`):
+    // by as much of their paths as tells them apart, among every file that did not load.
+
+    test("in different folders, both of the tab's own kind, are named apart", () => {
+      const one = finding({});
+      const withFiles = state([one]);
+      withFiles.files = [
+        ...withFiles.files,
+        fileRow("C:/work/demo/x/types.ddd.json", "types", false),
+        fileRow("C:/work/demo/y/types.ddd.json", "types", false),
+      ];
+      expect(unreadable(withFiles, ["types"])).toEqual({
+        own: ["x/types.ddd.json", "y/types.ddd.json"],
+        untold: [],
+      });
+    });
+
+    test("are named apart across the two lists, one of the tab's kind and one of none", () => {
+      const one = finding({});
+      const withFiles = state([one]);
+      withFiles.files = [
+        ...withFiles.files,
+        fileRow("C:/work/demo/x/constants.ddd.json", "constants", false),
+        fileRow("C:/work/demo/y/constants.ddd.json", "unknown", false),
+      ];
+      expect(unreadable(withFiles, SHARED_KINDS)).toEqual({
+        own: ["x/constants.ddd.json"],
+        untold: ["y/constants.ddd.json"],
+      });
+    });
+
+    test("are named apart where the tab lists only one of them", () => {
+      // A component of the same name that did not load is named in neither list here, and is
+      // named `x/b.ddd.json` wherever the server names it: the file the tab names is named as
+      // the server names it too, the same file one name across the page.
+      const one = finding({});
+      const withFiles = state([one]);
+      withFiles.files = [
+        ...withFiles.files,
+        fileRow("C:/work/demo/x/b.ddd.json", "component", false),
+        fileRow("C:/work/demo/y/b.ddd.json", "types", false),
+      ];
+      expect(unreadable(withFiles, ["types"])).toEqual({ own: ["y/b.ddd.json"], untold: [] });
+    });
+
+    test("a file of a name no other has is named by its name alone beside them", () => {
+      const one = finding({});
+      const withFiles = state([one]);
+      withFiles.files = [
+        ...withFiles.files,
+        fileRow("C:/work/demo/x/types.ddd.json", "types", false),
+        fileRow("C:/work/demo/y/types.ddd.json", "types", false),
+        fileRow("C:/work/demo/y/limits.ddd.json", "types", false),
+      ];
+      expect(unreadable(withFiles, ["types"])).toEqual({
+        own: ["x/types.ddd.json", "y/types.ddd.json", "limits.ddd.json"],
+        untold: [],
+      });
+    });
+  });
+
   describe("a tab whose table holds more than one vocabulary", () => {
     // The Shared files tab asks for both its file kinds in one call, so a failed sections file
     // must be named beside a failed constants file rather than dropped because it was not the
@@ -798,5 +858,36 @@ describe("the edit a chosen fix comes to", () => {
         "t",
       ),
     ).toBeNull();
+  });
+});
+
+describe("where a finding is, said for a finding that leads nowhere", () => {
+  const name = (path: string) => baseName(path);
+
+  test("a line and a column are said as `ddd check` says them", () => {
+    const one = finding({ route: null, pointer: "", line: 15, column: 56 });
+    expect(placeOf(one, name)).toBe("sensor_hub.ddd.json:15:56");
+  });
+
+  test("a line alone is said without a column", () => {
+    expect(placeOf(finding({ route: null, pointer: "", line: 15 }), name)).toBe(
+      "sensor_hub.ddd.json:15",
+    );
+  });
+
+  test("the file is named as the caller names it", () => {
+    const one = finding({ route: null, pointer: "", line: 1, column: 2 });
+    expect(placeOf(one, () => "baseline sensor_hub.ddd.json")).toBe(
+      "baseline sensor_hub.ddd.json:1:2",
+    );
+  });
+
+  test("without a line, it is the pointer", () => {
+    const one = finding({ route: null, pointer: "component.interface[0].definition.volatile" });
+    expect(placeOf(one, name)).toBe("component.interface[0].definition.volatile");
+  });
+
+  test("a finding with neither a line nor a pointer names no place", () => {
+    expect(placeOf(finding({ route: null, pointer: "" }), name)).toBeNull();
   });
 });

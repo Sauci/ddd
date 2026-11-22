@@ -41,7 +41,8 @@ on the errors :func:`~ddd.deliveries.read_baseline` forwards, prefixed ``"in the
 because those are the baseline's own analysis handed back unchanged - a ``multiple-producers``
 found while reading a baseline given as a multi-file project description carries a note pointing
 at the *other* file that also produces the object, and both copies are the baseline's, whatever
-either happens to be named.
+either happens to be named. They are two rows of one statement, which ``ddd compare`` prints once,
+so the reply counts its findings before they are filed (:attr:`Compared.statements`).
 
 **Whatever it happens to be named is the part a path check cannot settle.** A baseline is named
 under the session root, and the candidate's own files are under it too - a reader may legally
@@ -83,7 +84,7 @@ from ddd.diagnostics import (
     SeverityPolicy,
     where,
 )
-from ddd.gui.session import Filed, Revision, _named_by, stamped
+from ddd.gui.session import Filed, Revision, named_by, stamped
 from ddd.lsp.diagnostics import group_findings
 from ddd.plugins import PluginError
 
@@ -199,6 +200,12 @@ class Compared:
     project, and being in this list rather than in ``findings`` is what marks a finding as the
     baseline's, not where it resolves to."""
 
+    statements: tuple[int, int, int]
+    """How many errors, warnings and informational findings :attr:`findings` and
+    :attr:`baseline_findings` make: each once, as ``ddd compare`` counts them (decision 14.3),
+    however many files it is filed on - a disagreement the baseline forwards, on each of the
+    files it concerns (the module's docstring)."""
+
     renames: tuple[dict[str, str], ...]
     """Every object the two sides agree is one and the same but call differently now, as
     :func:`ddd.compare.renames` already shapes them - what ``ddd compare --renames`` writes."""
@@ -206,7 +213,10 @@ class Compared:
     own_errors: int
     """How many errors the open project has of its own, which the verdict counts as ``ddd compare``
     exit code does: what the state's count of errors is, so that a reader told "cannot replace"
-    of a project whose comparison found nothing is told why."""
+    of a project whose comparison found nothing is told why. ``plugin-changed`` is among them while
+    it stands as an error, which no command files: the verdict then refuses where ``ddd compare``
+    may not, until the server is restarted or the plugin's file holds the bytes it was imported
+    from again."""
 
 
 def compared(revision: Revision, baseline: Path, root: Path, cache: BaselineCache) -> Compared:
@@ -300,14 +310,27 @@ def compared(revision: Revision, baseline: Path, root: Path, cache: BaselineCach
         comparison.verdict,
         findings,
         baseline_findings,
+        _statements(compare_bag, baseline_bag),
         tuple(renames(comparison.paired)),
         own_errors,
     )
 
 
+def _statements(*bags: DiagnosticBag) -> tuple[int, int, int]:
+    """:attr:`Compared.statements` of ``bags``, the comparison's and the baseline's: every finding
+    each holds, counted before :func:`~ddd.lsp.diagnostics.group_findings` files any of them on
+    the files its notes point at - as ``ddd compare`` counts the one bag it holds both in."""
+    errors, warnings, infos = (
+        sum(bag.count(severity) for bag in bags)
+        for severity in (Severity.ERROR, Severity.WARNING, Severity.INFO)
+    )
+    return (errors, warnings, infos)
+
+
 def _own_errors(revision: Revision) -> int:
     """How many findings of severity error the open project has of its own: what the state counts
-    of it, whichever build graded them, and so what ``ddd check`` exits 1 on.
+    of it, whichever build graded them, and so what ``ddd check`` exits 1 on, save
+    ``plugin-changed`` while it stands as an error, which ``ddd gui`` alone files.
 
     Counted from the revision's findings rather than computed again under :func:`_policy_of`,
     which grades ``compare``'s own checks and no other: the project's own are graded by each
@@ -410,7 +433,8 @@ def _resolved_baseline(
     stamp it was read at - :func:`~ddd.gui.session.stamped`, the session's own reading of "has
     this file changed", asked of the baseline's files as the poller asks it of the candidate's.
     A file a wildcard include would match only once it exists is noticed when something else
-    changes, which is the limit the session already states for the open project.
+    changes: a baseline is stamped by its files alone, where the open project's poll stamps the
+    directories its patterns expand in too (:attr:`~ddd.gui.session.Revision.watched`).
     """
     try:
         resolved = path.resolve()
@@ -440,11 +464,11 @@ def _resolved_baseline(
     ):
         # Stamped before the read, by the files the last read of it was made of - an entry that
         # was not kept still says which - and, for a first read, by the files the description
-        # names itself (:func:`~ddd.gui.session._named_by`, as the session opens a project), so
+        # names itself (:func:`~ddd.gui.session.named_by`, as the session opens a project), so
         # that a flat project is kept from its first read. Compared with the stamps after it by
         # equality, as the session compares a revision's: no window and no clock, so a write
         # that moves the time or the size, an older time and a file dated ahead included, is told.
-        known = tuple(_named_by(resolved)) if hit is None else tuple(hit.stamps)
+        known = tuple(named_by(resolved)) if hit is None else tuple(hit.stamps)
         hit = _read(resolved, relaxed, known)
         # Taken out and put back rather than assigned in place, so that the entry dropped below
         # is the one read longest ago: updating a key leaves it where it first went in.
@@ -460,7 +484,7 @@ def _read(path: Path, relaxed: dict[str, Severity], known: tuple[Path, ...]) -> 
 
     ``known`` are the files stamped with ``path`` before this read begins
     (:attr:`Cached.verified`): those the last read of it was made of, or, for a first read, those
-    the file names itself (:func:`~ddd.gui.session._named_by`).
+    the file names itself (:func:`~ddd.gui.session.named_by`).
 
     The open is a probe and reads nothing: it answers *unreadable* - a file that is not there,
     a directory, one whose permissions refuse, a path no file can bear - before
@@ -470,7 +494,7 @@ def _read(path: Path, relaxed: dict[str, Severity], known: tuple[Path, ...]) -> 
     (:func:`_resolved_baseline`): refused here as unreadable all the same, the route's ``400``
     (12:M1). Reading the bytes here as well, which is what the fingerprint key used to need,
     meant the 45 MB dump of a thousand object project went through twice on every read. A first
-    read still parses it twice, once to learn what it names (:func:`~ddd.gui.session._named_by`)
+    read still parses it twice, once to learn what it names (:func:`~ddd.gui.session.named_by`)
     and once in ``read_baseline``, a cost paid once per baseline the cache does not hold.
     """
     try:

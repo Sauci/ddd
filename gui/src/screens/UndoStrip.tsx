@@ -28,8 +28,9 @@ function refusalOf(error: Error): string {
  * revision, so that a file changing on disk - or another window undoing first - is noticed
  * without a request of its own. A refusal of the mutation, whatever its code, is held for the
  * entry the reader pressed for until they close the strip, as the panels hold theirs until the
- * reader's next choice, and a revision landing - the one a stale refusal asks for, which comes
- * within milliseconds - never takes it away (`Refused`, lib/refusals.ts). It is that entry's alone:
+ * reader's next choice, and a revision landing - the one a refusal of the entry on top asks for,
+ * within milliseconds (refusing one no longer on top asks for none) - never takes it away
+ * (`Refused`, lib/refusals.ts). It is that entry's alone:
  * another reaching the top while the strip stays open - an edit a panel makes meanwhile, or an
  * undo from another window - is offered whole, its preview and its Put back, and the refusal goes
  * unsaid. An undo answered, every query `askedAgainAfterUndo` names is asked for again at once:

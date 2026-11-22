@@ -1,7 +1,7 @@
 import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { CONTROLLER, failing, held, restamp, SERVER_FAILED, UNITS, writeUnseen } from "./demo";
+import { failing, held, SERVER_FAILED, UNITS, writeUnseen } from "./demo";
 import { expect, type Gui, test } from "./fixtures";
 
 /** A component the project does not include yet, declaring nothing - written into the copy
@@ -959,13 +959,15 @@ test("an entry naming no file, and a pattern matching none, are listed as naming
   ]);
 });
 
-test("a file a pattern matches that the last analysis did not read is listed as not read, until the next analysis reads it", async ({
+test("a file a pattern comes to match is read by the next analysis, no other file changing", async ({
   page,
   gui,
 }) => {
-  // Written after the analysis the fixture waited for: a file appearing where a pattern matches
-  // starts none (`_files`, api.py, "answered anew each time"), so the list names a file the
-  // revision never read.
+  // Written after the analysis the fixture waited for, where `components/*.ddd.json` matches: the
+  // directory the pattern expands in gains an entry, which moves its time, and the session's
+  // watcher stamps that directory (`Revision.watched`, session.py), so the next analysis reads the
+  // file though no file it read changed. Listed as not read by the last analysis only until then,
+  // which `files.test.ts` draws.
   writeFileSync(
     join(gui.directory, "components", "extra.ddd.json"),
     JSON.stringify({ component: { name: "Extra", interface: [] } }),
@@ -975,13 +977,9 @@ test("a file a pattern matches that the last analysis did not read is listed as 
   await page.getByRole("link", { name: "Files", exact: true }).click();
 
   const extra = page.getByRole("row", { name: "components/extra.ddd.json", exact: true });
-  await expect(extra.getByRole("gridcell")).toHaveText(["", "not read by the last analysis", ""]);
+  await expect(extra.getByRole("gridcell")).toHaveText(["component", "", "1"]);
   const read = page.getByRole("row", { name: "components/controller.ddd.json", exact: true });
   await expect(read.getByRole("gridcell")).toHaveText(["component", "", ""]);
-
-  // A stamp moved: the next analysis expands the pattern again, and reads the file it matches.
-  restamp(gui.directory, CONTROLLER);
-  await expect(extra.getByRole("gridcell")).toHaveText(["component", "", "1"]);
 });
 
 test("a pattern's row is listed with the files it matches beneath it, each one a component, and a sub-project's row is one of kind project", async ({

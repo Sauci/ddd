@@ -1099,10 +1099,21 @@ def definition_problem(
     try:
         accepted = _DEFINITION.validate_python(definition)
     except ValidationError as error:
-        first = error.errors(include_url=False)[0]
-        cause = first.get("ctx", {}).get("error")
-        return str(cause) if isinstance(cause, Exception) else first["msg"]
+        return first_refused(error)
     return _refused_by_the_analysis(accepted, types)
+
+
+def first_refused(error: ValidationError) -> str:
+    """The first thing a validation error refuses, in one sentence, as :func:`definition_problem`
+    says it: a rule crossing keys in the english sentence it raised, unwrapped from pydantic's
+    ``"Value error, ..."``, and a key of the wrong shape as pydantic says it.
+
+    One reading for every question an edit asks the models of what it would leave - a definition,
+    and a type's entry (:func:`ddd.models.types.type_problem`) - so that the two cannot come to say
+    one refusal in two ways."""
+    first = error.errors(include_url=False)[0]
+    cause = first.get("ctx", {}).get("error")
+    return str(cause) if isinstance(cause, Exception) else first["msg"]
 
 
 def string_type_problem(

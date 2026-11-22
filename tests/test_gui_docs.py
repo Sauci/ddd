@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from ddd.gui.api import ROUTES
+from ddd.gui.server import EDIT_BODY
 
 PAGE = Path(__file__).parents[1] / "docs" / "gui_security.rst"
 
@@ -227,6 +228,34 @@ def test_the_page_says_to_open_ddd_gui_from_its_own_address_alone() -> None:
         "than from a link someone else wrote, or an address that sends the browser on to it."
         in _prose()
     )
+
+
+def test_the_page_says_how_much_an_edit_may_post_once_it_has_shown_the_token() -> None:
+    """The edit's own limit, as the server holds it (15:I4), what it holds, and read only past
+    the gate."""
+    assert (
+        f"``POST /api/edit`` alone may promise more, up to {EDIT_BODY:,} bytes, since an Apply "
+        "posts every change of its plan"
+    ) in _prose()
+    assert (
+        "up to 4,725,352 bytes to rename a unit across a generated project of 100,000 "
+        "declarations, measured over each of the generator's four shapes and its densities of "
+        "findings, the chain shape's the most"
+    ) in _prose()
+    assert (
+        "but only once it has shown the token and this server's own origin: refused before "
+        "that, it is read and drained as any other ``POST`` is."
+    ) in _prose()
+
+
+def test_the_page_says_the_standard_library_s_refusals_are_drained_before_their_close() -> None:
+    """``send_error``'s drain (12:M7, the plan's *Left open* entry), said beside the shapes the
+    standard library refuses."""
+    assert (
+        "Each of the standard library's refusals closes its connection behind the answer as "
+        "``ddd gui``'s own do, reading and throwing away what still arrives first, so that the "
+        "close is no reset to erase the answer."
+    ) in _prose()
 
 
 def test_the_page_says_a_wait_for_the_state_gives_its_slot_back_once_the_page_has_gone() -> None:

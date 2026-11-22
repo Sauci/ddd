@@ -14,28 +14,34 @@ is strict on both arms and refuses a whole number in the fractional one, so ``2`
 two different constants; a plan that parsed a value and wrote it back would retype one nobody
 asked it to.
 
-The four verbs below - and :func:`project_of`, which reads the context :func:`add_entry` needs -
-take a :class:`~ddd.project_shared.Vocabulary` first, the way part 13's read side already takes
-one, and everywhere a constant's own reach differed from a section's or a raster's - the settable
-keys, the required ones, the judge of a value, the file created, the noun a removal names, the
-sentence a name is refused with - now comes off the descriptor instead of being written into the
-verb. The constants-named bindings that carried the api across that change -
-``set_constant``, ``rename_constant``, ``add_constant``, ``remove_constant`` and
+The four verbs below take a :class:`~ddd.project_shared.Vocabulary` first, the way part 13's
+read side already takes one, and everywhere a constant's own reach differed from a section's or a
+raster's - the settable keys, the required ones, the judge of a value, the file created, the noun
+a removal names, the sentence a name is refused with - now comes off the descriptor instead of
+being written into the verb. The constants-named bindings that carried the api across that change
+- ``set_constant``, ``rename_constant``, ``add_constant``, ``remove_constant`` and
 ``shared_project`` - are gone: the api asks for the verb and the vocabulary it means, so a
-project's sections are planned by the same five functions and neither client can get a different
-answer for the two.
+project's sections are planned by the same four verbs and neither client can get a different
+answer for the two. The files :func:`add_entry` adds to are found by the one function that finds a
+unit's too (:func:`ddd.lsp.units.vocabulary_project`).
+
+Each verb answers a :class:`~ddd.plans.Plan`, one edit per file, sorted by path, as the interface
+applies them, or raises a :class:`~ddd.plans.PlanRefusalError`, in a sentence naming the file it
+concerns: ``unreadable`` where a file the change has to see did not load; ``invalid`` where the
+change cannot be made - a key a constant has not, a name that may not be used, a constant a shape
+or a condition still names; ``not-found`` where no file of the project declares an entry of that
+name; ``stale`` where a file the change points into no longer holds the entry, or a shape or a
+condition naming it, where the index found it, having changed since the analysis read it.
 """
 
 from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Final, Literal
+from typing import Any, Final
 
 from ddd.editing import Operation
-from ddd.loading import included_files, resolve_path
 from ddd.lsp.navigation import (
     Index,
     Site,
@@ -43,10 +49,12 @@ from ddd.lsp.navigation import (
     conditions_spelling,
     drift,
     rename_sites,
+    told_apart,
     word_spans,
 )
 from ddd.lsp.ranges import Document, read
-from ddd.lsp.units import PlannedEdit, appended_at, created_beside
+from ddd.lsp.units import VocabularyProject, appended_at, created_beside
+from ddd.plans import Plan, PlannedEdit, PlanRefusalError
 from ddd.pointers import parent_pointer
 from ddd.project_shared import CONSTANTS, Vocabulary, entry_in_place
 
@@ -65,106 +73,6 @@ import it by it.
 """
 
 
-@dataclass(frozen=True, slots=True)
-class SharedProject:
-    """What a plan has to know of the project besides its index: where its vocabulary's own files
-    are kept, which of its files could not be told apart from a place they are kept, and which of
-    its files did not load."""
-
-    project: Path
-    """The project description, resolved."""
-
-    files: tuple[Path, ...]
-    """Its vocabulary's own files, in the order its ``project.includes`` lists them, each listed
-    once: the first is where a new entry goes, so that it lands in the file a run of ``ddd check``
-    reads first."""
-
-    untellable: tuple[Path, ...]
-    """The files it includes that are there and do not parse, in ``includes`` order, each listed
-    once: what each one is cannot be told, so each of them might be one of the vocabulary's own.
-
-    Kept apart from ``files`` because nothing may be appended to a file nobody could read, and
-    kept at all because ``files`` being empty otherwise reads as "this project has none of this
-    vocabulary's files" - and :func:`add_entry` would answer that by writing a second one beside
-    the description, unasked, while the first sat there mid-save.
-
-    A file the project includes and does not have is not one of them: it declares nothing, so it
-    hides no name a new file could collide with."""
-
-    unread: tuple[Path, ...]
-    """The project's files that did not load, resolved and sorted."""
-
-
-@dataclass(frozen=True, slots=True)
-class SharedPlan:
-    """Everything one change of an entry takes: one edit per file, sorted by path."""
-
-    edits: tuple[PlannedEdit, ...]
-
-
-class SharedRefusalError(Exception):
-    """A change of an entry that cannot be planned, and the code both clients refuse it with."""
-
-    code: Literal["unreadable", "invalid", "not-found", "stale"]
-    """``unreadable``: a file the change has to see did not load. ``invalid``: the change cannot
-    be made - a key a constant has not, a name that may not be used, a constant a shape or a
-    condition still names. ``not-found``: no file of the project declares a constant of that name.
-    ``stale``: a file the change points into no longer holds the entry, or a shape or a condition
-    naming it, where the index found it, having changed since the analysis read it."""
-
-    message: str
-    """The sentence the refusal is shown with, naming the file it concerns."""
-
-    def __init__(
-        self, code: Literal["unreadable", "invalid", "not-found", "stale"], message: str
-    ) -> None:
-        super().__init__(message)
-        self.code = code
-        self.message = message
-
-
-def project_of(
-    vocabulary: Vocabulary, project: Path, unread: Sequence[Path], cache: dict[Path, Document]
-) -> SharedProject:
-    """The project ``vocabulary``'s plans are made in: its description, its own files, the files
-    it includes whose kind cannot be told, and the files of it that did not load.
-
-    Its files come out of the description's own ``includes``, each entry expanded by the loader's
-    rule, so that the first of them is the first a run of ``ddd check`` reads. One of them is a
-    document with ``vocabulary.containers[0]`` at its top, which is how the loader tells one; a
-    file that does not parse is none, since what it is cannot be told - and a new entry must not
-    be appended to a file nobody could read.
-
-    That answer is not the whole of it, which is what this function used to leave unsaid: a file
-    whose kind cannot be told might be one of the vocabulary's, and counting it as none left
-    ``files`` empty - which :func:`add_entry` read as "this project has none of this vocabulary's
-    files" and answered by creating a second one. So such a file is named in ``untellable``
-    instead of being passed over in silence, and ``add`` refuses rather than creates while one is
-    there.
-    """
-    path = resolve_path(project)
-    found: list[Path] = []
-    untellable: list[Path] = []
-    listed = read(path, cache).value_at("project.includes")
-    for entry in listed if isinstance(listed, list) else ():
-        for file in included_files(path, entry):
-            document = read(file, cache).data
-            if (
-                file not in found
-                and isinstance(document, dict)
-                and vocabulary.containers[0] in document
-            ):
-                found.append(file)
-            elif document is None and file not in untellable and file.exists():
-                untellable.append(file)
-    return SharedProject(
-        path,
-        tuple(found),
-        tuple(untellable),
-        tuple(sorted({resolve_path(file) for file in unread}, key=Path.as_posix)),
-    )
-
-
 def set_entry(
     vocabulary: Vocabulary,
     built: Index,
@@ -172,7 +80,7 @@ def set_entry(
     key: str,
     raw: str | None,
     cache: dict[Path, Document],
-) -> SharedPlan:
+) -> Plan:
     """``key`` of that entry of ``vocabulary`` set to the json text ``raw``, or taken away where
     ``raw`` is ``None``.
 
@@ -213,13 +121,13 @@ def set_entry(
     _in_place(vocabulary, built, name, cache, f"'{name}' cannot be changed")
     if raw is None:
         if key in vocabulary.required:
-            raise SharedRefusalError(
+            raise PlanRefusalError(
                 "invalid",
                 f"{_article(vocabulary.kind)} {vocabulary.kind} states {_article(key)} {key}, so "
                 f"'{name}' cannot be left without one in {entry.path.name}",
             )
         if read(entry.path, cache).value_at(f"{entry.pointer}.{key}") is None:
-            return SharedPlan(())
+            return Plan(())
         return _plan({entry.path: [Operation("remove", f"{entry.pointer}.{key}")]})
     _judged(vocabulary, key, raw, name, entry.path)
     _untaken(vocabulary, built, name, key, raw, cache)
@@ -228,7 +136,7 @@ def set_entry(
 
 def rename_entry(
     vocabulary: Vocabulary, built: Index, name: str, to: str, cache: dict[Path, Document]
-) -> SharedPlan:
+) -> Plan:
     """What renaming that entry of ``vocabulary`` takes: its own ``name``, every shape spelling it,
     and the word of every condition spelling a constant.
 
@@ -250,12 +158,12 @@ def rename_entry(
     _entry(vocabulary, built, name)
     problem = vocabulary.taken[vocabulary.name_key](built, name, to, cache)
     if problem is not None:
-        raise SharedRefusalError("invalid", problem)
+        raise PlanRefusalError("invalid", problem)
     sites = rename_sites(built, vocabulary.kind, name)
     conditions = conditions_spelling(built, vocabulary.kind, name)
     moved = drift(sites, name, cache, conditions)
     if moved:
-        raise SharedRefusalError(
+        raise PlanRefusalError(
             "stale", changed_since(moved, f"renaming '{name}' cannot be planned")
         )
     by_file: dict[Path, list[Operation]] = {}
@@ -270,11 +178,11 @@ def rename_entry(
 def add_entry(
     vocabulary: Vocabulary,
     built: Index,
-    project: SharedProject,
+    project: VocabularyProject,
     name: str,
     raws: Mapping[str, str],
     cache: dict[Path, Document],
-) -> SharedPlan:
+) -> Plan:
     """``name`` declared with ``raws`` - one json text per key of ``vocabulary`` - appended to the
     first of the vocabulary's own files the project includes, or written into a new one beside the
     project description where it includes none.
@@ -326,19 +234,19 @@ def add_entry(
     """
     problem = vocabulary.taken[vocabulary.name_key](built, None, name, cache)
     if problem is not None:
-        raise SharedRefusalError("invalid", problem)
+        raise PlanRefusalError("invalid", problem)
     if not project.files:
-        if project.untellable:
-            raise SharedRefusalError(
+        if project.untold:
+            raise PlanRefusalError(
                 "unreadable",
-                f"{_names(project.untellable)} did not parse, so whether this project already "
+                f"{_names(project.untold)} did not parse, so whether this project already "
                 f"keeps its {vocabulary.kind}s there is unknown and '{name}' cannot be declared "
                 "into a new file",
             )
         return _created(vocabulary, project, name, raws, cache)
     file = project.files[0]
     if file in project.unread:
-        raise SharedRefusalError(
+        raise PlanRefusalError(
             "unreadable",
             f"{file.name} did not load, so what it declares is unknown and '{name}' cannot be "
             "added to it",
@@ -357,7 +265,7 @@ def add_entry(
 
 def remove_entry(
     vocabulary: Vocabulary, built: Index, name: str, cache: dict[Path, Document]
-) -> SharedPlan:
+) -> Plan:
     """That entry of ``vocabulary`` taken out of the list holding it - or, where that list is
     nested and the entry is its last, the key holding the list.
 
@@ -406,7 +314,7 @@ def remove_entry(
     # every shape naming the entry naming nothing - and this refusal names a place the reader can
     # go to and undo.
     if used:
-        raise SharedRefusalError(
+        raise PlanRefusalError(
             "invalid",
             f"'{name}' has {_plural(len(used), 'use')}, the first in {used[0].path.name}; "
             "nothing may name it before it goes",
@@ -424,7 +332,7 @@ def _entry(vocabulary: Vocabulary, built: Index, name: str) -> Site:
     """Where that entry of ``vocabulary`` is declared, or a refusal saying nothing declares it."""
     entry = vocabulary.entries(built).get(name)
     if entry is None:
-        raise SharedRefusalError(
+        raise PlanRefusalError(
             "not-found",
             f"no file of this project declares {_article(vocabulary.kind)} {vocabulary.kind} "
             f"called '{name}'",
@@ -443,7 +351,7 @@ def _in_place(
     """
     if not entry_in_place(vocabulary, built, name, cache):
         where = vocabulary.entries(built)[name].path
-        raise SharedRefusalError("stale", changed_since((where,), consequence))
+        raise PlanRefusalError("stale", changed_since((where,), consequence))
 
 
 def _settable(vocabulary: Vocabulary, key: str, file: Path) -> None:
@@ -461,7 +369,7 @@ def _settable(vocabulary: Vocabulary, key: str, file: Path) -> None:
     alignment and description" for the first that has three.
     """
     if key not in vocabulary.keys:
-        raise SharedRefusalError(
+        raise PlanRefusalError(
             "invalid",
             f"{_article(vocabulary.kind)} {vocabulary.kind} has no '{key}' to set in "
             f"{file.name}: it states {_listed(sorted(vocabulary.keys))}",
@@ -481,7 +389,7 @@ def _judged(vocabulary: Vocabulary, key: str, raw: str, name: str, file: Path) -
     try:
         judgement.adapter.validate_python(json.loads(raw))
     except (ValueError, TypeError) as refused:
-        raise SharedRefusalError(
+        raise PlanRefusalError(
             "invalid",
             f"{raw} is not {_article(key)} {key} {_article(vocabulary.kind)} {vocabulary.kind} "
             f"may state, so '{name}' cannot take it in {file.name}: {judgement.tail}",
@@ -526,13 +434,13 @@ def _untaken(
     problem = judge(built, entry, raw, cache)
     if problem is None:
         return
-    raise SharedRefusalError("invalid", problem)
+    raise PlanRefusalError("invalid", problem)
 
 
-def _plan(operations: Mapping[Path, Sequence[Operation]]) -> SharedPlan:
-    """One edit per file, sorted by path, as :class:`SharedPlan` promises and the interface applies
-    them."""
-    return SharedPlan(
+def _plan(operations: Mapping[Path, Sequence[Operation]]) -> Plan:
+    """One edit per file, sorted by path, as :class:`~ddd.plans.Plan` promises and the interface
+    applies them."""
+    return Plan(
         tuple(
             PlannedEdit(path, tuple(operations[path]))
             for path in sorted(operations, key=Path.as_posix)
@@ -541,10 +449,11 @@ def _plan(operations: Mapping[Path, Sequence[Operation]]) -> SharedPlan:
 
 
 def _names(files: Sequence[Path]) -> str:
-    """The files a refusal is about, by name, as :func:`ddd.lsp.units._names` spells them: a
-    refusal names the file it concerns, and a project can include more than one nobody could
-    read."""
-    return ", ".join(file.name for file in files)
+    """The files a refusal is about, as :func:`ddd.lsp.units._names` spells them: a refusal
+    names the file it concerns, and a project can include more than one nobody could read - by
+    name, and two of one name in different folders by as much of their paths as tells them
+    apart (:func:`~ddd.lsp.navigation.told_apart`)."""
+    return ", ".join(told_apart(files))
 
 
 def _plural(count: int, noun: str) -> str:
@@ -629,11 +538,11 @@ def _reworded(document: Document, pointer: str, old: str, new: str) -> str:
 
 def _created(
     vocabulary: Vocabulary,
-    project: SharedProject,
+    project: VocabularyProject,
     name: str,
     raws: Mapping[str, str],
     cache: dict[Path, Document],
-) -> SharedPlan:
+) -> Plan:
     """The file of ``vocabulary`` a project without one gets, and the ``includes`` entry naming
     it.
 
@@ -645,7 +554,7 @@ def _created(
     """
     created = project.project.parent / vocabulary.filename
     if created.exists():
-        raise SharedRefusalError(
+        raise PlanRefusalError(
             "invalid",
             f"declaring '{name}' writes {vocabulary.filename} beside {project.project.name}, "
             "and a file of that name is there already",
@@ -655,7 +564,7 @@ def _created(
         _judged(vocabulary, key, raw, name, created)
     text = f'{{"{vocabulary.containers[0]}": [{_entry_text(vocabulary, name, raws)}]}}'
     edits = created_beside(project.project, vocabulary.filename, text, cache)
-    return SharedPlan(tuple(sorted(edits, key=lambda edit: edit.path.as_posix())))
+    return Plan(tuple(sorted(edits, key=lambda edit: edit.path.as_posix())))
 
 
 def _entry_text(vocabulary: Vocabulary, name: str, raws: Mapping[str, str]) -> str:

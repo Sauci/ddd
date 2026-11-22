@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from conftest import built_of, component, declare, write_tree
-from ddd.diagnostics import Diagnostic, Location, Severity
+from ddd.diagnostics import CHECKS, Diagnostic, Location, Severity
 from ddd.findings_by_file import FindingsByFile
 from ddd.lsp.navigation import _DIMENSION_KEY, _RASTER_KEY, _SECTION_KEY
 from ddd.lsp.ranges import Document
@@ -21,9 +21,11 @@ from ddd.project_shared import (
     _RASTER_DEFAULT_SHAPE,
     _RASTER_DEFINITION_SHAPE,
     CONSTANTS,
+    HELD,
     RASTERS,
     SECTIONS,
     _raster_uses,
+    entry_findings,
     located_on,
     row_of,
     shared_rows,
@@ -489,6 +491,91 @@ class TestTheRows:
             ),
         )
         assert located_on(CONSTANTS, built, "MISSING_CELLS", tmp_path / "a.ddd.json", undeclared)
+
+
+def _repeating(
+    file: Path, pointer: str, first: Path, there: str, check: str = "duplicate-constant"
+) -> Diagnostic:
+    """The loader's refusal of a later entry repeating a name, as ``ddd.loading`` files every
+    ``duplicate-<noun>``: at that entry, with a note naming the first."""
+    return Diagnostic(
+        check,
+        Severity.ERROR,
+        "is already declared",
+        Location(file, pointer),
+        notes=(("first declared here", Location(first, there)),),
+    )
+
+
+class TestALaterEntryRepeatingAName:
+    """14:M8. A name declared twice is refused at the later entry, of which the analysis reads no
+    more, with a note naming the first, and the finding is filed at both: the later entry, and the
+    first's own record, where its note points. The later entry's copy led to the first's panel,
+    which listed the other copy alone, and its row counted one of the two."""
+
+    def test_the_later_entry_s_copy_is_the_first_entry_s_by_its_note(self, tmp_path: Path) -> None:
+        """In the first's own file or in another: no place the index records is the later
+        entry, the loader having kept nothing of it, and its note is what names the first."""
+        built, _ = built_of(tmp_path, **TWO_HOMES)
+        c, w = tmp_path / "c.ddd.json", tmp_path / "w.ddd.json"
+        for file, pointer in ((c, "constants[1]"), (w, "constants[0]")):
+            later = _repeating(file, pointer, c, "constants[0]")
+            assert located_on(CONSTANTS, built, "TREND_SAMPLES", file, later)
+            assert not located_on(CONSTANTS, built, "CELLS", file, later)
+
+    def test_a_note_naming_the_entry_makes_no_other_finding_its_own(self, tmp_path: Path) -> None:
+        """The vocabulary's own repetition alone, naming that entry: another check pointing at it
+        by a note - another vocabulary's repetition, or a finding of its own - is the finding of
+        where it is filed, and a repetition naming another place names another entry. A name no
+        file declares has no record to be repeated."""
+        built, _ = built_of(tmp_path, **TWO_HOMES)
+        c, w = tmp_path / "c.ddd.json", tmp_path / "w.ddd.json"
+        for check in ("duplicate-section", "dimension-value"):
+            pointing = _repeating(w, "constants[0]", c, "constants[0]", check)
+            assert not located_on(CONSTANTS, built, "TREND_SAMPLES", w, pointing)
+        elsewhere = _repeating(w, "constants[0]", c, "constants[1]")
+        assert not located_on(CONSTANTS, built, "TREND_SAMPLES", w, elsewhere)
+        another_file = _repeating(c, "constants[1]", w, "constants[0]")
+        assert not located_on(CONSTANTS, built, "TREND_SAMPLES", c, another_file)
+        nowhere = _repeating(w, "constants[0]", c, "constants[0]")
+        assert not located_on(CONSTANTS, built, "SPARE_CELLS", w, nowhere)
+
+    def test_a_row_counts_both_copies_asking_only_the_files_they_are_on(
+        self, tmp_path: Path
+    ) -> None:
+        """Both copies, in the order given, the later entry's found by the record its note names
+        rather than by walking every finding (:meth:`FindingsByFile.noting`)."""
+        built, _ = built_of(tmp_path, **TWO_HOMES)
+        c, w = tmp_path / "c.ddd.json", tmp_path / "w.ddd.json"
+        mirror = Diagnostic(
+            "duplicate-constant", Severity.ERROR, "is already declared", Location(c, "constants[0]")
+        )
+        later = _repeating(w, "constants[0]", c, "constants[0]")
+        findings = Unwalked([(c, mirror), (w, later)])
+        assert entry_findings(CONSTANTS, built, "TREND_SAMPLES", findings) == [
+            (c, mirror),
+            (w, later),
+        ]
+        assert row_of(CONSTANTS, built, "TREND_SAMPLES", findings, {}).findings == 2
+        assert row_of(CONSTANTS, built, "CELLS", findings, {}).findings == 0
+
+    def test_a_name_no_file_declares_has_no_record_a_repetition_could_name(
+        self, tmp_path: Path
+    ) -> None:
+        """Its findings are those at the shapes naming it alone, which the api asks only of a name
+        the index holds: no note is asked about where there is no record to name."""
+        built, _ = built_of(tmp_path, **TWO_HOMES)
+        c, w = tmp_path / "c.ddd.json", tmp_path / "w.ddd.json"
+        findings = Unwalked([(w, _repeating(w, "constants[0]", c, "constants[0]"))])
+        assert entry_findings(CONSTANTS, built, "SPARE_CELLS", findings) == []
+
+    def test_each_vocabulary_names_the_check_the_loader_files_a_repetition_under(self) -> None:
+        assert [vocabulary.repeated for vocabulary in HELD] == [
+            "duplicate-constant",
+            "duplicate-section",
+            "duplicate-raster",
+        ]
+        assert all(vocabulary.repeated in CHECKS for vocabulary in HELD)
 
 
 class TestOneConstantsPanel:

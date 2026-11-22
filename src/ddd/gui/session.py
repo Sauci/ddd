@@ -6,17 +6,34 @@ dictionary it resolved to. A new revision is made after every edit and undo and 
 of the project changes on disk, by one analysis at a time on a thread of its own: an edit is
 written at once and answered as soon as it is, its analysis following, and the edits landing
 while one analysis runs are all analysed by the one after it. What the session says - the newest
-revision, whether an analysis is asked for or running, the undo entry - is read whole as a
-:class:`Snapshot`, numbered by a version that moves at every change of it, which is what a page
-waits past. A change on disk is noticed by another thread, comparing each file's modification
-time and size once a second: the standard library has no file watcher. Re-checking the 1,683 files
-of a generated project of 100,000 declarations (``--shape mixed --missing-ids 1 --unread 0.5``)
-took 2 to 6 ms a round with nothing else running, and 2.8 to 3.4 s a round while an analysis ran,
-every stat waiting out the analysis's turn of the interpreter - one run of four analyses on the
-Linux development PC, Python 3.14 at its default switch interval, which ``ddd gui`` keeps - which
-is why a round holds no lock while it stamps (:meth:`Session.poll`). A file a wildcard include
-would match only once it exists is noticed when something else changes, which is a limit of the
-preview.
+revision, whether an analysis is asked for or running, the undo entry, why the last analysis
+failed where it did - is read whole as a :class:`Snapshot`, numbered by a version that moves at
+every change of it, which is what a page waits past. A change on disk is noticed by another
+thread, comparing each file's modification time and size once a second: the standard library has
+no file watcher. Re-checking the 1,683 files of a generated project of 100,000 declarations
+(``--shape mixed --missing-ids 1 --unread 0.5``) took 2 to 6 ms a round with nothing else running,
+and 2.8 to 3.4 s a round while an analysis ran, every stat waiting out the analysis's turn of the
+interpreter - one run of four analyses on the Linux development PC, Python 3.14 at its default
+switch interval, which ``ddd gui`` keeps - which is why a round holds no lock while it stamps
+(:meth:`Session.poll`). Beside the files, a round
+stamps what can change the analysis though none of them changed (:attr:`Revision.watched`): the
+directory each wildcard include expands in, since creating or removing a file moves its time;
+every file a ``plugins`` list names by its path, loaded or not; and every build record the search
+finds, a refused one among them, with the one beside the project description wherever it lies.
+So a component saved where a pattern matches, a plugin created or mended and a build record
+rewritten each make a new revision, as a file saved does. So does a plugin named by its path and
+edited once this process imported it, whose analysis runs the module of its old bytes, a module
+being imported once per process: the revision carries ``plugin-changed`` on the plugin's file, an
+error by default, until ``ddd gui`` is restarted or the file holds the bytes it was imported from
+again (:func:`_tell_changed_plugins`). A ``**`` expands in every directory it walks, hidden ones
+too, as the loader's walk goes into them (:func:`_expanded_in`): at a project's root,
+``**/*.ddd.json`` say, it watches the checkout's ``.git``, its ``node_modules`` and its build
+trees, so that committing, fetching, installing packages or building there asks for an analysis,
+though no plan or edit is refused for it, and every round stamps each directory under that root
+as it stamps each file. A build record written where none was, elsewhere than beside
+the project description - a new build tree's, or a new image's - and a plugin named as a module and
+installed since are noticed when something else changes, and an edit of a plugin named as a
+module, or of a module a plugin imports, is told by nothing, which are limits of the preview.
 
 The analysis is the language server's, run the way ``ddd lsp`` runs it: under the severities of
 every build record naming the project, or under the defaults when none does.
@@ -28,8 +45,9 @@ writes it again at every configure: which files belong to it is the build's. A r
 says so, and which tree the build owns (:attr:`Revision.generated`), and nothing under that tree
 is written - the description, a file created beside it, any file the tree holds - each such
 change refused :data:`GENERATED`, in a sentence saying where membership is decided
-(:func:`generated_refusal`). The components it collects from the source tree are edited as in any
-other project.
+(:func:`generated_refusal`). A record beside a description that does not read as one, a write of
+it cut short among them, is taken for the build's until it reads. The components it collects from
+the source tree are edited as in any other project.
 """
 
 from __future__ import annotations
@@ -38,6 +56,7 @@ import contextlib
 import os
 import sys
 import threading
+from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from fnmatch import fnmatch
@@ -46,7 +65,7 @@ from typing import Any, Final
 
 from ddd.build_info import BUILD_INFO_FILENAME, BuildInfo
 from ddd.deliveries import Resolved
-from ddd.diagnostics import CheckInfo, Diagnostic, Severity
+from ddd.diagnostics import CheckInfo, Diagnostic, Location, Severity
 from ddd.editing import (
     INVALID,
     STALE,
@@ -70,10 +89,11 @@ from ddd.loading import (
     resolve_path,
     top_level_kind,
 )
-from ddd.lsp.diagnostics import Run, group_findings, run_build, run_project
-from ddd.lsp.discovery import BUILD_DIRECTORY_PATTERNS, discover
-from ddd.lsp.navigation import LOAD_CHECKS, Index
+from ddd.lsp.diagnostics import Run, finding_identity, group_findings, run_build, run_project
+from ddd.lsp.discovery import BUILD_DIRECTORY_PATTERNS, build_files, discover, load_builds
+from ddd.lsp.navigation import LOAD_CHECKS, Index, named_at
 from ddd.lsp.ranges import Document
+from ddd.plugins import changed_since_imported, plugin_files
 
 KINDS: Final = FILE_KINDS
 """The top-level keys that say what a description file is, as the loader reads them: the
@@ -87,10 +107,11 @@ DESCRIPTION_SUFFIX: Final = ".ddd.json"
 may name as its project for the start page to read."""
 
 UNKNOWN: Final = (-1, -1)
-"""The stamp of a file whose modification time and size were not taken before an analysis read
-it: a size no file has, so a poll finds the file changed. A revision published with one asks for
-the next analysis itself (:meth:`Session._finished`); an analysis that raised leaves every file
-it stamped so, and the next poll asks again."""
+"""The stamp of a path whose modification time and size were not taken before an analysis read
+it - a file, or what it watches (:attr:`Revision.watched`): a size nothing has, so a poll finds
+the path changed. A revision published with one asks for the next analysis itself
+(:meth:`Session._finished`); an analysis that raised leaves every path it stamped so, and the
+next poll asks again."""
 
 MAX_UNDO: Final = 50
 """How many edits the stack keeps, the oldest falling off: a session that runs all day does not
@@ -100,11 +121,11 @@ GENERATED: Final = "generated"
 """The refusal of a change writing under the build tree a build generates the open project in
 (:func:`generated_refusal`): its description, a file created beside it, or any other file the
 tree holds, every one the build's. Answered 409, and refused again for as long as the build record
-beside the description names it."""
+beside the description names it, or does not read as one (:attr:`Generated.unread`)."""
 
 PLUGINS: Final = "plugins"
 """The refusal of an edit after which the project's descriptions would name plugins other than
-they name now (:func:`_refuse_plugins`): a change of a description's ``plugins`` list, a created
+they name now (:func:`refuse_plugins`): a change of a description's ``plugins`` list, a created
 file whose document names plugins, or a change of ``includes`` that brings in or drops a
 description naming plugins. Answered 409. ``ddd gui`` runs what a project names, as ``make`` runs
 what a Makefile names, so the token names no code the descriptions do not name already (decision
@@ -131,11 +152,20 @@ tree begins (:func:`_build_tree`)."""
 
 _CMAKE_LISTS: Final = "CMakeLists.txt"
 """The file a CMake source directory is configured from: the one a ``ddd_add_component`` call
-registering a new description goes into (:func:`_instead`)."""
+registering a new description goes into (:func:`_instead`), or an existing one
+(:func:`_registered`)."""
+
+_REPLACING: Final = "replacing <target> with your component's target"
+"""What a sentence offering a ``ddd_add_component`` call says of its ``<target>``, which stays for
+the reader to replace with their component's target: no file DDD reads names it."""
 
 _HOME_DIRECTORY: Final = "CMAKE_HOME_DIRECTORY:INTERNAL="
 """The entry of a CMake cache naming the source tree it was configured from, as CMake spells it:
 the one entry :func:`_source_tree` reads."""
+
+_WILDCARDS: Final = frozenset("*?[")
+"""The characters that make an ``includes`` entry a pattern, as the loader reads one
+(:func:`ddd.loading.expand_include`): an entry holding none names a file."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,6 +180,12 @@ class Generated:
     """Resolved: the build tree the description is generated in, every file under which is the
     build's (:func:`_build_tree`) - the description's own directory, where no CMake build tree is
     known to hold it apart from the source tree."""
+
+    unread: Path | None = None
+    """The record beside the description, where it does not read as one: whether a build writes
+    the description cannot be told then, and it is taken for the build's, the refusal naming the
+    record (:func:`generated_refusal`), until the record reads. ``None`` for a record that reads,
+    the build it names being the one :attr:`image` names."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -181,10 +217,11 @@ class SourceFile:
     name: str | None
     loaded: bool
     fingerprint: str
-    """Of the bytes the analysis read (:class:`~ddd.loading.FileRead`), never of the disk once it
-    is over: what every plan made from the revision carries, so that an Apply after the file
-    changed - while the analysis ran, too - is refused as stale. A file no run's read parsed, a
-    plugin, is fingerprinted as it stands once the analysis is over."""
+    """Of the bytes the analysis read (:class:`~ddd.loading.FileRead`) - those the revision's
+    index was built from, where several runs read the file (:func:`_files_read`) - never of the
+    disk once it is over: what every plan made from the revision carries, so that an Apply after
+    the file changed - while the analysis ran, too - is refused as stale. A file no run's read
+    parsed, a plugin, is fingerprinted as it stands once the analysis is over."""
 
     errors: int
     warnings: int
@@ -208,6 +245,12 @@ class Revision:
     builds: tuple[BuildInfo, ...]
     files: tuple[SourceFile, ...]
     findings: tuple[Filed, ...]
+    statements: tuple[int, int, int]
+    """How many errors, warnings and informational findings the analysis made, as ``ddd check``
+    counts them (decision 14.3): once however many files :attr:`findings` files one on - a
+    disagreement on each of the files it concerns - and as often as the run filing it most often
+    does, however many runs made it (:func:`_statements`)."""
+
     resolved: Resolved | None
     """What the analysis resolved the project to, or ``None`` when it did not get that far.
 
@@ -234,7 +277,8 @@ class Revision:
 
     index: Index | None
     """Where the project writes down each name it uses, from the analysis's own read: the first
-    run that built one, since every run of one project reads the same files."""
+    run that built one, since every run of one project reads the same files, and the run whose
+    read :attr:`files` are described by."""
 
     served: tuple[Path, ...]
     """The directories a file the page names by its path may be read, written or previewed in:
@@ -243,17 +287,18 @@ class Revision:
     from the start page.
 
     What they guard is ``GET /api/file``'s reads, and the files an edit writes and a plan
-    previews, each named by its path (:func:`_source`, :func:`_served`): a description file of
-    the project outside them is refused, ``404``, saying where ``ddd gui`` would have to be
-    started to reach it (12:M2). They are no boundary around what the project's analysis reads.
+    previews, each named by its path (:func:`source_path`, :func:`served_path`): a description
+    file of the project outside them is refused, ``404``, saying where ``ddd gui`` would have to
+    be started to reach it (12:M2). They are no boundary around what the project's analysis reads.
     What a project includes is the project's own business - a directory up is where a shared
     vocabulary lives - and an edit may add any file to its ``includes``: the analysis then reads
     that file wherever it lies, as ``ddd check`` does, and every route answering from the
     analysis - the dictionary, its types, units and values, a variable, the graph, the findings,
     which may quote what the file holds - answers what it states. What bounds an edit is
     elsewhere: it cannot change which plugins the project's descriptions name
-    (:func:`_refuse_plugins`); a file it creates is a description named ``*.ddd.json``, beside
-    the project description and included by the same edit (:func:`_confined`); and a build
+    (:func:`refuse_plugins`); a file it creates is a description named ``*.ddd.json``, beside
+    the project description and included by the same edit (:func:`_confined`,
+    :func:`_refuse_created_kind`); and a build
     record's ``project`` is read only under the rule a request's path meets
     (:func:`_readable_project`).
     """
@@ -278,6 +323,24 @@ class Revision:
     whether or not this version could apply that record's severities, which are another question.
     ``None`` for a project somebody wrote, its record, where a build has one, lying in a build
     tree it is not in."""
+
+    watched: tuple[Path, ...] = ()
+    """What the poll stamps beside :attr:`files`, sorted (:func:`_watched`): what can change the
+    analysis though no file it read changed. The directory each wildcard include of the project's
+    descriptions expands in, every directory a ``**`` walks among them - creating or removing an
+    entry moves a directory's modification time, so a component saved on a pattern is noticed by
+    that time; every file a ``plugins`` list names by its path, loaded or not, so a plugin created
+    or mended is noticed whatever the run read of it; every build record the search found, a
+    refused one among them, whose rewrite changes the severities; and the record beside the
+    project description, there or not, which says whether a build generates it
+    (:attr:`generated`). Empty for a revision made any other way - a test's."""
+
+    refused: tuple[tuple[Path, str], ...] = ()
+    """Every build record the analysis's search for builds found and this version cannot use -
+    written by a newer DDD, or naming a check it has not got - with why, sorted by path: the
+    search :func:`find_projects` makes for the start page, which lists the same records. None
+    of their severities applies to this revision, and the terminal is told of each
+    (:meth:`Session._tell_refused`). Empty for a revision made any other way - a test's."""
 
     @property
     def dictionary(self) -> DataDictionary | None:
@@ -316,22 +379,23 @@ def _readable_project(project: str, *served: Path) -> bool:
     network or device spelling would have the system open - and named ``*.ddd.json``. The one
     rule every reader of a record's ``project`` goes through, a network path allowed only under a
     directory of ``served``, which each reader gives. The start page's listing
-    (:func:`find_projects`), which an open asks as well, and the builds that feed the open
-    project's analysis (:meth:`Session._analysed`) read records through :func:`_offering`, under
-    the start directory alone - narrower than the directories a request is served, deliberately:
-    a record never names more than the start page needs. So a project whose records name it by
-    a network path is fed by their builds only where that path lies under the start directory,
-    though a request may name a path in its own directory. The record beside the open project
-    that says how it is generated (:func:`_generated`) is read under the project's own directory
-    too."""
+    (:func:`find_projects`), which an open asks as well, reads records through :func:`_offering`
+    under the start directory alone - narrower than the directories a request is served,
+    deliberately: a record never names more than the start page needs. The builds that feed the
+    open project's analysis (:meth:`Session._analysed`) read records under every directory a
+    request is served (:attr:`Revision.served`), the open project's own directory among them, and
+    so does the record beside the open project's description that says how it is generated
+    (:func:`_generated`): a project whose build records name it by a network path in its own
+    directory is fed by the builds those records describe, as a request may name a path there."""
     directories = tuple(directory.as_posix() for directory in served)
     return project.endswith(DESCRIPTION_SUFFIX) and is_a_path(project, directories)
 
 
-def _offering(records: Iterable[BuildInfo], root: Path) -> list[BuildInfo]:
-    """The build records whose ``project`` is readable (:func:`_readable_project`). A record
-    naming anything else reads as no record, and nothing is read at the path it names."""
-    return [info for info in records if _readable_project(info.project, root)]
+def _offering(records: Iterable[BuildInfo], *served: Path) -> list[BuildInfo]:
+    """The build records whose ``project`` is readable under the directories ``served``
+    (:func:`_readable_project`). A record naming anything else reads as no record, and nothing is
+    read at the path it names."""
+    return [info for info in records if _readable_project(info.project, *served)]
 
 
 @dataclass(frozen=True, slots=True)
@@ -350,6 +414,12 @@ class Snapshot:
 
     undoable: Undoable | None
 
+    failed: str | None
+    """Why the last analysis of the open project raised (:func:`_failure`), or ``None`` where it
+    finished: :attr:`revision` is the one before it meanwhile, or none, and the first analysis
+    to succeed clears it. Written by whichever thread made the analysis, holding the lock, as the
+    revision is published (:meth:`Session._finished`)."""
+
 
 class NoProjectError(RuntimeError):
     """Asked about the open project while none is open."""
@@ -362,6 +432,14 @@ class NotAnalysedError(RuntimeError):
 class NotInProjectError(LookupError):
     """Asked about a file this session does not serve: one that is not a description file of
     the open project, or one outside the directories it serves."""
+
+
+class _NotOnTopError(EditError):
+    """An undo of an edit that is not on top of the stack any more, or of none left: refused
+    ``stale``, as every refusal the page reads the state again on, and asking for no analysis
+    where a write refused ``stale`` asks for one (:meth:`Session._refused`) - nothing on disk is
+    in doubt, the stack having moved and no file, and the analysis would read the disk as the
+    session already knows it."""
 
 
 def find_projects(root: Path, build_directories: Sequence[Path] = ()) -> Found:
@@ -378,10 +456,52 @@ def find_projects(root: Path, build_directories: Sequence[Path] = ()) -> Found:
             named.append(info.image)
     paths = sorted(set(images) | set(_descriptions(base)))
     projects = tuple(
-        FoundProject(path, _name_in(_read_json(path), "project"), tuple(images.get(path, ())))
+        FoundProject(path, name_in(read_json(path), "project"), tuple(images.get(path, ())))
         for path in paths
     )
     return Found(base, projects, tuple(sorted(refused.items())))
+
+
+def walk_finds(root: Path, path: Path) -> bool:
+    """Whether the walk :func:`find_projects` makes finds ``path``, resolved, among the project
+    descriptions under ``root``, asked of that one path rather than walked for: it lies under
+    ``root`` by directories the walk goes into - real ones, neither a symbolic link nor a
+    junction, that it can list, ``root`` among them, none of them left out, no deeper than
+    :data:`SEARCH_DEPTH` - it is named ``*.ddd.json``, and it is a project description as it
+    stands now. A project a build record offers is not asked
+    about: the walk finds it by reading the records, and one outside ``root`` only a record
+    offers.
+
+    What ``POST /api/open`` asks of a path it holds already - the open project, or one the last
+    listing found - before it walks (:meth:`ddd.gui.api.Api._open`), the walk parsing every
+    description under ``root`` to tell the projects among them."""
+    base = root.resolve()
+    if not path.is_relative_to(base):
+        return False
+    *directories, name = path.relative_to(base).parts or ("",)
+    if not name.endswith(DESCRIPTION_SUFFIX) or len(directories) > SEARCH_DEPTH:
+        return False
+    if any(_skipped(directory) for directory in directories):
+        return False
+    on_the_way = [base]
+    for directory in directories:
+        on_the_way.append(on_the_way[-1] / directory)
+    if any(
+        place.is_symlink() or place.is_junction() or not _listable(place) for place in on_the_way
+    ):
+        return False
+    return _is_project(path)
+
+
+def _listable(directory: Path) -> bool:
+    """Whether the walk lists ``directory``: it opens it to list it, and passes over what it
+    cannot open so - a file, or a directory this process may go through and not list, whose
+    descriptions a path through it reads all the same (``Path.walk``)."""
+    try:
+        with os.scandir(directory):
+            return True
+    except OSError:
+        return False
 
 
 @dataclass(frozen=True, slots=True)
@@ -406,20 +526,21 @@ class Session:
     itself before it answers, and the one its revision asks for in turn, and a failure of either
     is raised to it.
 
-    One lock guards the project, its newest revision, the undo stack, the counters, the request,
-    the stamps and the files written since an analysis began, and every write of them is made
-    holding it. An analysis runs without it, which is what lets an edit be written while one
-    runs. Nothing on disk is touched holding it but the files an edit or an undo writes, and the
+    One lock guards the project, its newest revision, why the last analysis failed, the undo
+    stack, the counters, the request, the stamps and the files written since an analysis began,
+    and every write of them is made holding it. An analysis runs without it, which is what lets
+    an edit be written while one runs. Nothing on disk is touched holding it but the files an
+    edit or an undo writes, and the
     descriptions an edit's change of ``includes`` brings in or drops, read for the plugins they
-    name (:func:`_refuse_plugins`), so that the number it takes, the stack and the files waiting
+    name (:func:`refuse_plugins`), so that the number it takes, the stack and the files waiting
     for an analysis move with the write: the poll stamps the files without it (:meth:`poll`), an
     analysis stamps those it is about to read without it (:meth:`_next`), and opening reads what a
-    project includes before taking it (:meth:`open`). While another thread computes, every system
-    call waits out that thread's turn of the interpreter, and a lock held across a project's
-    thousands of files held every edit, state and plan behind them: edits asked 0.2 to 3.0 s into
-    an analysis of a generated project of 100,000 declarations answered in 2 to 3,363 ms while the
-    poll stamped holding it, and in 2 to 129 ms since - one run each, seven edits, on the Linux
-    development PC.
+    project includes, and searches for its build records, before taking it (:meth:`open`). While
+    another thread computes, every system call waits out that thread's turn of the interpreter,
+    and a lock held across a project's thousands of files held every edit, state and plan behind
+    them: edits asked 0.2 to 3.0 s into an analysis of a generated project of 100,000 declarations
+    answered in 2 to 3,363 ms while the poll stamped holding it, and in 2 to 129 ms since - one run
+    each, seven edits, on the Linux development PC.
     """
 
     def __init__(
@@ -443,6 +564,11 @@ class Session:
         self._fresh: set[Path] = set()
         self._asked: Path | None = None
         self._running = False
+        self._failed: str | None = None
+        # The refused build records the terminal was last told of, each with its reason
+        # (`_tell_refused`): read and written by the one analysis running, and never under the
+        # lock, being printed.
+        self._told: frozenset[tuple[Path, str]] = frozenset()
         self._stopping = threading.Event()
         self._poller: threading.Thread | None = None
         self._analyser: threading.Thread | None = None
@@ -469,21 +595,26 @@ class Session:
         """Open a project description, replacing the project open before it, and ask for its
         first analysis.
 
-        What its own includes name (:func:`_named_by`) is read before the lock is taken, as
+        What its own includes name (:func:`named_by`) is read before the lock is taken, as
         whether it is a project description at all is: the description read and its patterns
-        expanded on disk, system calls each of which waits out any busy thread's turn. Sound,
-        because what it names is only which files are stamped as the first analysis begins, the
-        stamps themselves taken then (:meth:`_next`): a description changed in between names a
-        file with no stamp from before, which costs the one analysis more any such file costs
-        (:meth:`_finished`).
+        expanded on disk, system calls each of which waits out any busy thread's turn. So are the
+        directories its own patterns expand in and the build records the search finds, which its
+        revision watches (:attr:`Revision.watched`): stamped as well, they cost a project with a
+        pattern or a build no second analysis. Sound, because what it names is only which paths
+        are stamped as the first analysis begins, the stamps themselves taken then
+        (:meth:`_next`): a description changed in between names a path with no stamp from before,
+        which costs the one analysis more any such path costs (:meth:`_finished`).
         """
         path = project.resolve()
         if not _is_project(path):
             raise ValueError(f"{project} is not a project description")
-        named = _named_by(path)
+        named = named_by(path) | _expanded_by(path, read_json(path))
+        named.update(build_files(self.root, self.build_directories))
+        named.add(path.parent / BUILD_INFO_FILENAME)
         with self._lock:
             self._project = path
             self._revision = None
+            self._failed = None
             self._stack = []
             self._written = []
             self._signature = {}
@@ -528,11 +659,12 @@ class Session:
             return frozenset(waiting)
 
     def poll(self) -> bool:
-        """Ask for an analysis if a file of the open project changed on disk since its stamps
-        were taken; say whether one did.
+        """Ask for an analysis if a file of the open project, or what its revision watches
+        (:attr:`Revision.watched`), changed on disk since its stamps were taken; say whether one
+        did.
 
-        The files are stamped without the lock, which is held only to read the stamps to compare
-        with and then to compare and ask: one stat a file, each waiting out any busy thread's
+        The paths are stamped without the lock, which is held only to read the stamps to compare
+        with and then to compare and ask: one stat a path, each waiting out any busy thread's
         turn, held every edit, state and plan behind a round of them for seconds. Stamps replaced
         in between - an analysis begun or published, a project opened, each of which rebinds them
         whole and never changes them in place - make this reading moot, and the round passes
@@ -587,7 +719,7 @@ class Session:
         takes ``NaN``, which went to the page as a value no browser's parser reads, and a key
         spelled twice, which showed the page a file ``ddd check`` refuses as though it loaded.
         """
-        target = _source(self._required(), path)
+        target = source_path(self._required(), path)
         try:
             data = target.read_bytes()
         except OSError as error:
@@ -605,15 +737,18 @@ class Session:
         A change without a fingerprint creates its file, and only a project description file
         ``ddd gui`` creates (:func:`kind_of`): one beside the project description, in an edit
         whose change of that description includes it, and no plugin and no file of another kind.
-        Any other is refused before a file is touched.
+        Any other is refused before a file is touched (:func:`_creatable`, :func:`_confined`,
+        :func:`_refuse_created_kind`).
 
         ``ddd gui`` does not change which plugins the project's descriptions name
-        (:func:`_refuse_plugins`): an edit that would change a ``plugins`` list, create a file
+        (:func:`refuse_plugins`): an edit that would change a ``plugins`` list, create a file
         whose document names plugins, or bring in or drop a description naming plugins through a
         change of ``includes`` is refused before a file is touched, so the reader makes such a
         change in a text editor, never through the page. ``ddd gui`` runs what a project names,
         as ``make`` runs what a Makefile names (decision M7), and a description that does not
-        load runs none of the plugins it names, whichever way an edit leaves it.
+        load runs none of the plugins it names, whichever way an edit leaves it. Each change is
+        judged whole before the next, read once as it would leave its file: a file it creates for
+        what it is, then for the plugins it names.
 
         Nothing is written under the build tree a description a build generates is in
         (:attr:`Revision.generated`): an edit changing that description, creating a file beside
@@ -637,7 +772,10 @@ class Session:
             _creatable(changes)
             _refuse_generated(revision, changes)
             confined = [_confined(revision, pending, changes) for pending in changes]
-            _refuse_plugins(revision, confined)
+            for change in confined:
+                before, after = _as_edited(change)
+                _refuse_created_kind(change, after)
+                _refuse_plugin_change(change, before, after)
             written = apply_changes(confined)
             self._edits += 1
             self._stack.append(Undoable(self._edits, label, written))
@@ -657,12 +795,16 @@ class Session:
         the undo took.
 
         Only the top of the stack: an ``at`` that is not it is refused as stale, which is what
-        keeps a second window from putting back an edit this one never saw. A refusal - a file
-        changed since, or one that could not be written - leaves the stack as it is, so the
-        reader may put that file back and ask again.
+        keeps a second window from putting back an edit this one never saw - asking for no
+        analysis, since the stack moved and no file did (:class:`_NotOnTopError`). A refusal of
+        the put back - a file changed since, or one that could not be written - leaves the stack
+        as it is, so the reader may put that file back and ask again, and is answered as an
+        edit's is (:meth:`_refused`).
         """
         try:
             return self._undone(at)
+        except _NotOnTopError:
+            raise
         except EditError as refused:
             self._refused(refused)
             raise
@@ -672,7 +814,7 @@ class Session:
             self._required()
             top = self._stack[-1] if self._stack else None
             if top is None or top.at != at:
-                raise EditError(STALE, f"edit {at} is not the one to undo any more")
+                raise _NotOnTopError(STALE, f"edit {at} is not the one to undo any more")
             restore(top.files)
             # Popped only once the files are back: a refused restore leaves the entry where it
             # was.
@@ -712,6 +854,7 @@ class Session:
             self._revision,
             self._asked is not None or self._running,
             self._stack[-1] if self._stack else None,
+            self._failed,
         )
 
     def _required(self) -> Revision:
@@ -722,15 +865,6 @@ class Session:
         return self._revision
 
     def _analysed(self, project: Path) -> Revision:
-        ignored: dict[Path, str] = {}  # the start page is where a refused record is reported
-        builds = tuple(
-            info
-            for info in _offering(discover(self.root, self.build_directories, ignored), self.root)
-            if Path(info.project).resolve() == project
-        )
-        runs = _runs(project, builds)
-        grouped, covered = _grouped(runs, project)
-        registered = {info.identifier: info for run in runs for info in run.bag.registered.values()}
         # The project's own directory as well, where it is not already inside the root: a
         # project named on the command line from elsewhere, or one a build record names there,
         # opened from the start page (`Revision.served` says what that guards). Two statements
@@ -739,9 +873,38 @@ class Session:
         served: tuple[Path, ...] = (self.root,)
         if not project.parent.is_relative_to(self.root):
             served = (self.root, project.parent)
-        read = _files_read(runs)
+        # Every record found that this version cannot use, and why: the revision carries them
+        # (`Revision.refused`), as the start page lists them.
+        refused: dict[Path, str] = {}
+        # Every record found, apart from reading them: the revision watches each, the refused
+        # among them (`Revision.watched`). Read under every directory served, a request's rule
+        # (`_readable_project`).
+        found = build_files(self.root, self.build_directories)
+        builds = tuple(
+            info
+            for info in _offering(load_builds(found, refused), *served)
+            if Path(info.project).resolve() == project
+        )
+        runs = _runs(project, builds)
+        # The run the index comes from, chosen once: its read is the one the files are described
+        # by (`_files_read`).
+        indexed = next((run for run in runs if run.index is not None), None)
+        read = _files_read(runs, indexed)
+        # Each project description the analysis read, the project's own among them, whatever
+        # the runs went on to cover: a plugin's model raising ends the read, and a run so ended
+        # covers the project description alone.
+        descriptions = [path for path, file in read.items() if file.kind == "project"]
+        # The record beside the description too, there or not, wherever the search looked: it
+        # says whether a build generates the project.
+        watched, plugins = _watched(descriptions, (*found, project.parent / BUILD_INFO_FILENAME))
+        # Before the findings are sorted onto their files, so that a plugin's file counts its own.
+        _tell_changed_plugins(runs, plugins)
+        grouped, covered = _grouped(runs, project)
+        registered = {info.identifier: info for run in runs for info in run.bag.registered.values()}
+        unloaded = _unloaded(grouped)
         files = tuple(
-            _described(path, grouped.get(path, ()), read.get(path)) for path in sorted(covered)
+            _described(path, grouped.get(path, ()), read.get(path), path in unloaded)
+            for path in sorted(covered)
         )
         findings = _filed(grouped)
         return Revision(
@@ -751,16 +914,19 @@ class Session:
             builds=builds,
             files=files,
             findings=findings,
+            statements=_statements(runs),
             # One run's whole answer, never a field picked from each: the plugins a comparison
             # runs the rules of and the dictionary it compares have to be the same read's, and
             # two `next()` calls over the same list would only agree by coincidence.
             resolved=next((run.resolved for run in runs if run.resolved is not None), None),
             analysed=all(run.resolved is not None for run in runs),
             checks=tuple(registered.values()),
-            index=next((run.index for run in runs if run.index is not None), None),
+            index=None if indexed is None else indexed.index,
             served=served,
             resolved_paths=_resolved_paths(files, findings),
             generated=_generated(project, self.root),
+            watched=watched,
+            refused=tuple(sorted(refused.items())),
         )
 
     def _request(self) -> None:
@@ -778,8 +944,9 @@ class Session:
         Called without the lock.
 
         The refusal is the answer whatever the analysis does: one that raises - the change may
-        have left the project unanalysable - is printed as the analyser prints its own, and its
-        files stay stamped unknown (:meth:`_finished`), so that the next poll asks again.
+        have left the project unanalysable - is printed as the analyser prints its own, and lost
+        as the analyser loses its own where standard error cannot be written (:func:`_printed`),
+        and its files stay stamped unknown (:meth:`_finished`), so that the next poll asks again.
         """
         if refused.code == STALE:
             with self._lock:
@@ -787,7 +954,7 @@ class Session:
             try:
                 self._analyse_here()
             except Exception as error:
-                print(f"ddd gui: analysing the project failed: {error}", file=sys.stderr)
+                _printed(f"ddd gui: analysing the project failed: {_failure(error)}")
 
     def _analyse_here(self) -> None:
         """Make the analyses asked for on this thread, where no analyser was started."""
@@ -855,40 +1022,61 @@ class Session:
         return _Begun(project, stamps, edits)
 
     def _run(self, begun: _Begun, *, raising: bool) -> None:
-        """Make the analysis ``begun`` and publish what it made; one that raises is raised to
-        the caller where ``raising``, and printed otherwise."""
+        """Make the analysis ``begun`` and publish what it made; one that raises is published as
+        failed, with its reason (:attr:`Snapshot.failed`), and raised to the caller where
+        ``raising``, printed otherwise."""
         revision: Revision | None = None
+        failed: str | None = None
         try:
             revision = self._analysed(begun.project)
         except Exception as error:
+            failed = _failure(error)
             if raising:
                 raise
             # A thread that dies here leaves a page that never updates again, and nothing says
             # why: the one line is that reason, and the next poll asks again. Printed before the
             # failure is published, so that whatever waits for it finds the line written.
-            print(f"ddd gui: analysing the project failed: {error}", file=sys.stderr)
+            print(f"ddd gui: analysing the project failed: {failed}", file=sys.stderr)
+        else:
+            self._tell_refused(revision.refused)
         finally:
             with self._changed:
-                self._finished(begun, revision)
+                self._finished(begun, revision, failed)
 
-    def _finished(self, begun: _Begun, revision: Revision | None) -> None:
+    def _tell_refused(self, refused: Iterable[tuple[Path, str]]) -> None:
+        """Print a line for each build record of ``refused`` (:attr:`Revision.refused`) the
+        terminal has not been told of with that reason since it was last refused, as the language
+        server logs one: once, and again whenever its reason changes, or it is refused again once
+        mended - never at every analysis. Before the revision is published, as an analysis's
+        failure is printed, and lost where standard error cannot be written (:func:`_printed`)."""
+        told = frozenset(refused)
+        for record, reason in sorted(told - self._told):
+            _printed(
+                f"ddd gui: {record}: {reason}; this record is ignored, so its severities apply "
+                "to no analysis"
+            )
+        self._told = told
+
+    def _finished(self, begun: _Begun, revision: Revision | None, failed: str | None) -> None:
         """What an analysis leaves once it has ended, made holding the lock: nothing, where the
         project it read is no longer the one open. Otherwise what it made becomes the newest
-        revision, its files stamped as they were before it read them - a file with no stamp from
-        before :data:`UNKNOWN` - and where it raised instead, ``revision`` being ``None``,
-        nothing is published and every file it stamped is stamped unknown, so that the next poll
-        asks again.
+        revision, its files and what it watches (:attr:`Revision.watched`) stamped as they were
+        before it read them - a path with no stamp from before :data:`UNKNOWN` - and any failure
+        said before it let go of (:attr:`Snapshot.failed`). Where it raised instead, ``revision``
+        being ``None``, nothing is published, every path it stamped is stamped unknown, so that
+        the next poll asks again, and ``failed`` is what the session says of it until then.
 
         Before, never after: stamped after the analysis, a save landing while it ran was already in
         the stamps, so no poll ever saw it and the page kept the findings of bytes no longer on
         disk. The revision's fingerprints are of what its analysis read for the same reason
-        (:func:`_described`), never of the disk once it is over. A file with no stamp from before -
-        a sub-project's file or a plugin, when the project was just opened, or a file the analysis
-        found newly included - is stamped :data:`UNKNOWN`, and the revision is published asking for
-        the next analysis: one analysis more, which catches a save made to that file while this one
-        ran. Asked here rather than left to the next poll, which asked for it up to
-        ``poll_interval`` later, so that the session says it is analysing until that analysis
-        lands, rather than that it is done and then, a poll later, that it is analysing again.
+        (:func:`_described`), never of the disk once it is over. A path with no stamp from before -
+        a sub-project's file, a plugin or the directory a sub-project's pattern expands in, when
+        the project was just opened, or a file the analysis found newly included - is stamped
+        :data:`UNKNOWN`, and the revision is published asking for the next analysis: one analysis
+        more, which catches a save made to that file while this one ran. Asked here rather than
+        left to the next poll, which asked for it up to ``poll_interval`` later, so that the
+        session says it is analysing until that analysis lands, rather than that it is done and
+        then, a poll later, that it is analysing again.
 
         A revision published lets go of the files every edit it includes wrote: none of them is
         waiting for an analysis any more. Whatever it leaves, the version moves, since what the
@@ -899,12 +1087,15 @@ class Session:
         self._running = False
         if begun.project == self._project:
             if revision is None:
+                self._failed = failed
                 self._signature = dict.fromkeys(begun.stamps, UNKNOWN)
             else:
+                self._failed = None
                 self._numbered += 1
                 self._revision = replace(revision, number=self._numbered, edits=begun.edits)
                 self._signature = {
-                    file.path: begun.stamps.get(file.path, UNKNOWN) for file in revision.files
+                    path: begun.stamps.get(path, UNKNOWN)
+                    for path in (*(file.path for file in revision.files), *revision.watched)
                 }
                 waiting: list[tuple[int, frozenset[Path]]] = []
                 for number, paths in self._written:
@@ -915,6 +1106,23 @@ class Session:
                     self._request()
         self._version += 1
         self._changed.notify_all()
+
+
+def _printed(line: str) -> None:
+    """Print ``line`` on standard error, the terminal ``ddd gui`` runs in, where it can be
+    written. Where it cannot - the stream closed, a pipe nobody reads any more, a console that
+    cannot encode it - the line is lost and nothing is raised, as the analyser's own thread loses
+    its line (:meth:`Session._analyse_until_stopped`): raised, it replaced the answer of whatever
+    was telling it, a request's refusal among them, with a server error."""
+    with contextlib.suppress(Exception):
+        print(line, file=sys.stderr)
+
+
+def _failure(error: Exception) -> str:
+    """Why an analysis raised, in the words the terminal prints it in and the session says it in
+    (:attr:`Snapshot.failed`): the exception's own, or its class's name where it has none - one
+    raised with nothing to say is still a failure, and an empty reason reads as none at all."""
+    return str(error) or type(error).__name__
 
 
 def findings_with(revision: Revision, includes: Sequence[str]) -> tuple[Filed, ...]:
@@ -972,6 +1180,27 @@ def _grouped(runs: Sequence[Run], project: Path) -> tuple[dict[Path, list[Diagno
     return grouped, covered
 
 
+def _statements(runs: Sequence[Run]) -> tuple[int, int, int]:
+    """:attr:`Revision.statements` of ``runs``: their findings counted before :func:`_grouped`
+    files each on every file it concerns, each run's as ``ddd check`` counts the one it makes -
+    every finding, one its run files twice twice - and each finding of several runs as often as
+    the run filing it most often does: builds alike are one ``ddd check``, and a finding two of
+    them grade apart is two, one under each severity, as the rows are. Equal is the same check,
+    severity, place and words (:func:`~ddd.lsp.diagnostics.finding_identity`), and the rows keep
+    one of several equal findings, even of one run (:func:`~ddd.lsp.diagnostics.group_findings`).
+
+    Measured on the Linux development PC over the 125,000 findings of a generated project of
+    100,000 declarations (``--shape mixed --missing-ids 1 --unread 0.5``): 53 to 54 ms, beside the
+    197 to 207 ms the grouping of the same run takes - three runs each."""
+    made: Counter[tuple[str, Severity, Location | None, str]] = Counter()
+    for run in runs:
+        made |= Counter(finding_identity(finding) for finding in run.bag)
+    counted: Counter[Severity] = Counter()
+    for (_, severity, _, _), times in made.items():
+        counted[severity] += times
+    return (counted[Severity.ERROR], counted[Severity.WARNING], counted[Severity.INFO])
+
+
 def _resolved_paths(files: Iterable[SourceFile], findings: Iterable[Filed]) -> dict[Path, Path]:
     """Each path ``files`` and ``findings`` name, resolved once each by the loader's own rule:
     :attr:`Revision.resolved_paths`. That rule hands back as it is a path the system refuses even
@@ -991,7 +1220,7 @@ def _filed(grouped: Mapping[Path, Sequence[Diagnostic]]) -> tuple[Filed, ...]:
     return tuple(Filed(path, found) for path in sorted(grouped) for found in grouped[path])
 
 
-def _source(revision: Revision, path: Path) -> Path:
+def source_path(revision: Revision, path: Path) -> Path:
     """One path the page gave, resolved and allowed: a description file of the open project,
     inside a directory the session serves.
 
@@ -1009,10 +1238,10 @@ def _source(revision: Revision, path: Path) -> Path:
     resolved = resolve_path(path)
     if not any(file.path == resolved and file.kind != "plugin" for file in revision.files):
         raise NotInProjectError(f"{path.as_posix()} is not a description file of the open project")
-    return _served(revision, resolved)
+    return served_path(revision, resolved)
 
 
-def _served(revision: Revision, resolved: Path) -> Path:
+def served_path(revision: Revision, resolved: Path) -> Path:
     """One resolved path, allowed where it lies inside a directory the session serves.
 
     Membership of the open project is not this question and does not answer it: an edit may add
@@ -1050,12 +1279,16 @@ def _creatable(changes: Sequence[FileChange]) -> None:
 
 
 def generated_refusal(
-    revision: Revision, written: Iterable[Path], created: Iterable[Path] = ()
+    revision: Revision,
+    written: Iterable[Path],
+    created: Iterable[Path] = (),
+    added: Iterable[Path] = (),
 ) -> str | None:
     """Why a change writing the files ``written`` - each resolved, ``created`` the ones of them it
-    creates - cannot be made, where ``revision``'s project is one a build generates
-    (:attr:`Revision.generated`) and one of them lies under the build tree it is generated in;
-    ``None`` otherwise, which is every change of a project somebody wrote.
+    creates, ``added`` the existing descriptions it brings into the project's includes - cannot
+    be made, where ``revision``'s project is one a build generates (:attr:`Revision.generated`)
+    and one of them lies under the build tree it is generated in; ``None`` otherwise, which is
+    every change of a project somebody wrote.
 
     Every file under that tree is the build's. The description is written again at every
     configure out of what ``ddd_add_component`` registers, so an entry added or taken out here
@@ -1066,7 +1299,15 @@ def generated_refusal(
     tree, and the description where the change writes it or creates a file - membership being what
     both are about - and otherwise the first file it writes under the tree, which the reader asked
     to change. Where it creates one, it offers the file in the source tree instead
-    (:func:`_instead`).
+    (:func:`_instead`); where it brings an existing one in, the line that registers it, in the
+    CMakeLists.txt beside it (:func:`_registered`) - one under the tree passed over, as
+    :func:`_instead` passes over a description there, since it goes with the tree. Only the Files
+    tab's add knows the file it brings in: an edit posted with an entry written by hand is told
+    the build's membership alone.
+
+    Where the record beside the description does not read as one (:attr:`Generated.unread`),
+    whether the build writes it is not known: every such change is refused in one sentence naming
+    the record and the tree, and offering nothing, until the record reads.
     """
     generated = revision.generated
     if generated is None:
@@ -1077,13 +1318,19 @@ def generated_refusal(
             there.append(path)
     if not there:
         return None
+    name = revision.project.name
+    tree = generated.tree.as_posix()
+    if generated.unread is not None:
+        return (
+            f"{name} may be generated by a build: the build record beside it, "
+            f"{generated.unread.as_posix()}, does not read as one, so nothing under {tree} is "
+            "written from here until it does"
+        )
     # Two statements rather than a conditional expression, which coverage.py counts no branch in:
     # a record written without --image names no image.
     build = "the build"
     if generated.image:
         build = f"the build of {generated.image}"
-    name = revision.project.name
-    tree = generated.tree.as_posix()
     membership = "which files belong to it is ddd_add_component's to say"
     said = (
         f"{name} is generated by {build} at every configure, so {membership}, and nothing under "
@@ -1093,10 +1340,30 @@ def generated_refusal(
     if new is not None:
         return f"{said}{_instead(revision, generated.tree, new.name)}"
     if revision.project in there:
+        brought = next(iter(added), None)
+        if brought is not None and not brought.is_relative_to(generated.tree):
+            return f"{said}{_registered(brought)}"
         return said
     return (
         f"{min(there).name} lies under {tree}, where {name} is generated by {build} at every "
         f"configure: {membership}, and nothing there is written from here"
+    )
+
+
+def _component_line(filename: str) -> str:
+    """The ``ddd_add_component`` call registering the description ``filename``, as a CMakeLists.txt
+    of its own directory writes it: by its name, which the call reads against the directory it is
+    made in."""
+    return f"ddd_add_component(<target> JSON {filename})"
+
+
+def _registered(described: Path) -> str:
+    """How the existing description ``described`` joins a project a build generates, rather than
+    by an entry of the includes the build writes again: by the line a new file is offered with
+    (:func:`_instead`), in the CMakeLists.txt beside it."""
+    return (
+        f"; add {_component_line(described.name)} to the CMakeLists.txt beside "
+        f"{described.as_posix()} instead, {_REPLACING}"
     )
 
 
@@ -1115,10 +1382,8 @@ def _instead(revision: Revision, tree: Path, filename: str) -> str:
     * one with no CMakeLists.txt beside it, where "the CMakeLists.txt there" would name nothing.
 
     A project collecting no such description is pointed at the source tree alone. ``<target>``
-    stays for the reader to replace with their component's target, which no file DDD reads
-    names."""
-    line = f"ddd_add_component(<target> JSON {filename})"
-    target = "replacing <target> with your component's target"
+    stays for the reader to replace (:data:`_REPLACING`)."""
+    line = _component_line(filename)
     for file in revision.files:
         if file.kind == "plugin":
             continue
@@ -1131,11 +1396,11 @@ def _instead(revision: Revision, tree: Path, filename: str) -> str:
             continue
         return (
             f"; create {filename} beside {path.as_posix()} instead, and add {line} to the "
-            f"CMakeLists.txt there, {target}"
+            f"CMakeLists.txt there, {_REPLACING}"
         )
     return (
         f"; create {filename} in the source tree instead, and add {line} to the CMakeLists.txt "
-        f"beside it, {target}"
+        f"beside it, {_REPLACING}"
     )
 
 
@@ -1156,90 +1421,81 @@ def _refuse_generated(revision: Revision, changes: Sequence[FileChange]) -> None
         raise EditError(GENERATED, refused)
 
 
-def _refuse_plugins(revision: Revision, changes: Sequence[FileChange]) -> None:
+def refuse_plugins(revision: Revision, changes: Sequence[FileChange]) -> None:
     """Refuse an edit after which the open project would name plugins other than it names now,
     before any file is touched (decision M7): a change of a description's ``plugins`` list, the
-    project's or a sub-project's; a created file whose document names plugins, or one that is no
-    description ``ddd gui`` creates - its content no kind of description, or its name not a
-    description's - ; or a change of ``includes`` that brings in or drops a description naming
-    plugins. So the token names no code the descriptions do not name already - ``ddd gui`` runs
-    what a project names, as ``make`` runs what a Makefile names.
+    project's or a sub-project's; a created file whose document names plugins; or a change of
+    ``includes`` that brings in or drops a description naming plugins. So the token names no code
+    the descriptions do not name already - ``ddd gui`` runs what a project names, as ``make`` runs
+    what a Makefile names.
 
-    Each change is read as it would leave its file (:func:`ddd.editing.edited`), in memory, from
-    the confined changes so a file beyond what the session serves was refused already. Every
+    The rule an edit is held to change by change (:meth:`Session.edit`), each file it creates
+    judged a description first (:func:`_refuse_created_kind`); asked here of a plan's edits whole,
+    by ``GET /api/files-plan``, for the refusal its Apply would meet.
+
+    Each change is read as it would leave its file (:func:`_as_edited`), in memory, from the
+    confined changes so a file beyond what the session serves was refused already. Every
     existing description the edit changes is compared before and after, whatever kind it is now:
     a document rewritten from any other kind into a project naming plugins, or into one that
     includes a description naming plugins, names other plugins the next analysis would load, and
-    its kind before the edit is not what the next analysis reads it as. ``_plugins_named`` and
-    ``_includes_of`` answer ``()`` for a document that is no project, so a change touching
-    neither is passed over all the same. A description brought in or dropped is read for the
-    plugins it names and those its own includes bring, by the loader's reading of json alone and
-    never by importing one (:func:`_subtree_names_plugins`): the files the next analysis would
-    read, and no other."""
+    its kind before the edit is not what the next analysis reads it as. :func:`_listed` answers
+    ``()`` for a document that is no project, so a change touching neither list is passed over
+    all the same. A description brought in or dropped is read for the plugins it names and those
+    its own includes bring, by the loader's reading of json alone and never by importing one
+    (:func:`_subtree_names_plugins`): each file as the next analysis would read it, the walk
+    going further than that analysis goes."""
     for change in changes:
-        if change.fingerprint is None:
-            after = _parsed(edited(change)[1])
-            if kind_of(change.path, after) not in KINDS:
-                raise EditError(
-                    INVALID,
-                    f"{change.path.as_posix()} cannot be created: ddd gui creates a project's "
-                    "description files, and this is not one",
-                )
-            # Besides its content: a description is named *.ddd.json, the one name every create
-            # flow writes (:data:`ddd.loading.DDD_SUFFIX`). kind_of reads a name that is not a
-            # plugin's by its content alone, so this is what keeps a valid description from being
-            # written under any other name.
-            if not change.path.name.lower().endswith(DDD_SUFFIX):
-                raise EditError(
-                    INVALID,
-                    f"{change.path.as_posix()} cannot be created: ddd gui names a description it "
-                    f"creates '*{DDD_SUFFIX}'",
-                )
-            _refuse_plugin_change(change.path, None, after, created=True)
-        else:
-            original, new = edited(change)
-            # `original` is never None here: a change with a fingerprint edits a file that is
-            # there, where `edited` returns its bytes; None is a file the edit creates, above.
-            assert original is not None
-            _refuse_plugin_change(change.path, _parsed(original), _parsed(new), created=False)
+        _refuse_plugin_change(change, *_as_edited(change))
 
 
-def _refuse_plugin_change(described: Path, before: Any, after: Any, *, created: bool) -> None:
-    """Refuse where a description would name plugins other than it names now: its ``plugins`` list
-    changed, in order so a reorder of the hooks counts; a file the edit creates whose document
-    names plugins; or a change of its ``includes`` bringing in or dropping a description that
-    names plugins (:data:`PLUGINS`). ``before`` is ``None`` for a file the edit creates, which
-    named none before, and ``created`` says which the refusal is, so each says what the reader
-    changes by hand."""
-    if _plugins_named(before) != _plugins_named(after):
+def _as_edited(change: FileChange) -> tuple[Any, Any]:
+    """The document ``change``'s file holds, and the one the change would leave it holding, each
+    read as the loader reads json and made in memory by the edit engine
+    (:func:`ddd.editing.edited`), refused as it refuses the change: ``None`` before for a file the
+    change creates, which held nothing, as for a document that does not parse."""
+    original, new = edited(change)
+    if original is None:
+        return None, _parsed(new)
+    return _parsed(original), _parsed(new)
+
+
+def _refuse_plugin_change(change: FileChange, before: Any, after: Any) -> None:
+    """Refuse where the description ``change`` edits would name plugins other than it names now,
+    its document ``before`` the change and ``after`` it: its ``plugins`` list changed, in order
+    so a reorder of the hooks counts; a file the change creates whose document names plugins; or
+    a change of its ``includes`` bringing in or dropping a description that names plugins
+    (:data:`PLUGINS`). ``before`` is ``None`` for a file the change creates, which named none
+    before, and the refusal says which of the two it is, so each says what the reader changes by
+    hand."""
+    described = change.path
+    if _listed(before, "plugins") != _listed(after, "plugins"):
+        created = change.fingerprint is None
         raise EditError(PLUGINS, _PLUGINS_CREATED if created else _PLUGINS_LIST)
     # Seeded with the edited description, so a tree that leads back to it is not read for the
     # plugins it already names, which this edit of its includes does not change.
     seen = {described}
-    for entry in set(_includes_of(before)) ^ set(_includes_of(after)):
+    for entry in set(_listed(before, "includes")) ^ set(_listed(after, "includes")):
         for included in included_files(described, entry):
             if _subtree_names_plugins(resolve_path(included), seen):
                 raise EditError(PLUGINS, _PLUGINS_INCLUDES)
 
 
-def _plugins_named(data: Any) -> tuple[str, ...]:
-    """The ``project.plugins`` entries of a description's document, in the order it names them,
-    each a string: the code it runs. Empty where it states none, or the document is no project.
-    Ordered, so a reorder of the list - which reorders the hooks that run - is a change. Order
-    is held within one list alone: a reorder of ``includes`` is allowed, bringing in and dropping
-    nothing, though it reorders the plugins the included descriptions name."""
-    block = data.get("project") if isinstance(data, dict) else None
-    listed = block.get("plugins") if isinstance(block, dict) else None
-    if not isinstance(listed, list):
-        return ()
-    return tuple(entry for entry in listed if isinstance(entry, str))
+def _listed(data: Any, key: str) -> tuple[str, ...]:
+    """What a description's document lists under ``project.<key>`` - its ``plugins``, the code
+    it runs, or its ``includes`` - the strings of it in the order it lists them. Empty where it
+    lists none, or the document is no project: a list the loader refuses with a ``schema`` error,
+    one that is no list, names nothing, and neither does an entry that is no string.
 
+    The one reading of those lists the session makes, so that its walks cannot come to two
+    answers about one description: the plugins guard (:func:`_refuse_plugin_change`,
+    :func:`_subtree_names_plugins`), what a revision watches (:func:`_watched`,
+    :func:`_expanded_by`), and the files a project's own includes name (:func:`named_by`).
 
-def _includes_of(data: Any) -> tuple[str, ...]:
-    """The ``project.includes`` entries of a description's document, each a string. Empty where it
-    states none, or the document is no project."""
+    Ordered, so that a reorder of ``plugins`` - which reorders the hooks that run - is a change.
+    Order is held within one list alone: a reorder of ``includes`` is allowed, bringing in and
+    dropping nothing, though it reorders the plugins the included descriptions name."""
     block = data.get("project") if isinstance(data, dict) else None
-    listed = block.get("includes") if isinstance(block, dict) else None
+    listed = block.get(key) if isinstance(block, dict) else None
     if not isinstance(listed, list):
         return ()
     return tuple(entry for entry in listed if isinstance(entry, str))
@@ -1249,14 +1505,22 @@ def _subtree_names_plugins(project: Path, seen: set[Path]) -> bool:
     """Whether the description ``project`` names any plugin, or includes one that does, by the
     loader's reading of json alone - never importing a plugin to find out, which is the very
     thing the refusal is before. ``seen`` holds every description already read, so a tree that
-    includes itself is walked once and the walk ends; a path already in it is passed over."""
+    includes itself is walked once and the walk ends; a path already in it is passed over.
+
+    Each file is read as the next analysis would read it (:func:`read_json`), but the walk goes
+    further than that analysis: nothing caps how deep the includes lead, where the loader reads
+    64 levels and files ``include-depth`` for what lies below. So a change of ``includes`` that
+    brings in or drops a description naming plugins only below that depth is refused, though the
+    analysis would load none of them; and a chain deep enough to raise ``RecursionError`` here,
+    or a tree too large to hold, ``MemoryError``, is answered ``500``, the edit refused with
+    nothing written. Both fail closed."""
     if project in seen:
         return False
     seen.add(project)
-    data = _read_json(project)
-    if _plugins_named(data):
+    data = read_json(project)
+    if _listed(data, "plugins"):
         return True
-    for entry in _includes_of(data):
+    for entry in _listed(data, "includes"):
         for included in included_files(project, entry):
             if _subtree_names_plugins(resolve_path(included), seen):
                 return True
@@ -1273,7 +1537,9 @@ def _confined(revision: Revision, pending: FileChange, changes: Sequence[FileCha
     description among them: a path the system will not resolve is handed back as given rather
     than raised on."""
     if pending.fingerprint is not None:
-        return FileChange(_source(revision, pending.path), pending.fingerprint, pending.operations)
+        return FileChange(
+            source_path(revision, pending.path), pending.fingerprint, pending.operations
+        )
     target = resolve_path(pending.path)
     project = revision.project
     described = next(
@@ -1290,6 +1556,37 @@ def _confined(revision: Revision, pending: FileChange, changes: Sequence[FileCha
             "by an edit that adds it to the includes there",
         )
     return FileChange(target, None, pending.operations, like=project)
+
+
+def _refuse_created_kind(change: FileChange, after: Any) -> None:
+    """Refuse a file an edit creates that is no description ``ddd gui`` creates: ``after``, its
+    document as the edit would leave it, no kind of description (:func:`kind_of`), or its name
+    not a description's. A file that is there is passed over.
+
+    The third rule a created file is held to, after its name is judged one a file can be created
+    under (:func:`_creatable`) and its place beside the project description (:func:`_confined`):
+    asked of each change in turn as the edit judges it, before the plugins that change would
+    name (:func:`_refuse_plugin_change`), so that an edit is refused for the first fault of its
+    first change at fault. Nothing a plan creates is refused here, every one of them a
+    description named as one."""
+    if change.fingerprint is not None:
+        return
+    if kind_of(change.path, after) not in KINDS:
+        raise EditError(
+            INVALID,
+            f"{change.path.as_posix()} cannot be created: ddd gui creates a project's "
+            "description files, and this is not one",
+        )
+    # Besides its content: a description is named *.ddd.json, the one name every create flow
+    # writes (:data:`ddd.loading.DDD_SUFFIX`). kind_of reads a name that is not a plugin's by its
+    # content alone, so this is what keeps a valid description from being written under any other
+    # name.
+    if not change.path.name.lower().endswith(DDD_SUFFIX):
+        raise EditError(
+            INVALID,
+            f"{change.path.as_posix()} cannot be created: ddd gui names a description it "
+            f"creates '*{DDD_SUFFIX}'",
+        )
 
 
 def _included(project: Path, change: FileChange) -> frozenset[Path]:
@@ -1309,27 +1606,54 @@ def _included(project: Path, change: FileChange) -> frozenset[Path]:
     )
 
 
-def _files_read(runs: Sequence[Run]) -> dict[Path, FileRead]:
-    """What each file the runs read was read as, by the first run reading it.
+def _files_read(runs: Sequence[Run], indexed: Run | None) -> dict[Path, FileRead]:
+    """What each file the runs read was read as: by ``indexed``, the run the revision's index
+    comes from (:attr:`Revision.index`), and a file it did not read by the first run reading it.
 
     Every run of one project reads the same files, and reads the same bytes of each unless a save
-    lands between two of them. The revision's index is the first run's (:attr:`Revision.index`) -
-    or a later run's, where the first read no further than the root - so the first run's
-    fingerprint of a file is never of bytes newer than the ones the index was built from: a plan
-    made from the index, changing a file a save has reached since, is refused as stale rather than
-    applied to bytes the index does not describe."""
-    read: dict[Path, FileRead] = {}
+    lands between two of them. The index is the first run's that built one - a later run's, where
+    the first read no further than the project description - so a file is fingerprinted as the
+    bytes the index was built from: a plan made from the index, changing a file a save has reached
+    since, is refused as stale rather than applied to bytes the index does not describe. Taken
+    from the first run instead, a description that run read no further, saved between two runs and
+    put back after, carried the fingerprint of the bytes put back, and a plan made from the index
+    of the others passed the stale check."""
+    read: dict[Path, FileRead] = {} if indexed is None else dict(indexed.files_read)
     for run in runs:
         for path, file in run.files_read.items():
             read.setdefault(path, file)
     return read
 
 
-def _described(path: Path, findings: Iterable[Diagnostic], read: FileRead | None) -> SourceFile:
+def _unloaded(grouped: Mapping[Path, Sequence[Diagnostic]]) -> set[Path]:
+    """The files an error of one of :data:`~ddd.lsp.navigation.LOAD_CHECKS` says did not load: the
+    file it is filed on, but for one the loader reports at the include entry naming a single file
+    it could not read, which is about that file - the description holding the entry read and
+    matched its shape, and listed as the one that did not load it sent the reader to repair the
+    wrong file, where the file named was the one missing. An entry naming several files does not
+    say which of them could not be read, and the error stays the description's."""
+    unloaded: set[Path] = set()
+    for path, found in grouped.items():
+        for finding in found:
+            if finding.check not in LOAD_CHECKS or finding.severity is not Severity.ERROR:
+                continue
+            named = None
+            if finding.location is not None:
+                named = named_at(finding.check, finding.location)
+            if named is not None and len(named) == 1:
+                unloaded.add(named[0])
+            else:
+                unloaded.add(path)
+    return unloaded
+
+
+def _described(
+    path: Path, findings: Iterable[Diagnostic], read: FileRead | None, unloaded: bool = False
+) -> SourceFile:
     """One file of a revision, as its analysis read it (``read``) and never as the disk holds it
     once the analysis is over: a save landing in between holds other bytes than the ones the
     findings and the index are of. A file no run's read parsed has no such record and is read as
-    it stands (:func:`_as_it_stands`)."""
+    it stands (:func:`_as_it_stands`). ``unloaded`` is :func:`_unloaded`'s say of this file."""
     listed = list(findings)
     if read is None:
         read = _as_it_stands(path)
@@ -1337,7 +1661,7 @@ def _described(path: Path, findings: Iterable[Diagnostic], read: FileRead | None
         path=path,
         kind=_kind_shown(path, read.kind),
         name=read.name,
-        loaded=not any(f.check in LOAD_CHECKS and f.severity is Severity.ERROR for f in listed),
+        loaded=not unloaded,
         fingerprint=read.fingerprint,
         errors=sum(1 for f in listed if f.severity is Severity.ERROR),
         warnings=sum(1 for f in listed if f.severity is Severity.WARNING),
@@ -1385,8 +1709,13 @@ def _descriptions(root: Path) -> list[Path]:
     found: list[Path] = []
     for directory, subdirectories, files in root.walk():
         depth = len(directory.relative_to(root).parts)
+        # A junction is passed over as a symbolic link is: ``Path.walk`` does so itself from
+        # 3.13, and on 3.12 it would go into one, so the rule is stated here for every Python
+        # the project admits, and :func:`walk_finds` asks the same of each directory.
         subdirectories[:] = [
-            name for name in subdirectories if depth < SEARCH_DEPTH and not _skipped(name)
+            name
+            for name in subdirectories
+            if depth < SEARCH_DEPTH and not _skipped(name) and not (directory / name).is_junction()
         ]
         found.extend(
             directory / name
@@ -1404,14 +1733,19 @@ def _skipped(name: str) -> bool:
     )
 
 
-def _read_json(path: Path) -> Any:
+def read_json(path: Path) -> Any:
+    """The document ``path`` holds, read as the loader reads json (:func:`_parsed`), or ``None``
+    where the file cannot be read or does not parse. Public for the api, which names the open
+    project by its description as it stands (:func:`name_in`) and tells what a file a reader would
+    add to the project is (:func:`kind_of`) by it."""
     try:
         return _parsed(path.read_bytes())
     except (OSError, ValueError):
         # ValueError as much as OSError: a path holding a NUL byte makes `read_bytes` raise, as
         # the loader's own read of a file (`ddd.loading._read_bytes`) and `resolve_path` both
-        # catch it and go on - the walk for plugins reads what the next analysis would read and
-        # raises on nothing the next analysis would not.
+        # catch it and go on, so a file is read here as the next analysis would read it, or is
+        # not read at all. The walk for plugins reading through this goes further than that
+        # analysis goes, which `_subtree_names_plugins` says.
         return None
 
 
@@ -1423,11 +1757,11 @@ def _parsed(data: bytes) -> Any:
 
 
 def _is_project(path: Path) -> bool:
-    data = _read_json(path)
+    data = read_json(path)
     return isinstance(data, dict) and isinstance(data.get("project"), dict)
 
 
-def _named_by(project: Path) -> set[Path]:
+def named_by(project: Path) -> set[Path]:
     """The project description and every file its own ``includes`` name now, by the loader's own
     rule: the descriptions the first analysis of a project is about to read, stamped before it
     reads them so that opening a flat project naming no plugin analyses it once. Neither a
@@ -1435,18 +1769,145 @@ def _named_by(project: Path) -> set[Path]:
     from before, and cost opening the one analysis more it always cost, which the first revision
     asks for as it is published.
 
-    Read again after :func:`_is_project` judged the file, so the two conditional expressions
-    guard a description changed in between; an ``includes`` that is not a list names nothing,
-    the loader refusing it with a ``schema`` error.
+    Read again after :func:`_is_project` judged the file, by the one reading of a description's
+    lists (:func:`_listed`), so that a description changed in between to no project, or to an
+    ``includes`` that is no list, names nothing more than itself - the loader refusing such a
+    list with a ``schema`` error.
     """
     named = {project}
-    data = _read_json(project)
-    block = data.get("project") if isinstance(data, dict) else None
-    listed = block.get("includes") if isinstance(block, dict) else None
-    if isinstance(listed, list):
-        for entry in listed:
-            named.update(included_files(project, entry))
+    for entry in _listed(read_json(project), "includes"):
+        named.update(included_files(project, entry))
     return named
+
+
+def _watched(
+    descriptions: Iterable[Path], records: Iterable[Path]
+) -> tuple[tuple[Path, ...], tuple[Path, ...]]:
+    """What a revision watches (:attr:`Revision.watched`), and the plugin files among it, each
+    sorted: every build record of ``records``, and for each project description of
+    ``descriptions`` - each one its analysis read, the project's own among them - where its
+    wildcard includes expand (:func:`_expanded_by`) and every file its ``plugins`` list names by
+    its path, loaded or not (:func:`ddd.plugins.plugin_files`), which are the plugin files.
+
+    Each description is read again for its lists, by the loader's reading of json: a run keeps no
+    list it read, and a description saved since its run read it is a file the revision stamps
+    already, whose change makes the next analysis. A plugin named as a module is no path, and is
+    passed over: finding its file can import its parents, running code no analysis ran - a
+    description that does not validate loads none of the plugins it names. So is a path the
+    system will not resolve, for each reason ``Path.resolve`` raises that the loader's
+    :func:`~ddd.loading.resolve_path` lists - a NUL in it, on Windows an error its walk does not
+    list, on python 3.12 a loop of links or a chain of them, whose ``RecursionError`` is a
+    ``RuntimeError`` already. It names no file to watch, and raised here, it ended every analysis
+    where a description that does not validate names it, ``ddd check`` reporting that
+    description's error."""
+    watched = set(records)
+    plugins: set[Path] = set()
+    for described in descriptions:
+        data = read_json(described)
+        watched |= _expanded_by(described, data)
+        for spelling in _listed(data, "plugins"):
+            if spelling.endswith(".py"):
+                with contextlib.suppress(OSError, ValueError, RuntimeError):
+                    plugins.update(plugin_files(spelling, described.parent))
+    return tuple(sorted(watched | plugins)), tuple(sorted(plugins))
+
+
+def _tell_changed_plugins(runs: Sequence[Run], plugins: Iterable[Path]) -> None:
+    """File ``plugin-changed`` on each of ``plugins`` whose file changed since this process imported
+    it (:func:`ddd.plugins.changed_since_imported`), into each of ``runs``, which grades it under
+    its build's severities as it grades every other finding: a module is imported once per
+    process, so ``ddd gui`` runs the old code until it is restarted, and every finding of the
+    analysis is that code's. Several builds grading it alike file it once, as they file any
+    finding (:func:`~ddd.lsp.diagnostics.group_findings`).
+
+    ``plugins`` are the plugin files the revision watches (:func:`_watched`), every file a
+    ``plugins`` list names by its path, loaded or not, rather than the files the runs covered: a
+    run its plugin's model ended covers the project description alone, and that plugin is the one
+    most in need of telling, its mended model never having run. Nothing else the revision watches
+    is asked: no module is run from a directory a pattern walks or from a build record, and their
+    names need not even be text - a directory named in Latin-1, as an old archive leaves one, is
+    spelled with a lone surrogate. A plugin named as a module is passed over with them, the
+    environment importing it as it imports any other."""
+    changed = [path for path in plugins if changed_since_imported(path)]
+    for run in runs:
+        for path in changed:
+            run.bag.add(
+                "plugin-changed",
+                f"'{path.name}' changed since ddd gui imported it: a module is imported once per "
+                "process, so ddd gui runs the old code until it is restarted",
+                Location(path),
+            )
+
+
+def _expanded_by(described: Path, data: Any) -> set[Path]:
+    """Where every wildcard include of the description ``described``, its document ``data``,
+    expands (:func:`_expanded_in`); nothing where it is no project."""
+    expanded: set[Path] = set()
+    for entry in _listed(data, "includes"):
+        expanded |= _expanded_in(described, entry)
+    return expanded
+
+
+def _expanded_in(source: Path, entry: str) -> set[Path]:
+    """Where the ``includes`` entry ``entry`` of the description ``source`` expands, as the loader
+    expands it (:func:`ddd.loading.expand_include`): what the poll stamps so that a file a pattern
+    comes to match, or stops matching, makes a new revision - creating or removing an entry moves
+    its directory's modification time, one stat where expanding the pattern again at every poll
+    would walk it.
+
+    For a pattern, each directory a wildcard of it is matched in, every directory a ``**`` walks
+    among them, hidden ones too, as the loader's walk goes into them - where a name that is no
+    wildcard leads to one, the path it names there or not, so that its being made is noticed too -
+    and, where its last name is no wildcard, each path that name is looked up at. A directory a
+    name is only passed through on the way to another is not listed, and is not watched:
+    ``src/components/*.ddd.json`` lists ``src/components``, and a file saved in ``src``, or beside
+    the description including it - an editor's swap file - is no change of that project, while
+    ``src/components`` itself, stamped there or not, notices its being made all the same; and
+    ``../shared/*.ddd.json`` leaves the directory holding the project's checkout unwatched, a
+    sibling clone made there no change either. Nothing for an entry naming a file,
+    wildcard characters and all, which the loader reads before it reads the entry as a pattern
+    and the revision stamps as one of its files; nothing either for a pattern pathlib refuses,
+    which the analysis reports as ``include-empty``. Each directory is spelled as the loader's
+    walk finds it, under the directory the walk starts in, so that two analyses stamp one
+    spelling."""
+    if not any(character in entry for character in _WILDCARDS):
+        return set()
+    raw = Path(entry)
+    # The loader's own reading of the entry: tried as a file first, and a pattern's walk starting
+    # at its own anchor joined onto the description's directory (`ddd.loading._pattern_anchor`).
+    candidate = raw if raw.is_absolute() else source.parent / raw
+    if os.path.isfile(candidate):  # noqa: PTH113
+        return set()
+    base = source.parent / raw.anchor if raw.anchor else source.parent
+    parts = (raw.relative_to(raw.anchor) if raw.anchor else raw).parts
+    expanded: set[Path] = set()
+    # The paths the name at each depth is matched in, or looked up at.
+    level = [base]
+    try:
+        for depth, part in enumerate(parts):
+            prefix = "/".join(parts[: depth + 1])
+            if part == "**":
+                # Every directory it walks, the ones it starts in among them, as pathlib walks.
+                level = [found for found in base.glob(prefix) if found.is_dir()]
+                expanded.update(level)
+            elif any(character in part for character in _WILDCARDS):
+                expanded.update(level)
+                # Listed for the directories it matches only where a name follows: a wildcard in
+                # the last name, as in ``comps/*.ddd.json``, lists nothing here, which the loader's
+                # own expansion lists.
+                if depth < len(parts) - 1:
+                    level = [found for found in base.glob(prefix) if found.is_dir()]
+            else:
+                level = [directory / part for directory in level]
+                # Watched where a wildcard is matched in it next - a ``**`` among them, whose walk
+                # yields nothing while it is not there - or where it is the path a match ends at:
+                # a directory a name is only passed through on the way to another is no listing.
+                last = depth == len(parts) - 1
+                if last or any(character in parts[depth + 1] for character in _WILDCARDS):
+                    expanded.update(level)
+    except (OSError, ValueError, NotImplementedError):
+        return set()
+    return expanded
 
 
 def _generated(project: Path, root: Path) -> Generated | None:
@@ -1470,11 +1931,20 @@ def _generated(project: Path, root: Path) -> Generated | None:
     reads a record. That reader asks whether this version can apply the record's severities, and
     declines one written by a newer DDD, in a format past its own, or naming a check it has not
     got; the description beside such a record, unless it says it was given, is written again at
-    every configure all the same. A record that does not read as json, or names no project by a
-    path, names nothing here."""
-    record = _read_json(project.parent / BUILD_INFO_FILENAME)
+    every configure all the same. A record naming no project by a path names nothing here.
+
+    A record there that does not read as one - not json, a write of it cut short among them, or
+    no object - cannot say whether the build writes the description, and the refusal fails
+    closed: the description is taken for the build's, naming the record (:attr:`Generated.unread`),
+    until it reads, which its revision watches for (:attr:`Revision.watched`). Read as no record,
+    a write that died left a generated description open to edits the next configure undoes."""
+    beside = project.parent / BUILD_INFO_FILENAME
+    record = read_json(beside)
     if not isinstance(record, dict):
-        return None
+        # Asked with os.path.isfile, which answers false for a path it cannot look at.
+        if not os.path.isfile(beside):  # noqa: PTH113
+            return None
+        return Generated("", _build_tree(project.parent), unread=beside)
     named = record.get("project")
     if not isinstance(named, str) or not _readable_project(named, root, project.parent):
         return None
@@ -1518,18 +1988,26 @@ def _build_tree(directory: Path) -> Path:
 def _source_tree(cache: Path) -> Path | None:
     """The source tree the CMake cache ``cache`` was configured from - its
     ``CMAKE_HOME_DIRECTORY``, resolved - or ``None`` where the cache cannot be read or does not
-    say."""
+    say, an entry spelling nothing among them."""
     try:
         text = cache.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return None
     for line in text.splitlines():
         if line.startswith(_HOME_DIRECTORY):
-            return resolve_path(Path(line.removeprefix(_HOME_DIRECTORY)))
+            named = line.removeprefix(_HOME_DIRECTORY)
+            # An entry spelling nothing says nothing: read as a path, it was the directory the
+            # process was started in.
+            if not named:
+                return None
+            return resolve_path(Path(named))
     return None
 
 
-def _name_in(data: Any, kind: str) -> str | None:
+def name_in(data: Any, kind: str) -> str | None:
+    """The ``name`` the ``kind`` block of the document ``data`` states, or ``None`` where it holds
+    no such block, or the block names nothing as a string: what the start page lists a project as,
+    and the api names the open one by."""
     block = data.get(kind) if isinstance(data, dict) else None
     name = block.get("name") if isinstance(block, dict) else None
     return name if isinstance(name, str) else None

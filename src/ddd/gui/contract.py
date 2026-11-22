@@ -12,11 +12,12 @@ Three things follow from that:
 * A request model is strict (:data:`_Request`): an unknown key, a string where an index
   belongs or a boolean where an integer belongs is refused before a handler ever sees it,
   which is what replaces the hand-written checks ``api.py`` used to make.
-* A response model is built once a request is answered, then ``model_dump(mode="json")`` -
-  never hand-assembled into a ``dict`` - so the shape a test asserts on is the shape the schema
-  below describes.
+* A response model is built once a request is answered, then written as ``model_dump(mode="json")``
+  by :func:`ddd.gui.depth.written` - never hand-assembled into a ``dict``, a refusal alone
+  excepted: ``{"error": code, "message": text}``, two strings no model declares - so the shape a
+  test asserts on is the shape the schema below describes.
 * :func:`api_schema` is the one json schema of the whole api, the way ``ddd schema`` is the one
-  json schema of a description file; :mod:`gui.scripts.schemas` turns it into
+  json schema of a description file; ``gui/scripts/schemas.mjs`` turns it into
   ``gui/src/generated/api.ts`` the same way it turns ``ddd schema all`` into the types of the
   description files, so a model added here without a page type fails the suite rather than the
   frontend build.
@@ -140,7 +141,8 @@ class OpenProject(_Frozen):
     """Absolute, posix-separated path of the project description."""
 
     name: str | None
-    """Name the project description gives it, or ``None`` when the file did not load that far."""
+    """Name the project description gives it, or ``None`` when it gives none: a file that does not
+    parse gives none."""
 
 
 class BuildSummary(_Frozen):
@@ -186,7 +188,8 @@ class FoundProject(_Frozen):
     """Absolute, posix-separated path of the project description."""
 
     name: str | None
-    """Name its description gives it, or ``None`` when the file did not load that far."""
+    """Name its description gives it, or ``None`` when it gives none: a file that does not parse
+    gives none."""
 
     images: tuple[str, ...]
     """Build images a build record names this project for; empty for a file found alone, and for
@@ -243,10 +246,15 @@ class SourceFile(_Frozen):
     """The top level key that says what the file is, or ``"unknown"`` or ``"plugin"``."""
 
     name: str | None
-    """Name its description gives it, or ``None`` when it has none or the file did not load."""
+    """Name its description gives it, or ``None`` when it has none: a file that did not parse has
+    none, and a plugin never does."""
 
     loaded: bool
-    """Whether the file parsed and matched the shape its kind requires."""
+    """Whether the file loaded: no ``file-not-found``, ``json-syntax``, ``file-kind`` or ``schema``
+    error is filed on it. The loader reports a file it could not read at the entry of the
+    ``includes`` naming it, and where an entry names a single file that error is about it, the
+    description holding the entry staying loaded; an entry naming several leaves the error on the
+    description."""
 
     fingerprint: str
     """The sha-256 of the bytes last read, in hex: what an edit of this file is checked against."""
@@ -284,7 +292,8 @@ class FindingRoute(_Frozen):
     """
 
     name: str | None
-    """The variable's name, the unit's spelling or the type's name; for a file, the absolute,
+    """What the kind opens, by name: the variable, the unit's spelling, the type, the object whose
+    values grid, the constant, the section or the raster; for a file, the absolute,
     posix-separated path of the entry or the file the finding is about - of the root's own, an
     entry's :attr:`IncludedEntryReply.key` or one of its :attr:`~IncludedEntryReply.files`;
     ``None`` for a component, which the finding's own ``file`` already names."""
@@ -309,13 +318,23 @@ class Finding(_Frozen):
     pointer: str
     """Dotted path inside the file's json document, or ``""`` when the finding names no place."""
 
+    line: int | None
+    """The line in the file, counted from 1, where the loader found the finding, or ``None``
+    where it gave none - only a file that did not parse has one."""
+
+    column: int | None
+    """The column on that line, counted from 1, or ``None`` where the loader gave none."""
+
     notes: tuple[Note, ...]
     """Additional hints, e.g. the site a definition disagrees with."""
 
     route: FindingRoute | None
-    """Where pressing this finding leads, or ``None`` when the page has nothing to open: its
-    file did not load, its file is not a component and has no screen yet, or it names no place
-    at all."""
+    """Where pressing this finding leads, or ``None`` when the page has nothing to open for it: its
+    file is not one the analysis listed, or did not load; it names no place in a component; or it
+    is in a file that is not a component, at no entry of a unit, a type, a constant, a section, a
+    raster, the project's includes or a whole file - or at a place the file no longer holds. The
+    page draws where such a finding is instead: its line and column where the loader gave them,
+    its ``pointer`` otherwise."""
 
 
 class UndoableEdit(_Frozen):
@@ -348,7 +367,24 @@ class State(_Frozen):
     """Every file the analysis read, sorted by path."""
 
     counts: FindingCounts
-    """How many findings of each severity the revision has, in all."""
+    """How many findings of each severity the revision files, in all: a disagreement once on
+    each file it concerns, as ``GET /api/findings`` lists them."""
+
+    statements: FindingCounts
+    """How many findings of each severity the revision makes, in all: each once, however many
+    files it is filed on, as ``ddd check`` counts them."""
+
+    failed: str | None
+    """Why the last analysis of the open project raised, in the words the terminal prints it in -
+    never empty - or ``None`` where it finished: the revision before it stands meanwhile,
+    ``revision`` being ``0`` where there is none, the next poll asks for another analysis, and the
+    first to succeed clears it."""
+
+    refused: tuple[RefusedBuild, ...]
+    """Every build record the search for builds found and this DDD cannot use - written by a
+    newer DDD, or naming a check it has not got - with why, sorted by path, as
+    ``GET /api/projects`` lists them: the search this revision's analysis made, so none before
+    the first. No analysis applies their severities."""
 
     undoable: UndoableEdit | None
     """The last edit the interface made and has not put back, or ``None`` when it has made
@@ -447,10 +483,10 @@ class GraphModule(_Frozen):
     """Absolute, posix-separated path of the component's description file."""
 
     name: str
-    """The component's name, or the file's stem when it did not load that far."""
+    """The component's name, or the file's stem when it did not load or states none."""
 
     loaded: bool
-    """Whether the file parsed and matched the shape its kind requires."""
+    """Whether the file loaded, as :attr:`SourceFile.loaded` says."""
 
     findings: FindingCounts
     """How many findings of each severity are filed on this module."""
@@ -506,10 +542,11 @@ class GraphReply(_Frozen):
     dictionary: bool
     """Whether the revision resolved a dictionary.
 
-    ``False`` is a plugin that raised or a file that did not parse, and it is the only thing
-    that tells that apart from a project whose modules genuinely share nothing: both answer
-    their modules and no flows, and spec section 5.6 asks the page to say so only for the
-    first.
+    ``False`` is a read that reported an error in every run the revision was made from - a plugin
+    that raised, a file that did not parse or match its shape, a constant declared twice - and it
+    is the only thing that tells that apart from a project whose modules genuinely share nothing:
+    both answer their modules and no flows, and spec section 5.6 asks the page to say so only for
+    the first.
     """
 
     modules: tuple[GraphModule, ...]
@@ -850,11 +887,13 @@ class FixReply(_Frozen):
     """Empty for a finding that carries none, which is most of them."""
 
 
-# --- GET /api/unit-plan ---------------------------------------------------------------------
+# --- the plan routes -------------------------------------------------------------------------
 
 
 class PlanReply(_Frozen):
-    """What ``GET /api/unit-plan`` answers: the preview of one change of the project's units."""
+    """What each plan route answers - ``GET /api/unit-plan``, ``type-plan``, ``constant-plan``,
+    ``section-plan``, ``raster-plan``, ``declaration-plan``, ``description-plan``, ``value-plan``,
+    ``cells-plan`` and ``values-plan`` - the preview of one change of what the route plans."""
 
     revision: int
     """The revision this preview was computed from."""
@@ -887,7 +926,8 @@ class ProjectType(_Frozen):
     """How many declarations and structure members name it."""
 
     findings: int
-    """How many findings are filed inside its entry."""
+    """How many findings are the type's: filed inside its entry, and the loader's refusal of a later
+    entry repeating its name, which is filed at that entry and counted here too."""
 
 
 class TypesReply(_Frozen):
@@ -1001,7 +1041,10 @@ class SharedEntry(_Frozen):
     """How many places name it: its shapes, and the conditions spelling a constant."""
 
     findings: int
-    """How many findings are filed inside its entry or at a shape naming it."""
+    """How many findings are the entry's: filed inside its entry or at a shape naming it, and the
+    loader's refusal of a later entry repeating its name, which is filed at that entry and counted
+    here too - less the ones :data:`ddd.finding_routes.ABOUT_THE_DECLARATION` says are the
+    declaration's."""
 
 
 class SharedReply(_Frozen):
@@ -1066,7 +1109,10 @@ class ConstantReply(_Frozen):
     recorded them."""
 
     findings: tuple[Finding, ...]
-    """Every finding filed inside its entry or at a shape naming it."""
+    """Every finding that is the entry's: filed inside its entry or at a shape naming it, and the
+    loader's refusal of a later entry repeating its name, which is filed at that entry and listed
+    here too - less the ones :data:`ddd.finding_routes.ABOUT_THE_DECLARATION` says are the
+    declaration's."""
 
 
 class SectionUse(_Frozen):
@@ -1134,7 +1180,10 @@ class SectionReply(_Frozen):
     them."""
 
     findings: tuple[Finding, ...]
-    """Every finding filed inside its entry or at a definition placing data in it."""
+    """Every finding that is the entry's: filed inside its entry or at a definition placing data in
+    it, and the loader's refusal of a later entry repeating its name, which is filed at that entry
+    and listed here too - less the ones :data:`ddd.finding_routes.ABOUT_THE_DECLARATION` says are
+    the declaration's."""
 
 
 class RasterUse(_Frozen):
@@ -1217,8 +1266,10 @@ class RasterReply(_Frozen):
     own default ahead of its own definitions'."""
 
     findings: tuple[Finding, ...]
-    """Every finding filed inside its entry or at a shape naming it, less the ones
-    :data:`ddd.finding_routes.ABOUT_THE_DECLARATION` says are the declaration's."""
+    """Every finding that is the entry's: filed inside its entry or at a shape naming it, and the
+    loader's refusal of a later entry repeating its name, which is filed at that entry and listed
+    here too - less the ones :data:`ddd.finding_routes.ABOUT_THE_DECLARATION` says are the
+    declaration's."""
 
 
 # --- GET /api/files, GET /api/files-plan -----------------------------------------------------
@@ -1492,7 +1543,9 @@ class ValuesReply(_Frozen):
     exactly one of them, which is a grid that can be read and not changed."""
 
     findings: tuple[Finding, ...]
-    """Every finding filed on the object's own ``init``."""
+    """Every finding filed at the ``init`` of a declaration producing the object - of each one,
+    where several do and ``file`` is ``None`` - which is where a finding at a producer's ``init``
+    leads; a reader's leads to the variable's panel instead."""
 
 
 # --- GET /api/compare ------------------------------------------------------------------------
@@ -1522,18 +1575,24 @@ class CompareReply(_Frozen):
     """Whether the candidate can replace the baseline: no finding of severity error survived
     the session's own severity policy, whichever list it is in - the project's own errors
     (:attr:`own_errors`), those the baseline carries over, and the comparison's, as the exit
-    code of ``ddd compare`` and ``ddd check --baseline`` answers."""
+    code of ``ddd compare`` and ``ddd check --baseline`` answers, save while ``plugin-changed``
+    stands as an error among the project's own, which neither command files: the verdict then
+    refuses where they may not, until the server is restarted or the plugin's file holds the bytes
+    it was imported from again."""
 
     own_errors: int
-    """How many errors the open project has of its own, which the verdict counts: the number the
-    state reports, so that a project whose comparison found nothing is not left without a reason
-    for a verdict that refuses it. ``0`` for a project with none."""
+    """How many errors the open project has of its own, which the verdict counts: the number
+    ``State.counts`` gives for ``error``, a disagreement once on each file it concerns, and not
+    the one ``State.statements`` gives - so that a disagreement is 2 here and 1 there. It is a
+    reason for a verdict that refuses a project whose comparison found nothing, which asks only
+    whether it is above ``0``; ``0`` for a project with none."""
 
     findings: tuple[Finding, ...]
     """Every finding ``compare`` itself reported, sorted by file: the interface and storage
-    differences between the two deliveries. Always carries ``route: null`` - ``route_of``
-    answers only for a component file, and every one of these is filed on the candidate's own
-    project file, with an empty pointer."""
+    differences between the two deliveries, and what a plugin's comparison rules file. The
+    comparison's own are filed on the candidate's project file with an empty pointer, which leads
+    nowhere (``route: null``); a plugin's may be filed at any place of the project and carry the
+    route that place has, as any finding does."""
 
     baseline_findings: tuple[Finding, ...]
     """Every error the baseline's own analysis reported, forwarded here, sorted by file - still
@@ -1544,6 +1603,10 @@ class CompareReply(_Frozen):
     baseline) would answer wrong. A page must not tell the two fields' findings apart by
     matching that prefix - this field is what that would be re-deriving, unreliably, from text
     a message is free to change."""
+
+    statements: FindingCounts
+    """How many findings of each severity ``findings`` and ``baseline_findings`` make, in all:
+    each once, however many files it is filed on, as ``ddd compare`` counts them."""
 
     renames: tuple[Renamed, ...]
     """Every object the two sides agree is one and the same but call differently now, sorted
@@ -1809,8 +1872,9 @@ _ENDPOINTS: tuple[tuple[type[BaseModel], Literal["validation", "serialization"]]
 a response, read for the shape ``model_dump(mode="json")`` produces - the two differ wherever a
 field has a default. A route's query is a request too: the model it reads its query as
 (:mod:`ddd.gui.queries`), each key the page may send and the type its value is read as - for a
-route that takes one of several actions, every plan route but value-plan, cells-plan and
-values-plan, the union of one model per action, which the page's types read as a union too.
+route that takes one of several actions, every plan route but description-plan, value-plan,
+cells-plan and values-plan, the union of one model per action, which the page's types read as a
+union too.
 
 Nothing else needs listing: every other model above is reachable from one of these and is
 published under ``$defs`` regardless, :class:`Operation` and :class:`Severity` included, and
@@ -1821,7 +1885,7 @@ each action's model under its plan route's union.
 def api_schema() -> dict[str, Any]:
     """The json schema of the whole ``ddd gui`` api, every model of it under ``$defs``.
 
-    What :mod:`gui.scripts.schemas` reads to write ``gui/src/generated/api.ts``, the way it
+    What ``gui/scripts/schemas.mjs`` reads to write ``gui/src/generated/api.ts``, the way it
     reads ``ddd schema all`` to write the types of the description files. Not one schema per
     endpoint: a page building one request out of several answers, an edit out of a finding's
     pointer, needs the whole vocabulary in one file with one name per shape, which is what a

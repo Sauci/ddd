@@ -509,6 +509,17 @@ def offered_beside(root: Path, name: str, beside: str, tree: str = "b") -> str:
     )
 
 
+def registered_beside(root: Path, added: str, tree: str = "b") -> str:
+    """The refusal of an existing description added to :func:`collected_project`'s project, the
+    posix path ``added`` its own: the line that registers it in the CMakeLists.txt beside it
+    offered instead, named as that call reads it, its placeholder for the reader to fill."""
+    name = added.rsplit("/", 1)[-1]
+    return (
+        f"{membership(root, tree)}; add ddd_add_component(<target> JSON {name}) to the "
+        f"CMakeLists.txt beside {added} instead, replacing <target> with your component's target"
+    )
+
+
 # The session of `ddd gui`, for the suites that open a project in one: the api's, the server's
 # and the session's own, and the plans' that apply an edit through it.
 

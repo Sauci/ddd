@@ -5,6 +5,8 @@ from __future__ import annotations
 import difflib
 import json
 import random
+from collections.abc import Sequence
+from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
@@ -22,16 +24,18 @@ from conftest import (
     types,
     write_tree,
 )
+from ddd import variables
 from ddd.diagnostics import Diagnostic, DiagnosticBag, Location, Severity
-from ddd.editing import UNREADABLE, EditError, Operation, fingerprint
+from ddd.editing import UNREADABLE, EditError, Operation, TextEdit, edit_text, fingerprint
 from ddd.loading import load_workspace
 from ddd.lsp.edits import Settlement, Unsettled, settle
 from ddd.lsp.navigation import Index, Site, index
-from ddd.lsp.ranges import Document
+from ddd.lsp.ranges import Document, read
 from ddd.variables import (
     Hunk,
     declarations_of,
     hunks,
+    lines_replaced,
     located_on,
     planned,
     preview,
@@ -272,6 +276,16 @@ class TestRefusal:
         assert refusal(refused, "Speed", "unit") == (
             code,
             f"the declaration of 'Speed' in b.ddd.json {says}",
+        )
+
+    def test_a_variable_nobody_produces_is_refused_limits_nobody_states(self) -> None:
+        """3:I2. Not one declaration's fault but the variable's: every one reads it, and a reader
+        leaves its limits to the declaration producing it, which none does."""
+        refused = Unsettled(Site(Path("/w/b.ddd.json"), DEFINITION), "unproduced")
+        assert refusal(refused, "Speed", "limits") == (
+            "invalid",
+            "no declaration of 'Speed' produces it, and a declaration reading it leaves its "
+            "limits to the one that does",
         )
 
 
@@ -577,6 +591,336 @@ class TestHunks:
         assert 0 < len(asked) < cases
 
 
+UNITS_FILE = json.dumps({"units": ["rpm", "Nm", "kPa", "degC"]}, indent=2) + "\n"
+"""A units file listing four units, one to a line."""
+
+DECLARATION = json.dumps(declare("output", "Torque", unit="Nm"))
+"""A declaration as a plan adding one writes it: json text, laid out by the engine."""
+
+PLANS = {
+    # The plan of a panel picking a unit another declaration of the file states already: the line
+    # it writes is held elsewhere in the file, as it is in any file stating a unit twice.
+    "a-unit-into-a-line-held-elsewhere": (
+        BASE,
+        (Operation("set", "component.interface[1].definition.unit", '"rpm"'),),
+    ),
+    "a-declaration-taken-out": (BASE, (Operation("remove", "component.interface[0]"),)),
+    "the-last-declaration-taken-out": (BASE, (Operation("remove", "component.interface[5]"),)),
+    "a-member-added": (
+        BASE,
+        (Operation("set", "component.interface[2].definition.description", '"a speed"'),),
+    ),
+    "a-declaration-added-first": (
+        BASE,
+        (Operation("insert", "component.interface[0]", DECLARATION),),
+    ),
+    "a-declaration-added-last": (
+        BASE,
+        (Operation("insert", "component.interface[6]", DECLARATION),),
+    ),
+    "a-structure-set-over-lines": (
+        BASE,
+        (
+            Operation(
+                "set",
+                "component.interface[0].definition.conversion",
+                '{"kind": "linear", "factor": 2, "offset": 0}',
+            ),
+        ),
+    ),
+    # A merge of two spellings takes the entries listing the old one out, the furthest down first,
+    # each made on the text the one before left.
+    "entries-taken-out-in-turn": (
+        UNITS_FILE,
+        (Operation("remove", "units[2]"), Operation("remove", "units[0]")),
+    ),
+}
+"""Plans of one file each, as the routes make them: a set in place, a removal, a member and a
+declaration added, a structure written over lines, and operations made one after another."""
+
+
+def plan_of(tmp_path: Path, text: str, operations: tuple[Operation, ...]) -> Any:
+    """``planned`` of ``operations`` over a file holding ``text``, the file stamped as the analysis
+    would have stamped it."""
+    path = tmp_path / "planned.ddd.json"
+    path.write_text(text, encoding="utf-8", newline="")
+    return planned(path, operations, {path.resolve(): fingerprint(path.read_bytes())})
+
+
+class TestAPlansLinesComeFromItsSpans:
+    """14:I6. The lines a plan shows are read off the spans its operations replace, which the
+    engine knows, rather than found by comparing the whole file before and after: that comparison
+    took 6.8 s over the 48,350 lines of the largest component of a generated project of 100,000
+    declarations, and the plan of a variable declared there and in a component as large 13.4 s
+    (Linux development PC)."""
+
+    @pytest.mark.parametrize(("text", "operations"), PLANS.values(), ids=PLANS.keys())
+    def test_no_plan_asks_difflib(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        text: str,
+        operations: tuple[Operation, ...],
+    ) -> None:
+        """Each answers the lines difflib answered for it, its natural reading, without asking
+        difflib anything."""
+        expected = _reference_hunks(text, edit_text(text, operations))
+        assert expected
+
+        def refused(*arguments: object, **keywords: object) -> None:
+            raise AssertionError("difflib was asked")
+
+        monkeypatch.setattr(difflib, "SequenceMatcher", refused)
+        assert plan_of(tmp_path, text, operations).hunks == expected
+
+    def test_a_unit_written_where_another_line_states_it_is_that_one_line(
+        self, tmp_path: Path
+    ) -> None:
+        operations = PLANS["a-unit-into-a-line-held-elsewhere"][1]
+        assert plan_of(tmp_path, BASE, operations).hunks == (
+            Hunk(28, ('          "unit": "Nm"',), ('          "unit": "rpm"',)),
+        )
+
+    def test_a_declaration_taken_out_is_its_own_lines(self, tmp_path: Path) -> None:
+        """The removal reaches into the first line of the declaration after it, which reads the
+        same once it is made: that line is the next declaration's, so the lines taken out are
+        the first declaration's own, 5 to 17."""
+        operations = PLANS["a-declaration-taken-out"][1]
+        assert plan_of(tmp_path, BASE, operations).hunks == (Hunk(5, tuple(LINES[4:17]), ()),)
+
+    def test_a_file_a_plan_creates_is_its_whole_text_without_difflib(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from ddd.plans import PlannedEdit
+        from ddd.project_units import previewed
+
+        def refused(*arguments: object, **keywords: object) -> None:
+            raise AssertionError("difflib was asked")
+
+        monkeypatch.setattr(difflib, "SequenceMatcher", refused)
+        created = PlannedEdit(
+            tmp_path / "units.ddd.json", (Operation("set", "", UNITS_FILE),), True
+        )
+        (made,) = previewed((created,), {})
+        assert (made.fingerprint, made.hunks) == (
+            None,
+            (Hunk(1, (), tuple(UNITS_FILE.splitlines())),),
+        )
+
+
+@pytest.fixture
+def compared(monkeypatch: pytest.MonkeyPatch) -> list[int]:
+    """How many lines each comparison a plan's lines are found by is handed, both texts' lines
+    together: difflib's, the comparison of each line in place, and the comparison of the lines
+    at each end of the lines a span lies on, which is the only one a plan makes now."""
+    counted: list[int] = []
+    matcher = difflib.SequenceMatcher
+    in_place = variables._replaced_in_place
+
+    def matching(*arguments: Any, **keywords: Any) -> difflib.SequenceMatcher[str]:
+        counted.append(len(keywords["a"]) + len(keywords["b"]))
+        return matcher(*arguments, **keywords)
+
+    def placed(old: list[str], new: list[str]) -> tuple[Hunk, ...] | None:
+        counted.append(len(old) + len(new))
+        return in_place(old, new)
+
+    monkeypatch.setattr(difflib, "SequenceMatcher", matching)
+    monkeypatch.setattr(variables, "_replaced_in_place", placed)
+    ends = getattr(variables, "_alike_at_the_ends", None)
+    if ends is not None:
+
+        def alike(before: Sequence[str], after: Sequence[str]) -> tuple[int, int]:
+            counted.append(len(before) + len(after))
+            return ends(before, after)
+
+        monkeypatch.setattr(variables, "_alike_at_the_ends", alike)
+    return counted
+
+
+def declarations_unit_by_unit(count: int) -> str:
+    """A component of ``count`` output declarations, ``V0`` onwards, stating three units in turn,
+    as a description file is written."""
+    declared = (declare("output", f"V{n}", unit=("rpm", "Nm", "kPa")[n % 3]) for n in range(count))
+    return json.dumps(component("B", *declared), indent=2) + "\n"
+
+
+CHANGES = {
+    "a-unit-spelled-anew": lambda count: (
+        Operation("set", f"component.interface[{count // 2}].definition.unit", '"Hz"'),
+    ),
+    "a-unit-held-elsewhere": lambda count: (
+        Operation("set", f"component.interface[{count // 2}].definition.unit", '"rpm"'),
+    ),
+    "a-declaration-taken-out": lambda count: (
+        Operation("remove", f"component.interface[{count // 2}]"),
+    ),
+}
+"""Each change a plan makes in the middle declaration of a component of ``count``."""
+
+
+class TestTheLinesAPlanComparesStayAroundItsSpans:
+    """14:I6. Counted, never timed: the lines a plan's comparisons are handed are those its spans
+    lie on, the same few whether the file holds a thousand declarations or four thousand. Before,
+    every line of the file was compared - in place, or by difflib."""
+
+    @pytest.mark.parametrize("change", CHANGES.values(), ids=CHANGES.keys())
+    def test_however_long_the_file(self, tmp_path: Path, compared: list[int], change: Any) -> None:
+        def lines_compared(count: int) -> int:
+            compared.clear()
+            plan_of(tmp_path, declarations_unit_by_unit(count), change(count))
+            return sum(compared)
+
+        small = lines_compared(1_000)
+        assert 0 < small == lines_compared(4_000)
+
+
+class TestTheLinesASpanLiesOn:
+    """``lines_replaced``: the lines spans of a text replace, read off the spans alone."""
+
+    TEXT = "one\ntwo\nthree\nfour\nfive\n"
+    """Its second line, ``two``, from offset 4 to 7; ``three`` from 8; ``four`` from 14."""
+
+    def test_spans_on_one_line_are_one_run(self) -> None:
+        replaced = (TextEdit(4, 5, "T"), TextEdit(6, 7, "O"))
+        assert lines_replaced(self.TEXT, replaced) == (Hunk(2, ("two",), ("TwO",)),)
+
+    def test_spans_on_lines_next_to_one_another_are_one_run(self) -> None:
+        replaced = (TextEdit(4, 7, "2"), TextEdit(8, 13, "3"))
+        assert lines_replaced(self.TEXT, replaced) == (Hunk(2, ("two", "three"), ("2", "3")),)
+
+    def test_spans_a_line_apart_are_two(self) -> None:
+        replaced = (TextEdit(4, 7, "2"), TextEdit(14, 18, "4"))
+        assert lines_replaced(self.TEXT, replaced) == (
+            Hunk(2, ("two",), ("2",)),
+            Hunk(4, ("four",), ("4",)),
+        )
+
+    def test_a_span_written_as_it_was_changes_no_line(self) -> None:
+        assert lines_replaced(self.TEXT, (TextEdit(4, 7, "two"),)) == ()
+        assert lines_replaced(self.TEXT, ()) == ()
+
+    def test_a_span_over_lines_is_its_lines_but_those_alike_at_either_end(self) -> None:
+        """``three`` stays where it was, and ``two`` and ``four`` are written anew around it:
+        one run, from the first line changed to the last."""
+        replaced = (TextEdit(4, 18, "TWO\nthree\nFOUR"),)
+        assert lines_replaced(self.TEXT, replaced) == (
+            Hunk(2, ("two", "three", "four"), ("TWO", "three", "FOUR")),
+        )
+
+    def test_lines_put_in_go_before_the_line_they_are_put_in_front_of(self) -> None:
+        assert lines_replaced(self.TEXT, (TextEdit(4, 4, "new\n"),)) == (Hunk(2, (), ("new",)),)
+        assert lines_replaced(self.TEXT, (TextEdit(3, 3, "\nnew"),)) == (Hunk(2, (), ("new",)),)
+
+    @pytest.mark.parametrize(
+        ("text", "replaced", "expected"),
+        [
+            ("a\nb\n", TextEdit(4, 4, "c\n"), Hunk(3, (), ("c",))),
+            ("a\nb", TextEdit(3, 3, "\nc"), Hunk(3, (), ("c",))),
+            ("a\nb", TextEdit(2, 3, ""), Hunk(2, ("b",), ())),
+            ("", TextEdit(0, 0, "a\nb\n"), Hunk(1, (), ("a", "b"))),
+            ("a\nb\n", TextEdit(0, 4, ""), Hunk(1, ("a", "b"), ())),
+        ],
+        ids=[
+            "after-the-last-line-break",
+            "after-a-last-line-without-one",
+            "a-last-line-without-one-emptied",
+            "an-empty-text-given-lines",
+            "every-line-taken-out",
+        ],
+    )
+    def test_at_the_ends_of_a_text(self, text: str, replaced: TextEdit, expected: Hunk) -> None:
+        assert lines_replaced(text, (replaced,)) == (expected,)
+
+    @pytest.mark.parametrize(
+        ("text", "replaced", "expected"),
+        [
+            ("a\rX\nb", TextEdit(2, 3, ""), Hunk(2, ("X",), ())),
+            ("a\r", TextEdit(2, 2, "\nb"), Hunk(2, (), ("b",))),
+            ("a\r\nb\r\n", TextEdit(3, 4, "B"), Hunk(2, ("b",), ("B",))),
+        ],
+        ids=[
+            "a-line-feed-left-after-a-carriage-return",
+            "a-line-feed-written-after-a-carriage-return",
+            "carriage-returns-and-line-feeds",
+        ],
+    )
+    def test_line_breaks_of_two_characters(
+        self, text: str, replaced: TextEdit, expected: Hunk
+    ) -> None:
+        """A carriage return ending a line, and a line feed after it once the span is made, are one
+        line break: ``X`` taken out joins its line feed to the line before, and leaves no empty
+        line where it was."""
+        before, after = text.splitlines(), applied(text, (replaced,)).splitlines()
+        assert lines_replaced(text, (replaced,)) == (expected,)
+        assert patched(before, (expected,)) == after
+
+    def test_random_spans_of_random_texts(self) -> None:
+        """Each answer is a change of the text's lines into the edited text's: its runs in order,
+        a line left as it was between each two, no run holding a line alike at either end of
+        both sides, and no more runs than spans. Where every span lies within one line and writes
+        no line break, the answer is the lines changed in place, run by run."""
+        generator = random.Random(17)
+        pieces = ("a", "b", "ab", " ", "\n", "\r\n", "\r", "\N{LINE SEPARATOR}")
+        in_place = 0
+        for _ in range(3_000):
+            text = "".join(generator.choice(pieces) for _ in range(generator.randint(0, 30)))
+            ends = sorted(
+                generator.randint(0, len(text)) for _ in range(2 * generator.randint(0, 4))
+            )
+            replaced = tuple(
+                TextEdit(
+                    start,
+                    end,
+                    "".join(generator.choice(pieces) for _ in range(generator.randint(0, 3))),
+                )
+                for start, end in zip(ends[::2], ends[1::2], strict=True)
+            )
+            before, after = text.splitlines(), applied(text, replaced).splitlines()
+            answered = lines_replaced(text, replaced)
+            assert patched(before, answered) == after
+            assert len(answered) <= len(replaced)
+            for hunk, following in pairwise(answered):
+                assert hunk.line + len(hunk.before) < following.line
+            for hunk in answered:
+                assert hunk.before or hunk.after
+                if hunk.before and hunk.after:
+                    assert hunk.before[0] != hunk.after[0]
+                    assert hunk.before[-1] != hunk.after[-1]
+            if len(before) == len(after) and all(within_a_line(text, edit) for edit in replaced):
+                found = variables._replaced_in_place(before, after)
+                if found is not None:
+                    in_place += 1
+                    assert answered == found
+        assert in_place > 100
+
+
+def applied(text: str, replaced: Sequence[TextEdit]) -> str:
+    """``text`` with each span replaced, the last first."""
+    for edit in reversed(replaced):
+        text = text[: edit.start] + edit.text + text[edit.end :]
+    return text
+
+
+def patched(lines: Sequence[str], answered: Sequence[Hunk]) -> list[str]:
+    """``lines`` with each hunk's lines replaced, at the line it names."""
+    made = list(lines)
+    for hunk in reversed(answered):
+        assert made[hunk.line - 1 : hunk.line - 1 + len(hunk.before)] == list(hunk.before)
+        made[hunk.line - 1 : hunk.line - 1 + len(hunk.before)] = hunk.after
+    return made
+
+
+def within_a_line(text: str, edit: TextEdit) -> bool:
+    """Whether a span neither holds nor writes a line break: it begins and ends on one line."""
+    return not breaks(text[edit.start : edit.end]) and not breaks(edit.text)
+
+
+def breaks(text: str) -> bool:
+    """Whether ``text`` holds a line break, as ``str.splitlines`` reads one."""
+    return text != "" and text.splitlines() != [text]
+
+
 class TestThePlannedFilesStamp:
     """A file's stamp is looked up as the file is spelled, and the file resolved only where that
     finds none: a plan renaming a unit stated in every file of a large project resolved every one
@@ -607,3 +951,42 @@ class TestThePlannedFilesStamp:
             spelled,
             known[(tmp_path / "b.ddd.json").resolve()],
         )
+
+
+class TestThePlannedEditIsMadeFromThePlansOwnDocument:
+    """``planned`` makes the edit from the document its cache holds for the file, which whoever
+    planned it read already: the file is scanned once more, as the edit leaves it, to read it
+    back."""
+
+    def test_the_document_read_for_the_plan_is_not_scanned_again(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        speed(tmp_path)
+        b = (tmp_path / "b.ddd.json").resolve()
+        cache: dict[Path, Document] = {}
+        read(b, cache)
+        operations = (Operation("set", UNIT, '"rpm"'),)
+        expected = planned(b, operations, stamps(tmp_path, "b.ddd.json"))
+        scanned: list[str] = []
+        init = Document.__init__
+
+        def scanning(document: Document, text: str) -> None:
+            scanned.append(text)
+            init(document, text)
+
+        monkeypatch.setattr(Document, "__init__", scanning)
+        assert planned(b, operations, stamps(tmp_path, "b.ddd.json"), cache) == expected
+        assert scanned == [b.read_text(encoding="utf-8").replace('"%"', '"rpm"')]
+
+    def test_a_file_read_otherwise_than_it_is_written_is_scanned_as_it_is(
+        self, tmp_path: Path
+    ) -> None:
+        """Ending its lines with carriage returns and line feeds, which the plan's reading made
+        line feeds: edited as the file spells them."""
+        speed(tmp_path)
+        b = (tmp_path / "b.ddd.json").resolve()
+        b.write_bytes(b.read_bytes().replace(b"\n", b"\r\n"))
+        cache: dict[Path, Document] = {}
+        assert "\r" not in read(b, cache).text
+        made = planned(b, (Operation("set", UNIT, '"rpm"'),), stamps(tmp_path, "b.ddd.json"), cache)
+        assert [hunk.after for hunk in made.hunks] == [('          "unit": "rpm"',)]

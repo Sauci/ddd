@@ -831,17 +831,25 @@ describe("a range typed into two fields", () => {
   test("a range is read by the one rule for a comma, the two fields together", () => {
     expect(limitsNote("1,5", "2")).toBeNull();
     expect(limitsRaw("1,5", "2,5")).toBe('{ "min": 1.5, "max": 2.5 }');
-    // `0,5` says what the comma is, so `1,500` beside it is one and a half.
-    expect(limitsRaw("0,5", "1,500")).toBe('{ "min": 0.5, "max": 1.5 }');
+    // `0,5` says what the comma is, so `1,500` beside it is one and a half, in its own digits.
+    expect(limitsRaw("0,5", "1,500")).toBe('{ "min": 0.5, "max": 1.500 }');
     expect(limitsRaw("1,234.5", "1.234.567,5")).toBe('{ "min": 1234.5, "max": 1234567.5 }');
     // Fix round 1, M1: and `1,234,567` says its commas group thousands, so `1,500` is fifteen
     // hundred, where the field was refused for a comma that could be either.
     expect(limitsRaw("1,500", "1,234,567")).toBe('{ "min": 1500, "max": 1234567 }');
   });
 
-  test("a range is spelled as the numbers it holds, whatever their spelling", () => {
-    expect(limitsRaw("+1", "1e3")).toBe('{ "min": 1, "max": 1000 }');
-    expect(limitsRaw(".5", "5.")).toBe('{ "min": 0.5, "max": 5 }');
+  test("a range travels in the digits typed, as json spells a number (3:I1)", () => {
+    // Composed from the doubles the two fields are read as, each bound reached the file spelled
+    // as its double: `1e3` as 1000, `12.50` as 12.5, `5.` as 5, and a decimal longer than a
+    // double's shortest spelling cut to that spelling. Each travels as the text typed, read as
+    // `jsonNumber` reads a number field: a sign or a leading zero that says nothing dropped.
+    expect(limitsRaw("+1", "1e3")).toBe('{ "min": 1, "max": 1e3 }');
+    expect(limitsRaw(".5", "5.")).toBe('{ "min": 0.5, "max": 5.0 }');
+    expect(limitsRaw("007", "12.50")).toBe('{ "min": 7, "max": 12.50 }');
+    expect(limitsRaw("0.1000000000000000055511151231257827", "1", "float64")).toBe(
+      '{ "min": 0.1000000000000000055511151231257827, "max": 1.0 }',
+    );
   });
 });
 
@@ -879,10 +887,14 @@ describe("a range read by its datatype, as a cell of it reads a number (task 1's
   });
 
   test("a float's bound is written as a float (task 1's n2), any other's as typed", () => {
-    // 1e19 was written 10000000000000000000, a whole number past 2^53.
-    expect(limitsRaw("0", "1e19", "float64")).toBe('{ "min": 0.0, "max": 10000000000000000000.0 }');
+    // 1e19 was written 10000000000000000000, a whole number past 2^53; an exponent is a float's
+    // spelling already, and a bound typed whole is given its point.
+    expect(limitsRaw("0", "1e19", "float64")).toBe('{ "min": 0.0, "max": 1e19 }');
     expect(limitsRaw("-50", "90", "float32")).toBe('{ "min": -50.0, "max": 90.0 }');
-    expect(limitsRaw("0.5", "1e21", "float64")).toBe('{ "min": 0.5, "max": 1e+21 }');
+    expect(limitsRaw("0.5", "1E+21", "float64")).toBe('{ "min": 0.5, "max": 1e+21 }');
+    expect(limitsRaw("0", "10000000000000000000", "float64")).toBe(
+      '{ "min": 0.0, "max": 10000000000000000000.0 }',
+    );
     expect(limitsRaw("-50", "90", "sint16")).toBe('{ "min": -50, "max": 90 }');
   });
 });

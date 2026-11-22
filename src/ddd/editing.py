@@ -373,6 +373,21 @@ class Operation:
     to: int | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class Edited:
+    """The text a file's operations leave (:func:`edit_spans`), and the spans of the text they were
+    made on that they replaced."""
+
+    text: str
+    replaced: tuple[TextEdit, ...]
+    """Each span of the text the operations were given that they replaced, with what stands there
+    now, in the order the text writes them and none overlapping: the edits making :attr:`text` out
+    of that text. Made at once, the operations' own edits are already of that text; made one
+    after another, each edit is of the text the one before left, and is restated here against the
+    text given, an edit meeting or overlapping another made one with it. A span's text may be
+    what it replaced, a value set as it was spelled already."""
+
+
 def indent_unit(document: Document) -> str:
     """How far this file indents one level.
 
@@ -479,8 +494,34 @@ def edit_text(text: str, operations: Sequence[Operation]) -> str:
     refused, or does not read back as the document it was meant to leave, is made again one
     operation at a time, which answers what it always has: the same text, or the same refusal.
     """
+    return edit_spans(text, operations).text
+
+
+def edit_spans(
+    text: str, operations: Sequence[Operation], scanned: Document | None = None
+) -> Edited:
+    """The text :func:`edit_text` makes, made the same way and refused the same way, with the spans
+    of ``text`` the operations replaced to make it (:attr:`Edited.replaced`).
+
+    What a preview's lines are read from (:func:`ddd.variables.planned`): only the engine knows
+    where an operation wrote, and found again by comparing the text before and after, those lines
+    cost a comparison of the whole file - seconds for one plan in the largest component of a
+    generated project of 100,000 declarations, nearly all of the plan's time.
+
+    ``scanned`` is a document of the file whoever planned the operations scanned already, used
+    where its text is ``text`` and scanned anew where it is not - the file changed since, or read
+    as python reads a text, every line break a line feed. Only the loader's rule is asked of
+    ``text`` then (:func:`_ruled`). A plan reads the files it writes before it plans, to find
+    where its operations go or to see that each file still holds what they point at: a unit
+    renamed in the 1,167 files of a generated project of 35,000 declarations was every one of
+    them scanned again here.
+    """
     unreadable = "the file is not json DDD reads, so no pointer names a place in it"
-    document = _read(text, UNREADABLE, unreadable)
+    if scanned is not None and scanned.text == text:
+        _ruled(text, UNREADABLE, unreadable)
+        document = _scanned(scanned, UNREADABLE, unreadable)
+    else:
+        document = _read(text, UNREADABLE, unreadable)
     if _independent(document, operations):
         made = _made_at_once(document, operations)
         if made is not None:
@@ -602,15 +643,18 @@ def _at_once(document: Document, operations: Sequence[Operation]) -> list[TextEd
     return edits
 
 
-def _made_at_once(document: Document, operations: Sequence[Operation]) -> str | None:
+def _made_at_once(document: Document, operations: Sequence[Operation]) -> Edited | None:
     """The operations made on the text as it was read (:func:`_at_once`), and the text they leave
     read once (:func:`_read_back`) - or ``None`` when one of them is refused, or that text does
     not read back as the document every operation was meant to leave, for :func:`_made_in_turn`
-    to answer as it answers any batch. Only for a batch :func:`_independent` lets through."""
+    to answer as it answers any batch. Only for a batch :func:`_independent` lets through, whose
+    edits are each of the text as it was read, and none overlapping another."""
     try:
-        return _read_back(document, operations, _at_once(document, operations)).text
+        edits = _at_once(document, operations)
+        made = _read_back(document, operations, edits)
     except EditError:
         return None
+    return Edited(made.text, tuple(sorted(edits, key=lambda edit: edit.start)))
 
 
 def _read_back(
@@ -627,19 +671,75 @@ def _read_back(
     return made
 
 
-def _made_in_turn(document: Document, operations: Sequence[Operation]) -> str:
+def _made_in_turn(document: Document, operations: Sequence[Operation]) -> Edited:
     """The operations made one after another, starting from the document as it was read, each
-    verified before the next (:func:`edit_text`)."""
+    verified before the next (:func:`edit_text`), and the edits they made restated against the
+    text as it was read (:func:`_restated`)."""
     text = document.text
     expected = copy.deepcopy(document.data)
+    made: list[TextEdit] = []
     for operation in operations:
-        text, expected = _made(document, operation, expected)
+        text, expected, steps = _made(document, operation, expected)
+        made.extend(steps)
         document = _read(text, UNVERIFIED, "an edit left the file unreadable")
         if _canonical(document.data) != _canonical(expected):
             raise EditError(
                 UNVERIFIED, "the edited file does not read back as the intended document"
             )
-    return text
+    return Edited(text, _restated(made))
+
+
+def _restated(steps: Sequence[TextEdit]) -> tuple[TextEdit, ...]:
+    """Edits made one after another, each of the text the one before it left, as edits of the
+    text the first was made on: in order, none overlapping, every two that meet or overlap made
+    one.
+
+    Each edit already restated is kept as the span of that first text it replaces and what
+    stands there now, in order, and stands in the text the steps have left so far moved by what
+    each edit before it added or took away. A step is placed by walking them: those ending before
+    it begins move it by what each added or took away, those beginning after it ends are left as
+    they are, and those it meets or overlaps become one with it - its text, between what is left
+    of the first of them before it and of the last of them after it - over the span from the
+    first of them, or from where it begins in the first text, to the last of them, or to where it
+    ends there. A step costs a look at each edit kept, which a step making a whole document
+    already costs many times over in reading the text it leaves."""
+    kept: list[TextEdit] = []
+    for step in steps:
+        before: list[TextEdit] = []
+        met: list[tuple[TextEdit, int]] = []
+        after: list[TextEdit] = []
+        # What the edits before the step added to the text, less what they took away; and the
+        # same of every edit walked so far, which places the next one in the text as it stands.
+        moved = shift = 0
+        for edit in kept:
+            start = edit.start + shift
+            if start + len(edit.text) < step.start:
+                before.append(edit)
+                moved += _grown(edit)
+            elif start > step.end:
+                after.append(edit)
+            else:
+                met.append((edit, start))
+            shift += _grown(edit)
+        if not met:
+            kept = [*before, TextEdit(step.start - moved, step.end - moved, step.text), *after]
+            continue
+        (first, first_at), (last, last_at) = met[0], met[-1]
+        start = first.start if first_at <= step.start else step.start - moved
+        if last_at + len(last.text) >= step.end:
+            end = last.end
+        else:
+            end = step.end - moved - sum(_grown(edit) for edit, _ in met)
+        prefix = first.text[: step.start - first_at] if first_at < step.start else ""
+        text = f"{prefix}{step.text}{last.text[step.end - last_at :]}"
+        kept = [*before, TextEdit(start, end, text), *after]
+    return tuple(kept)
+
+
+def _grown(edit: TextEdit) -> int:
+    """How much longer an edit leaves the text than it found it: less than nothing for one taking
+    more away than it writes."""
+    return len(edit.text) - (edit.end - edit.start)
 
 
 def _all_applied(text: str, edits: Sequence[TextEdit]) -> str:
@@ -666,34 +766,52 @@ def _read(text: str, code: str, refusal: str) -> Document:
     """
     from ddd.lsp.ranges import Document
 
+    _ruled(text, code, refusal)
+    return _scanned(Document(text), code, refusal)
+
+
+def _ruled(text: str, code: str, refusal: str) -> None:
+    """Refuse ``text`` with ``code`` where DDD does not read it as json: the loader's rule, which
+    :func:`_read` asks before it scans a text (:func:`ddd.loading.parse_json_text`)."""
     try:
         parse_json_text(text)
     except ValueError as error:
         raise EditError(code, f"{refusal}: {error}") from None
-    document = Document(text)
+
+
+def _scanned(document: Document, code: str, refusal: str) -> Document:
+    """``document``, refused with ``code`` where its scan holds nothing of a text the loader's rule
+    read (:func:`_ruled`)."""
     if document.data is None:
         # Read by the parser and too deep for the scan, which spends more stack per level.
         raise EditError(code, f"{refusal}: the json is nested too deeply to read")
     return document
 
 
-def _made(document: Document, operation: Operation, expected: Any) -> tuple[str, Any]:
-    """One operation made on the text, and on the parsed document it has to read back as."""
+def _made(
+    document: Document, operation: Operation, expected: Any
+) -> tuple[str, Any, tuple[TextEdit, ...]]:
+    """One operation made on the text, and on the parsed document it has to read back as; and the
+    edits it made, each of the text the one before it left - one, but for a move, which takes the
+    element out and puts it in again, and for a move to where the element is, which makes none."""
     if not _spelled(operation.pointer):
         raise EditError(INVALID, f"{operation.pointer!r} is not a pointer")
     if operation.op == "set":
         raw = _raw_of(operation)
         value = parse_raw(raw)
         edit = _set_edit(document, operation.pointer, raw)
-        return _applied(document.text, edit), _set_value(expected, operation.pointer, value)
+        made = _set_value(expected, operation.pointer, value)
+        return _applied(document.text, edit), made, (edit,)
     if operation.op == "remove":
         edit = removal(document, operation.pointer)
-        return _applied(document.text, edit), _removed_value(expected, operation.pointer)
+        made = _removed_value(expected, operation.pointer)
+        return _applied(document.text, edit), made, (edit,)
     if operation.op == "insert":
         raw = _raw_of(operation)
         value = parse_raw(raw)
         edit = insertion(document, operation.pointer, raw)
-        return _applied(document.text, edit), _inserted_value(expected, operation.pointer, value)
+        made = _inserted_value(expected, operation.pointer, value)
+        return _applied(document.text, edit), made, (edit,)
     if operation.op == "move":
         return _moved(document, operation, expected)
     raise EditError(INVALID, f"{operation.op!r} is not an operation: set, remove, insert or move")
@@ -709,7 +827,9 @@ def _set_edit(document: Document, pointer: str, raw: str) -> TextEdit:
     return member_addition(document, parent, key, raw)
 
 
-def _moved(document: Document, operation: Operation, expected: Any) -> tuple[str, Any]:
+def _moved(
+    document: Document, operation: Operation, expected: Any
+) -> tuple[str, Any, tuple[TextEdit, ...]]:
     from ddd.lsp.ranges import Document
 
     found = _indexed(operation.pointer)
@@ -726,15 +846,16 @@ def _moved(document: Document, operation: Operation, expected: Any) -> tuple[str
         raise EditError(INVALID, f"{_named(operation.pointer)} cannot move to {to!r}")
     array, index = found
     if index == to:
-        return document.text, expected
+        return document.text, expected, ()
     raw = document.raw_at(operation.pointer)
     assert raw is not None  # value_at just found the element, so the scan recorded it
-    removed = _applied(document.text, removal(document, operation.pointer))
+    taken = removal(document, operation.pointer)
+    removed = _applied(document.text, taken)
     shortened = Document(removed)
-    moved = _applied(removed, insertion(shortened, f"{array}[{to}]", raw, verbatim=True))
+    put = insertion(shortened, f"{array}[{to}]", raw, verbatim=True)
     container, _ = _container(expected, operation.pointer)
     container.insert(to, container.pop(index))
-    return moved, expected
+    return _applied(removed, put), expected, (taken, put)
 
 
 def _added(

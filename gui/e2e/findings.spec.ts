@@ -68,6 +68,31 @@ test("a disagreement leads to its variable", async ({ page, gui }) => {
   await expect(variablePanel.getByRole("combobox", { name: "Unit of ValueA" })).toHaveValue("%");
 });
 
+test("a disagreement is counted once above both tables, as ddd check counts it, and listed on each of its files", async ({
+  page,
+  gui,
+}) => {
+  // Controller's own reading of ValueA drifted from SensorHub's: one `definition-mismatch`, which
+  // `ddd check` reports once and the analysis files on both of the files it concerns.
+  drift(gui.directory);
+  await page.goto(gui.address);
+
+  // The Table tab's line counts it once, and the row of each of its two files the one filed there.
+  await page.getByRole("link", { name: "Table", exact: true }).click();
+  await expect(page.locator("p.summary")).toHaveText("1 error, 0 warnings");
+  for (const name of ["Controller", "SensorHub"]) {
+    const row = page
+      .getByRole("row")
+      .filter({ has: page.getByRole("button", { name, exact: true }) });
+    await expect(row.getByRole("gridcell").first()).toHaveText("1");
+  }
+
+  // The Findings tab's line counts it once too, over a row on each of its files.
+  await page.getByRole("link", { name: "Findings", exact: true }).click();
+  await expect(page.getByText("1 finding · 1 error", { exact: true })).toBeVisible();
+  await expect(page.getByRole("row", { name: /definition-mismatch/ })).toHaveCount(2);
+});
+
 test("a disagreement is settled from the finding that reports it", async ({ page, gui }) => {
   // ValueE is written by Controller and read by UserInterface and EventLogger, all three in
   // Hz - the only demo variable with one producer and two consumers, so drifting one reader's
@@ -170,6 +195,32 @@ test("a finding that leads nowhere says why", async ({ page, gui }) => {
   const panel = page.getByRole("complementary", { name: "json-syntax" });
   await expect(panel.locator(".chip")).toHaveText("error");
   await expect(panel.getByText("controller.ddd.json did not load")).toBeVisible();
+  await expect(panel.getByRole("link", { name: /^Open/ })).toHaveCount(0);
+  // Where the parser stopped, as `ddd check` prints it, so the reader need not go to a terminal
+  // to find it: the file, then a line inside it and a column on that line.
+  const place = await panel.locator(".path").innerText();
+  const [, line, column] = /^controller\.ddd\.json:(\d+):(\d+)$/.exec(place) ?? [];
+  expect(Number(line)).toBeGreaterThan(0);
+  expect(Number(line)).toBeLessThanOrEqual(before.toString("utf8").split("\n").length);
+  expect(Number(column)).toBeGreaterThan(0);
+});
+
+test("a finding that leads nowhere says its pointer where the file has no line to give", async ({
+  page,
+  gui,
+}) => {
+  // A boolean that is not one: the file parses, fails `schema`, and so did not load - nowhere
+  // for a route to lead, and the loader gave a place inside the document, not a line.
+  const file = join(gui.directory, USER_INTERFACE);
+  writeFileSync(
+    file,
+    readFileSync(file, "utf8").replace('"volatile": true', '"volatile": "maybe"'),
+  );
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Findings" }).click();
+  await page.getByRole("row", { name: "schema" }).click();
+  const panel = page.getByRole("complementary", { name: "schema" });
+  await expect(panel.locator(".path")).toHaveText("component.interface[0].definition.volatile");
   await expect(panel.getByRole("link", { name: /^Open/ })).toHaveCount(0);
 });
 
@@ -296,9 +347,10 @@ test("the page of findings failing leaves an alert over a table with nothing to 
   await expect(page.getByRole("alert").and(page.locator(':above([role="grid"])'))).toHaveText(
     SERVER_FAILED,
   );
-  // The state counted the findings all the same, so the line over the table says how many there
-  // are, and the table has none of them to open.
-  await expect(page.getByText("2 findings · 2 errors", { exact: true })).toBeVisible();
+  // The state counted the findings all the same, so the line over the table says how many
+  // statements there are - the one disagreement, as `ddd check` counts it - and the table has
+  // neither of its two rows to open.
+  await expect(page.getByText("1 finding · 1 error", { exact: true })).toBeVisible();
   await expect(page.getByRole("row", { name: /definition-mismatch/ })).toHaveCount(0);
 });
 
@@ -321,9 +373,10 @@ test("a page of findings still being read is drawn as rows saying so, which the 
   const release = await held(page, "/api/findings");
   try {
     await page.getByRole("link", { name: "Findings", exact: true }).click();
-    // The line above the table is the state's own, counted before any page of findings comes, and
-    // the table has a row for each finding, saying that its page is not there yet.
-    await expect(page.getByText("2 findings · 2 errors", { exact: true })).toBeVisible();
+    // The line above the table is the state's own, counted before any page of findings comes:
+    // the one disagreement, as `ddd check` counts it. The table has a row for each file it is
+    // filed on, saying that its page is not there yet.
+    await expect(page.getByText("1 finding · 1 error", { exact: true })).toBeVisible();
     await expect(pending).toHaveCount(2);
     await expect(mismatches).toHaveCount(0);
   } finally {

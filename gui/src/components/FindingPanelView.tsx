@@ -14,6 +14,9 @@ export interface FindingPanelViewProps {
   href: string | null;
   /** Why it leads nowhere, said when `label` is `null`. */
   reason: string;
+  /** Where the finding is, said when it leads nowhere (`placeOf`, `lib/findings.ts`): the line
+   * and column in its file, or its pointer; `null` where it names no place. */
+  place: string | null;
   /** How the panel names a file: its heading line's, and each file its notes point at. The
    * Findings tab says a file by its base name; a comparison says a baseline's file as the
    * baseline's (`fileNameIn`, `lib/compare.ts`), as its table's File column does. */
@@ -34,7 +37,7 @@ export interface FindingPanelViewProps {
 
 /** One finding's panel (spec 5.2), drawn from what the api answered: a picture of its props. */
 export function FindingPanelView(props: FindingPanelViewProps) {
-  const { finding, label, href, reason, fileName, fixes, chosen, refusal, busy } = props;
+  const { finding, label, href, reason, place, fileName, fixes, chosen, refusal, busy } = props;
   const offered = fixes?.fixes ?? [];
   // Built here rather than inline, so that `label` and `href` - which are null together - narrow
   // once for the whole row.
@@ -75,6 +78,7 @@ export function FindingPanelView(props: FindingPanelViewProps) {
           ))}
         </ul>
       )}
+      {link === null && place !== null && <p className="path">{place}</p>}
       {link === null && <p className="quiet">{reason}</p>}
       {/* What this finding offers, read in one line: where it leads, and each fix it carries.
           What a chosen fix reveals stays below them, at the panel's own width. */}

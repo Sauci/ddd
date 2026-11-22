@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import ast
 import dataclasses
 import io
 import json
 import os
 import re
 import shutil
+import sys
 import threading
 from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path, PurePosixPath
@@ -40,6 +42,7 @@ from conftest import (
     messages,
     offered_beside,
     project,
+    registered_beside,
     scalar_type,
     stopped,
     struct_type,
@@ -50,7 +53,7 @@ from conftest import (
 )
 from ddd import __version__
 from ddd.analysis import analyze
-from ddd.cli import EXIT_OK, main
+from ddd.cli import EXIT_FINDINGS, EXIT_OK, main
 from ddd.declaration_plans import PRODUCING_SCOPES
 from ddd.diagnostics import CHECKS, DiagnosticBag, Location, Severity
 from ddd.editing import UNREADABLE, UNVERIFIED, UNWRITABLE, EditError, fingerprint
@@ -74,7 +77,6 @@ from ddd.gui.session import Filed, Revision, Session
 from ddd.loading import included_files, load_workspace, resolve_path
 from ddd.lsp.navigation import Index, Site
 from ddd.lsp.ranges import Document
-from ddd.object_values import grid_of
 from ddd.project_shared import CONSTANTS, RASTERS, SECTIONS, Vocabulary
 from ddd.project_shared import located_on as located_on_entry
 from ddd.project_types import located_in_type
@@ -99,6 +101,32 @@ TEXT_READER = {
     "p.ddd.json": project("P", "w.ddd.json", "r.ddd.json"),
     "w.ddd.json": component("W", declare("output", "V", "uint16")),
     "r.ddd.json": component("R", declare("input", "V", "uint8", conversion=TEXT, dimensions=[8])),
+}
+
+# A plugin whose check files one finding twice in a run: `ddd check` prints it twice, and the
+# Findings tab lists it once, as `group_findings` keeps one of several equal findings.
+SAID_TWICE_PLUGIN = """
+from ddd.diagnostics import CheckInfo, Severity
+from ddd.plugins import CheckContext, Plugin
+
+
+def check(context: CheckContext) -> None:
+    for _ in range(2):
+        context.bag.add("twice/said", "said twice of the project")
+
+
+PLUGIN = Plugin(
+    name="twice",
+    checks=(CheckInfo("twice/said", Severity.WARNING, "a finding its run files twice"),),
+    check=check,
+)
+"""
+
+# A project naming that plugin, whose one component reports nothing of its own.
+SAID_TWICE = {
+    "tools/twice.py": SAID_TWICE_PLUGIN,
+    "p.ddd.json": project("P", "a.ddd.json", plugins=["tools/twice.py"]),
+    "a.ddd.json": component("A", declare("local", "X", id="aaaaaaaaaaaa")),
 }
 
 # A project whose one file declaring `Torque` was saved half-edited, as an editor saves a file
@@ -177,8 +205,9 @@ NO_DESCRIPTION = {
 # A constants file whose one entry fails the format - missing `value` - so the project as a
 # whole still opens (unlike a component, which loads nothing when invalid) but this one file
 # does not: measured with a scratch probe, `built` is not `None` and `c.ddd.json` is in both
-# `revision.files` (not loaded) and `project_of(CONSTANTS, ...).files` (still recognised as
-# a constants file, since that only asks whether its top level holds a `constants` key).
+# `revision.files` (not loaded) and `vocabulary_project(..., "constants", ...).files` (still
+# recognised as a constants file, since that only asks whether its top level holds a `constants`
+# key).
 UNREADABLE_CONSTANTS = {
     "p.ddd.json": project("P", "c.ddd.json"),
     "c.ddd.json": {"constants": [{"name": "BAD"}]},
@@ -257,8 +286,9 @@ SOLE_SECTION_IN_A_FILE = {
 
 # A sections file whose one entry fails the format - no `access` - so the project as a whole
 # still opens and this one file does not: measured, `built` is not `None` and `s.ddd.json` is in
-# both `revision.files` (not loaded) and `project_of(SECTIONS, ...).files` (still recognised as a
-# sections file, since that only asks whether its top level holds a `sections` key).
+# both `revision.files` (not loaded) and `vocabulary_project(..., "sections", ...).files` (still
+# recognised as a sections file, since that only asks whether its top level holds a `sections`
+# key).
 UNREADABLE_SECTIONS = {
     "p.ddd.json": project("P", "s.ddd.json"),
     "s.ddd.json": {"sections": [{"section": ".bad", "alignment": 4}]},
@@ -373,8 +403,8 @@ CALIBRATION_MEASURED = {
 
 # A rasters file whose one entry fails the format - no `event` - so the project as a whole still
 # opens and this one file does not: measured, `built` is not `None` and `r.ddd.json` is in both
-# `revision.files` (not loaded) and `project_of(RASTERS, ...).files`, the sections fixture's own
-# case at the third vocabulary.
+# `revision.files` (not loaded) and `vocabulary_project(..., "rasters", ...).files`, the sections
+# fixture's own case at the third vocabulary.
 UNREADABLE_RASTERS = {
     "p.ddd.json": project("P", "r.ddd.json"),
     "r.ddd.json": {"rasters": [{"raster": "50ms"}]},
@@ -694,6 +724,131 @@ class TestTheRouteTable:
             "/api/undo",
         }
         assert all(route.method == "POST" for route in ROUTES if route.body is not None)
+
+
+class TestEveryPlanIsAnsweredOneWay:
+    """What a route answers of a plan, and of an edit engine's refusal, is written once (2:I10):
+    copied into each route, each copy drifted from its neighbours, and a route added copied the
+    one beside it. Read off the api's own source, which is where a copy would come back."""
+
+    TREE: Final = ast.parse(Path(api_module.__file__).read_text(encoding="utf-8"))
+
+    def test_the_status_an_edit_refusal_is_answered_with_is_decided_once(self) -> None:
+        """Which of the engine's refusals a page can act on, ``409``, and which are the server's
+        own failure, ``500``, is asked of :data:`~ddd.gui.api.REFUSALS` in one place."""
+        asked = [
+            node.lineno
+            for node in ast.walk(self.TREE)
+            if isinstance(node, ast.Name)
+            and node.id == "REFUSALS"
+            and isinstance(node.ctx, ast.Load)
+        ]
+        assert len(asked) == 1, f"the edit refusals are mapped to a status at lines {asked}"
+
+    def test_a_plan_s_reply_is_made_in_one_place(self) -> None:
+        """Every plan route but the Files tab's, whose reply says more, answers ``PlanReply``
+        through one function."""
+        made = [
+            node.lineno
+            for node in ast.walk(self.TREE)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "PlanReply"
+        ]
+        assert len(made) == 1, f"a plan's reply is made at lines {made}"
+
+
+class TestAPlanChangingNoLineIsAnsweredWithItsFile:
+    """A plan of the unit, type, shared and declaration routes keeps, in its reply, a file its edit
+    leaves as it was, where the value and description routes leave it out (15:M4, 2:I10). Which
+    way each route answers is the route's own, and a route moved to the other way answers a page
+    something different: the Types tab plans a row's current value at each keystroke."""
+
+    @pytest.mark.parametrize(
+        ("example", "project_file", "route", "query", "file"),
+        [
+            (
+                "vocabulary",
+                "project.ddd.json",
+                "/api/unit-plan",
+                {
+                    "action": "describe",
+                    "unit": "rpm",
+                    "description": "rotational speed, revolutions per minute",
+                },
+                "units.ddd.json",
+            ),
+            (
+                "structures",
+                "project.ddd.json",
+                "/api/type-plan",
+                {
+                    "action": "set",
+                    "name": "Temperature_t",
+                    "key": "description",
+                    "raw": '"A temperature as every component of this project agrees to see it"',
+                },
+                "types.ddd.json",
+            ),
+            (
+                "vocabulary",
+                "project.ddd.json",
+                "/api/constant-plan",
+                {
+                    "action": "set",
+                    "name": "TREND_SAMPLES",
+                    "key": "description",
+                    "raw": '"sample slots of a pressure trend buffer, '
+                    'a device wide size no single component owns"',
+                },
+                "constants.ddd.json",
+            ),
+            (
+                "vocabulary",
+                "project.ddd.json",
+                "/api/section-plan",
+                {
+                    "action": "set",
+                    "name": ".calib",
+                    "key": "description",
+                    "raw": '"calibration flash, tool writable through the emulation overlay"',
+                },
+                "sections.ddd.json",
+            ),
+            (
+                "vocabulary",
+                "project.ddd.json",
+                "/api/raster-plan",
+                {
+                    "action": "set",
+                    "name": "10ms",
+                    "key": "description",
+                    "raw": '"control task"',
+                },
+                "rasters.ddd.json",
+            ),
+        ],
+        ids=["unit", "type", "constant", "section", "raster"],
+    )
+    def test_the_route_answers_the_file_with_one_operation_and_no_hunk(
+        self,
+        tmp_path: Path,
+        example: str,
+        project_file: str,
+        route: str,
+        query: dict[str, str],
+        file: str,
+    ) -> None:
+        """A description set to the text it already has: the route answers 200 with that file,
+        its one operation and ``hunks: []``, where the value and description routes answer a
+        plan of no change."""
+        api, _ = copied(tmp_path, example, project_file)
+        reply = get(api, route, **query)
+        assert reply.status == 200
+        [change] = reply.body["changes"]
+        assert Path(change["file"]).name == file
+        assert len(change["operations"]) == 1
+        assert change["hunks"] == []
 
 
 class TestTheQueryIsReadOnce:
@@ -1391,6 +1546,132 @@ class TestProjects:
         assert (reply.status, reply.body["error"]) == (400, "bad-request")
 
 
+@pytest.fixture
+def walks(monkeypatch: pytest.MonkeyPatch) -> list[Path]:
+    """Every walk the api makes from now on for the projects under the directory ``ddd gui`` was
+    started in (``find_projects``), by the directory walked: each parses every description the
+    walk reaches."""
+    walked: list[Path] = []
+    real = api_module.find_projects
+
+    def walking(root: Path, build_directories: Iterable[Path] = ()) -> Any:
+        walked.append(root)
+        return real(root, tuple(build_directories))
+
+    monkeypatch.setattr(api_module, "find_projects", walking)
+    return walked
+
+
+class TestOpeningWithoutTheWalk:
+    """14:M14. ``POST /api/open`` answers the project named on the command line, the open
+    project, or one the last listing found, without walking for the projects under the start
+    directory, which parses every description there. It walks for a path none of those holds,
+    and one held is answered only where the walk would find it now: a description deleted or
+    replaced since is walked for, and refused where the walk does not find it."""
+
+    def test_the_project_named_on_the_command_line_is_opened_without_the_walk(
+        self, api: Api, root: Path, walks: list[Path]
+    ) -> None:
+        reply = post(api, "/api/open", {"path": (root / "p.ddd.json").as_posix()})
+        assert (reply.status, reply.body["project"]["name"], walks) == (200, "P", [])
+
+    def test_a_project_the_listing_found_is_opened_without_walking_again(
+        self, api: Api, root: Path, walks: list[Path]
+    ) -> None:
+        get(api, "/api/projects")
+        reply = post(api, "/api/open", {"path": (root / "other" / "q.ddd.json").as_posix()})
+        assert (reply.status, reply.body["project"]["name"], len(walks)) == (200, "Q", 1)
+
+    def test_the_open_project_is_opened_again_without_the_walk(
+        self, root: Path, walks: list[Path]
+    ) -> None:
+        """Opened once by a walk, no project having been named on the command line: opened
+        again, as the page asks when it is loaded again, it is not walked for."""
+        api = Api(Session(root))
+        wanted = {"path": (root / "other" / "q.ddd.json").as_posix()}
+        assert post(api, "/api/open", wanted).status == 200
+        assert post(api, "/api/open", wanted).status == 200
+        assert len(walks) == 1
+
+    def test_the_project_the_session_opened_itself_is_opened_again_without_the_walk(
+        self, root: Path, walks: list[Path]
+    ) -> None:
+        """Opened on the session itself, through no route, and named on no command line: no walk
+        of this api's found it, and it is the open project, held as such."""
+        session = Session(root)
+        session.open(root / "other" / "q.ddd.json")
+        api = Api(session)
+        reply = post(api, "/api/open", {"path": (root / "other" / "q.ddd.json").as_posix()})
+        assert (reply.status, reply.body["project"]["name"], walks) == (200, "Q", [])
+
+    def test_a_project_an_open_s_own_walk_found_is_opened_without_walking_again(
+        self, root: Path, walks: list[Path]
+    ) -> None:
+        """No listing asked for, the first open walks for its path; the walk it made is kept as
+        a listing's is, and another project it found is opened without walking again."""
+        api = Api(Session(root))
+        first = post(api, "/api/open", {"path": (root / "other" / "q.ddd.json").as_posix()})
+        second = post(api, "/api/open", {"path": (root / "p.ddd.json").as_posix()})
+        assert (first.status, second.status, len(walks)) == (200, 200, 1)
+
+    def test_a_project_no_listing_found_is_walked_for(
+        self, api: Api, root: Path, walks: list[Path]
+    ) -> None:
+        get(api, "/api/projects")
+        write_tree(root, {"new/r.ddd.json": project("R")})
+        reply = post(api, "/api/open", {"path": (root / "new" / "r.ddd.json").as_posix()})
+        assert (reply.status, reply.body["project"]["name"], len(walks)) == (200, "R", 2)
+
+    @pytest.mark.parametrize(
+        "change",
+        [
+            lambda q: q.unlink(),
+            lambda q: write_tree(q.parent, {q.name: component("Q")}),
+            lambda q: write_tree(q.parent, {q.name: '{"project": {"name": "Q"'}),
+        ],
+        ids=["deleted", "replaced-by-a-component", "cut-short"],
+    )
+    def test_a_description_deleted_or_replaced_since_the_listing_is_walked_for_and_refused(
+        self, api: Api, root: Path, walks: list[Path], change: Callable[[Path], object]
+    ) -> None:
+        get(api, "/api/projects")
+        listed = root / "other" / "q.ddd.json"
+        change(listed)
+        reply = post(api, "/api/open", {"path": listed.as_posix()})
+        assert (reply.status, reply.body["error"], len(walks)) == (404, "not-found", 2)
+
+    def test_a_listed_description_moved_out_from_under_the_start_directory_is_refused(
+        self, api: Api, root: Path, walks: list[Path], tmp_path_factory: pytest.TempPathFactory
+    ) -> None:
+        """Listed, its directory is then a link to a directory outside the one ``ddd gui`` was
+        started in, holding the same description: the path asked resolves outside, which no walk
+        finds, and is not answered from the listing."""
+        get(api, "/api/projects")
+        elsewhere = tmp_path_factory.mktemp("elsewhere")
+        shutil.move(root / "other", elsewhere / "other")
+        directory_link(root / "other", elsewhere / "other")
+        reply = post(api, "/api/open", {"path": (root / "other" / "q.ddd.json").as_posix()})
+        assert (reply.status, reply.body["error"], len(walks)) == (404, "not-found", 2)
+
+    def test_the_open_project_a_record_named_is_walked_for_and_refused_once_the_record_is_gone(
+        self, root: Path, walks: list[Path], tmp_path_factory: pytest.TempPathFactory
+    ) -> None:
+        """A build record under the start directory names a project outside it, which only the
+        record offers. Listed and opened, its record then taken away, the open project asked
+        again lies where no walk of the start directory finds a description, so it is walked for
+        and refused: the record no longer offers it."""
+        elsewhere = tmp_path_factory.mktemp("far")
+        write_tree(elsewhere, {"far.ddd.json": project("Far")})
+        record = build_record(root, elsewhere / "far.ddd.json")
+        api = Api(Session(root))
+        wanted = {"path": (elsewhere / "far.ddd.json").as_posix()}
+        get(api, "/api/projects")
+        assert post(api, "/api/open", wanted).status == 200
+        record.unlink()
+        reply = post(api, "/api/open", wanted)
+        assert (reply.status, reply.body["error"], len(walks)) == (404, "not-found", 3)
+
+
 class TestState:
     def test_the_state_lists_every_file_and_counts_every_finding(
         self, api: Api, root: Path
@@ -1405,6 +1686,82 @@ class TestState:
         assert files["a.ddd.json"]["findings"] == {"error": 0, "warning": 0, "info": 1}
         assert body["counts"] == {"error": 0, "warning": 0, "info": 1}
         assert {f["check"] for f in every_finding(api)} == {"missing-id"}
+
+    def test_the_state_counts_each_statement_once_as_ddd_check_does(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """examples/inconsistent: three of its five findings name a declaration in a second file,
+        and each is filed on both, so the Findings tab lists eight. ``statements`` counts the
+        five, as ``ddd check`` does (decision 14.3); ``counts`` the eight rows the tab lists."""
+        api = opened_example(tmp_path, "inconsistent", "project.ddd.json")
+        description = tmp_path / "inconsistent" / "project.ddd.json"
+        assert main(["check", str(description), "--format", "json"]) == EXIT_FINDINGS
+        checked = json.loads(capsys.readouterr().out)["summary"]
+        body = get(api, "/api/state").body
+        assert body.get("statements") == checked == {"error": 4, "warning": 1, "info": 0}
+        assert body["counts"] == {"error": 7, "warning": 1, "info": 0}
+        assert sum(body["counts"].values()) == get(api, "/api/findings").body["total"]
+
+    def test_a_producer_three_readers_disagree_with_makes_three_statements_over_six_rows(
+        self, tmp_path: Path
+    ) -> None:
+        """Each reader's disagreement is filed on the reader and again on the producer."""
+        readers = {
+            f"r{n}.ddd.json": (f"R{n}", unit) for n, unit in enumerate(("krpm", "Hz", "%"), start=1)
+        }
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "w.ddd.json", *readers),
+                "w.ddd.json": component(
+                    "W", declare("output", "Speed", unit="rpm", id="aaaaaaaaaaaa")
+                ),
+                **{
+                    file: component(name, declare("input", "Speed", unit=unit))
+                    for file, (name, unit) in readers.items()
+                },
+            },
+        )
+        body = get(api, "/api/state").body
+        assert body["statements"] == {"error": 3, "warning": 0, "info": 0}
+        assert body["counts"] == {"error": 6, "warning": 0, "info": 0}
+
+    def test_a_statement_two_builds_make_is_counted_once_and_once_under_each_severity(
+        self, tmp_path: Path
+    ) -> None:
+        """``every_severity``'s two builds: both make the two ``definition-mismatch`` errors and
+        the ``missing-id`` note, each counted once, and grade ``storage-mismatch`` apart - a note
+        under the first, a warning under the second - two statements of it. The rows list every
+        statement naming a second file on both files, each of the two ``storage-mismatch``."""
+        body = get(every_severity(tmp_path, two_builds=True), "/api/state").body
+        assert body["statements"] == {"error": 2, "warning": 1, "info": 2}
+        assert body["counts"] == {"error": 4, "warning": 2, "info": 3}
+
+    def test_a_finding_its_run_files_twice_is_two_statements_as_ddd_check_prints_it(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``ddd check`` prints every finding its run files, one filed twice twice, and the state
+        counts it so - though the table lists it once, as an editor underlines it once."""
+        api = opened(tmp_path, SAID_TWICE)
+        assert main(["check", str(tmp_path / "p.ddd.json"), "--format", "json"]) == EXIT_OK
+        checked = json.loads(capsys.readouterr().out)["summary"]
+        body = get(api, "/api/state").body
+        assert body["statements"] == checked == {"error": 0, "warning": 2, "info": 0}
+        assert body["counts"] == {"error": 0, "warning": 1, "info": 0}
+
+    def test_a_finding_two_builds_file_twice_each_is_counted_as_one_of_them_prints_it(
+        self, tmp_path: Path
+    ) -> None:
+        """Two builds alike each print the finding twice: the state counts it as often as the
+        build filing it most often does, twice, and never once per build besides."""
+        write_tree(tmp_path, SAID_TWICE)
+        for image in ("a.elf", "b.elf"):
+            build_record(tmp_path, tmp_path / "p.ddd.json", image=image)
+        session = Session(tmp_path)
+        session.open(tmp_path / "p.ddd.json")
+        body = get(Api(session, tmp_path / "p.ddd.json"), "/api/state").body
+        assert body["statements"] == {"error": 0, "warning": 2, "info": 0}
+        assert body["counts"] == {"error": 0, "warning": 1, "info": 0}
 
     def test_a_disagreement_carries_its_pointer_and_its_note(self, api: Api, root: Path) -> None:
         assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
@@ -1424,6 +1781,10 @@ class TestState:
         )
         assert _finding(filed, None, {})["notes"] == [{"message": "n", "file": None, "pointer": ""}]
         assert _finding(filed, None, {})["pointer"] == ""
+        assert (_finding(filed, None, {})["line"], _finding(filed, None, {})["column"]) == (
+            None,
+            None,
+        )
         # A file the analysis did not list has no kind to route by, so the finding leads nowhere.
         assert _finding(filed, None, {})["route"] is None
 
@@ -1450,6 +1811,58 @@ class TestState:
         reply = get(Api(Session(root), wait_seconds=0.01), "/api/state", after="0")
         assert (reply.status, reply.body["error"]) == (409, "no-project")
 
+    def test_the_state_says_why_the_last_analysis_failed_until_one_succeeds(
+        self, root: Path
+    ) -> None:
+        """14:M7: the reason was the terminal's alone, and the state read as the revision before
+        it, as though no analysis had been asked for. It stands beside that revision now, until
+        an analysis succeeds."""
+
+        class Failing(Session):
+            analyses = 0
+
+            def _analysed(self, project: Path) -> Revision:
+                self.analyses += 1
+                if self.analyses == 2:
+                    raise RuntimeError("the plugin's hook raised")
+                return super()._analysed(project)
+
+        session = Failing(root)
+        session.open(root / "p.ddd.json")
+        api = Api(session, root / "p.ddd.json", wait_seconds=0.05)
+        assert get(api, "/api/state").body["failed"] is None
+        with pytest.raises(RuntimeError):
+            post(api, "/api/edit", unit_edit(api, root, "Hz"))
+        failed = get(api, "/api/state").body
+        assert (failed["revision"], failed["failed"]) == (1, "the plugin's hook raised")
+        assert session.poll() is True
+        mended = get(api, "/api/state").body
+        assert (mended["revision"], mended["failed"]) == (2, None)
+
+    def test_the_state_lists_the_refused_build_records_as_the_start_page_does(
+        self, root: Path
+    ) -> None:
+        """14:M11: a record this DDD cannot use was told on the start page alone, which a project
+        opened on the command line never draws; the state lists it beside the revision analysed
+        without it, in the start page's own words."""
+        from conftest import build_record
+        from ddd.build_info import BUILD_INFO_FORMAT
+
+        newer = BUILD_INFO_FORMAT + 1
+        record = build_record(root, root / "p.ddd.json", format=newer)
+        checking = build_record(
+            root, root / "p.ddd.json", image="test.elf", severity=["no-such-check=error"]
+        )
+        session = Session(root)
+        session.open(root / "p.ddd.json")
+        api = Api(session, root / "p.ddd.json", wait_seconds=0.05)
+        refused = get(api, "/api/state").body["refused"]
+        assert refused == get(api, "/api/projects").body["refused"]
+        assert [entry["record"] for entry in refused] == sorted(
+            path.resolve().as_posix() for path in (record, checking)
+        )
+        assert refused[0]["reason"].startswith(f"written in format {newer} by a newer DDD")
+
     def test_every_finding_says_where_it_leads(self, api: Api) -> None:
         # The root fixture's two components declare Speed, and `a.ddd.json` states no id: every
         # finding this project reports is about that declaration, and each says so.
@@ -1463,6 +1876,19 @@ class TestState:
         findings = every_finding(opened(tmp_path, HALF_SAVED))
         half = next(finding for finding in findings if finding["file"].endswith("b.ddd.json"))
         assert half["route"] is None
+
+    def test_a_finding_carries_the_line_and_column_the_loader_found(self, tmp_path: Path) -> None:
+        findings = every_finding(opened(tmp_path, HALF_SAVED))
+        half = next(finding for finding in findings if finding["check"] == "json-syntax")
+        # The place `ddd check` prints for it, `b.ddd.json:L:C`, as numbers.
+        text = (tmp_path / "b.ddd.json").read_text(encoding="utf-8")
+        assert (half["line"], half["column"]) == (
+            text.count("\n") + 1,
+            len(text.split("\n")[-1]) + 1,
+        )
+        # A finding the loader gave no line to says so, with both keys present.
+        loaded = next(finding for finding in every_finding(opened(tmp_path, TEXT_READER)))
+        assert (loaded["line"], loaded["column"]) == (None, None)
 
     def test_an_unknown_unit_leads_to_its_unit(self, tmp_path: Path) -> None:
         api = opened_example(tmp_path, "vocabulary", "project.ddd.json")
@@ -1540,6 +1966,179 @@ def every_severity(tmp_path: Path, *, two_builds: bool = False) -> Api:
     session = Session(root)
     session.open(root / "demo.ddd.json")
     return Api(session, root / "demo.ddd.json", wait_seconds=0.05)
+
+
+PANEL_ROUTES: Final = {
+    "variable": "/api/variable",
+    "values": "/api/values",
+    "unit": "/api/unit",
+    "type": "/api/type",
+    "constant": "/api/constant",
+    "section": "/api/section",
+    "raster": "/api/raster",
+}
+"""The route of the api each kind of a finding's route opens its panel from, by ``?name=``: what
+the panel lists is that answer's ``findings``."""
+
+REPEATED: Final = {
+    "constants": ({"name": "CELLS", "value": 4}, {"name": "CELLS", "value": 5}),
+    "sections": (
+        {"section": ".calib", "access": "read-only", "alignment": 4},
+        {"section": ".calib", "access": "read-write", "alignment": 8},
+    ),
+    "rasters": ({"raster": "10ms", "event": 1}, {"raster": "10ms", "event": 2}),
+}
+"""A name each vocabulary declares twice: the loader refuses the second entry as repeating the
+first."""
+
+
+class TestAFindingLeadsToAPanelThatListsIt:
+    """14:M8: the panel a finding leads to lists it - the copy pressed, at its own file and
+    place, not another copy of it, or nothing."""
+
+    @staticmethod
+    def unlisted(api: Api) -> list[tuple[str, str, str]]:
+        """Each finding of the revision whose route opens a panel that does not list it, by its
+        file's name, its place and its check - failing where no finding opens a panel at all,
+        which no panel could fail."""
+        unlisted: list[tuple[str, str, str]] = []
+        asked = 0
+        for finding in every_finding(api):
+            route = finding["route"]
+            if route is None or route["kind"] not in PANEL_ROUTES:
+                continue
+            asked += 1
+            panel = get(api, PANEL_ROUTES[route["kind"]], name=route["name"])
+            assert panel.status == 200, (route, panel.body)
+            listed = {(f["file"], f["pointer"], f["check"]) for f in panel.body["findings"]}
+            if (finding["file"], finding["pointer"], finding["check"]) not in listed:
+                unlisted.append((Path(finding["file"]).name, finding["pointer"], finding["check"]))
+        assert asked, "no finding of the revision opens a panel"
+        return unlisted
+
+    def test_a_reader_s_init_leads_to_its_variable_s_panel(self, tmp_path: Path) -> None:
+        """The values grid is the producer's, read from another file, and lists nothing filed at
+        a reader's ``init``: the reader's ``consumer-storage`` there leads to the variable's
+        panel, which lists it."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "w.ddd.json", "r.ddd.json"),
+                "w.ddd.json": component("W", declare("output", "Gain", init=3)),
+                "r.ddd.json": component("R", declare("input", "Gain", init=4)),
+            },
+        )
+        assert self.unlisted(api) == []
+        stated = [found for found in every_finding(api) if found["check"] == "consumer-storage"]
+        assert [(Path(found["file"]).name, found["route"]) for found in stated] == [
+            ("r.ddd.json", {"kind": "variable", "name": "Gain"})
+        ]
+
+    @pytest.mark.parametrize("vocabulary", sorted(REPEATED))
+    @pytest.mark.parametrize("apart", [False, True])
+    def test_an_entry_repeating_a_name_leads_to_a_panel_listing_both_copies(
+        self, tmp_path: Path, vocabulary: str, apart: bool
+    ) -> None:
+        """The repetition is filed at the later entry and at the first's own record, where its
+        note points: the later copy led to the first's panel, which listed the other alone, and
+        the row counted one of the two - in one file, or ``apart``, the first in one file and the
+        later in another."""
+        first, later = REPEATED[vocabulary]
+        tree: dict[str, object] = {
+            "p.ddd.json": project("P", "v.ddd.json"),
+            "v.ddd.json": {vocabulary: [first, later]},
+        }
+        if apart:
+            tree = {
+                "p.ddd.json": project("P", "v.ddd.json", "w.ddd.json"),
+                "v.ddd.json": {vocabulary: [first]},
+                "w.ddd.json": {vocabulary: [later]},
+            }
+        api = opened(tmp_path, tree)
+        kind = vocabulary.removesuffix("s")
+        repeated = [found for found in every_finding(api) if found["check"] == f"duplicate-{kind}"]
+        assert len(repeated) == 2
+        assert self.unlisted(api) == []
+        rows = [row for row in get(api, "/api/shared").body["entries"] if row["kind"] == kind]
+        assert [row["findings"] for row in rows] == [2]
+
+    @pytest.mark.parametrize("inline", [False, True])
+    def test_a_type_declared_twice_leads_to_a_panel_listing_both_copies(
+        self, tmp_path: Path, inline: bool
+    ) -> None:
+        """A type is repeated across files alone - one file declaring a name twice does not load -
+        and as a shared entry is: ``duplicate-type`` is filed at the later entry, naming the first
+        by its note, and again at the first's own record. The later copy led to the type's panel,
+        which listed the other alone, and the Types tab's row counted one of the two - the later
+        entry in a second types file, or ``inline``, in a component's own types."""
+        later: dict[str, object] = {"types": [scalar_type("Speed_t", "uint8")]}
+        if inline:
+            later = component("C", types=[scalar_type("Speed_t", "uint8")])
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "t.ddd.json", "u.ddd.json"),
+                "t.ddd.json": types(scalar_type("Speed_t", "uint16")),
+                "u.ddd.json": later,
+            },
+        )
+        repeated = [found for found in every_finding(api) if found["check"] == "duplicate-type"]
+        files = sorted(Path(found["file"]).name for found in repeated)
+        assert files == ["t.ddd.json", "u.ddd.json"]
+        assert self.unlisted(api) == []
+        rows = [row for row in get(api, "/api/types").body["types"] if row["name"] == "Speed_t"]
+        assert [row["findings"] for row in rows] == [2]
+
+    def test_an_init_of_one_of_two_producers_leads_to_a_grid_listing_it(
+        self, tmp_path: Path
+    ) -> None:
+        """A variable two declarations produce has a values grid of no one file, which can be read
+        and not changed, and which listed no finding at all: a finding at either producer's
+        ``init`` led there all the same. The grid lists what is filed at the ``init`` of each
+        declaration producing it - each at its own file and place: ``Other``'s, filed in one
+        producer's file at the place the other producer's declaration has in its own, is not."""
+
+        def block(name: str, *init: int) -> dict[str, Any]:
+            return declare("output", name, kind="value_block", dimensions=[2], init=list(init))
+
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "w.ddd.json", "v.ddd.json"),
+                "w.ddd.json": component("W", block("Other", 1, 2, 3), block("Gain", 1, 2)),
+                "v.ddd.json": component("V", block("Gain", 1, 2, 3)),
+            },
+        )
+        grid = get(api, "/api/values", name="Gain").body
+        assert grid["file"] is None
+        assert [(Path(f["file"]).name, f["pointer"], f["check"]) for f in grid["findings"]] == [
+            ("v.ddd.json", "component.interface[0].definition.init", "init-invalid")
+        ]
+        assert self.unlisted(api) == []
+        invalid = [found for found in every_finding(api) if found["check"] == "init-invalid"]
+        assert sorted((Path(found["file"]).name, found["route"]["name"]) for found in invalid) == [
+            ("v.ddd.json", "Gain"),
+            ("w.ddd.json", "Other"),
+        ]
+
+    def test_a_grid_of_two_producers_lists_the_findings_at_each_one_s_init(
+        self, tmp_path: Path
+    ) -> None:
+        """Both declarations state a wrong ``init``: the grid lists the finding at each, which
+        the rule of the one producing declaration listed none, there being no one."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "w.ddd.json", "v.ddd.json"),
+                "w.ddd.json": component("W", block_of("Gain", 1, 2, 3)),
+                "v.ddd.json": component("V", block_of("Gain", 1, 2, 3, 4)),
+            },
+        )
+        revision, built = analysed(api)
+        grid = get(api, "/api/values", name="Gain").body
+        names = sorted(Path(f["file"]).name for f in grid["findings"])
+        assert names == ["v.ddd.json", "w.ddd.json"]
+        assert grid["findings"] == as_listed(api, filed_at_inits(revision, built, "Gain"))
 
 
 DEMO_FILES: Final = {
@@ -2288,6 +2887,20 @@ class TestGraph:
         }
         assert all(f["severity"] is None and f["disagreements"] == [] for f in body["flows"])
 
+    def test_a_structured_variable_draws_its_arrow(self, tmp_path: Path) -> None:
+        """examples/structures: ``Inlet`` is a structure owned by Sensing and read by Monitoring,
+        so it is among the dictionary's instances, and the flow carries it."""
+        root = copied_example(tmp_path, "structures")
+        session = Session(root)
+        session.open(root / "project.ddd.json")
+        body = get(Api(session, root / "project.ddd.json"), "/api/graph").body
+        (flow,) = body["flows"]
+        assert (flow["from"], flow["to"]) == (
+            (root / "sensing.ddd.json").resolve().as_posix(),
+            (root / "monitoring.ddd.json").resolve().as_posix(),
+        )
+        assert "Inlet" in flow["objects"]
+
     def test_a_revision_that_resolved_a_dictionary_says_so(self, demo: tuple[Api, Path]) -> None:
         api, _ = demo
         assert get(api, "/api/graph").body["dictionary"] is True
@@ -2332,6 +2945,59 @@ class TestGraph:
             for d in flow["disagreements"]
         )
         assert all(f["severity"] is None for f in body["flows"] if f is not flow)
+
+    @staticmethod
+    def disagreeing_past_a_dropped_declaration(tmp_path: Path, *after: dict[str, Any]) -> Api:
+        """W writing ``Inlet``, a structure, ``Speed`` and ``Temp``, and R reading ``Inlet``, then
+        ``Other`` of a type nobody declares - which the analysis drops, leaving it out of the
+        dictionary's declarations of R - then ``Speed`` in another unit, the disagreement, at
+        ``component.interface[2]``, then ``after``."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "t.ddd.json", "w.ddd.json", "r.ddd.json"),
+                "t.ddd.json": types(struct_type("Inlet_t")),
+                "w.ddd.json": component(
+                    "W",
+                    declare("output", "Inlet", typename="Inlet_t"),
+                    declare("output", "Speed", unit="rpm"),
+                    declare("output", "Temp", unit="degC"),
+                ),
+                "r.ddd.json": component(
+                    "R",
+                    declare("input", "Inlet", typename="Inlet_t"),
+                    declare("input", "Other", typename="Nope_t"),
+                    declare("input", "Speed", unit="krpm"),
+                    *after,
+                ),
+            },
+        )
+        session = Session(tmp_path)
+        session.open(tmp_path / "p.ddd.json")
+        return Api(session, tmp_path / "p.ddd.json")
+
+    def test_a_disagreement_names_the_declaration_it_is_filed_at(self, tmp_path: Path) -> None:
+        """14:M2: the third of R's declarations is ``Speed``, though the third the analysis kept
+        is ``Temp``."""
+        api = self.disagreeing_past_a_dropped_declaration(
+            tmp_path, declare("input", "Temp", unit="degC")
+        )
+        (flow,) = get(api, "/api/graph").body["flows"]
+        assert flow["objects"] == ["Inlet", "Speed", "Temp"]
+        assert [(d["object"], d["check"]) for d in flow["disagreements"]] == [
+            ("Speed", "definition-mismatch")
+        ]
+
+    def test_a_disagreement_stays_on_its_arrow_where_the_name_kept_there_flows_nowhere(
+        self, tmp_path: Path
+    ) -> None:
+        """14:M2's other half: the third declaration R's analysis kept is its own local, which
+        flows nowhere, so read by position the disagreement left the arrow, which read as
+        agreeing."""
+        api = self.disagreeing_past_a_dropped_declaration(tmp_path, declare("local", "Mine"))
+        (flow,) = get(api, "/api/graph").body["flows"]
+        assert flow["severity"] == "error"
+        assert [d["object"] for d in flow["disagreements"]] == ["Speed"]
 
     def test_the_graph_needs_an_open_project(self, root: Path) -> None:
         reply = get(Api(Session(root)), "/api/graph")
@@ -2478,15 +3144,61 @@ class TestEdit:
         reply = post(api, "/api/edit", edit)
         assert (reply.status, reply.body["error"]) == (409, "stale")
 
-    def test_an_edit_that_could_not_be_written_is_a_server_error(
+    def test_a_stale_edit_stays_a_refusal_where_its_analysis_fails_and_cannot_be_printed(
+        self, root: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A stale refusal asks for an analysis, and one that raises is printed where the
+        terminal can be written: where it cannot, the line is lost and the answer is still the
+        refusal's ``409``, never the failing print's server error."""
+
+        class Failing(Session):
+            analyses = 0
+
+            def _analysed(self, project: Path) -> Revision:
+                self.analyses += 1
+                if self.analyses == 2:
+                    raise RuntimeError("boom")
+                return super()._analysed(project)
+
+        class Unwritable(io.StringIO):
+            def write(self, text: str) -> int:
+                raise OSError("standard error is closed")
+
+        session = Failing(root)
+        session.open(root / "p.ddd.json")
+        api = Api(session, root / "p.ddd.json", wait_seconds=0.05)
+        edit = unit_edit(api, root, "Hz")
+        (root / "b.ddd.json").write_text("{}", encoding="utf-8")
+        monkeypatch.setattr(sys, "stderr", Unwritable())
+        reply = post(api, "/api/edit", edit)
+        assert (reply.status, reply.body["error"], session.analyses) == (409, "stale", 2)
+
+    def test_an_edit_the_disk_refused_is_a_refusal_the_page_can_act_on(
         self, api: Api, root: Path, monkeypatch
     ) -> None:
+        """``unwritable`` names what the disk refused, and the files it could not put back where
+        there are any: the reader's to mend, ``409``, never ddd gui failing on the request."""
+
         def unwritable(changes, label):
             raise EditError(UNWRITABLE, "disk full")
 
         monkeypatch.setattr(api.session, "edit", unwritable)
         reply = post(api, "/api/edit", unit_edit(api, root, "Hz"))
-        assert (reply.status, reply.body["error"]) == (500, "unwritable")
+        assert (reply.status, reply.body["error"]) == (409, "unwritable")
+
+    def test_an_edit_refused_with_a_code_no_page_acts_on_is_a_server_error(
+        self, api: Api, root: Path, monkeypatch
+    ) -> None:
+        """A code missing from :data:`~ddd.gui.api.REFUSALS` is the server's own failure, ``500``:
+        a refusal added to the engine and not to that list is said to be a fault, not a refusal
+        the page can act on."""
+
+        def unlisted(changes, label):
+            raise EditError("unlisted", "a refusal no page acts on")
+
+        monkeypatch.setattr(api.session, "edit", unlisted)
+        reply = post(api, "/api/edit", unit_edit(api, root, "Hz"))
+        assert reply == Reply(500, {"error": "unlisted", "message": "a refusal no page acts on"})
 
     def test_an_edit_of_a_read_only_file_is_refused_in_a_sentence_saying_nothing_was_written(
         self, api: Api, root: Path
@@ -2494,14 +3206,15 @@ class TestEdit:
         """A checkout kept read-only is refused on every system, as the rename of a stage over
         it was on Windows alone, after a second and with its stage left beside the file: the
         sentence is the engine's, which the page shows as it stands, and nothing is written, or
-        staged, or left to undo."""
+        staged, or left to undo. A refusal the reader mends by making the file writable, so
+        ``409``, as every other refusal the page can act on is."""
         edit = unit_edit(api, root, "Hz")
         target = root / "b.ddd.json"
         before = target.read_bytes()
         target.chmod(0o444)
         reply = post(api, "/api/edit", edit)
         assert reply == Reply(
-            500,
+            409,
             {"error": "unwritable", "message": f"{target} is read-only, so nothing was written"},
         )
         assert target.read_bytes() == before
@@ -3247,9 +3960,10 @@ class TestAnEditCannotChangeWhichPluginsTheDescriptionsName:
         assert contents(tmp_path) == before
 
     def test_an_includes_entry_holding_a_nul_is_answered_as_it_was(self, tmp_path: Path) -> None:
-        """The walk for plugins reads what the next analysis reads and raises on nothing it would
-        not: an includes entry the system cannot represent as a path - one holding a NUL - is
-        answered as the analysis answers it, a located finding, never a server error."""
+        """The walk for plugins reads a file as the next analysis reads one: an includes entry the
+        system cannot represent as a path - one holding a NUL - is answered as the analysis
+        answers it, a located finding, never a server error. How deep the walk goes is another
+        matter, which ``_subtree_names_plugins`` says: further than the analysis."""
         api = opened(
             tmp_path, {"p.ddd.json": project("P", "a.ddd.json"), "a.ddd.json": component("A")}
         )
@@ -3406,6 +4120,46 @@ class TestACreatedFileIsADescription:
         )
         assert contents(root) == before
 
+    def test_a_created_file_is_judged_by_its_name_before_the_plugins_it_names(
+        self, api: Api, root: Path
+    ) -> None:
+        """What a created file is comes before what it names: a project naming a plugin, written
+        under a name no description takes, is refused for its name."""
+        before = contents(root)
+        doc = json.dumps({"project": {"name": "F", "plugins": ["x.py"]}})
+        reply = post(api, "/api/edit", creating_doc(root, "fresh.json", doc, at=2))
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert contents(root) == before
+
+    @pytest.mark.parametrize(
+        ("first", "answered"), [("described", "plugins"), ("created", "invalid")]
+    )
+    def test_each_change_is_judged_in_the_order_the_edit_lists_it(
+        self, api: Api, root: Path, first: str, answered: str
+    ) -> None:
+        """A change of an edit is judged whole before the next: the description's change naming a
+        plugin, listed first, is refused for that before the file the edit creates is judged no
+        description, and listed after it, after it."""
+        described = root / "p.ddd.json"
+        created = {
+            "file": (root / "notes.ddd.json").as_posix(),
+            "fingerprint": None,
+            "operations": [{"op": "set", "pointer": "", "raw": json.dumps({"foo": 1})}],
+        }
+        changed = {
+            "file": described.as_posix(),
+            "fingerprint": fingerprint(described.read_bytes()),
+            "operations": [
+                {"op": "insert", "pointer": "project.includes[2]", "raw": '"notes.ddd.json"'},
+                {"op": "set", "pointer": "project.plugins", "raw": json.dumps(["x.py"])},
+            ],
+        }
+        changes = [changed, created] if first == "described" else [created, changed]
+        before = contents(root)
+        reply = post(api, "/api/edit", {"changes": changes, "label": "both at once"})
+        assert (reply.status, reply.body["error"]) == (409, answered)
+        assert contents(root) == before
+
 
 class TestAFilesPlanAsksThePluginsRefusal:
     """``GET /api/files-plan`` asks the edit's own plugins refusal, so an add or a creation the
@@ -3508,7 +4262,7 @@ class TestUndoing:
         assert (reply.status, reply.body["error"]) == (409, "stale")
         assert reply.body["message"] == "b.ddd.json changed on disk since it was written"
 
-    def test_a_preview_that_could_not_be_built_is_a_server_error(
+    def test_a_preview_the_disk_refused_is_a_refusal_the_page_can_act_on(
         self, api: Api, root: Path, monkeypatch
     ) -> None:
         assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
@@ -3518,7 +4272,7 @@ class TestUndoing:
 
         monkeypatch.setattr("ddd.gui.api.unchanged", unwritable)
         reply = get(api, "/api/undo")
-        assert (reply.status, reply.body["error"]) == (500, "unwritable")
+        assert (reply.status, reply.body["error"]) == (409, "unwritable")
 
     def test_an_undo_puts_the_files_back_and_answers_its_own_number(
         self, api: Api, root: Path
@@ -3538,7 +4292,7 @@ class TestUndoing:
         assert (reply.status, reply.body["error"]) == (409, "stale")
         assert get(api, "/api/state").body["undoable"] == {"at": 1, "label": "the unit of Speed"}
 
-    def test_an_undo_that_could_not_be_written_is_a_server_error(
+    def test_an_undo_the_disk_refused_is_a_refusal_the_page_can_act_on(
         self, api: Api, monkeypatch
     ) -> None:
         def unwritable(at):
@@ -3546,7 +4300,27 @@ class TestUndoing:
 
         monkeypatch.setattr(api.session, "undo", unwritable)
         reply = post(api, "/api/undo", {"at": 1})
-        assert (reply.status, reply.body["error"]) == (500, "unwritable")
+        assert (reply.status, reply.body["error"]) == (409, "unwritable")
+
+    def test_an_undo_of_a_read_only_file_is_refused_in_a_sentence_saying_nothing_was_put_back(
+        self, api: Api, root: Path
+    ) -> None:
+        """The undo's half of the edit's own refusal of a read-only file: asked before any file is
+        staged, ``409``, and the edit stays on top to be put back once the file is writable."""
+        assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
+        target = root / "b.ddd.json"
+        written = target.read_bytes()
+        target.chmod(0o444)
+        try:
+            reply = post(api, "/api/undo", {"at": 1})
+        finally:
+            target.chmod(0o644)
+        assert reply == Reply(
+            409,
+            {"error": "unwritable", "message": f"{target} is read-only, so nothing was put back"},
+        )
+        assert target.read_bytes() == written
+        assert get(api, "/api/state").body["undoable"] == {"at": 1, "label": "the unit of Speed"}
 
     def test_an_undo_takes_a_number(self, api: Api) -> None:
         reply = post(api, "/api/undo", {})
@@ -3701,6 +4475,9 @@ class TestBeforeTheFirstAnalysis:
                 "project": posix(root, "p.ddd.json"),
                 "files": [],
                 "counts": {"error": 0, "warning": 0, "info": 0},
+                "statements": {"error": 0, "warning": 0, "info": 0},
+                "failed": None,
+                "refused": [],
                 "undoable": None,
                 "analysing": True,
                 "edits": 0,
@@ -4186,6 +4963,48 @@ class TestVariable:
         assert reply.body["message"] == (
             "'Torque' is not declared in any file that loaded, and b.ddd.json did not load"
         )
+
+    def test_a_dangling_include_is_the_file_that_did_not_load_not_the_description(
+        self, tmp_path: Path
+    ) -> None:
+        """``gone.ddd.json`` is named by an include and is not there: every refusal naming the
+        files that did not load names it, and not the description, which parsed and matched."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "gone.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        assert get(api, "/api/variable", name="Torque") == Reply(
+            409,
+            {
+                "error": "unreadable",
+                "message": "'Torque' is not declared in any file that loaded, "
+                "and gone.ddd.json did not load",
+            },
+        )
+        assert get(api, "/api/unit-plan", action="adopt") == Reply(
+            409,
+            {
+                "error": "unreadable",
+                "message": "gone.ddd.json did not load, "
+                "so adopting could not list every unit in use",
+            },
+        )
+        assert get(api, "/api/values", name="Speed") == Reply(
+            409,
+            {
+                "error": "unreadable",
+                "message": "gone.ddd.json did not load, so no object's values can be read",
+            },
+        )
+        state = get(api, "/api/state").body
+        assert {file["path"].rsplit("/", 1)[1]: file["loaded"] for file in state["files"]} == {
+            "p.ddd.json": True,
+            "a.ddd.json": True,
+            "gone.ddd.json": False,
+        }
 
     def test_a_name_only_a_file_that_changed_since_declares_is_not_said_to_be_gone(
         self, tmp_path: Path
@@ -4710,6 +5529,74 @@ class TestSettle:
         assert json.loads(raw) == {"min": 0, "max": 100}
         assert get(api, "/api/settle", name="Speed", key="limits", raw=raw).body["changes"] == []
 
+    @pytest.mark.parametrize(
+        "reader",
+        [{}, {"typename": "Speed_t"}],
+        ids=["a-reader-spelling-its-storage", "a-reader-whose-type-states-none"],
+    )
+    def test_limits_nobody_states_are_planned_on_the_producer_and_applied(
+        self, tmp_path: Path, reader: dict[str, str]
+    ) -> None:
+        """3:I2. A Min and a Max typed on a variable no declaration states limits of read "Nothing
+        to change", and no declaration made in the panel could ever be given any: the producer
+        states them now, the reader leaving them to it, and the project checks clean. A reader
+        naming a type that states none leaves them too, where it was refused for its type fixing
+        them, and the panel's settlement with it."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "t.ddd.json", "a.ddd.json", "b.ddd.json"),
+                "t.ddd.json": types(scalar_type("Speed_t", "uint8")),
+                "a.ddd.json": component("A", declare("output", "Speed")),
+                "b.ddd.json": component("B", declare("input", "Speed", **reader)),
+            },
+        )
+        before = contents(tmp_path)
+        sent = '{ "min": 0, "max": 100 }'
+        reply = get(api, "/api/settle", name="Speed", key="limits", raw=sent)
+        assert reply.status == 200
+        assert [change["file"] for change in reply.body["changes"]] == [
+            posix(tmp_path, "a.ddd.json")
+        ]
+        assert contents(tmp_path) == before, "a preview writes nothing"
+        assert applied(api, reply.body, "the limits of Speed").status == 200
+        stated = {
+            Path(declaration["path"]).name: declaration["stated"].get("limits")
+            for declaration in get(api, "/api/variable", name="Speed").body["declarations"]
+        }
+        assert stated == {"a.ddd.json": sent, "b.ddd.json": None}
+        bag = DiagnosticBag()
+        workspace = load_workspace(tmp_path / "p.ddd.json", bag)
+        assert workspace is not None
+        analyze(workspace, bag)
+        assert "definition-mismatch" not in [diagnostic.check for diagnostic in bag]
+
+    def test_limits_nobody_states_are_refused_where_nobody_produces_the_variable(
+        self, tmp_path: Path
+    ) -> None:
+        """Every declaration reads it, and a reader leaves its limits to the producer: no
+        declaration is the one to state them, which the refusal says, where it said there was
+        nothing to change."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("input", "Speed")),
+                "b.ddd.json": component("B", declare("input", "Speed")),
+            },
+        )
+        before = contents(tmp_path)
+        reply = get(api, "/api/settle", name="Speed", key="limits", raw='{ "min": 0, "max": 100 }')
+        assert reply == Reply(
+            409,
+            {
+                "error": "invalid",
+                "message": "no declaration of 'Speed' produces it, and a declaration reading it "
+                "leaves its limits to the one that does",
+            },
+        )
+        assert contents(tmp_path) == before
+
 
 class TestFix:
     def test_a_missing_id_is_previewed_and_applied(self, tmp_path: Path) -> None:
@@ -5077,6 +5964,35 @@ class TestCompare:
         # Each really is a file of the open project - the coincidence a path check alone
         # cannot tell apart from a baseline kept somewhere else entirely.
         assert {Path(f["file"]).name for f in forwarded} == {"a.ddd.json", "b.ddd.json"}
+
+    def test_a_comparison_counts_each_statement_once_as_ddd_compare_does(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """14:M1 on the Compare tab (decision 14.3): a baseline of two components writing one
+        variable forwards its ``multiple-producers``, which is filed on each producer. The reply
+        lists both copies, and its ``statements`` count the one ``ddd compare`` prints."""
+        speed = declare("output", "Speed", unit="rpm", id="aaaaaaaaaaaa")
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", speed),
+                "b.ddd.json": component("B", declare("input", "Speed", unit="rpm")),
+                "base/p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "base/a.ddd.json": component("A", speed),
+                "base/b.ddd.json": component("B", speed),
+            },
+        )
+        baseline, candidate = tmp_path / "base" / "p.ddd.json", tmp_path / "p.ddd.json"
+        assert main(["compare", str(baseline), str(candidate), "--format", "json"]) == EXIT_FINDINGS
+        printed = json.loads(capsys.readouterr().out)["summary"]
+        body = get(api, "/api/compare", baseline=baseline.as_posix()).body
+        assert body["findings"] == []
+        assert [Path(f["file"]).name for f in body["baseline_findings"]] == [
+            "a.ddd.json",
+            "b.ddd.json",
+        ]
+        assert body.get("statements") == printed == {"error": 1, "warning": 0, "info": 0}
 
     @pytest.mark.parametrize("query", [{}, {"baseline": ""}])
     def test_a_missing_baseline_is_bad(self, api: Api, query: dict[str, str]) -> None:
@@ -5695,13 +6611,13 @@ class TestUnitsTab:
         which while an analysis runs took the request seconds at 100,000 declarations."""
         api = opened(tmp_path, LISTED)
         asked: list[object] = []
-        real = api_module.unit_project
+        real = api_module.vocabulary_project
 
-        def counted(*arguments: Any) -> Any:
+        def counted(*arguments: Any, **keywords: Any) -> Any:
             asked.append(arguments)
-            return real(*arguments)
+            return real(*arguments, **keywords)
 
-        monkeypatch.setattr(api_module, "unit_project", counted)
+        monkeypatch.setattr(api_module, "vocabulary_project", counted)
         assert get(api, "/api/units").body["adoptable"] is None
         assert asked == []
 
@@ -5957,6 +6873,30 @@ class TestUnitPlan:
                 }
             ]
 
+    def test_each_file_a_rename_writes_is_scanned_once_before_its_edit(
+        self, api: Api, root: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A rename reads every file stating the unit before it plans, to see that each still
+        holds the unit where the index found it (``unit_drift``), and the edit is made from the
+        document it read: each file is scanned once as it stands and once as its edit leaves it,
+        which the engine reads back. Scanned again for the edit, a unit renamed in the 1,167
+        files of a generated project of 35,000 declarations was every one of them scanned three
+        times."""
+        scanned: list[str] = []
+        init = Document.__init__
+
+        def scanning(document: Document, text: str) -> None:
+            scanned.append(text)
+            init(document, text)
+
+        monkeypatch.setattr(Document, "__init__", scanning)
+        reply = get(api, "/api/unit-plan", action="rename", unit="rpm", to="Hz")
+        assert reply.status == 200
+        for name in ("a.ddd.json", "b.ddd.json"):
+            text = (root / name).read_text(encoding="utf-8")
+            renamed = text.replace('"unit": "rpm"', '"unit": "Hz"')
+            assert (scanned.count(text), scanned.count(renamed)) == (1, 1)
+
     def test_posting_a_rename_changes_the_unit_everywhere_it_is_stated(
         self, api: Api, root: Path
     ) -> None:
@@ -6024,7 +6964,27 @@ class TestUnitPlan:
     def test_a_project_the_analysis_could_not_read_plans_nothing(self, tmp_path: Path) -> None:
         reply = get(unloaded(tmp_path), "/api/unit-plan", action="adopt")
         assert (reply.status, reply.body["error"]) == (409, "unreadable")
-        assert reply.body["message"].startswith("p.ddd.json did not load")
+        assert reply.body["message"] == (
+            "p.ddd.json did not load, so no unit of the project can be changed"
+        )
+
+    def test_a_project_not_read_though_every_file_read_loaded_names_its_description(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """With no index and no file that did not load to name, the refusal names the project's
+        description, which the analysis read no further than, rather than naming nothing."""
+        api = unloaded(tmp_path)
+        revision = api.session.revision
+        assert revision is not None
+        loaded = tuple(dataclasses.replace(file, loaded=True) for file in revision.files)
+        monkeypatch.setattr(api.session, "_revision", dataclasses.replace(revision, files=loaded))
+        assert get(api, "/api/unit-plan", action="adopt") == Reply(
+            409,
+            {
+                "error": "unreadable",
+                "message": "p.ddd.json did not load, so no unit of the project can be changed",
+            },
+        )
 
     def test_a_preview_the_engine_refuses_is_a_refusal_the_page_can_act_on(
         self, api: Api, monkeypatch: pytest.MonkeyPatch
@@ -6083,6 +7043,58 @@ class TestTheTypesTab:
         assert body["members"][3]["dimensions"] == ["8"]
         assert body["members"][0]["typename"] == "Sample_t"
 
+    @pytest.mark.parametrize(
+        ("key", "saved", "read"),
+        [
+            ("name", None, ""),
+            ("member", "other", "value"),
+            ("bits", "a", None),
+            ("typename", 5, None),
+            ("datatype", 5, None),
+            ("unit", 5, None),
+            ("dimensions", 5, []),
+            ("dimensions", [2, "N"], ["2", "N"]),
+        ],
+    )
+    def test_a_member_saved_with_a_key_the_contract_does_not_hold_is_read_as_saved(
+        self, structures, key: str, saved: object, read: object
+    ) -> None:
+        """A save that still parses is answered while the open revision is the one before it:
+        every key of the member is read by what the reply wants, and the rest is left to the
+        finding the next analysis files."""
+        api, root = structures
+
+        def drift(document: dict[str, Any]) -> None:
+            member = next(t for t in document["types"] if t["name"] == "Sample_t")["members"][0]
+            member[key] = saved
+
+        changed(root, "types.ddd.json", drift)
+        reply = get(api, "/api/type", name="Sample_t")
+        assert reply.status == 200
+        assert reply.body["members"][0][key] == read
+
+    @pytest.mark.parametrize("key", ["name", "member"])
+    def test_a_member_saved_without_a_key_is_read_without_it(self, structures, key: str) -> None:
+        api, root = structures
+
+        def drift(document: dict[str, Any]) -> None:
+            next(t for t in document["types"] if t["name"] == "Sample_t")["members"][0].pop(key)
+
+        changed(root, "types.ddd.json", drift)
+        reply = get(api, "/api/type", name="Sample_t")
+        assert reply.status == 200
+        assert reply.body["members"][0][key] == {"name": "", "member": "value"}[key]
+
+    def test_an_external_saved_with_a_header_that_is_no_text_answers_none(self, structures) -> None:
+        api, root = structures
+
+        def drift(document: dict[str, Any]) -> None:
+            next(t for t in document["types"] if t["name"] == "DriverStatus_t")["header"] = 5
+
+        changed(root, "types.ddd.json", drift)
+        reply = get(api, "/api/type", name="DriverStatus_t")
+        assert (reply.status, reply.body["header"]) == (200, None)
+
     def test_an_external_answers_its_header(self, structures) -> None:
         api, _ = structures
         body = get(api, "/api/type", name="DriverStatus_t").body
@@ -6120,6 +7132,52 @@ class TestTheTypesTab:
         assert [Path(change["file"]).name for change in preview["changes"]] == ["types.ddd.json"]
         assert applied(api, preview, "the unit of Temperature_t").status == 200
         assert '"unit": "K"' in (root / "types.ddd.json").read_text(encoding="utf-8")
+
+    @pytest.mark.parametrize(
+        ("key", "raw", "says"),
+        [
+            ("datatype", '"uint7"', "Input should be 'boolean', 'uint8', 'sint8', 'uint16'"),
+            ("limits", '{"min": 10, "max": 1}', "min (10) is greater than max (1)"),
+            ("conversion", '{"kind": "linear", "factor": 0}', "factor must not be zero"),
+        ],
+        ids=["a-datatype-that-is-none", "an-empty-range", "a-conversion-of-factor-0"],
+    )
+    def test_a_value_the_type_would_not_load_with_is_refused_before_anything_is_written(
+        self, structures, key: str, raw: str, says: str
+    ) -> None:
+        """3:I1. The plan was previewed and its Apply wrote a types file the loader refuses, which
+        took every type of the file with it: refused instead, in the models' words, as the Shared
+        files tab refuses a value its vocabulary's model would not take."""
+        api, root = structures
+        before = contents(root)
+        reply = get(api, "/api/type-plan", action="set", name="Temperature_t", key=key, raw=raw)
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert reply.body["message"].startswith(
+            f"the type 'Temperature_t' in types.ddd.json would not load with that {key}: {says}"
+        )
+        assert contents(root) == before
+
+    @pytest.mark.parametrize("raw", ['"rpm"', '"Nm"'], ids=["its-own-unit", "another-unit"])
+    def test_a_type_the_analysis_refuses_already_is_planned_a_change_leaving_that_as_it_was(
+        self, tmp_path: Path, raw: str
+    ) -> None:
+        """A double scaled by two runs past the largest float, which the analysis refuses at the
+        type's conversion while its file loads. The tab asks a plan of a selected row's own value
+        at once, and every row of the type was answered with a refusal blaming its own key: the
+        refusal is the entry's, and a change leaving it as it was is planned."""
+        doubled = {"kind": "linear", "factor": 2}
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "t.ddd.json"),
+                "t.ddd.json": types(
+                    scalar_type("Wide_t", "float64", unit="rpm", conversion=doubled)
+                ),
+            },
+        )
+        reply = get(api, "/api/type-plan", action="set", name="Wide_t", key="unit", raw=raw)
+        assert reply.status == 200
+        assert "error" not in reply.body
 
     def test_renaming_rewrites_the_type_and_every_name_reaching_it(self, structures) -> None:
         api, root = structures
@@ -6227,7 +7285,9 @@ class TestTheTypesTab:
             unloaded(tmp_path), "/api/type-plan", action="rename", name="Temperature_t", to="X_t"
         )
         assert (reply.status, reply.body["error"]) == (409, "unreadable")
-        assert reply.body["message"].startswith("p.ddd.json did not load")
+        assert reply.body["message"] == (
+            "p.ddd.json did not load, so no type of the project can be changed"
+        )
 
     def test_a_type_the_project_neither_declares_cannot_be_changed(self, structures) -> None:
         api, _ = structures
@@ -6306,6 +7366,90 @@ class TestShared:
 
     def test_shared_needs_an_open_project(self, root: Path) -> None:
         assert get(Api(Session(root)), "/api/shared").status == 409
+
+
+def reading(monkeypatch: pytest.MonkeyPatch) -> list[Path]:
+    """Every file read from now on through ``Path.read_bytes`` or ``Path.read_text``, in order."""
+    read: list[Path] = []
+    as_bytes, as_text = Path.read_bytes, Path.read_text
+
+    def reading_bytes(path: Path) -> bytes:
+        read.append(path)
+        return as_bytes(path)
+
+    def reading_text(path: Path, *arguments: Any, **keywords: Any) -> str:
+        read.append(path)
+        return as_text(path, *arguments, **keywords)
+
+    monkeypatch.setattr(Path, "read_bytes", reading_bytes)
+    monkeypatch.setattr(Path, "read_text", reading_text)
+    return read
+
+
+class TestASharedPlanReadsTheProjectOnlyToAdd:
+    """2:I9. Of the four verbs a vocabulary of the Shared files tab plans, only ``add`` needs to
+    know where the vocabulary's own files are, which reads every file the project description
+    includes - and a panel asks for a plan at each keystroke. The other three read only what they
+    plan: over a generated project of 100,000 declarations given one constants file, setting its
+    one constant's value read the description and the 1,683 files it includes first, in 1.30 to
+    1.38 s, and takes under 5 ms without them (Linux development PC)."""
+
+    @pytest.mark.parametrize(
+        ("route", "query", "status", "files"),
+        [
+            (
+                "/api/constant-plan",
+                {"action": "set", "name": "TREND_SAMPLES", "key": "value", "raw": "32"},
+                200,
+                ["constants.ddd.json"],
+            ),
+            (
+                "/api/constant-plan",
+                {"action": "rename", "name": "TREND_SAMPLES", "to": "SAMPLE_SLOTS"},
+                200,
+                ["constants.ddd.json", "pump.ddd.json"],
+            ),
+            ("/api/constant-plan", {"action": "remove", "name": "TREND_SAMPLES"}, 409, []),
+            (
+                "/api/section-plan",
+                {"action": "set", "name": ".calib", "key": "description", "raw": '"flash"'},
+                200,
+                ["sections.ddd.json"],
+            ),
+            (
+                "/api/raster-plan",
+                {"action": "set", "name": "10ms", "key": "description", "raw": '"control"'},
+                200,
+                ["rasters.ddd.json"],
+            ),
+        ],
+        ids=["a-constant-set", "renamed", "removed", "a-section-set", "a-raster-set"],
+    )
+    def test_a_plan_but_add_reads_no_file_but_those_it_plans(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        route: str,
+        query: dict[str, str],
+        status: int,
+        files: list[str],
+    ) -> None:
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        read = reading(monkeypatch)
+        reply = get(api, route, **query)
+        assert reply.status == status, reply.body
+        assert sorted({path.name for path in read}) == files
+
+    def test_add_still_finds_where_the_vocabulary_is_kept(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        api, root = copied(tmp_path, "vocabulary", "project.ddd.json")
+        read = reading(monkeypatch)
+        preview = get(api, "/api/constant-plan", action="add", name="SPARE_CELLS", raw="4").body
+        assert [change["file"] for change in preview["changes"]] == [
+            posix(root, "constants.ddd.json")
+        ]
+        assert "project.ddd.json" in {path.name for path in read}
 
 
 class TestConstant:
@@ -6508,7 +7652,7 @@ class TestConstant:
         before = contents(root)
         preview = get(api, "/api/constant-plan", action="add", name="NEW_CONST", raw="5").body
         assert contents(root) == before
-        # Sorted by path, as `SharedPlan` promises: "constants.ddd.json" sorts before
+        # Sorted by path, as `Plan` promises: "constants.ddd.json" sorts before
         # "p.ddd.json" beside it, unlike the units precedent this test is modelled on, where the
         # project file happens to sort first - so the two are told apart here by which one has a
         # fingerprint rather than by position.
@@ -6640,7 +7784,9 @@ class TestConstant:
     ) -> None:
         reply = get(unloaded(tmp_path), "/api/constant-plan", action="remove", name="X")
         assert (reply.status, reply.body["error"]) == (409, "unreadable")
-        assert reply.body["message"].startswith("p.ddd.json did not load")
+        assert reply.body["message"] == (
+            "p.ddd.json did not load, so no constant of the project can be changed"
+        )
 
     def test_a_constant_preview_the_engine_refuses_is_a_refusal_the_page_can_act_on(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -6740,7 +7886,11 @@ class TestSection:
         until this part, and `_finding` builds that model for every finding of every request - so
         this panel raised a `pydantic.ValidationError` before a test could reach the assertion,
         exactly as part 13's `constant` nearly shipped. Every other test of this class asks about a
-        section carrying no section-routed finding, which is why only this one catches it."""
+        section carrying no section-routed finding, which is why only this one catches it.
+
+        Both copies are listed, each leading back here (14:M8): the repeat's, filed at the later
+        entry and naming this one by its note, and the one filed again at this entry's own
+        record, where the note points."""
         api = opened(
             tmp_path,
             {
@@ -6754,8 +7904,9 @@ class TestSection:
             },
         )
         body = get(api, "/api/section", name=".calib").body
-        assert [(f["check"], f["route"]) for f in body["findings"]] == [
-            ("duplicate-section", {"kind": "section", "name": ".calib"})
+        assert [(f["check"], f["pointer"], f["route"]) for f in body["findings"]] == [
+            ("duplicate-section", "sections[1]", {"kind": "section", "name": ".calib"}),
+            ("duplicate-section", "sections[0]", {"kind": "section", "name": ".calib"}),
         ]
 
     def test_a_consumers_stray_section_key_is_neither_counted_nor_listed_on_the_section(
@@ -7324,13 +8475,15 @@ class TestRaster:
         test of this class asks about a raster carrying no raster-routed finding, which is why only
         this one catches it.
 
-        The copy the panel lists is the one filed at the *first* entry - `duplicate-raster` is
-        filed at the repeat and again at the entry it repeats - since the index registers the first
-        and `located_on` asks about that one's pointer."""
+        The panel is the *first* entry's, the one the index registers, and lists both copies
+        (14:M8) - `duplicate-raster` is filed at the repeat and again at the entry it repeats: the
+        repeat's, at an entry no place the index records is, by its note naming the first, and the
+        other at the first's own pointer."""
         body = get(opened(tmp_path, DECLARED_TWICE), "/api/raster", name="10ms").body
         assert body["pointer"] == "rasters[0]"
-        assert [(f["check"], f["route"]) for f in body["findings"]] == [
-            ("duplicate-raster", {"kind": "raster", "name": "10ms"})
+        assert [(f["check"], f["pointer"], f["route"]) for f in body["findings"]] == [
+            ("duplicate-raster", "rasters[1]", {"kind": "raster", "name": "10ms"}),
+            ("duplicate-raster", "rasters[0]", {"kind": "raster", "name": "10ms"}),
         ]
 
     def test_an_unknown_raster_leads_to_the_name_the_definition_names(self, tmp_path: Path) -> None:
@@ -8148,83 +9301,91 @@ class TestAPlanWhosePlaceMovedSinceTheAnalysis:
             },
         )
 
-    @pytest.mark.parametrize(
-        ("route", "query", "file", "consequence"),
-        [
-            (
-                "/api/unit-plan",
-                {"action": "rename", "unit": "rpm", "to": "rev/min"},
-                "a.ddd.json",
-                "renaming 'rpm' cannot be planned",
-            ),
-            (
-                "/api/unit-plan",
-                {"action": "describe", "unit": "rpm", "description": "revolutions"},
-                "units.ddd.json",
-                "the description of 'rpm' cannot be set",
-            ),
-            (
-                "/api/unit-plan",
-                {"action": "remove", "unit": "spare"},
-                "units.ddd.json",
-                "'spare' cannot be taken out of the vocabulary",
-            ),
-            (
-                "/api/type-plan",
-                {"action": "rename", "name": "Speed_t", "to": "Rate_t"},
-                "types.ddd.json",
-                "renaming 'Speed_t' cannot be planned",
-            ),
-            (
-                "/api/type-plan",
-                {"action": "set", "name": "Speed_t", "key": "unit", "raw": '"rev/min"'},
-                "types.ddd.json",
-                "'Speed_t' cannot be changed",
-            ),
-            (
-                "/api/constant-plan",
-                {"action": "set", "name": "SPARE", "key": "value", "raw": "4"},
-                "constants.ddd.json",
-                "'SPARE' cannot be changed",
-            ),
-            (
-                "/api/constant-plan",
-                {"action": "rename", "name": "SPARE", "to": "SPARE_CELLS"},
-                "constants.ddd.json",
-                "renaming 'SPARE' cannot be planned",
-            ),
-            (
-                "/api/constant-plan",
-                {"action": "remove", "name": "SPARE"},
-                "constants.ddd.json",
-                "'SPARE' cannot be removed",
-            ),
-            (
-                "/api/value-plan",
-                {"name": "Table", "at": "[1]", "raw": "5"},
-                "a.ddd.json",
-                "the values of 'Table' cannot be set",
-            ),
-            (
-                "/api/cells-plan",
-                {"name": "Table", "at": "[0],[1]", "raw": "4,5"},
-                "a.ddd.json",
-                "the values of 'Table' cannot be set",
-            ),
-            (
-                "/api/values-plan",
-                {"name": "Table", "raw": "4,5,6"},
-                "a.ddd.json",
-                "the values of 'Table' cannot be set",
-            ),
-            (
-                "/api/declaration-plan",
-                {"action": "read", "file": "b.ddd.json", "name": "Speed", "scope": "input"},
-                "a.ddd.json",
-                "'Speed' cannot be declared here",
-            ),
-        ],
-    )
+    PLANS: Final = [
+        (
+            "/api/unit-plan",
+            {"action": "rename", "unit": "rpm", "to": "rev/min"},
+            "a.ddd.json",
+            "renaming 'rpm' cannot be planned",
+        ),
+        (
+            "/api/unit-plan",
+            {"action": "describe", "unit": "rpm", "description": "revolutions"},
+            "units.ddd.json",
+            "the description of 'rpm' cannot be set",
+        ),
+        (
+            "/api/unit-plan",
+            {"action": "remove", "unit": "spare"},
+            "units.ddd.json",
+            "'spare' cannot be taken out of the vocabulary",
+        ),
+        (
+            "/api/type-plan",
+            {"action": "rename", "name": "Speed_t", "to": "Rate_t"},
+            "types.ddd.json",
+            "renaming 'Speed_t' cannot be planned",
+        ),
+        (
+            "/api/type-plan",
+            {"action": "set", "name": "Speed_t", "key": "unit", "raw": '"rev/min"'},
+            "types.ddd.json",
+            "'Speed_t' cannot be changed",
+        ),
+        (
+            "/api/constant-plan",
+            {"action": "set", "name": "SPARE", "key": "value", "raw": "4"},
+            "constants.ddd.json",
+            "'SPARE' cannot be changed",
+        ),
+        (
+            "/api/constant-plan",
+            {"action": "rename", "name": "SPARE", "to": "SPARE_CELLS"},
+            "constants.ddd.json",
+            "renaming 'SPARE' cannot be planned",
+        ),
+        (
+            "/api/constant-plan",
+            {"action": "remove", "name": "SPARE"},
+            "constants.ddd.json",
+            "'SPARE' cannot be removed",
+        ),
+        (
+            "/api/value-plan",
+            {"name": "Table", "at": "[1]", "raw": "5"},
+            "a.ddd.json",
+            "the values of 'Table' cannot be set",
+        ),
+        (
+            "/api/cells-plan",
+            {"name": "Table", "at": "[0],[1]", "raw": "4,5"},
+            "a.ddd.json",
+            "the values of 'Table' cannot be set",
+        ),
+        (
+            "/api/values-plan",
+            {"name": "Table", "raw": "4,5,6"},
+            "a.ddd.json",
+            "the values of 'Table' cannot be set",
+        ),
+        (
+            "/api/declaration-plan",
+            {"action": "read", "file": "b.ddd.json", "name": "Speed", "scope": "input"},
+            "a.ddd.json",
+            "'Speed' cannot be declared here",
+        ),
+        (
+            "/api/description-plan",
+            {"file": "a.ddd.json", "name": "Speed", "description": "rotational speed"},
+            "a.ddd.json",
+            "the description of 'Speed' cannot be set",
+        ),
+    ]
+    """Each plan pointing into a file by the index - a unit's, a type's, a constant's, an
+    object's values, a variable read into ``b.ddd.json`` and a declaration's description - with
+    the file :attr:`MOVED` moves its place in, and what it then cannot do."""
+
+    @pytest.mark.parametrize(("route", "query", "file", "consequence"), PLANS)
     def test_each_plan_is_refused_as_stale(
         self, tmp_path: Path, route: str, query: dict[str, str], file: str, consequence: str
     ) -> None:
@@ -8239,6 +9400,110 @@ class TestAPlanWhosePlaceMovedSinceTheAnalysis:
         assert planned.status == 200, planned.body
         write_tree(root, {file: self.MOVED[file]})
         assert get(api, route, **asked) == self.refused(file, consequence)
+
+    LISTS: Final = {
+        "units.ddd.json": "units",
+        "types.ddd.json": "types",
+        "constants.ddd.json": "constants",
+        "a.ddd.json": "component.interface",
+    }
+    """Where each file of :attr:`MOVED` keeps the list it has one more entry at the top of."""
+
+    @classmethod
+    def putting_in(cls, root: Path, file: str) -> dict[str, Any]:
+        """An edit of the page's own putting in at the top of ``file`` the entry :attr:`MOVED`
+        holds there, which moves every place below it."""
+        container = cls.LISTS[file]
+        entries: Any = cls.MOVED[file]
+        for key in container.split("."):
+            entries = entries[key]
+        path = root / file
+        return {
+            "changes": [
+                {
+                    "file": path.as_posix(),
+                    "fingerprint": fingerprint(path.read_bytes()),
+                    "operations": [
+                        {
+                            "op": "insert",
+                            "pointer": f"{container}[0]",
+                            "raw": json.dumps(entries[0]),
+                        }
+                    ],
+                }
+            ],
+            "label": f"an entry at the top of {file}",
+        }
+
+    @pytest.mark.parametrize(("route", "query", "file"), [plan[:3] for plan in PLANS])
+    def test_each_plan_an_edit_moved_waits_for_that_edit_s_analysis(
+        self,
+        gated: Callable[[Path], Api],
+        tmp_path: Path,
+        route: str,
+        query: dict[str, str],
+        file: str,
+    ) -> None:
+        """The same entry put in by an edit of the page's own, whose analysis waits: refused
+        ``analysing``, naming the file, as a plan writing a file that edit wrote is, and not
+        ``stale``, which says the file was saved from elsewhere - the plan asked once that
+        analysis lands is made where the place now is. A variable read into ``b.ddd.json`` writes
+        that file alone and reads its producer's declaration in ``a.ddd.json``: what the plan
+        reads is asked, not only what it writes."""
+        root = self.written(tmp_path)
+        asked = {
+            key: posix(root, value) if key == "file" else value for key, value in query.items()
+        }
+        api = gated(root / "p.ddd.json")
+        planned = get(api, route, **asked)
+        assert planned.status == 200, planned.body
+        left_waiting(api, self.putting_in(root, file))
+        assert get(api, route, **asked) == waiting_for(file)
+
+    def test_a_plan_a_save_moved_is_stale_while_an_edit_of_a_file_it_does_not_read_waits(
+        self, gated: Callable[[Path], Api], tmp_path: Path
+    ) -> None:
+        """An edit waiting for its analysis says nothing of a file it did not write: a unit's
+        description whose place a save from elsewhere moved is refused ``stale``, as with no edit
+        waiting, while an edit of ``b.ddd.json``, which the plan never reads, waits."""
+        root = self.written(tmp_path)
+        asked = {"action": "describe", "unit": "rpm", "description": "revolutions"}
+        api = gated(root / "p.ddd.json")
+        assert get(api, "/api/unit-plan", **asked).status == 200
+        left_waiting(api, touching(root / "b.ddd.json", "component.description"))
+        write_tree(root, {"units.ddd.json": self.MOVED["units.ddd.json"]})
+        assert get(api, "/api/unit-plan", **asked) == self.refused(
+            "units.ddd.json", "the description of 'rpm' cannot be set"
+        )
+
+    def test_a_plan_a_save_moved_waits_while_an_edit_of_another_file_it_reads_waits(
+        self, gated: Callable[[Path], Api], tmp_path: Path
+    ) -> None:
+        """The place moved by a save from elsewhere, while an edit of ``p.ddd.json`` - which a
+        unit's plans read, to find the units files - waits for its analysis: refused
+        ``analysing``, naming the description, whichever file the place is in. The plan asked
+        once that analysis lands is judged against what it read."""
+        root = self.written(tmp_path)
+        asked = {"action": "describe", "unit": "rpm", "description": "revolutions"}
+        api = gated(root / "p.ddd.json")
+        assert get(api, "/api/unit-plan", **asked).status == 200
+        left_waiting(api, touching(root / "p.ddd.json", "project.description"))
+        write_tree(root, {"units.ddd.json": self.MOVED["units.ddd.json"]})
+        assert get(api, "/api/unit-plan", **asked) == waiting_for("p.ddd.json")
+
+    def test_a_plan_refused_for_what_it_asks_says_so_while_an_edit_of_a_file_it_read_waits(
+        self, gated: Callable[[Path], Api], tmp_path: Path
+    ) -> None:
+        """Only a place that moved is the waiting edit's to explain: a rename onto the spelling
+        the unit has already is refused in its own words, while an edit of ``units.ddd.json``,
+        which the plan reads, waits for its analysis."""
+        root = self.written(tmp_path)
+        api = gated(root / "p.ddd.json")
+        left_waiting(api, self.putting_in(root, "units.ddd.json"))
+        reply = get(api, "/api/unit-plan", action="rename", unit="rpm", to="rpm")
+        assert reply == Reply(
+            409, {"error": "invalid", "message": "'rpm' is spelled that way already"}
+        )
 
     def test_a_read_whose_producer_was_taken_out_is_refused_as_stale_too(
         self, tmp_path: Path
@@ -8705,10 +9970,10 @@ class TestAPlanWhileAFileDidNotLoad:
         session.open(root / "p.ddd.json")
         api = Api(session, root / "p.ddd.json", wait_seconds=0.05)
 
-        def found(*_: object) -> None:
+        def found(*_: object, **__: object) -> None:
             raise AssertionError("the files of the project were found for a plan refused")
 
-        monkeypatch.setattr(api_module, "project_of", found)
+        monkeypatch.setattr(api_module, "vocabulary_project", found)
         for route, query in (
             ("/api/constant-plan", {"action": "rename", "name": "CELLS", "to": "SLOTS"}),
             ("/api/section-plan", {"action": "remove", "name": ".fast"}),
@@ -8764,6 +10029,52 @@ class TestAPlanWhileAFileDidNotLoad:
                     "read",
                 },
             )
+
+
+class TestTwoFilesOfOneNameThatDidNotLoad:
+    """Two components saved half way, each ``b.ddd.json`` in a folder of its own: every refusal
+    naming the files that did not load tells the two apart by as much of their paths as it takes,
+    as the editor's does (:func:`ddd.lsp.navigation.told_apart`). By their names alone they read
+    ``b.ddd.json, b.ddd.json``, and a reader sent to repair it opened whichever came first."""
+
+    @staticmethod
+    def opened(base: Path) -> Api:
+        return opened(
+            base,
+            {
+                "p.ddd.json": project(
+                    "P", "t.ddd.json", "a.ddd.json", "x/b.ddd.json", "y/b.ddd.json"
+                ),
+                "t.ddd.json": types(scalar_type("Speed_t", unit="rpm")),
+                "a.ddd.json": component("A", declare("output", "Pace", typename="Speed_t")),
+                "x/b.ddd.json": '{"component": {"name": "B1"',
+                "y/b.ddd.json": '{"component": {"name": "B2"',
+            },
+        )
+
+    def test_a_plan_that_has_to_see_every_file_names_each_apart(self, tmp_path: Path) -> None:
+        reply = get(
+            self.opened(tmp_path), "/api/type-plan", action="rename", name="Speed_t", to="Rate_t"
+        )
+        assert reply == Reply(
+            409,
+            {
+                "error": "unreadable",
+                "message": "x/b.ddd.json, y/b.ddd.json did not load, so renaming 'Speed_t' could "
+                "not reach every place that names it",
+            },
+        )
+
+    def test_a_name_no_file_that_loaded_declares_names_each_apart(self, tmp_path: Path) -> None:
+        reply = get(self.opened(tmp_path), "/api/variable", name="Torque")
+        assert reply == Reply(
+            409,
+            {
+                "error": "unreadable",
+                "message": "'Torque' is not declared in any file that loaded, and x/b.ddd.json, "
+                "y/b.ddd.json did not load",
+            },
+        )
 
 
 class TestAPlanOfWhatNoFileThatLoadedDeclares:
@@ -9204,12 +10515,25 @@ class TestAProjectTheBuildCollected:
         self, opened: tuple[Api, Path]
     ) -> None:
         """Add a file: a description of the source tree that no target registers, appended to
-        the includes, an entry the next configure would drop."""
+        the includes, an entry the next configure would drop. Offered instead the line that
+        registers it, as a new file is offered it, in the CMakeLists.txt beside it."""
         api, root = opened
+        spare = posix(root, "src/spare/spare.ddd.json")
+        reply = get(api, "/api/files-plan", action="add", path=spare)
+        assert reply == refused_as_generated(registered_beside(root, spare))
+
+    def test_a_description_of_its_build_tree_added_is_offered_no_line(self, tmp_path: Path) -> None:
+        """One a custom command writes into the build tree goes with that tree, and is no file a
+        CMakeLists.txt beside it registers: the refusal says the build's membership alone."""
+        described = self.collected(tmp_path)
+        write_tree(tmp_path / "b" / "gen", {"gauge.ddd.json": component("Gauge")})
+        session = Session(tmp_path, [tmp_path / "b"])
+        session.open(described)
+        api = Api(session, described)
         reply = get(
-            api, "/api/files-plan", action="add", path=posix(root, "src/spare/spare.ddd.json")
+            api, "/api/files-plan", action="add", path=posix(tmp_path, "b/gen/gauge.ddd.json")
         )
-        assert reply == refused_as_generated(membership(root))
+        assert reply == refused_as_generated(membership(tmp_path))
 
     def test_taking_an_include_out_is_refused_the_same_way(self, opened: tuple[Api, Path]) -> None:
         """A component the build collects is taken out where it is registered: an entry taken
@@ -9379,10 +10703,9 @@ class TestAProjectTheBuildCollected:
         session.open(described)
         api = Api(session, described)
         assert get(api, "/api/session").body["builds"] == []
-        reply = get(
-            api, "/api/files-plan", action="add", path=posix(tmp_path, "src/spare/spare.ddd.json")
-        )
-        assert reply == refused_as_generated(membership(tmp_path))
+        spare = posix(tmp_path, "src/spare/spare.ddd.json")
+        reply = get(api, "/api/files-plan", action="add", path=spare)
+        assert reply == refused_as_generated(registered_beside(tmp_path, spare))
 
 
 class TestAPlanWritingBesideAProjectTheBuildCollected:
@@ -9545,6 +10868,35 @@ class TestWhatAComponentMayAdd:
         # Every one of them is produced by something, so reading is all any of them may be.
         assert names["ValueC"]["scopes"] == ["input"]
 
+    def test_no_producer_s_file_is_read_to_name_its_component(
+        self, demo, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """14:M12. Each producer is named as the analysis loaded its component, which the index
+        holds. Read off each producer's file instead, the panel of the largest component of a
+        generated project of 100,000 declarations, offering 46,666 names, took 1.60 to 1.96 s to
+        answer (Linux development PC)."""
+        api, root = demo
+        read: list[Path] = []
+        as_bytes, as_text = Path.read_bytes, Path.read_text
+
+        def reading_bytes(path: Path) -> bytes:
+            read.append(path)
+            return as_bytes(path)
+
+        def reading_text(path: Path, *arguments: Any, **keywords: Any) -> str:
+            read.append(path)
+            return as_text(path, *arguments, **keywords)
+
+        monkeypatch.setattr(Path, "read_bytes", reading_bytes)
+        monkeypatch.setattr(Path, "read_text", reading_text)
+        body = get(api, "/api/declarable", file=self.controller(root)).body
+        assert {entry["producer"] for entry in body["names"]} == {
+            "SensorHub",
+            "UserInterface",
+            "EventLogger",
+        }
+        assert read == []
+
     def test_a_name_another_component_keeps_local_is_neither_offered_nor_planned(
         self, tmp_path: Path
     ) -> None:
@@ -9563,6 +10915,33 @@ class TestWhatAComponentMayAdd:
         before = contents(tmp_path)
         assert get(
             api, "/api/declaration-plan", action="read", file=reader, name="Loc", scope="input"
+        ) == Reply(
+            409,
+            {
+                "error": "invalid",
+                "message": "'Loc' is local to component 'W', so no other component may declare it",
+            },
+        )
+        assert contents(tmp_path) == before
+
+    def test_a_name_another_component_keeps_local_typed_as_a_new_object_names_it(
+        self, tmp_path: Path
+    ) -> None:
+        """``Loc`` typed into the add panel's name as a new object, which no chooser offers: the
+        refusal names whose local it is, in the words a read of it is refused in, rather than
+        that the project declares it already."""
+        api = opened(
+            tmp_path,
+            {"p.ddd.json": project("P", *LOCAL_BESIDE_OUTPUT), **LOCAL_BESIDE_OUTPUT},
+        )
+        before = contents(tmp_path)
+        assert get(
+            api,
+            "/api/declaration-plan",
+            action="declare",
+            file=posix(tmp_path, "r.ddd.json"),
+            scope="input",
+            definition=json.dumps({"name": "Loc", "kind": "measurement", "volatile": False}),
         ) == Reply(
             409,
             {
@@ -9633,14 +11012,14 @@ class TestWhatAComponentMayAdd:
 
     def test_a_project_that_did_not_load_has_nothing_to_add_to(self, tmp_path) -> None:
         # Measured: `unloaded` leaves one file in the revision, p.ddd.json, kind "project", with
-        # `index is None` - so it passes `_source` and is refused for the missing index before
+        # `index is None` - so it passes `source_path` and is refused for the missing index before
         # the component check ever runs, the same answer `/api/declaration-plan` gives for the
         # same project.
         api = unloaded(tmp_path)
         reply = get(api, "/api/declarable", file=(tmp_path / "p.ddd.json").as_posix())
         assert (reply.status, reply.body["error"]) == (409, "unreadable")
         assert reply.body["message"] == (
-            "the open project did not load, so no interface of it can be changed"
+            "p.ddd.json did not load, so no interface of the project can be changed"
         )
 
 
@@ -9789,7 +11168,7 @@ class TestPlanningAChangeOfAnInterface:
 
     def test_a_project_that_did_not_load_has_nothing_to_plan_against(self, tmp_path) -> None:
         # The answer /api/type-plan already gives: measured, `unloaded`'s revision has
-        # `index is None` and one file, p.ddd.json, which `_source` accepts - so the guard that
+        # `index is None` and one file, p.ddd.json, which `source_path` accepts - so the guard that
         # answers here is the missing index, not the missing file.
         api = unloaded(tmp_path)
         reply = get(
@@ -9800,6 +11179,9 @@ class TestPlanningAChangeOfAnInterface:
             name="ValueA",
         )
         assert (reply.status, reply.body["error"]) == (409, "unreadable")
+        assert reply.body["message"] == (
+            "p.ddd.json did not load, so no interface of the project can be changed"
+        )
 
     def test_a_preview_the_engine_refuses_is_a_refusal_the_page_can_act_on(
         self, demo, monkeypatch: pytest.MonkeyPatch
@@ -10117,6 +11499,9 @@ class TestDescribingADeclarationOverHttp:
             description="x",
         )
         assert (reply.status, reply.body["error"]) == (409, "unreadable")
+        assert reply.body["message"] == (
+            "p.ddd.json did not load, so no interface of the project can be changed"
+        )
 
     def test_a_file_outside_the_project_is_not_found(self, demo, tmp_path: Path) -> None:
         api, _ = demo
@@ -10312,6 +11697,80 @@ class TestTheValuesGrid:
         api, _ = demo
         reply = get(api, "/api/values", name="Nope")
         assert (reply.status, reply.body["error"]) == (404, "not-found")
+
+    def test_a_structured_variable_says_its_values_are_its_members(self, tmp_path: Path) -> None:
+        """``/api/variable`` answers ``Inlet``, so the project does declare it: a structure has no
+        grid of its own, and the sentence says so rather than that nothing declares it."""
+        api, _ = copied(tmp_path, "structures", "project.ddd.json")
+        assert get(api, "/api/variable", name="Inlet").status == 200
+        assert get(api, "/api/values", name="Inlet") == Reply(
+            409,
+            {
+                "error": "invalid",
+                "message": "'Inlet' is a structure of type 'Sensor_t', so its values are its "
+                "members' and it has no grid of its own",
+            },
+        )
+
+    def test_an_object_dropped_for_its_own_finding_names_that_finding(self, tmp_path: Path) -> None:
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "output", "Curve", kind="curve", datatype="uint8", axis="Nope", init=[1, 2]
+                    ),
+                ),
+            },
+        )
+        assert get(api, "/api/variable", name="Curve").status == 200
+        assert get(api, "/api/values", name="Curve") == Reply(
+            409,
+            {
+                "error": "invalid",
+                "message": "'Curve' is left out of the project's objects by a finding: curve "
+                "'Curve' refers to 'Nope' as its axis, but no component declares 'Nope' "
+                "(unknown-reference)",
+            },
+        )
+
+    def test_a_curve_over_a_dropped_axis_names_the_finding_that_dropped_the_axis(
+        self, tmp_path: Path
+    ) -> None:
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "output",
+                        "BadAxis",
+                        kind="axis",
+                        datatype="uint8",
+                        size=2,
+                        typename="Nope_t",
+                    ),
+                    declare(
+                        "output",
+                        "Map",
+                        kind="curve",
+                        datatype="uint8",
+                        axis="BadAxis",
+                        init=[1, 2],
+                    ),
+                ),
+            },
+        )
+        reply = get(api, "/api/values", name="Map")
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert reply.body["message"] == (
+            "'Map' is left out of the project's objects with 'BadAxis', which it refers to: "
+            "'BadAxis' is declared as 'Nope_t', which is neither a base datatype nor a type any "
+            "file of this project declares (unknown-type)"
+        )
 
     def test_a_shape_of_more_than_two_dimensions_is_refused_rather_than_drawn(
         self, tmp_path: Path
@@ -11578,17 +13037,23 @@ class TestTheFilesTab:
             "empty-vocabulary": {"kind": "file", "name": keys[0]},
         }
 
-    def test_a_missing_file_s_finding_leads_nowhere(self, tmp_path: Path) -> None:
-        """`file-not-found` is a load check, so the description carrying it did not load and its
-        findings lead nowhere - the `include-empty` beside it among them. Its row is reached by
-        the tab, not by a link."""
+    def test_a_missing_file_s_finding_leads_nowhere_and_the_description_beside_it_loaded(
+        self, tmp_path: Path
+    ) -> None:
+        """`file-not-found` leads nowhere: its row is reached by the tab, not by a link. The file
+        that did not load is the one it names, so the description carrying it loaded, and the
+        `include-empty` beside it leads to its own row."""
         api = opened(tmp_path, ENTRIES_OF_EVERY_SHAPE)
         routes = {
             finding["check"]: finding["route"]
             for finding in every_finding(api)
             if finding["file"] == posix(tmp_path, "p.ddd.json")
         }
-        assert routes == {"file-not-found": None, "include-empty": None}
+        keys = [entry["key"] for entry in get(api, "/api/files").body["entries"]]
+        assert routes == {
+            "file-not-found": None,
+            "include-empty": {"kind": "file", "name": keys[3]},
+        }
 
     def test_the_files_need_an_open_project(self, root: Path) -> None:
         reply = get(Api(Session(root)), "/api/files")
@@ -13016,6 +14481,25 @@ def analysed(api: Api) -> tuple[Revision, Index]:
     return revision, revision.index
 
 
+def filed_at_inits(revision: Revision, built: Index, name: str) -> list[Filed]:
+    """The findings a grid lists: those at the ``init`` of each declaration producing ``name``,
+    each at its own file and place."""
+    places = {
+        (site.path.resolve().as_posix(), f"{site.pointer}.init")
+        for site in built.producers.get(name, ())
+    }
+    return [
+        filed
+        for filed in revision.findings
+        if filed.diagnostic.location is not None
+        and (filed.file.resolve().as_posix(), filed.diagnostic.location.pointer) in places
+    ]
+
+
+def block_of(name: str, *init: int) -> dict[str, Any]:
+    return declare("output", name, kind="value_block", dimensions=[2], init=list(init))
+
+
 def as_listed(api: Api, found: Iterable[Filed]) -> list[dict[str, Any]]:
     """Findings as a panel lists them, each with where it leads: what the api answered for the
     findings a predicate kept, before it indexed a revision's findings by file."""
@@ -13181,19 +14665,7 @@ class TestEachAnswerIsEveryFindingAskedAlone:
             reply = get(api, "/api/values", name=name)
             if reply.status != 200:
                 continue
-            grid = grid_of(revision.dictionary, built, name)
-            at = f"{grid.pointer}.definition.init"
-            expected = as_listed(
-                api,
-                [
-                    filed
-                    for filed in revision.findings
-                    if grid.pointer is not None
-                    and filed.file.resolve().as_posix() == grid.file
-                    and filed.diagnostic.location is not None
-                    and filed.diagnostic.location.pointer == at
-                ],
-            )
+            expected = as_listed(api, filed_at_inits(revision, built, name))
             assert reply.body["findings"] == expected, name
             answered += len(expected)
         assert answered
@@ -13287,7 +14759,8 @@ KEPT: Final = ("/api/graph", "/api/types", "/api/shared", "/api/findings")
 the revision and the files it read."""
 
 # A root including a pattern, one file of which is there to be matched: a file appearing where the
-# pattern matches is one no revision read, so the poll never notices it.
+# pattern matches is one no revision read, until the poll notices the directory the pattern
+# expands in move and an analysis lands.
 PATTERNED = {
     "p.ddd.json": project("P", "a.ddd.json", "lib/*.ddd.json"),
     "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
@@ -13359,14 +14832,14 @@ class TestAnswersKeptForARevision:
     def test_the_files_tab_lists_a_file_appearing_where_a_pattern_matches(
         self, tmp_path: Path
     ) -> None:
-        """A file appearing where a root pattern matches starts no analysis - the poll compares
-        the files the revision read - so no revision could say a kept answer had gone stale: the
-        tab is answered anew, and lists the file at the next request."""
+        """A file appearing where a root pattern matches is one no revision read until the poll
+        notices it and an analysis lands, so no revision could say a kept answer had gone stale
+        meanwhile: the tab is answered anew, and lists the file at the next request, asked here
+        before any poll."""
         api = opened(tmp_path, PATTERNED)
         assert not api.session.poll()
         before = get(api, "/api/files").body
         write_tree(tmp_path, {"lib/c.ddd.json": component("C")})
-        assert not api.session.poll()
         after = get(api, "/api/files").body
         assert (before["revision"], after["revision"]) == (1, 1)
         assert [Path(file).name for file in before["entries"][1]["files"]] == ["b.ddd.json"]
@@ -13378,9 +14851,10 @@ class TestAnswersKeptForARevision:
 
     def test_the_units_tab_offers_adopting_as_the_disk_now_allows(self, tmp_path: Path) -> None:
         """Whether adopting may write units.ddd.json beside the description, and which units file
-        it would fill instead, are read from the disk as it stands, and neither a file no include
-        names nor one a root pattern has come to match starts an analysis: the offer is answered
-        anew, as the plan would be made."""
+        it would fill instead, are read from the disk as it stands: a file no include names starts
+        no analysis, and one a root pattern has come to match is no revision's until the analysis
+        the poll asks for lands. The offer is answered anew, as the plan would be made - asked
+        here before any poll."""
         api = opened(tmp_path, PATTERNED)
         assert not api.session.poll()
         assert get(api, "/api/units").body["adoptable"] == 1
@@ -13388,7 +14862,6 @@ class TestAnswersKeptForARevision:
         assert not api.session.poll()
         assert get(api, "/api/units").body["adoptable"] is None
         write_tree(tmp_path, {"lib/units.ddd.json": {"units": ["rpm"]}})
-        assert not api.session.poll()
         body = get(api, "/api/units").body
         assert (body["revision"], body["adoptable"]) == (1, 1)
         assert body == get(Api(api.session, api.project), "/api/units").body
@@ -13607,17 +15080,18 @@ class TestEachRevisionIsResolvedOnce:
         assert revision is not None
         carried: list[object] = []
 
-        def carrying(name: str) -> None:
+        def carrying(name: str, stamps_at: int) -> None:
             real = getattr(api_module, name)
 
             def spied(*arguments: Any) -> Any:
-                carried.append(arguments[-1])
+                carried.append(arguments[stamps_at])
                 return real(*arguments)
 
             monkeypatch.setattr(api_module, name, spied)
 
-        for name in ("previewed", "preview", "planned"):
-            carrying(name)
+        # Each takes the stamps after what it previews, the plan's read cache after them.
+        for name, stamps_at in (("previewed", 1), ("preview", 2), ("planned", 2)):
+            carrying(name, stamps_at)
         asked = dict(query)
         if "file" in asked:
             asked["file"] = posix(tmp_path / example, asked["file"])
@@ -13626,6 +15100,104 @@ class TestEachRevisionIsResolvedOnce:
         stamps = api._derive(revision).stamps
         assert carried
         assert all(each is stamps for each in carried)
+
+    @pytest.mark.parametrize(
+        ("example", "description", "path", "query"),
+        [
+            *PLANS,
+            (
+                "demo",
+                "demo.ddd.json",
+                "/api/cells-plan",
+                {"name": "CurveA", "at": "[0],[2]", "raw": "1300,750"},
+            ),
+        ],
+    )
+    def test_each_plan_s_edit_is_made_from_the_documents_its_plan_read(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        example: str,
+        description: str,
+        path: str,
+        query: dict[str, str],
+    ) -> None:
+        """The route hands the engine the cache its plan read each file through, so that making
+        the edit scans no file as it stands again: only the text each edit leaves, which the
+        engine reads back."""
+        api = opened_example(tmp_path, example, description)
+        scanned: list[str] = []
+        previewing: list[bool] = []
+        init = Document.__init__
+
+        def scanning(document: Document, text: str) -> None:
+            if previewing:
+                scanned.append(text)
+            init(document, text)
+
+        def watched(name: str) -> None:
+            real = getattr(api_module, name)
+
+            def previewed(*arguments: Any) -> Any:
+                previewing.append(True)
+                try:
+                    return real(*arguments)
+                finally:
+                    previewing.pop()
+
+            monkeypatch.setattr(api_module, name, previewed)
+
+        for name in ("previewed", "preview", "planned"):
+            watched(name)
+        monkeypatch.setattr(Document, "__init__", scanning)
+        asked = dict(query)
+        if "file" in asked:
+            asked["file"] = posix(tmp_path / example, asked["file"])
+        reply = get(api, path, **asked)
+        assert reply.status == 200, reply.body
+        changed = [
+            Path(change["file"]) for change in reply.body["changes"] if change["fingerprint"]
+        ]
+        assert changed
+        assert scanned
+        assert not {file.read_text(encoding="utf-8") for file in changed} & set(scanned)
+
+    def test_a_fix_s_edit_is_made_from_the_document_its_plan_read(
+        self, api: Api, root: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """As every plan's (above): the one finding of the project, Speed's producer stating no
+        id, whose fix gives it one."""
+        scanned: list[str] = []
+        planning: list[bool] = []
+        init = Document.__init__
+        real = api_module.planned
+
+        def scanning(document: Document, text: str) -> None:
+            if planning:
+                scanned.append(text)
+            init(document, text)
+
+        def planned(*arguments: Any) -> Any:
+            planning.append(True)
+            try:
+                return real(*arguments)
+            finally:
+                planning.pop()
+
+        monkeypatch.setattr(api_module, "planned", planned)
+        monkeypatch.setattr(Document, "__init__", scanning)
+        reply = get(
+            api,
+            "/api/fix",
+            file=posix(root, "a.ddd.json"),
+            pointer="component.interface[0].definition.name",
+            check="missing-id",
+        )
+        assert reply.status == 200, reply.body
+        (fix,) = reply.body["fixes"]
+        assert [Path(change["file"]).name for change in fix["changes"]] == ["a.ddd.json"]
+        assert scanned
+        assert (root / "a.ddd.json").read_text(encoding="utf-8") not in scanned
 
     @pytest.mark.parametrize("example", ["demo", "structures", "vocabulary"])
     def test_the_plan_stamps_are_each_files_fingerprint_by_resolved_path_as_they_were(
@@ -13782,3 +15354,51 @@ class TestEachRevisionIsResolvedOnce:
         assert [(Path(found["file"]).name, found["check"]) for found in findings] == [
             ("p.ddd.json", "file-not-found")
         ]
+
+
+BARE_PLUGIN_SOURCE = 'from ddd.plugins import Plugin\n\nPLUGIN = Plugin(name="plug")\n'
+"""A plugin that loads and files nothing: what tells it changed is its bytes alone."""
+
+
+class TestWhilePluginChangedStands:
+    """14:I4's ruling 2: ``plugin-changed``, an error by default, is filed once the analysis has
+    run, and no plan or edit of ``ddd gui`` is refused because an error stands - each judges what
+    a change does, never what is standing. The one answer it changes is the Compare tab's, whose
+    verdict counts the project's own errors as ``ddd compare`` counts them."""
+
+    def test_a_plan_an_edit_and_a_removal_are_answered_and_the_verdict_alone_refuses(
+        self, tmp_path: Path
+    ) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json", plugins=["plug.py"]),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": component("B", declare("input", "Speed", unit="rpm")),
+            },
+        )
+        plugin = tmp_path / "plug.py"
+        plugin.write_text(BARE_PLUGIN_SOURCE, encoding="utf-8")
+        baseline = tmp_path / "baseline.json"
+        dumped = ["dump", posix(tmp_path, "p.ddd.json"), "-o", str(baseline)]
+        assert main([*dumped, "-W", "missing-id=ignore"]) == EXIT_OK
+        session = Session(tmp_path)
+        session.open(tmp_path / "p.ddd.json")
+        api = Api(session, tmp_path / "p.ddd.json", wait_seconds=0.05)
+        plugin.write_text(f"{BARE_PLUGIN_SOURCE}# saved again\n", encoding="utf-8")
+        assert session.poll() is True
+        standing = [found for found in every_finding(api) if found["severity"] == "error"]
+        assert [(Path(found["file"]).name, found["check"]) for found in standing] == [
+            ("plug.py", "plugin-changed")
+        ]
+        compared = get(api, "/api/compare", baseline=str(baseline))
+        assert compared.status == 200
+        assert (compared.body["findings"], compared.body["own_errors"]) == ([], 1)
+        assert compared.body["verdict"] is False
+        planned = get(api, "/api/settle", name="Speed", key="unit", raw='"Hz"')
+        assert planned.status == 200
+        assert applied(api, planned.body, "the unit of Speed").status == 200
+        assert "plugin-changed" in {found["check"] for found in every_finding(api)}
+        removal = get(api, "/api/files-plan", action="remove", path=posix(tmp_path, "b.ddd.json"))
+        assert removal.status == 200
+        assert removal.body["unjudged"] is None

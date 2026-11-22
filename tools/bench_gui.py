@@ -1,10 +1,11 @@
 """The server half of the benchmark of ``ddd gui`` on a large project.
 
-Times, in order, opening a project, each of ``GET /api/state``, ``/graph``, ``/units``,
-``/types``, ``/shared`` and ``/files``, the Findings tab's first page of findings and every
-finding of one component's file, a variable's panel, a unit's panel, judging a removal on the
-Files tab, one analysis, an edit's round trip, and planning the rename of the unit stated in the
-most files - the server driven in process, over one :class:`~ddd.gui.session.Session` and one
+Times, in order, opening a project through ``POST /api/open``, each of ``GET /api/state``,
+``/graph``, ``/units``, ``/types``, ``/shared`` and ``/files``, the Findings tab's first page of
+findings and every finding of one component's file, a variable's panel, a unit's panel, the plan
+of a variable declared in the largest file, judging a removal on the Files tab, one analysis, an
+edit's round trip, planning the rename of the unit stated in the most files and applying that
+plan - the server driven in process, over one :class:`~ddd.gui.session.Session` and one
 :class:`~ddd.gui.api.Api` (``docs/superpowers/specs/2026-09-30-gui-large-projects-design.md``
 §4). Then, over a second session polling at ``ddd gui``'s own interval, three requests each asked
 halfway through an analysis, to be answered while it runs: ``GET /api/state``, the plan of the
@@ -13,15 +14,22 @@ unit - and the edit itself. One answered once its analysis had ended is no such 
 written refused, a sentence in its figure's place. Everything a measure needs to choose - the
 file, the variable, the unit, the entry to remove, the unit to rename - is read off the project's
 own analysed revision, sorted, so the same project measures the same things on every run;
-nothing here imports the generator.
+nothing here imports the generator. A measure the spec's §3 gives a budget to is held to it
+(:data:`BUDGETS`), and :func:`main` says of each whether it met it.
 
-Every measure but ``open``, ``analysis`` and ``edit analysed`` answers a reply whose body is
-timed serialised exactly as the server would send it, ``json.dumps(reply.body, allow_nan=False)``
-inside the timed span, the size being those bytes. The session analyses on a thread of its own,
-as ``ddd gui``'s does: ``open`` and ``analysis`` are each timed until the analysis they ask for
-has landed, ``edit answered`` until the edit's reply - written, before its analysis has
-landed - and ``edit analysed`` from the same moment until that analysis has landed. ``rename
-plan`` is asked once that analysis has landed, and only plans: it writes nothing.
+Every measure but ``open analysed``, ``analysis`` and ``edit analysed`` answers a reply whose
+body is timed serialised exactly as the server would send it, ``json.dumps(reply.body,
+allow_nan=False)`` inside the timed span, the size being those bytes; each that posts a body
+records that body's bytes too, posted as the page posts one. The session analyses on a thread of
+its own, as ``ddd gui``'s does: ``open answered`` is timed until the open's reply - the project
+named, before its first analysis has landed - and ``open analysed`` from the same moment until
+that analysis has landed; ``analysis`` until the analysis it asks for has landed; ``edit
+answered`` until the edit's reply - written, before its analysis has landed - and ``edit
+analysed`` from the same moment until that analysis has landed. ``rename plan`` is asked once
+that analysis has landed, and only plans: ``applied rename`` posts that plan's changes to
+``POST /api/edit`` as the page's Apply posts them, timed until the edit's reply, and is undone
+once its analysis has landed. ``plan in the largest file`` settles the unit of a variable the
+component file declaring the most declares: the plan a panel asks there, which writes nothing.
 
 ``measure`` undoes each edit it made and stops each analyser it started before it returns, then
 puts back the times of each path it changed, so a second run measures the same bytes, with the
@@ -38,6 +46,7 @@ import json
 import os
 import threading
 import time
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -50,7 +59,8 @@ from ddd.lsp.navigation import Index
 from ddd.variables import Declared, declarations_of
 
 NAMES: Final[tuple[str, ...]] = (
-    "open",
+    "open answered",
+    "open analysed",
     "state",
     "graph",
     "units",
@@ -61,16 +71,52 @@ NAMES: Final[tuple[str, ...]] = (
     "findings of a file",
     "variable",
     "unit",
+    "plan in the largest file",
     "remove judged",
     "analysis",
     "edit answered",
     "edit analysed",
     "rename plan",
+    "applied rename",
     "state while analysing",
     "plan while analysing",
     "edit while analysing",
 )
 """Every measure :func:`measure` takes, in the order it takes them."""
+
+_TABS_AND_PANELS: Final = (
+    "state",
+    "graph",
+    "units",
+    "types",
+    "shared",
+    "files",
+    "findings page",
+    "findings of a file",
+    "variable",
+    "unit",
+    "state while analysing",
+)
+_PLANS: Final = ("plan in the largest file", "rename plan", "plan while analysing")
+_APPLIES: Final = ("edit answered", "applied rename", "edit while analysing")
+
+BUDGETS: Final[Mapping[str, int]] = {
+    "open answered": 1_000,
+    **dict.fromkeys(_TABS_AND_PANELS, 1_000),
+    **dict.fromkeys(_PLANS, 1_000),
+    **dict.fromkeys(_APPLIES, 500),
+}
+"""The milliseconds a measure is held to, by its name, where §3 of the spec holds it to a figure.
+Those budgets are the page's own, and the server half times what the page waits on: a figure over
+its budget says the page cannot meet it, and one under it does not say the page does.
+
+The page answering after a project is opened, under 1 s: ``open answered``. Any tab or panel
+drawing once analysed, under 1 s: each tab's and panel's request, idle and while an analysis
+runs, and each plan - what a panel draws before it offers its Apply, every plan being bound to
+that budget on the Linux development PC (decision 14.5 of the review fixes' plan). An Apply's own
+change showing, under 500 ms: each edit. The others are held to no figure of §3: ``open
+analysed`` and ``edit analysed`` are budgeted one analysis and a second more, the project's own
+time rather than a figure; judging a removal and the analysis itself, §3 budgets not at all."""
 
 _ENDPOINTS: Final[tuple[str, ...]] = ("state", "graph", "units", "types", "shared", "files")
 """The plain ``GET /api/<name>`` measures, asked for with no query."""
@@ -111,12 +157,16 @@ class Measure:
     milliseconds: float
     size: int | None
     """Bytes of ``reply.body`` serialised as the server sends it; ``None`` for a measure with no
-    reply of its own (``open``, ``analysis``, ``edit analysed``)."""
+    reply of its own (``open analysed``, ``analysis``, ``edit analysed``)."""
     refused: str | None = None
     """Why the measure is no figure of what its name says, written in the figure's place
     (:func:`main`): a measure under load answered once its analysis had ended. ``None`` for every
     figure; its time and size are then what :func:`main` writes, and are never written
     otherwise."""
+    posted: int | None = None
+    """Bytes of the body a measure posts, as the page posts it (:func:`_posted`): ``POST
+    /api/open``'s, and each edit's - ``applied rename``'s the largest, every change of a rename
+    across the project; ``None`` for a measure posting none."""
 
 
 class _Watched(Session):
@@ -187,14 +237,15 @@ def measure(project: Path) -> list[Measure]:
     makes is undone before this returns, and once both sessions have stopped the times of each
     path it changed are put back (:class:`_Times`), so a second run measures the same project.
 
-    Refused with a ``RuntimeError`` naming the precondition, before any measure but ``open`` is
+    Refused with a ``RuntimeError`` naming the precondition, before any measure but the open's is
     taken: ``project`` needs at least one component file (:func:`_analysis` has one to touch), at
     least two distinct units stated somewhere in it (the edit has another to move to), and its
     middle variable's first declaration must state its own unit rather than leave it to be filled
-    some other way (there is otherwise nothing for the edit to read as "current"). Every project
-    ``tools/generate_project.py`` makes satisfies all three. A plan or an edit the server refuses
-    ends the run with a ``RuntimeError`` as well, once any edit made has been undone: a refusal is
-    no plan, nor an edit, and its time would read as one.
+    some other way (there is otherwise nothing for the edit to read as "current"), as must the
+    middle variable of the largest file's own declaration there (:func:`_in_the_largest_file`).
+    Every project ``tools/generate_project.py`` makes satisfies all four. An open, a plan or an
+    edit the server refuses ends the run with a ``RuntimeError`` as well, once any edit made has
+    been undone: a refusal is no plan, nor an edit, and its time would read as one.
     """
     times = _Times()
     try:
@@ -224,7 +275,7 @@ def _measured(session: Session, project: Path, times: _Times) -> tuple[list[Meas
     measures change, for the second's - whose times are noted in ``times`` before anything
     changes them."""
     api = Api(session, project, wait_seconds=0.0)
-    taken = [_opening(session, project)]
+    taken = _opening(api, session, project)
 
     revision = session.revision
     if revision is None:
@@ -281,6 +332,15 @@ def _measured(session: Session, project: Path, times: _Times) -> tuple[list[Meas
     elapsed, _, size = _get(api, "/api/unit", {"name": [units[0]]})
     taken.append(Measure("unit", elapsed, size))
 
+    largest, settled, unit = _in_the_largest_file(built, units)
+    asked = {"name": [settled], "key": ["unit"], "raw": [json.dumps(unit)]}
+    elapsed, reply, size = _get(api, "/api/settle", asked)
+    if reply.status != 200:
+        raise RuntimeError(
+            f"the benchmark's own plan in the largest file, {largest}, was refused: {reply.body}"
+        )
+    taken.append(Measure("plan in the largest file", elapsed, size))
+
     # The root's first entry, never its last: in a generated project the last is the pattern
     # ``components/*.ddd.json``, whose removal judges a project of one file. The first,
     # ``units.ddd.json``, is judged by analysing the whole project without it - one full
@@ -302,13 +362,16 @@ def _measured(session: Session, project: Path, times: _Times) -> tuple[list[Meas
         # an edit wrote is refused until that edit's analysis has landed, and the undo writes
         # one again.
         renamed = _most_stated(built)
-        asked = {"action": ["rename"], "unit": [renamed], "to": [_unused(built, renamed)]}
+        to = _unused(built, renamed)
+        asked = {"action": ["rename"], "unit": [renamed], "to": [to]}
         elapsed, reply, size = _get(api, "/api/unit-plan", asked)
+        if reply.status != 200:
+            raise RuntimeError(f"the benchmark's own rename plan was refused: {reply.body}")
+        taken.append(Measure("rename plan", elapsed, size))
+        label = f"the rename of '{renamed}' to '{to}'"
+        taken.append(_applied(api, session, reply.body, label, times))
     finally:
         _undo(api, session)
-    if reply.status != 200:
-        raise RuntimeError(f"the benchmark's own rename plan was refused: {reply.body}")
-    taken.append(Measure("rename plan", elapsed, size))
     return taken, chosen
 
 
@@ -367,12 +430,24 @@ def _answered(session: _Watched, taken: Measure) -> Measure:
     return taken
 
 
-def _opening(session: Session, project: Path) -> Measure:
-    """Opening ``project``, until its first analysis has landed."""
+def _opening(api: Api, session: Session, project: Path) -> list[Measure]:
+    """Opening ``project`` through ``POST /api/open``, in the body the start page posts: until
+    its reply, and from the same moment until its first analysis has landed. ``project`` is the
+    one ``api`` was given, the project named on the command line, which the server answers before
+    any walk for the projects under its start directory: the open of a project the start page
+    lists, which may walk, is not one the bench times. A refusal ends the run."""
+    body = _posted({"path": project.resolve().as_posix()})
     start = time.perf_counter()
-    session.open(project)
+    reply = api.handle("POST", "/api/open", {}, body)
+    serialised = json.dumps(reply.body, allow_nan=False)
+    answered = _elapsed(start)
+    if reply.status != 200:
+        raise RuntimeError(f"the benchmark's own open was refused: {reply.body}")
     session.settled(None)
-    return Measure("open", _elapsed(start), None)
+    return [
+        Measure("open answered", answered, len(serialised.encode("utf-8")), posted=len(body)),
+        Measure("open analysed", _elapsed(start), None),
+    ]
 
 
 def _analysis(session: Session, target: Path) -> Measure:
@@ -419,7 +494,7 @@ def _edit(api: Api, chosen: _Chosen, name: str) -> tuple[Measure, float]:
     it asks. A refusal ends the run, nothing written."""
     first = chosen.first
     edited = first.site.path.resolve()
-    body = json.dumps(
+    body = _posted(
         {
             "changes": [
                 {
@@ -436,14 +511,76 @@ def _edit(api: Api, chosen: _Chosen, name: str) -> tuple[Measure, float]:
             ],
             "label": f"the unit of {chosen.variable}",
         }
-    ).encode("utf-8")
+    )
     start = time.perf_counter()
     reply = api.handle("POST", "/api/edit", {}, body)
     serialised = json.dumps(reply.body, allow_nan=False)
-    answered = Measure(name, _elapsed(start), len(serialised.encode("utf-8")))
+    answered = Measure(name, _elapsed(start), len(serialised.encode("utf-8")), posted=len(body))
     if reply.status != 200:
         raise RuntimeError(f"the benchmark's own edit was refused: {reply.body}")
     return answered, start
+
+
+def _applied(
+    api: Api, session: Session, plan: Mapping[str, Any], label: str, times: _Times
+) -> Measure:
+    """``applied rename``: the changes of ``plan``, a plan's reply, posted to ``POST /api/edit``
+    as the page's Apply posts them - each file's path, fingerprint and operations, its lines
+    left out - under ``label``, the undo's name for it; timed until the edit's reply, and undone
+    once its own analysis has landed. The times of each file it writes, and of each directory
+    they are written in, are noted in ``times`` first. A refusal ends the run, nothing written.
+
+    Applied in process, through :meth:`Api.handle`, which no limit on a request's body reaches:
+    its body's bytes are recorded beside its time, what ``POST /api/edit`` has to take for it."""
+    changes = [
+        {key: change[key] for key in ("file", "fingerprint", "operations")}
+        for change in plan["changes"]
+    ]
+    written = [Path(change["file"]) for change in changes]
+    times.keep(*written, *dict.fromkeys(path.parent for path in written))
+    body = _posted({"changes": changes, "label": label})
+    start = time.perf_counter()
+    reply = api.handle("POST", "/api/edit", {}, body)
+    serialised = json.dumps(reply.body, allow_nan=False)
+    elapsed = _elapsed(start)
+    if reply.status != 200:
+        raise RuntimeError(f"the benchmark's own applied rename was refused: {reply.body}")
+    try:
+        session.settled(None)
+    finally:
+        _undo(api, session)
+    session.settled(None)
+    return Measure("applied rename", elapsed, len(serialised.encode("utf-8")), posted=len(body))
+
+
+def _posted(body: Mapping[str, Any]) -> bytes:
+    """A request's body as the page posts it: ``JSON.stringify``'s compact json, every character
+    as itself, in utf-8."""
+    return json.dumps(body, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+
+def _in_the_largest_file(built: Index, units: Sequence[str]) -> tuple[Path, str, str]:
+    """The component file holding the most declarations - of files holding as many, the first by
+    path - the middle of the variables it declares, by name, and the unit its declaration there
+    is settled on: the next of ``units`` after the one it states, wrapping round, as the edit's
+    own change is chosen. Refused with a ``RuntimeError`` where that declaration states no unit
+    of its own, or is no longer where the analysis found it."""
+    held = Counter(site.path for sites in built.declarations.values() for site in sites)
+    largest = min(held, key=lambda path: (-held[path], path.as_posix()))
+    names = sorted(
+        name
+        for name, sites in built.declarations.items()
+        if any(site.path == largest for site in sites)
+    )
+    name = names[len(names) // 2]
+    there = next((d for d in declarations_of(built, name, {}) if d.site.path == largest), None)
+    if there is None or "unit" not in there.stated:
+        raise RuntimeError(
+            f"{name!r}'s declaration in {largest} does not state its own unit, which the "
+            "benchmark needs to choose the plan in the largest file"
+        )
+    current = json.loads(there.stated["unit"])
+    return largest, name, units[(units.index(current) + 1) % len(units)]
 
 
 def _most_stated(built: Index) -> str:
@@ -506,37 +643,61 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     arguments = parser.parse_args(argv)
     rows: list[dict[str, Any]] = []
-    print("| project | measure | ms | bytes |")
-    print("| --- | --- | --- | --- |")
+    print("| project | measure | ms | bytes | posted | budget |")
+    print("| --- | --- | --- | --- | --- | --- |")
     for project in arguments.projects:
         label = project.resolve().parent.name
         for taken in measure(project):
+            budget = BUDGETS.get(taken.name)
             if taken.refused is not None:
-                print(f"| {label} | {taken.name} | {taken.refused} | |")
+                print(f"| {label} | {taken.name} | {taken.refused} | | | |")
                 rows.append(
                     {
                         "project": label,
                         "measure": taken.name,
                         "ms": None,
                         "bytes": None,
+                        "posted": None,
+                        "budget": budget,
+                        "met": None,
                         "refused": taken.refused,
                     }
                 )
                 continue
             ms = round(taken.milliseconds)
-            print(f"| {label} | {taken.name} | {ms} | {'' if taken.size is None else taken.size} |")
+            # "Under" its budget, as §3 words each of them: a figure as long as its budget misses.
+            met = None if budget is None else taken.milliseconds < budget
+            print(
+                f"| {label} | {taken.name} | {ms} | {_cell(taken.size)} | {_cell(taken.posted)} "
+                f"| {_verdict(budget, met)} |"
+            )
             rows.append(
                 {
                     "project": label,
                     "measure": taken.name,
                     "ms": ms,
                     "bytes": taken.size,
+                    "posted": taken.posted,
+                    "budget": budget,
+                    "met": met,
                     "refused": None,
                 }
             )
     if arguments.json is not None:
         arguments.json.write_text(json.dumps(rows, indent=2) + "\n", encoding="utf-8")
     return 0
+
+
+def _cell(count: int | None) -> str:
+    return "" if count is None else str(count)
+
+
+def _verdict(budget: int | None, met: bool | None) -> str:
+    """A budget's cell: the milliseconds a measure is held to and whether it met them, or nothing
+    for a measure held to none."""
+    if budget is None:
+        return ""
+    return f"{budget} {'met' if met else 'missed'}"
 
 
 if __name__ == "__main__":

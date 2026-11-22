@@ -43,6 +43,7 @@ on access paths for exactly this reason.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from enum import StrEnum
 from typing import Annotated, Final, Literal
 
@@ -59,7 +60,13 @@ from pydantic import (
 )
 
 from ddd.models.common import Datatype, FileRoot, Identifier, Number, TypeName
-from ddd.models.conversion import Conversion, StringConversion, physical_range
+from ddd.models.conversion import (
+    Conversion,
+    StringConversion,
+    derived_range_is_finite,
+    infinite_limits_message,
+    physical_range,
+)
 from ddd.models.objects import (
     A2lObjectOptions,
     Dimension,
@@ -68,6 +75,7 @@ from ddd.models.objects import (
     WrittenShape,
     check_conversion_stated,
     check_storage_named_once,
+    first_refused,
     refuse_enum_on_non_integer,
     refuse_restating,
     refuse_string_misuse,
@@ -531,6 +539,40 @@ def scalar_conversion(entry: object) -> Conversion | None:
     except ValidationError:
         return None
     return parsed.conversion if isinstance(parsed, ScalarType) else None
+
+
+def type_problem(entry: Mapping[str, object]) -> str | None:
+    """The first thing the project would refuse of a type's entry written like this, in one
+    sentence, or ``None`` where it takes it: the model of its ``type`` first, and then, for a
+    scalar type, the rule of the analysis that asks nothing beyond the entry - the limits its
+    datatype and conversion derive held finite, which the models take because they derive none.
+
+    The question a change of a type has to ask of the entry *as it would leave it*, before it is
+    planned, as :func:`~ddd.models.objects.definition_problem` is asked of a definition, which
+    cannot be asked of an entry: it is discriminated by a ``kind`` no entry states. Either answer
+    is a ``schema`` error, which no severity turns down, and a types file the loader refuses takes
+    every type it declares with it. Said in the words ``ddd check`` files it in
+    (:func:`~ddd.models.objects.first_refused`). What needs more of the project - a ``typename`` a
+    member names that nobody declares, a structure nesting itself - stays a finding the analysis
+    reports, and so does a structure member's own derived limits, held finite by the analysis as a
+    scalar type's are: a structure's members are nothing a change of a type is planned for. The
+    caller's mapping is read and not changed.
+
+    :func:`ddd.type_plans.set_key` asks it of the entry as it stands as well as of the entry as the
+    change would leave it, and refuses only an answer after that is not the one before: a type the
+    analysis refuses already - a derived range past the largest float leaves its file loading -
+    can still be changed, and mended, its refusal being its own and not the change's.
+    """
+    try:
+        accepted = _TYPE.validate_python(entry)
+    except ValidationError as error:
+        return first_refused(error)
+    if not isinstance(accepted, ScalarType):
+        return None
+    datatype = accepted.datatype
+    if derived_range_is_finite(accepted.conversion, datatype.raw_min, datatype.raw_max):
+        return None
+    return infinite_limits_message(datatype)
 
 
 def check_distinct_type_names(entries: tuple[StructType | ScalarType | ExternalType, ...]) -> None:

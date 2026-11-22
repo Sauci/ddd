@@ -37,3 +37,30 @@ export function shownPath(project: string, path: string): string {
 function rootLength(parts: readonly string[]): number {
   return parts[0] === "" && parts[1] === "" ? 4 : 1;
 }
+
+/**
+ * `path` as a sentence naming the files `among` names it - what the server's own sentences answer
+ * (`ddd.lsp.navigation.told_apart`), so that one file is one name on the page and in a refusal:
+ * by its name alone, as a sentence always named a file, unless another of `among` has that name
+ * too, and then by its path from the first directory up that the two do not share, or in full
+ * where nothing short of the root tells them apart.
+ *
+ * By their names alone, two files in two folders were one name twice, and a reader sent to repair
+ * one opened whichever came first. Walked over the parts of the absolute posix path the server
+ * writes, its root among them, so that all of them together spell the path in full; `path` itself
+ * is not compared with, should `among` hold it.
+ */
+export function toldApart(path: string, among: readonly string[]): string {
+  const parts = path.split("/");
+  const others = among.filter((other) => other !== path).map((other) => other.split("/"));
+  let depth = 1;
+  while (depth < parts.length && others.some((theirs) => endsAlike(theirs, parts, depth))) {
+    depth += 1;
+  }
+  return parts.slice(-depth).join("/");
+}
+
+/** Whether two paths end in the same `depth` parts - all of one that has fewer. */
+function endsAlike(theirs: readonly string[], parts: readonly string[], depth: number): boolean {
+  return theirs.slice(-depth).join("/") === parts.slice(-depth).join("/");
+}

@@ -7,6 +7,7 @@ import type {
   ListedFinding,
   State,
 } from "../api/types";
+import { toldApart } from "./paths";
 import { hrefOf, type Route } from "./route";
 import { baseName } from "./units";
 
@@ -15,10 +16,11 @@ import { baseName } from "./units";
  *
  * Position alone is not a key: the list is rebuilt on every revision, and an unrelated finding
  * appearing or disappearing earlier in it would shift every key after it. Content alone is not
- * enough either, since the API sends no line or column: a consumer whose unit and limits both
- * disagree gets two `definition-mismatch` findings at the same pointer, and a producer with
- * several disagreeing consumers gets one finding mirrored onto it per consumer, so two distinct
- * findings can share severity, check, pointer and message. The key is that content together
+ * enough either, and a line and a column would not make it so, since only a finding in a file
+ * that did not parse carries them: a consumer whose unit and limits both disagree gets two
+ * `definition-mismatch` findings at the same pointer, and a producer with several disagreeing
+ * consumers gets one finding mirrored onto it per consumer, so two distinct findings can share
+ * severity, check, pointer and message. The key is made of those four, the content, together
  * with which repeat of it this is - 0 for the first, 1 for the next with the same content, and
  * so on - which tells such findings apart while staying stable when a differently-keyed finding
  * elsewhere in the list comes or goes.
@@ -78,17 +80,6 @@ export function findingsTotal(counts: FindingCounts): number {
   return counts.error + counts.warning + counts.info;
 }
 
-/** How many findings of a list there are of each severity: what the Compare tab counts its own
- * reply's list by, as the state counts a revision's. One at `ignore` - which the server never
- * reports - is counted under none. */
-export function countsOf(findings: readonly Finding[]): FindingCounts {
-  const counts = { error: 0, warning: 0, info: 0 };
-  for (const finding of findings) {
-    if (finding.severity !== "ignore") counts[finding.severity] += 1;
-  }
-  return counts;
-}
-
 /** How a line counting findings ends while they may be about to change (spec 6): an edit is
  * waiting for its analysis, or an analysis runs. */
 const UPDATING = " · updating";
@@ -98,10 +89,11 @@ function counted(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`;
 }
 
-/** The line above a table of findings, from how many there are of each severity: the Findings
- * tab's from the state's counts, the Compare tab's from its own list's. Where `updating` - the
- * counts may be about to change - it ends by saying so; the Compare tab's, counting a reply of its
- * own rather than the revision, never does. */
+/** The line above a table of findings, from how many statements there are of each severity, each
+ * once however many files it is filed on (decision 14.3): the Findings tab's from the state's, as
+ * `ddd check` counts them, the Compare tab's from its reply's, as `ddd compare` does
+ * (`compareLine`). Where `updating` - the counts may be about to change - it ends by saying so;
+ * the Compare tab's, counting a reply of its own rather than the revision, never does. */
 export function findingCounts(counts: FindingCounts, updating: boolean): string {
   const total = findingsTotal(counts);
   const parts = COUNTED.filter(([severity]) => counts[severity] > 0).map(([severity, one, many]) =>
@@ -114,9 +106,9 @@ export function findingCounts(counts: FindingCounts, updating: boolean): string 
   return updating ? `${line}${UPDATING}` : line;
 }
 
-/** The Table tab's line above its components: the project's errors and its warnings, each counted
- * even at none, as the table's own two columns count them; and, where `updating`, the same ending
- * as `findingCounts`'. */
+/** The Table tab's line above its components: the project's errors and its warnings, from the
+ * statements the state counts, each said even at none, as the table has a column for each; and,
+ * where `updating`, the same ending as `findingCounts`'. */
 export function tableLine(counts: FindingCounts, updating: boolean): string {
   const errors = counted(counts.error, "error", "errors");
   const warnings = counted(counts.warning, "warning", "warnings");
@@ -152,14 +144,14 @@ export function routeLabel(finding: Finding, state: State): string | null {
   if (route.kind === "file" && route.name !== null) {
     // Unlike the component arm above, no listed file's own declared name is ever worth
     // preferring here - not because neither check's file ever has one (a project description's
-    // own name reads through `SourceFile.name` too, `ddd.gui.session._name_in` keying off
+    // own name reads through `SourceFile.name` too, `ddd.gui.session.name_in` keying off
     // `parsed[kind]["name"]`), but because neither check's *route* ever names a file that both
     // sits in `State.files` and carries a name: `include-empty` is filed wherever a pattern
     // cannot be expanded at all (`ddd.loading._expand`'s own words, "cannot expand pattern") or
     // expands to no file, so its route names that pattern either way, which `State.files` -
     // files the loader actually read - never lists; `empty-vocabulary`'s names the vocabulary
     // file it is filed on, which `State.files` does list, but a vocabulary's own top-level key
-    // holds a list there, not the dict `_name_in` reads a name from - a component's and a
+    // holds a list there, not the dict `name_in` reads a name from - a component's and a
     // project's own both do, a vocabulary's alone does not. A row of the Files tab is one entry
     // among others the same directory can hold, so the path relative to the project - the very
     // shape an entry is itself written in (`sensors/a.ddd.json`) - says which one a `baseName`
@@ -244,7 +236,9 @@ export function namesThisVariable(finding: Finding, name: string): boolean {
 }
 
 /** The files a tab's table cannot show the contents of, by name: those of the tab's own kinds
- * that did not load, and those that did not load without saying what kind they are.
+ * that did not load, and those that did not load without saying what kind they are. Two of one
+ * name are told apart by their paths (`toldApart`) among every file that did not load, whichever
+ * list each is in, as the server's refusals name them: one file, one name on the page.
  *
  * Two lists because the tab can only speak for the first. `ddd.gui.session.kind_of` reads a file's
  * kind off its own top-level key, so a file nobody could parse has none to read and the server
@@ -267,9 +261,14 @@ export function unreadable(
   kinds: readonly string[],
 ): { own: string[]; untold: string[] } {
   const missing = (state?.files ?? []).filter((file) => !file.loaded);
+  const paths = missing.map((file) => file.path);
   return {
-    own: missing.filter((file) => kinds.includes(file.kind)).map((file) => baseName(file.path)),
-    untold: missing.filter((file) => file.kind === "unknown").map((file) => baseName(file.path)),
+    own: missing
+      .filter((file) => kinds.includes(file.kind))
+      .map((file) => toldApart(file.path, paths)),
+    untold: missing
+      .filter((file) => file.kind === "unknown")
+      .map((file) => toldApart(file.path, paths)),
   };
 }
 
@@ -309,6 +308,19 @@ export function noRouteReason(finding: Finding, state: State): string {
     return `it is about the whole of ${name} rather than one entry of it`;
   }
   return "there is nothing at that place any more";
+}
+
+/** Where a finding is, for a panel with no route to offer: `file:line:column` as `ddd check`
+ * prints it where the loader found a line (a file that did not parse), and otherwise the
+ * pointer, which says where inside the file. `null` where the finding names neither: it is
+ * about the project, not a place. `fileName` is how the caller names a file, so a comparison
+ * says a baseline's file as the baseline's. */
+export function placeOf(finding: Finding, fileName: (path: string) => string): string | null {
+  if (finding.line !== null) {
+    const column = finding.column === null ? "" : `:${finding.column}`;
+    return `${fileName(finding.file)}:${finding.line}${column}`;
+  }
+  return finding.pointer === "" ? null : finding.pointer;
 }
 
 /** The edit the fix of that title comes to, exactly as `POST /api/edit` takes it, under the

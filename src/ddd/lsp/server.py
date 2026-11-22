@@ -112,13 +112,12 @@ from ddd.lsp.protocol import (
 )
 from ddd.lsp.ranges import Document, differs_from_disk, lines_differ, read
 from ddd.lsp.units import (
-    UnitPlan,
-    UnitRefusalError,
     rename_unit,
     text_edits,
     unit_drift,
-    unit_project,
+    vocabulary_project,
 )
+from ddd.plans import Plan, PlanRefusalError
 
 _DID_OPEN: Final = "textDocument/didOpen"
 _DID_CHANGE: Final = "textDocument/didChange"
@@ -827,11 +826,13 @@ class Server:
 
         Every open document: a document is published through the project above it, so a change
         in a file nobody has open is precisely the case that moves a finding onto one somebody
-        does. And every description that changed whose findings are on screen, open or not: with
-        a document of another project open, and none of its own, a description a pull fixed went
-        on showing what the pull had fixed. With nothing open the Problems list on screen still
-        describes the project as it was, and every description that changed is a root to check
-        it from, but for one deleted (:meth:`_refresh_marked`). A build record that changed
+        does. And every description that changed whose findings are on screen or that a check
+        ran from (:attr:`_reported`), open or not: with a document of another project open, and
+        none of its own, a description a pull fixed went on showing what the pull had fixed, and
+        one that had no findings of its own on screen went on showing those of the components it
+        included, though it included them no more. With nothing open the Problems list on screen
+        still describes the project as it was, and every description that changed is a root to
+        check it from, but for one deleted (:meth:`_refresh_marked`). A build record that changed
         changes which projects there are and their severities, so every file whose findings are
         on screen is checked again, whatever is open, under the records the next check searches
         for (:meth:`_mark` forgets what was found): a file only the build of a record gone since
@@ -857,7 +858,11 @@ class Server:
         descriptions = [path for path in touched if path.name.lower().endswith(DDD_SUFFIX)]
         documents = sorted(self._open)
         if documents:
-            documents.extend(path for path in descriptions if path.resolve() in self._published)
+            documents.extend(
+                path
+                for path in descriptions
+                if path.resolve() in self._published or path.resolve() in self._reported
+            )
         else:
             documents = descriptions
         if any(path.name == BUILD_INFO_FILENAME for path in touched):
@@ -1541,10 +1546,10 @@ class Server:
             if moved:
                 drifted.update(moved)
                 continue
-            project = unit_project(loaded.path, loaded.unloaded, cache)
+            project = vocabulary_project(loaded.path, "units", loaded.unloaded, cache, skims=True)
             try:
                 plan = rename_unit(built, project, old, new, cache)
-            except UnitRefusalError as unplanned:
+            except PlanRefusalError as unplanned:
                 return self._in_image(reach, loaded, unplanned.message)
             if new in built.vocabulary:
                 listing.add(loaded.path.resolve())
@@ -1566,7 +1571,7 @@ class Server:
 
     @staticmethod
     def _rendered(
-        plan: UnitPlan, cache: dict[Path, Document]
+        plan: Plan, cache: dict[Path, Document]
     ) -> tuple[dict[str, list[dict[str, Any]]], set[Path]]:
         """A unit's plan as text edits by file uri, made file by file, and the files whose text the
         edit engine cannot make it in.
@@ -1586,7 +1591,7 @@ class Server:
         unmade: set[Path] = set()
         for planned in plan.edits:
             try:
-                edits.update(text_edits(UnitPlan((planned,)), cache))
+                edits.update(text_edits(Plan((planned,)), cache))
             except EditError:
                 unmade.add(planned.path)
         return edits, unmade
@@ -1799,7 +1804,9 @@ class Server:
             loaded.path.resolve(): Asked(
                 loaded.path.resolve(),
                 index(loaded.workspace),
-                unit_project(loaded.path, loaded.unloaded, cache) if about_units else None,
+                vocabulary_project(loaded.path, "units", loaded.unloaded, cache, skims=True)
+                if about_units
+                else None,
             )
             for loaded in reach.projects
         }

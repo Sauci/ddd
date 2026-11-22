@@ -17,17 +17,19 @@ from conftest import (
     value_member,
     write_tree,
 )
-from ddd.diagnostics import Diagnostic, DiagnosticBag, Location, Severity
+from ddd.diagnostics import CHECKS, Diagnostic, DiagnosticBag, Location, Severity
 from ddd.findings_by_file import FindingsByFile
 from ddd.loading import load_workspace
 from ddd.lsp.navigation import Index, index
 from ddd.lsp.ranges import Document
 from ddd.project_types import (
+    REPEATED,
     fixed_by,
     kind_of,
     located_in_type,
     members_of,
     row_of,
+    type_findings,
     type_rows,
     uses_of,
 )
@@ -156,6 +158,75 @@ class TestRows:
         temperature = built.types["Temperature_t"]
         finding = Diagnostic("missing-producer", Severity.ERROR, "message")
         assert not located_in_type(built, "Temperature_t", temperature.path, finding)
+
+
+def _repeating(
+    file: Path, pointer: str, first: Path, there: str, check: str = REPEATED
+) -> Diagnostic:
+    """The loader's refusal of a later entry repeating a type's name: at that entry, with a note
+    naming the first, as ``ddd.loading`` files ``duplicate-type``."""
+    return Diagnostic(
+        check,
+        Severity.ERROR,
+        "is already declared",
+        Location(file, pointer),
+        notes=(("first declared here", Location(first, there)),),
+    )
+
+
+class TestATypeDeclaredTwice:
+    """14:M8. A type repeated in a second file is refused at the later entry, of which the
+    analysis keeps nothing, with a note naming the first, and the finding is filed at both: the
+    later entry and the first's own record. The later copy led to the type's panel, which listed
+    the other alone, and its row counted one of the two."""
+
+    def test_the_later_entry_s_copy_is_the_first_entry_s_by_its_note(self, built) -> None:
+        temperature = built.types["Temperature_t"]
+        elsewhere = EXAMPLES / "structures" / "sensing.ddd.json"
+        for pointer in ("types[0]", "component.types[0]"):
+            later = _repeating(elsewhere, pointer, temperature.path, temperature.pointer)
+            assert located_in_type(built, "Temperature_t", elsewhere, later)
+            assert not located_in_type(built, "Sample_t", elsewhere, later)
+
+    def test_a_note_naming_the_type_makes_no_other_finding_its_own(self, built) -> None:
+        """The repetition alone, naming that type's record: another check pointing at it by a
+        note is the finding of where it is filed, and a repetition naming another place, or the
+        same place of another file, names another type."""
+        temperature = built.types["Temperature_t"]
+        elsewhere = EXAMPLES / "structures" / "sensing.ddd.json"
+        pointing = _repeating(
+            elsewhere, "types[0]", temperature.path, temperature.pointer, "type-kind"
+        )
+        assert not located_in_type(built, "Temperature_t", elsewhere, pointing)
+        another_place = _repeating(elsewhere, "types[0]", temperature.path, "types[99]")
+        assert not located_in_type(built, "Temperature_t", elsewhere, another_place)
+        another_file = _repeating(temperature.path, "types[99]", elsewhere, temperature.pointer)
+        assert not located_in_type(built, "Temperature_t", temperature.path, another_file)
+
+    def test_a_row_counts_both_copies_asking_only_the_files_they_are_on(self, built, cache) -> None:
+        """In the order given, the later copy found by the record its note names rather than by
+        walking every finding (:meth:`FindingsByFile.noting`), and the table's row and the one
+        row alike."""
+        temperature = built.types["Temperature_t"]
+        elsewhere = EXAMPLES / "structures" / "sensing.ddd.json"
+        mirror = Diagnostic(
+            REPEATED,
+            Severity.ERROR,
+            "is already declared",
+            Location(temperature.path, temperature.pointer),
+        )
+        later = _repeating(elsewhere, "types[0]", temperature.path, temperature.pointer)
+        findings = Unwalked([(temperature.path, mirror), (elsewhere, later)])
+        assert type_findings(built, "Temperature_t", findings) == [
+            (temperature.path, mirror),
+            (elsewhere, later),
+        ]
+        rows = {row.name: row.findings for row in type_rows(built, findings, cache)}
+        assert (rows["Temperature_t"], rows["Sample_t"]) == (2, 0)
+        assert row_of(built, "Temperature_t", findings, cache).findings == 2
+
+    def test_the_check_is_the_one_the_loader_files_a_repeated_type_under(self) -> None:
+        assert (REPEATED, REPEATED in CHECKS) == ("duplicate-type", True)
 
 
 class TestUses:
@@ -338,3 +409,55 @@ class TestWhatATypeStates:
         assert members[0]["typename"] == "Sample_t"
         assert members[3]["dimensions"] == ("8",)
         assert members_of(built, "Temperature_t", cache) == ()
+
+
+class TestAMemberAsSaved:
+    def test_a_member_is_read_by_what_each_key_is_answered_as(self, tmp_path: Path) -> None:
+        """Every key of a member is answered, its own where it holds what the reply wants and
+        otherwise the empty reading: no key raises, and none is left out. The file is saved after
+        the analysis read it, as a person typing into it saves it."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "types.ddd.json"),
+                "types.ddd.json": types(struct_type("S_t", value_member("a", unit="rpm"))),
+            },
+        )
+        built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
+        saved = json.loads((tmp_path / "types.ddd.json").read_text(encoding="utf-8"))
+        saved["types"][0]["members"] = [
+            {"member": True, "bits": True, "dimensions": "2"},
+            {"name": "a", "member": "bits", "bits": 3, "dimensions": [2, "N"]},
+            {"name": "b", "typename": "T_t", "datatype": "uint8", "unit": "rpm"},
+            7,
+        ]
+        (tmp_path / "types.ddd.json").write_text(json.dumps(saved), encoding="utf-8")
+        assert members_of(built, "S_t", {}) == (
+            {
+                "name": "",
+                "member": "value",
+                "typename": None,
+                "datatype": None,
+                "unit": None,
+                "bits": None,
+                "dimensions": (),
+            },
+            {
+                "name": "a",
+                "member": "bits",
+                "typename": None,
+                "datatype": None,
+                "unit": None,
+                "bits": 3,
+                "dimensions": ("2", "N"),
+            },
+            {
+                "name": "b",
+                "member": "value",
+                "typename": "T_t",
+                "datatype": "uint8",
+                "unit": "rpm",
+                "bits": None,
+                "dimensions": (),
+            },
+        )

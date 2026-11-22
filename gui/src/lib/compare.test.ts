@@ -1,6 +1,13 @@
 import { expect, test } from "vitest";
 import type { CompareReply, Finding, State } from "../api/types";
-import { type CompareRow, compareRouteReason, compareRows, fileNameIn, nextAsk } from "./compare";
+import {
+  type CompareRow,
+  compareLine,
+  compareRouteReason,
+  compareRows,
+  fileNameIn,
+  nextAsk,
+} from "./compare";
 
 function finding(fields: Partial<Finding> = {}): Finding {
   return {
@@ -9,6 +16,8 @@ function finding(fields: Partial<Finding> = {}): Finding {
     severity: "error",
     message: "'ValueA' changed datatype from uint16 to uint32",
     pointer: "",
+    line: null,
+    column: null,
     notes: [],
     route: null,
     ...fields,
@@ -22,6 +31,7 @@ function reply(fields: Partial<CompareReply> = {}): CompareReply {
     own_errors: 0,
     findings: [],
     baseline_findings: [],
+    statements: { error: 0, warning: 0, info: 0 },
     renames: [],
     ...fields,
   };
@@ -47,6 +57,9 @@ const STATE: State = {
     },
   ],
   counts: { error: 0, warning: 0, info: 0 },
+  statements: { error: 0, warning: 0, info: 0 },
+  failed: null,
+  refused: [],
   undoable: null,
   analysing: false,
   edits: 0,
@@ -121,6 +134,42 @@ test("rows from both fields are merged, worst severity first, each naming its ow
 
 test("an empty reply has no rows", () => {
   expect(compareRows(reply())).toEqual([]);
+});
+
+test("the line counts the statements of the reply, a baseline's disagreement once over its two rows", () => {
+  // Decision 14.3: the baseline's `definition-mismatch` is filed on the reader that disagrees,
+  // its note naming the producer, and again on the producer - two rows of one statement, which
+  // `ddd compare` prints once.
+  const onTheReader = finding({
+    file: "C:/elsewhere/components/controller.ddd.json",
+    check: "definition-mismatch",
+    message: "in the baseline: 'ValueA' is declared differently by component 'Controller'",
+    pointer: "component.interface[0].definition",
+    notes: [
+      {
+        message: "reference declaration",
+        file: "C:/elsewhere/components/sensor_hub.ddd.json",
+        pointer: "component.interface[0].definition",
+      },
+    ],
+  });
+  const onTheProducer = {
+    ...onTheReader,
+    file: "C:/elsewhere/components/sensor_hub.ddd.json",
+    notes: [],
+  };
+  const mirrored = reply({
+    baseline_findings: [onTheReader, onTheProducer],
+    statements: { error: 1, warning: 0, info: 0 },
+  });
+  expect(compareRows(mirrored)).toHaveLength(2);
+  expect(compareLine(mirrored)).toBe("1 finding · 1 error");
+});
+
+test("the line says how many of each severity the comparison and the baseline make", () => {
+  const counted = reply({ statements: { error: 2, warning: 1, info: 1 } });
+  expect(compareLine(counted)).toBe("4 findings · 2 errors, 1 warning, 1 note");
+  expect(compareLine(reply())).toBe("Nothing to report");
 });
 
 test("a baseline's file is named as the baseline's, wherever a comparison names it", () => {

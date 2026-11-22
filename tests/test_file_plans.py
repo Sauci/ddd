@@ -31,7 +31,6 @@ from ddd.diagnostics import Diagnostic, DiagnosticBag, Location, Severity
 from ddd.editing import FileChange, Operation, fingerprint
 from ddd.file_plans import (
     FilePlan,
-    FileRefusalError,
     IncludedEntry,
     Pair,
     add_plan,
@@ -44,7 +43,8 @@ from ddd.gui.session import Revision, Session, findings_with
 from ddd.loading import included_files, load_workspace, resolve_path
 from ddd.lsp.diagnostics import finding_identity, run_project
 from ddd.lsp.navigation import Index, index
-from ddd.lsp.units import PlannedEdit, unit_project
+from ddd.lsp.units import vocabulary_project
+from ddd.plans import PlannedEdit, PlanRefusalError
 
 PROJECT = Path("/p/p.ddd.json")
 A = Path("/p/a.ddd.json")
@@ -979,7 +979,7 @@ def creating(
     """A file planned beside a project that loaded, of one component stating no unit: ``A``,
     in ``a.ddd.json``, whose name is taken."""
     built, root = built_of(base, **{"a.ddd.json": component("A")})
-    units = unit_project(root / "p.ddd.json", [], {})
+    units = vocabulary_project(root / "p.ddd.json", "units", [], {}, skims=True)
     return create_plan(
         root / "p.ddd.json", kind, name, called, ("A",), units, built, {}, checks_units=checks_units
     )
@@ -1175,7 +1175,7 @@ class TestCreate:
                 ),
             },
         )
-        units = unit_project(root / "p.ddd.json", [], {})
+        units = vocabulary_project(root / "p.ddd.json", "units", [], {}, skims=True)
         planned = create_plan(
             root / "p.ddd.json", "units", "units", None, (), units, built, {}, checks_units=False
         )
@@ -1193,7 +1193,7 @@ class TestCreate:
         built, root = built_of(
             tmp_path, **{"a.ddd.json": component("A", declare("output", "Heat", unit="°C"))}
         )
-        units = unit_project(root / "p.ddd.json", [], {})
+        units = vocabulary_project(root / "p.ddd.json", "units", [], {}, skims=True)
         planned = create_plan(
             root / "p.ddd.json", "units", "units", None, (), units, built, {}, checks_units=False
         )
@@ -1218,8 +1218,8 @@ class TestCreate:
         )
         root = tmp_path / "p.ddd.json"
         built = indexed(root)
-        units = unit_project(root, [], {})
-        assert (units.units_files, sorted(built.units)) == ((), ["rpm"])
+        units = vocabulary_project(root, "units", [], {}, skims=True)
+        assert (units.files, sorted(built.units)) == ((), ["rpm"])
         planned = create_plan(root, "units", "units", None, (), units, built, {}, checks_units=True)
         assert planned == (
             PlannedEdit(
@@ -1244,7 +1244,7 @@ class TestCreate:
                 ),
             },
         )
-        units = unit_project(root / "p.ddd.json", [], {})
+        units = vocabulary_project(root / "p.ddd.json", "units", [], {}, skims=True)
         planned = create_plan(
             root / "p.ddd.json", "units", "more", None, (), units, built, {}, checks_units=True
         )
@@ -1288,7 +1288,7 @@ class TestCreate:
         file is listed twice: once by what reached it already, once by its name."""
         write_tree(tmp_path, {"p.ddd.json": project("P", *listed), "a.ddd.json": component("A")})
         root = tmp_path / "p.ddd.json"
-        units = unit_project(root, [], {})
+        units = vocabulary_project(root, "units", [], {}, skims=True)
         planned = create_plan(
             root, "component", "pump", "Pump", ("A",), units, indexed(root), {}, checks_units=True
         )
@@ -1317,7 +1317,7 @@ class TestCreate:
         so the key is set to a list holding the new file alone."""
         write_tree(tmp_path, {"p.ddd.json": BARE})
         root = tmp_path / "p.ddd.json"
-        units = unit_project(root, [], {})
+        units = vocabulary_project(root, "units", [], {}, skims=True)
         planned = create_plan(
             root, "component", "pump", "Pump", (), units, indexed(root), {}, checks_units=False
         )
@@ -1346,7 +1346,7 @@ class TestCreate:
         ``includes`` name it: the list set is such an edit, and the project read again passes."""
         write_tree(tmp_path, {"p.ddd.json": BARE})
         root = tmp_path / "p.ddd.json"
-        units = unit_project(root, [], {})
+        units = vocabulary_project(root, "units", [], {}, skims=True)
         planned = create_plan(
             root, "component", "pump", "Pump", (), units, indexed(root), {}, checks_units=False
         )
@@ -1374,6 +1374,12 @@ class TestCreate:
                 "unit in use",
                 id="two files",
             ),
+            pytest.param(
+                ("y/b.ddd.json", "x/b.ddd.json"),
+                "x/b.ddd.json, y/b.ddd.json did not load, so a first units file could not list "
+                "every unit in use",
+                id="two files of one name",
+            ),
         ],
     )
     def test_a_first_units_file_is_refused_while_a_file_did_not_load(
@@ -1382,17 +1388,22 @@ class TestCreate:
         """What did not load may state a unit, and a first units file leaving it out would have
         it reported ``unknown-unit`` - the project failing in one click, which listing every
         unit is there to prevent. Refused as :func:`ddd.lsp.units.adoption` refuses, naming
-        every file that did not load, in the order of their paths."""
+        every file that did not load, in the order of their paths, two of one name told apart
+        by as much of their paths as it takes."""
         built, root = built_of(
             tmp_path,
             **{
                 "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
                 "b.ddd.json": '{"component": ',
                 "c.ddd.json": '{"component": ',
+                "x/b.ddd.json": '{"component": ',
+                "y/b.ddd.json": '{"component": ',
             },
         )
-        units = unit_project(root / "p.ddd.json", [root / name for name in unread], {})
-        with pytest.raises(FileRefusalError) as refused:
+        units = vocabulary_project(
+            root / "p.ddd.json", "units", [root / name for name in unread], {}, skims=True
+        )
+        with pytest.raises(PlanRefusalError) as refused:
             create_plan(
                 root / "p.ddd.json",
                 "units",
@@ -1413,8 +1424,8 @@ class TestCreate:
         write_tree(
             tmp_path, {"p.ddd.json": project("P", "a.ddd.json"), "a.ddd.json": component("A")}
         )
-        units = unit_project(tmp_path / "p.ddd.json", [], {})
-        with pytest.raises(FileRefusalError) as refused:
+        units = vocabulary_project(tmp_path / "p.ddd.json", "units", [], {}, skims=True)
+        with pytest.raises(PlanRefusalError) as refused:
             create_plan(
                 tmp_path / "p.ddd.json",
                 "units",
@@ -1443,7 +1454,9 @@ class TestCreate:
                 "b.ddd.json": '{"component": ',
             },
         )
-        units = unit_project(tmp_path / "p.ddd.json", [tmp_path / "b.ddd.json"], {})
+        units = vocabulary_project(
+            tmp_path / "p.ddd.json", "units", [tmp_path / "b.ddd.json"], {}, skims=True
+        )
         planned = create_plan(
             tmp_path / "p.ddd.json", "units", "more", None, (), units, None, {}, checks_units=True
         )
@@ -1553,7 +1566,7 @@ class TestCreate:
     def test_a_refused_creation_says_why(
         self, tmp_path: Path, kind: str, name: str, called: str | None, says: str
     ) -> None:
-        with pytest.raises(FileRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             creating(tmp_path, kind, name, called)
         assert (refused.value.code, refused.value.message) == ("invalid", says)
 
@@ -1570,7 +1583,7 @@ class TestCreate:
     ) -> None:
         """Where two refusals apply, the reader hears the one asked first."""
         write_tree(tmp_path, {"a.b.ddd.json": component("B")})
-        with pytest.raises(FileRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             creating(tmp_path, kind, name, called)
         assert (refused.value.code, refused.value.message) == ("invalid", says)
 
@@ -1580,8 +1593,8 @@ class TestCreate:
         """Both names lower-cased before they are compared, as the analysis groups components:
         neither ``PUMP`` nor ``Pump`` is lower case already."""
         built, root = built_of(tmp_path, **{"pump.ddd.json": component("Pump")})
-        units = unit_project(root / "p.ddd.json", [], {})
-        with pytest.raises(FileRefusalError) as refused:
+        units = vocabulary_project(root / "p.ddd.json", "units", [], {}, skims=True)
+        with pytest.raises(PlanRefusalError) as refused:
             create_plan(
                 root / "p.ddd.json",
                 "component",
@@ -1627,7 +1640,7 @@ class TestCreate:
         root = tmp_path / "p.ddd.json"
         before = first_revision(tmp_path, root)
         assert errors_of(before) == []
-        units = unit_project(root, [], {})
+        units = vocabulary_project(root, "units", [], {}, skims=True)
         planned = create_plan(
             root,
             "component",
@@ -1729,7 +1742,7 @@ class TestAdd:
         described = tmp_path / "proj" / "p.ddd.json"
         typed = (tmp_path.resolve() / "proj" / "lnk" / ".." / "p2" / "x.ddd.json").as_posix()
         if not os.path.isfile(typed):  # noqa: PTH113
-            with pytest.raises(FileRefusalError) as refused:
+            with pytest.raises(PlanRefusalError) as refused:
                 add_plan(described, typed, {})
             assert refused.value.code == "not-found"
             return
@@ -1769,7 +1782,7 @@ class TestAdd:
         plan = add_plan(tmp_path / "p.ddd.json", "sub\\x.ddd.json", {})
         assert plan.includes == ("a.ddd.json", "sub/x.ddd.json")
         assert plan.edits[0].operations[0].raw == '"sub/x.ddd.json"'
-        with pytest.raises(FileRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             add_plan(tmp_path / "p.ddd.json", "a\\.ddd.json", {})
         assert refused.value.message.startswith("a\\.ddd.json names no file")
 
@@ -1787,7 +1800,7 @@ class TestAdd:
             raise ValueError("path is on mount 'D:', start on mount 'C:'")
 
         monkeypatch.setattr(file_plans.os.path, "relpath", across)
-        with pytest.raises(FileRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             add_plan(
                 tmp_path / "proj" / "p.ddd.json",
                 (tmp_path / "elsewhere" / "b.ddd.json").as_posix(),
@@ -1851,7 +1864,7 @@ class TestAdd:
                 "sensors/b.ddd.json": component("B"),
             },
         )
-        with pytest.raises(FileRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             add_plan(tmp_path / "p.ddd.json", path, {})
         assert (refused.value.code, refused.value.message) == (code, says)
 
@@ -1865,7 +1878,7 @@ class TestAdd:
                 "sensors/a.ddd.json": component("A"),
             },
         )
-        with pytest.raises(FileRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             add_plan(tmp_path / "p.ddd.json", "sensors/a.ddd.json", {})
         assert refused.value.code == "invalid"
         assert refused.value.message == SAYS_PULLED_IN
@@ -1876,7 +1889,7 @@ class TestAdd:
         """Asked before whether an entry names it: a project listing its own description has it
         among an entry's files, and the reason no entry may name it is the one to hear."""
         write_tree(tmp_path, {"p.ddd.json": project("P", "p.ddd.json")})
-        with pytest.raises(FileRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             add_plan(tmp_path / "p.ddd.json", "p.ddd.json", {})
         assert (refused.value.code, refused.value.message) == ("invalid", SAYS_ITSELF)
 
@@ -1940,7 +1953,7 @@ class TestAdd:
     ) -> None:
         """Compared by its resolved path, the project's as well as the file's."""
         write_tree(tmp_path, {"p.ddd.json": project("P"), "sub/b.ddd.json": component("B")})
-        with pytest.raises(FileRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             add_plan(tmp_path / "sub" / ".." / "p.ddd.json", "p.ddd.json", {})
         assert (refused.value.code, refused.value.message) == ("invalid", SAYS_ITSELF)
 
@@ -2038,7 +2051,7 @@ class TestRemove:
                 "sensors/c.ddd.json": component("C"),
             },
         )
-        with pytest.raises(FileRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             remove_plan(tmp_path / "p.ddd.json", (tmp_path / "sensors/b.ddd.json").resolve(), {})
         assert (refused.value.code, refused.value.message) == (
             "invalid",
@@ -2077,7 +2090,7 @@ class TestRemove:
                 "loose.ddd.json": component("L"),
             },
         )
-        with pytest.raises(FileRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             remove_plan(tmp_path / "p.ddd.json", (tmp_path / path).resolve(), {})
         assert (refused.value.code, refused.value.message) == ("not-found", says)
 
@@ -2115,7 +2128,7 @@ class TestRemove:
             },
         )
         directory_link(tmp_path / "served" / "elsewhere", tmp_path / "outside")
-        with pytest.raises(FileRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             remove_plan(tmp_path / "served" / "p.ddd.json", tmp_path / "served" / "elsewhere", {})
         assert (refused.value.code, refused.value.message) == (
             "not-found",
@@ -2144,7 +2157,7 @@ class TestRemove:
         monkeypatch.setattr(
             file_plans, "resolve_path", lambda path: target if path == alias else resolving(path)
         )
-        with pytest.raises(FileRefusalError) as refused:
+        with pytest.raises(PlanRefusalError) as refused:
             remove_plan(tmp_path / "p.ddd.json", alias, {})
         assert (refused.value.code, refused.value.message) == (
             "invalid",

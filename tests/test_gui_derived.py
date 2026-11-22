@@ -30,6 +30,8 @@ def revision_of(
         builds=(),
         files=files,
         findings=findings,
+        # Read by `GET /api/state` alone: nothing derived from a revision counts statements.
+        statements=(0, 0, 0),
         resolved=None,
         analysed=True,
         checks=(),

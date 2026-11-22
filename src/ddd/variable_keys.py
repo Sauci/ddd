@@ -15,13 +15,16 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Final
 
 from ddd.lsp.edits import DEFERRED_KEYS
 from ddd.lsp.navigation import Index
 from ddd.models import definition_keys
 from ddd.models.common import Datatype
+from ddd.models.component import Scope
 from ddd.models.objects import ObjectKind, storage_keys
 from ddd.value_identity import same_value
 from ddd.variables import Declared
@@ -134,12 +137,25 @@ class KeyOffer:
     """What that editor names, sorted: datatypes, types, constants or objects."""
 
 
+SILENCE_IS: Final = {"unit": json.dumps("")}
+"""What a declaration stating nothing for a key says, for a key the models default: ``unit`` is
+``""`` where it is left out, so a declaration stating that beside one stating nothing says the
+same thing twice, as ``definition-mismatch`` reads them."""
+
+
 def offers(built: Index, declared: Sequence[Declared]) -> tuple[KeyOffer, ...]:
     """What every key offers for these declarations of one variable, in :data:`KEY_ORDER`."""
     return tuple(_offer(built, declared, key) for key in KEY_ORDER)
 
 
-def offer_for(built: Index, key: str, raw: str | None, *, required: bool) -> KeyOffer:
+def offer_for(
+    built: Index,
+    key: str,
+    raw: str | None,
+    *,
+    required: bool,
+    files: AbstractSet[Path] | None = None,
+) -> KeyOffer:
     """What one key offers when one value states it, which is a type's whole story.
 
     A variable's panel builds an offer per key from every declaration; a type has one entry, so
@@ -152,7 +168,7 @@ def offer_for(built: Index, key: str, raw: str | None, *, required: bool) -> Key
         values=() if raw is None else (InPlay(raw=raw, components=(), producer=False),),
         disagrees=False,
         editor=EDITORS[key],
-        choices=_choices(built, key),
+        choices=_choices(built, key, files),
     )
 
 
@@ -165,7 +181,7 @@ def _offer(built: Index, declared: Sequence[Declared], key: str) -> KeyOffer:
         values=values,
         disagrees=_disagrees(declared, carried, values, key),
         editor=EDITORS[key],
-        choices=_choices(built, key),
+        choices=_choices(built, key, {entry.site.path for entry in declared}),
     )
 
 
@@ -183,10 +199,19 @@ def _disagrees(
     whoever states them, and the check compares limits only where both sides state them. A
     declaration whose kind cannot hold the key at all is not part of the question, and a key
     nobody states is not a disagreement but an interface nobody has written down yet.
+
+    Two exceptions, both where the checker reads what a declaration means rather than what it
+    spells. A ``typename`` disagrees only where two declarations name different types: a
+    declaration spelling what a type fixes names no type, and says the same as the declaration
+    naming it, which the ``datatype``, ``unit`` and ``conversion`` rows already read through the
+    type. And silence is the models' default for a key they default (:data:`SILENCE_IS`), so
+    that value alone beside silence is no disagreement.
     """
     if len(values) > 1:
         return True
-    if not values or key in DEFERRED_KEYS:
+    if not values or key in DEFERRED_KEYS or key == "typename":
+        return False
+    if key in SILENCE_IS and same_value(key, values[0].raw) == SILENCE_IS[key]:
         return False
     stating = sum(1 for entry in declared if key in entry.stated or key in entry.fixed)
     return stating < sum(1 for may in carried if may.allowed)
@@ -259,8 +284,13 @@ def _in_play(declared: Sequence[Declared], key: str) -> tuple[InPlay, ...]:
     )
 
 
-def _choices(built: Index, key: str) -> tuple[str, ...]:
-    """What the key's editor names, for the editors that name something."""
+def _choices(built: Index, key: str, files: AbstractSet[Path] | None) -> tuple[str, ...]:
+    """What the key's editor names, for the editors that name something.
+
+    ``files`` are the component files the offer is for: those a variable's declarations are in,
+    or the one a new declaration is written into. ``None`` where the offer is for no component's
+    declaration at all, which a type's panel is.
+    """
     if key == "datatype":
         return DATATYPES
     if key == "typename":
@@ -268,17 +298,42 @@ def _choices(built: Index, key: str) -> tuple[str, ...]:
     if key == "size":
         return tuple(sorted(built.constants))
     if key in ("axis", "x_axis", "y_axis"):
-        return _objects(built, ObjectKind.AXIS)
+        return _objects(built, ObjectKind.AXIS, files)
     if key == "input":
-        return _objects(built, ObjectKind.MEASUREMENT)
+        return _objects(built, ObjectKind.MEASUREMENT, files)
     return ()
 
 
-def _objects(built: Index, kind: ObjectKind) -> tuple[str, ...]:
-    """Every object of that kind the project declares, by name.
+def _objects(built: Index, kind: ObjectKind, files: AbstractSet[Path] | None) -> tuple[str, ...]:
+    """Every object of that kind the project declares, by name, that a declaration in ``files``
+    may name.
 
     A measurement that is an instance of a declared structure is listed with the rest, although
     an ``input`` may not name one: what a name may refer to beyond its kind is the loader's
     answer, and it gives it on the next analysis, exactly as it does for a file edited by hand.
+
+    A name some component declares ``local`` is that component's alone, so it is left out unless
+    every one of ``files`` is the one that keeps it: named from any other, it is a
+    ``local-conflict``. Files are compared, not component names, because a file is one
+    component: the loader refuses a second file naming a component as ``duplicate-component``
+    and loads none of it. The owner is read off the index, as
+    :func:`ddd.declaration_plans.scopes_for` reads it, which this module cannot import. With
+    ``files`` of ``None`` there is no component to compare, and every name is listed.
     """
-    return tuple(sorted(name for name, stated in built.kinds.items() if stated == kind.value))
+    return tuple(
+        sorted(
+            name
+            for name, stated in built.kinds.items()
+            if stated == kind.value
+            and (files is None or not (owners := _owners(built, name)) or files <= owners)
+        )
+    )
+
+
+def _owners(built: Index, name: str) -> set[Path]:
+    """The files of the components declaring ``name`` ``local``: none where nothing does."""
+    return {
+        site.path
+        for site in built.declarations.get(name, ())
+        if built.scopes[site] == Scope.LOCAL.value
+    }

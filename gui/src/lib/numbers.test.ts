@@ -19,6 +19,7 @@ import {
   readNumber,
   significant,
   singleOf,
+  spelledNumber,
   typedComma,
 } from "./numbers";
 
@@ -334,6 +335,16 @@ describe("jsonNumber", () => {
     expect(jsonNumber("1,500", "grouping")).toEqual({ json: "1500" });
     expect(jsonNumber("1,500")).toEqual({ refusal: ambiguousComma("1,500"), ambiguous: true });
     expect(jsonNumber("0x10")).toEqual({ refusal: notDecimal("0x10"), ambiguous: false });
+  });
+});
+
+describe("spelledNumber", () => {
+  test("a number is read as readNumber reads it, and spelled as jsonNumber spells it", () => {
+    // What a range's bound is weighed by, and the text it is sent as (3:I1).
+    expect(spelledNumber("+1E3")).toEqual({ decimal: decimal("1000"), json: "1e3" });
+    expect(spelledNumber("1,500", "decimal")).toEqual({ decimal: decimal("1.5"), json: "1.500" });
+    expect(spelledNumber("1,500")).toEqual({ refusal: ambiguousComma("1,500"), ambiguous: true });
+    expect(spelledNumber("0x10")).toEqual({ refusal: notDecimal("0x10"), ambiguous: false });
   });
 });
 

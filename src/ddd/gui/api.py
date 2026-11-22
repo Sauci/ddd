@@ -5,12 +5,14 @@ its method, its path, its query and its body, and leaves as a :class:`Reply`, so
 the page can get is tested without a network in between. The API is internal - the page and the
 server ship in one wheel - and changes with the package.
 
-Every request and response body is a model of :mod:`ddd.gui.contract`: a request is read with
-:meth:`~pydantic.BaseModel.model_validate_json`, refusing anything the page's own types would
-not have sent, and a response is built as a model and written by :func:`ddd.gui.depth.written` -
-never a hand-assembled ``dict`` - so the shape answered here and the shape
-``gui/src/generated/api.ts`` declares cannot drift apart, and an answer nested deeper than the
-serializer writes is refused, ``409``, rather than failing to be written.
+Every request and every answer but a refusal is a model of :mod:`ddd.gui.contract`: a query is read
+as its route's model and a body with :meth:`~pydantic.BaseModel.model_validate_json`, refusing
+anything the page's own types would not have sent, and an answer is built as a model and written by
+:func:`ddd.gui.depth.written` - never a hand-assembled ``dict`` - so the shape answered here and the
+shape ``gui/src/generated/api.ts`` declares cannot drift apart, and an answer nested deeper than the
+serializer writes is refused, ``409``, rather than failing to be written. A refusal is the one body
+that is no model: ``{"error": code, "message": text}``, two strings that ``_error`` alone builds,
+which the page reads as its ``ApiError`` and ``gui/src/generated/api.ts`` does not declare.
 """
 
 from __future__ import annotations
@@ -33,8 +35,6 @@ from ddd.declaration_plans import (
     KINDS,
     PRODUCING_SCOPES,
     SCOPES,
-    DeclarationPlan,
-    DeclarationRefusalError,
     declarable,
     declare_object,
     describe_declaration,
@@ -49,6 +49,7 @@ from ddd.editing import (
     STALE,
     UNREADABLE,
     UNVERIFIED,
+    UNWRITABLE,
     EditError,
     FileChange,
     Operation,
@@ -56,7 +57,6 @@ from ddd.editing import (
 )
 from ddd.file_plans import (
     CREATABLE,
-    FileRefusalError,
     add_plan,
     create_plan,
     included_entries,
@@ -144,43 +144,42 @@ from ddd.gui.session import (
     Snapshot,
     SourceFile,
     Undoable,
-    _name_in,
-    _read_json,
-    _refuse_plugins,
-    _served,
-    _source,
     find_projects,
     findings_with,
     generated_refusal,
     kind_of,
+    name_in,
+    read_json,
+    refuse_plugins,
+    served_path,
+    source_path,
+    walk_finds,
 )
 from ddd.gui.session import KINDS as DESCRIPTION_KINDS
 from ddd.ir import DataDictionary
 from ddd.loading import fingerprint, resolve_path
 from ddd.lsp.edits import settle, type_conversions
-from ddd.lsp.navigation import Index
+from ddd.lsp.navigation import Index, told_apart
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import (
-    PlannedEdit,
-    UnitPlan,
-    UnitProject,
-    UnitRefusalError,
+    VocabularyProject,
     add_unit,
     adopt_units,
     describe_unit,
     remove_unit,
     rename_unit,
-    unit_project,
+    vocabulary_project,
 )
 from ddd.object_values import (
     Grid,
-    ValueRefusalError,
     grid_of,
     limits_refusal,
+    no_grid_because,
     set_cell,
     set_cells,
     set_values,
 )
+from ddd.plans import Plan, PlannedEdit, PlanRefusalError
 from ddd.project_shared import (
     CONSTANTS,
     RASTERS,
@@ -211,17 +210,8 @@ from ddd.project_units import (
     unit_findings,
     unit_rows,
 )
-from ddd.shared_plans import (
-    SharedPlan,
-    SharedProject,
-    SharedRefusalError,
-    add_entry,
-    project_of,
-    remove_entry,
-    rename_entry,
-    set_entry,
-)
-from ddd.type_plans import REQUIRED, TypePlan, TypeRefusalError, rename_type, set_key
+from ddd.shared_plans import add_entry, remove_entry, rename_entry, set_entry
+from ddd.type_plans import REQUIRED, rename_type, set_key
 from ddd.variable_keys import offer_for, offers, unit_refusal
 from ddd.variables import (
     Planned,
@@ -267,10 +257,17 @@ its next analysis."""
 ANALYSING: Final = "analysing"
 """The refusal of a request the analysis has not caught up with: asked of the open project before
 its first analysis has landed, or a plan changing a file an edit wrote that no analysis has read
-yet. Answered 409, and answered differently once the analysis lands."""
+yet - or refused for a place that moved while it reads such a file, whichever file the place is
+in. Answered 409, and answered differently once the analysis lands."""
 
-REFUSALS: Final = frozenset({STALE, UNREADABLE, INVALID, UNVERIFIED, ANALYSING, GENERATED, PLUGINS})
-"""The edit refusals a page can act on, answered 409; anything else an edit raises is a 500."""
+REFUSALS: Final = frozenset(
+    {STALE, UNREADABLE, INVALID, UNVERIFIED, UNWRITABLE, ANALYSING, GENERATED, PLUGINS}
+)
+"""The edit refusals a page can act on, answered 409; anything else an edit raises is a 500.
+
+``unwritable`` among them: a file read-only to this process is refused before anything is staged,
+for the reader to make writable, and a write the disk refused names any file it could not put
+back - a refusal, in a sentence of its own, never ddd gui failing on the request."""
 
 _UNSEEN: Final = {
     "rename": "renaming '{name}' could not reach every place that names it",
@@ -293,8 +290,6 @@ by the scope - the end of the sentence ``b.ddd.json did not load, so ...`` - for
 ``multiple-producers`` once it loads, or declare it beside a local, which is a ``local-conflict``.
 A declaration that only reads is not here: it adds no second producer, and is answered."""
 
-_NOTHING_LOADED: Final = "the open project did not load, so no interface of it can be changed"
-
 _NOTHING_RESOLVED: Final = "the open project did not resolve, so no object's values can be read"
 
 _NOTHING_COMPARABLE: Final = (
@@ -315,10 +310,12 @@ class _OfAnEntry(Protocol):
     def name(self) -> str: ...
 
 
-type SharedPlanner[A] = Callable[[A, Index, SharedProject, dict[Path, Document]], SharedPlan]
+type SharedPlanner[A] = Callable[
+    [A, Index, Callable[[], VocabularyProject], dict[Path, Document]], Plan
+]
 """What :meth:`Api._shared_plan` asks for the plan itself: the action asked for, read as its own
-model (``A``), the index, the project's own files and the read cache the route shares. One per
-vocabulary, since ``add`` is spelled differently for each."""
+model (``A``), the index, what makes the project's own files - called by ``add`` alone - and the
+read cache the route shares. One per vocabulary, since ``add`` is spelled differently for each."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -351,6 +348,9 @@ class Api:
         # The state's answer and the version it was made at: what `GET /api/state` answers again
         # until the version moves, every request of a page's long poll asking for it.
         self._state_kept: tuple[int, Reply] | None = None
+        # The projects the last walk for them found (`find_projects`), which an open asks of a
+        # path before it walks again (`_openable`).
+        self._found: frozenset[Path] = frozenset()
 
     def handle(
         self,
@@ -426,6 +426,7 @@ class Api:
 
     def _projects(self, query: NoQuery, body: None) -> Reply:
         found = find_projects(self.session.root, self.session.build_directories)
+        self._found = frozenset(listed.path for listed in found.projects)
         return Reply(
             200,
             written(
@@ -445,9 +446,7 @@ class Api:
 
     def _open(self, query: NoQuery, body: contract.OpenRequest) -> Reply:
         wanted = resolve_path(Path(body.path))
-        found = find_projects(self.session.root, self.session.build_directories)
-        allowed = {p.path for p in found.projects} | ({self.project} if self.project else set())
-        if wanted not in allowed:
+        if not self._openable(wanted):
             return _error(404, "not-found", f"{body.path} is not a project found here")
         try:
             self.session.open(wanted)
@@ -456,6 +455,30 @@ class Api:
         # Answered at once, the project named: the page follows its first analysis from the
         # state, which says it is being analysed until it lands.
         return Reply(200, self._session_body())
+
+    def _openable(self, wanted: Path) -> bool:
+        """Whether ``wanted``, resolved, may be opened: the project named on the command line, or
+        one the walk for the projects under the start directory finds (:func:`find_projects`).
+
+        Asked without the walk where it can be, the walk parsing every description under that
+        directory to tell the projects among them: over a generated project of 100,000
+        declarations, the walk alone took 135 to 259 ms, and ``POST /api/open`` of the project
+        named on the command line 179 to 260 ms with it and 28 to 126 ms without it, four opens
+        each (Linux development PC). The project named on the command line needs no walk at all,
+        as it never did: it is opened from wherever it lies. The open project, and one the last
+        walk found, are asked the walk's own question alone (:func:`walk_finds`) and opened where
+        the walk would find them now; any other path is walked for, and so is one of those the
+        walk would not find now as a description - deleted, replaced, or offered by a build
+        record alone - so that a path held is never answered from the listing alone. Each walk
+        is kept as the listing the next open asks."""
+        if wanted == self.project:
+            return True
+        held = wanted == self.session.project or wanted in self._found
+        if held and walk_finds(self.session.root, wanted):
+            return True
+        found = find_projects(self.session.root, self.session.build_directories)
+        self._found = frozenset(listed.path for listed in found.projects)
+        return wanted in self._found
 
     def _state(self, query: StateQuery, body: None) -> Reply:
         """What the session says: at once, or as soon as its version is past ``?after=``, or
@@ -501,16 +524,23 @@ class Api:
     def _state_of(self, snapshot: Snapshot, project: Path) -> Reply:
         """The state ``snapshot`` says of ``project``, the one open: revision ``0``, no files and
         every count ``0`` before its first analysis. The findings themselves are
-        ``GET /api/findings``'s, a page at a time; this counts them."""
+        ``GET /api/findings``'s, a page at a time; this counts them, as that lists them and as the
+        statements they make (:attr:`~ddd.gui.session.Revision.statements`)."""
         revision = snapshot.revision
         number = 0
         edits = 0
         files: list[dict[str, Any]] = []
-        counts = (0, 0, 0)
+        refused: list[dict[str, str]] = []
+        counts = statements = (0, 0, 0)
         if revision is not None:
             number = revision.number
             edits = revision.edits
             counts = self._derive(revision).counts
+            statements = revision.statements
+            refused = [
+                {"record": record.as_posix(), "reason": reason}
+                for record, reason in revision.refused
+            ]
             files = [
                 {
                     "path": file.path.as_posix(),
@@ -536,6 +566,13 @@ class Api:
                     project=project.as_posix(),
                     files=files,
                     counts={"error": counts[0], "warning": counts[1], "info": counts[2]},
+                    statements={
+                        "error": statements[0],
+                        "warning": statements[1],
+                        "info": statements[2],
+                    },
+                    failed=snapshot.failed,
+                    refused=refused,
                     undoable=None if top is None else {"at": top.at, "label": top.label},
                     analysing=snapshot.analysing,
                     edits=edits,
@@ -655,7 +692,7 @@ class Api:
     def _graph_of(self, revision: Revision) -> Reply:
         modules = [_module(file) for file in revision.files if file.kind == "component"]
         findings = [(PurePosixPath(f.file.as_posix()), f.diagnostic) for f in revision.findings]
-        built = graph_of(revision.dictionary, modules, findings)
+        built = graph_of(revision.dictionary, modules, findings, index=revision.index)
         return Reply(
             200,
             written(
@@ -725,7 +762,7 @@ class Api:
             within_depth(body.changes)
             at, wrote = self.session.edit([_file_change(c) for c in body.changes], body.label)
         except EditError as refusal:
-            return _error(409 if refusal.code in REFUSALS else 500, refusal.code, str(refusal))
+            return _edit_refusal(refusal)
         # Answered once written, before its analysis: the edit's own number is what says when a
         # revision includes it.
         return Reply(
@@ -751,7 +788,7 @@ class Api:
         try:
             changes = _undone_changes(top)
         except EditError as refused:
-            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
+            return _edit_refusal(refused)
         return Reply(
             200,
             written(
@@ -767,7 +804,7 @@ class Api:
         try:
             number = self.session.undo(body.at)
         except EditError as refused:
-            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
+            return _edit_refusal(refused)
         return Reply(200, written(contract.UndoReply(edit=number)))
 
     def _variable(self, query: VariableQuery, body: None) -> Reply:
@@ -821,11 +858,12 @@ class Api:
 
         Answered anew each time, never kept (:meth:`_memoised`): the offer reads the disk as it
         stands - the includes expanded to find the units files, and whether ``units.ddd.json``
-        is there beside the description - which no revision records: neither a file appearing
-        where a pattern matches nor one no include names starts an analysis. Read only where the
-        offer can depend on it (:func:`ddd.project_units.adoptable`): a project holding a
-        vocabulary already is refused adopting by its index alone, and its includes are not
-        expanded at all."""
+        is there beside the description - which no revision records yet: a file new to a pattern
+        belongs to no revision until the poll notices the directory the pattern expands in and
+        the analysis it asks for lands, a poll interval later or a whole analysis while one runs,
+        and a file no include names is watched by nothing. Read only where the offer can depend
+        on it (:func:`ddd.project_units.adoptable`): a project holding a vocabulary already is
+        refused adopting by its index alone, and its includes are not expanded at all."""
         revision = self._opened()
         cache: dict[Path, Document] = {}
         vocabulary = vocabulary_of(
@@ -834,10 +872,10 @@ class Api:
         built = revision.index
         unread = [file.path for file in revision.files if not file.loaded]
 
-        def project() -> UnitProject:
+        def project() -> VocabularyProject:
             # The project `_unit_plan` makes its plans in, built the same way: the offer asks the
             # plan's own guards of it, so an Adopt this answers is one the plan will not refuse.
-            return unit_project(revision.project, unread, cache)
+            return vocabulary_project(revision.project, "units", unread, cache, skims=True)
 
         used = () if built is None else units_in_use(built)
         derived = self._derive(revision)
@@ -911,43 +949,21 @@ class Api:
         revision = self._opened()
         built = revision.index
         if built is None:
-            unread = [file.path.name for file in revision.files if not file.loaded]
-            return _error(
-                409,
-                UNREADABLE,
-                f"{', '.join(unread) or revision.project.name} did not load, "
-                "so no unit of the project can be changed",
-            )
+            return _nothing_loaded(revision, "unit")
         cache: dict[Path, Document] = {}
-        project = unit_project(
-            revision.project, [file.path for file in revision.files if not file.loaded], cache
+        project = vocabulary_project(
+            revision.project,
+            "units",
+            [file.path for file in revision.files if not file.loaded],
+            cache,
+            skims=True,
         )
         asked = query.root
-        try:
-            plan = _unit_plan_of(asked, built, project, cache)
-        except UnitRefusalError as refused:
-            named = None
-            if isinstance(asked, RenameUnit | DescribeUnit | RemoveUnit):
-                named = asked.unit
-            return _refusal(revision, refused.code, refused.message, named)
-        derived = self._derive(revision)
-        try:
-            self._refuse_generated(
-                revision,
-                (edit.path for edit in plan.edits),
-                (edit.path for edit in plan.edits if edit.creates),
-            )
-            self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
-            planned = previewed(plan.edits, derived.stamps)
-        except EditError as refused:
-            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
-        return Reply(
-            200,
-            written(
-                contract.PlanReply(
-                    revision=revision.number, changes=_planned_changes(revision, derived, planned)
-                )
-            ),
+        named = None
+        if isinstance(asked, RenameUnit | DescribeUnit | RemoveUnit):
+            named = asked.unit
+        return self._answered(
+            revision, lambda: _unit_plan_of(asked, built, project, cache), cache, named=named
         )
 
     def _types(self, query: NoQuery, body: None) -> Reply:
@@ -993,7 +1009,9 @@ class Api:
         derived = self._derive(revision)
         row = row_of(built, name, derived.findings, cache)
         stated = fixed_by(built, name, cache)
-        header = stated.get("header")
+        # An external's header is read as the reply wants it, text: a save that still parses may
+        # hold another json value there, before the next analysis files its finding.
+        header = json.loads(stated.get("header", "null"))
         return Reply(
             200,
             written(
@@ -1004,7 +1022,7 @@ class Api:
                     file=derived.resolve(site.path).as_posix(),
                     pointer=site.pointer,
                     description=row.description,
-                    header=None if header is None else json.loads(header),
+                    header=header if isinstance(header, str) else None,
                     keys=[
                         asdict(offer_for(built, key, stated.get(key), required=key in REQUIRED))
                         for key in SCALAR_KEYS
@@ -1022,18 +1040,7 @@ class Api:
                         }
                         for use in uses_of(built, name, cache)
                     ],
-                    members=[
-                        {
-                            "name": member["name"],
-                            "member": member["member"],
-                            "typename": member.get("typename"),
-                            "datatype": member.get("datatype"),
-                            "unit": member.get("unit"),
-                            "bits": member.get("bits"),
-                            "dimensions": member.get("dimensions", ()),
-                        }
-                        for member in members_of(built, name, cache)
-                    ],
+                    members=list(members_of(built, name, cache)),
                     findings=_listed(derived, type_findings(built, name, derived.findings), cache),
                 )
             ),
@@ -1043,13 +1050,7 @@ class Api:
         revision = self._opened()
         built = revision.index
         if built is None:
-            unread = [file.path.name for file in revision.files if not file.loaded]
-            return _error(
-                409,
-                UNREADABLE,
-                f"{', '.join(unread) or revision.project.name} did not load, "
-                "so no type of the project can be changed",
-            )
+            return _nothing_loaded(revision, "type")
         asked = query.root
         unseen = _unseen_refusal(revision, asked)
         if unseen is not None:
@@ -1072,24 +1073,8 @@ class Api:
             spaced = unit_refusal(asked.raw)
             if spaced is not None:
                 return _refusal(revision, "invalid", spaced, asked.name)
-        try:
-            plan = _type_plan_of(asked, built, cache)
-        except TypeRefusalError as refused:
-            return _refusal(revision, refused.code, refused.message, asked.name)
-        derived = self._derive(revision)
-        try:
-            self._refuse_generated(revision, (edit.path for edit in plan.edits))
-            self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
-            planned = previewed(plan.edits, derived.stamps)
-        except EditError as refused:
-            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
-        return Reply(
-            200,
-            written(
-                contract.PlanReply(
-                    revision=revision.number, changes=_planned_changes(revision, derived, planned)
-                )
-            ),
+        return self._answered(
+            revision, lambda: _type_plan_of(asked, built, cache), cache, named=asked.name
         )
 
     def _shared(self, query: NoQuery, body: None) -> Reply:
@@ -1220,15 +1205,16 @@ class Api:
         itself, which a row naming nothing has no file to carry.
 
         Answered anew each time, never kept (:meth:`_memoised`): the includes are expanded on
-        disk as it stands, which no revision records - a file appearing where a pattern matches
-        starts no analysis. At a cost while an analysis runs: over a generated project of 100,000
-        declarations, whose one pattern reaches 1,681 files, the request took 1,872 to 2,602 ms
-        asked halfway through an analysis and 24 ms otherwise, 141 ms the first time; listing
-        that directory alone took 1,028 to 1,487 ms and under a millisecond - three askings
-        each, on the Linux development PC. Kept for a revision and the session's edits instead,
-        it would list a file saved where a pattern matches only once something else changed,
-        and still be made again after every edit - when the Files tab asks for it again, its
-        own Apply written."""
+        disk as it stands, which no revision records yet - a file new to a pattern belongs to no
+        revision until the poll notices the directory the pattern expands in and the analysis it
+        asks for lands, a poll interval later or a whole analysis while one runs. At a cost while
+        an analysis runs: over a generated project of 100,000 declarations, whose one pattern
+        reaches 1,681 files, the request took 1,872 to 2,602 ms asked halfway through an analysis
+        and 24 ms otherwise, 141 ms the first time; listing that directory alone took 1,028 to
+        1,487 ms and under a millisecond - three askings each, on the Linux development PC. Kept
+        for a revision and the session's edits instead, it would list a file saved where a pattern
+        matches only once that analysis landed, and still be made again after every edit - when
+        the Files tab asks for it again, its own Apply written."""
         revision = self._opened()
         at_entry = self._derive(revision).at_entry
         cache: dict[Path, Document] = {}
@@ -1267,22 +1253,23 @@ class Api:
         description, so where a build generates it each is refused ``generated`` once the plan's
         own refusals are asked, and before anything is judged - and where it would change which
         plugins the project's descriptions name, ``plugins``, by the edit's own check
-        (:func:`ddd.gui.session._refuse_plugins`), so an add or a creation the Apply would refuse
+        (:func:`ddd.gui.session.refuse_plugins`), so an add or a creation the Apply would refuse
         is refused here too, before the reader presses.
         """
         revision = self._opened()
         cache: dict[Path, Document] = {}
 
-        def refuse(edits: Sequence[PlannedEdit]) -> None:
+        def refuse(edits: Sequence[PlannedEdit], added: Sequence[Path]) -> None:
             self._refuse_generated(
                 revision,
                 (edit.path for edit in edits),
                 (edit.path for edit in edits if edit.creates),
+                added,
             )
             self._refuse_unanalysed(revision, (edit.path for edit in edits))
             derived = self._derive(revision)
             try:
-                _refuse_plugins(
+                refuse_plugins(
                     revision,
                     [
                         FileChange(
@@ -1303,16 +1290,15 @@ class Api:
 
         try:
             plan = _files_plan_of(query.root, revision, cache, refuse)
-        except FileRefusalError as refused:
-            status = 404 if refused.code == "not-found" else 409
-            return _error(status, refused.code, refused.message)
+        except PlanRefusalError as refused:
+            return _refusal(revision, refused.code, refused.message, None)
         except EditError as refused:
-            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
+            return _edit_refusal(refused)
         derived = self._derive(revision)
         try:
-            made = previewed(plan.edits, derived.stamps)
+            made = previewed(plan.edits, derived.stamps, cache)
         except EditError as refused:
-            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
+            return _edit_refusal(refused)
         return Reply(
             200,
             written(
@@ -1351,55 +1337,34 @@ class Api:
         ``?raw=``, and each value an ``add`` declares - was read as json text by the query, before
         anything asked for the project: a request that is not json is a mistake about the
         request, not a refusal about the project, so it answers 400 rather than being folded into
-        a :class:`~ddd.shared_plans.SharedRefusalError`.
+        a :class:`~ddd.plans.PlanRefusalError`.
 
         A rename or a removal is refused, naming the files, while any file of the project did not
         load (:func:`_unseen_refusal`), before the files are read to plan it; and a refusal that
         no file declares the entry is the panel's own answer where a file did not load
         (:func:`_refusal`).
+
+        Where the vocabulary's own files are (:func:`~ddd.lsp.units.vocabulary_project`) is found
+        only for ``add``, the one verb writing where they are: finding them reads the project
+        description and every file it includes, and a panel asks for a plan at each keystroke.
         """
         revision = self._opened()
         built = revision.index
         if built is None:
-            unread = [file.path.name for file in revision.files if not file.loaded]
-            return _error(
-                409,
-                UNREADABLE,
-                f"{', '.join(unread) or revision.project.name} did not load, "
-                f"so no {vocabulary.kind} of the project can be changed",
-            )
+            return _nothing_loaded(revision, vocabulary.kind)
         unseen = _unseen_refusal(revision, asked)
         if unseen is not None:
             return unseen
         cache: dict[Path, Document] = {}
-        project = project_of(
-            vocabulary,
-            revision.project,
-            [file.path for file in revision.files if not file.loaded],
-            cache,
-        )
-        try:
-            plan = plan_of(asked, built, project, cache)
-        except SharedRefusalError as refused:
-            return _refusal(revision, refused.code, refused.message, asked.name)
-        derived = self._derive(revision)
-        try:
-            self._refuse_generated(
-                revision,
-                (edit.path for edit in plan.edits),
-                (edit.path for edit in plan.edits if edit.creates),
+
+        def project() -> VocabularyProject:
+            unread = [file.path for file in revision.files if not file.loaded]
+            return vocabulary_project(
+                revision.project, vocabulary.containers[0], unread, cache, skims=False
             )
-            self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
-            made = previewed(plan.edits, derived.stamps)
-        except EditError as refused:
-            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
-        return Reply(
-            200,
-            written(
-                contract.PlanReply(
-                    revision=revision.number, changes=_planned_changes(revision, derived, made)
-                )
-            ),
+
+        return self._answered(
+            revision, lambda: plan_of(asked, built, project, cache), cache, named=asked.name
         )
 
     def _settle(self, query: SettleQuery, body: None) -> Reply:
@@ -1447,9 +1412,9 @@ class Api:
         try:
             self._refuse_generated(revision, (change.site.path for change in settlement.changes))
             self._refuse_unanalysed(revision, (change.site.path for change in settlement.changes))
-            planned = preview(settlement, key, derived.stamps)
+            planned = preview(settlement, key, derived.stamps, cache)
         except EditError as refused:
-            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
+            return _edit_refusal(refused)
         return Reply(
             200,
             written(
@@ -1482,9 +1447,12 @@ class Api:
             try:
                 self._refuse_generated(revision, (edit.path for edit in fix.changes))
                 self._refuse_unanalysed(revision, (edit.path for edit in fix.changes))
-                made = [planned(edit.path, edit.operations, derived.stamps) for edit in fix.changes]
+                made = [
+                    planned(edit.path, edit.operations, derived.stamps, cache)
+                    for edit in fix.changes
+                ]
             except EditError as refused:
-                return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
+                return _edit_refusal(refused)
             offered.append(
                 {"title": fix.title, "changes": _planned_changes(revision, derived, made)}
             )
@@ -1496,23 +1464,18 @@ class Api:
     def _declarable(self, query: DeclarableQuery, body: None) -> Reply:
         revision = self._opened()
         try:
-            file = _source(revision, Path(query.file))
+            file = source_path(revision, Path(query.file))
         except NotInProjectError as outside:
             return _error(404, "not-found", str(outside))
         built = revision.index
         if built is None:
-            return _error(409, UNREADABLE, _NOTHING_LOADED)
+            return _nothing_loaded(revision, "interface")
         described = _file_of(revision, file)
         if described.kind != "component":
             if not described.loaded:
                 # Cut short, a file reads as no kind at all, and which kind it is is not known.
-                return _error(
-                    409,
-                    UNREADABLE,
-                    f"{file.name} did not load, so it cannot be told whether it is a component",
-                )
+                return _did_not_load([file.name], "it cannot be told whether it is a component")
             return _error(409, "invalid", f"{file.name} is not a component of the open project")
-        cache: dict[Path, Document] = {}
         return Reply(
             200,
             written(
@@ -1526,7 +1489,7 @@ class Api:
                             producer=entry.producer,
                             scopes=scopes_for(built, entry.name),
                         )
-                        for entry in declarable(built, file, cache)
+                        for entry in declarable(built, file)
                     ),
                     kinds=tuple(
                         # `asdict`, exactly as `_variable` already converts its offers: the
@@ -1534,7 +1497,7 @@ class Api:
                         # field, and the contract validates what comes out, so a name that drifts
                         # apart fails here rather than reaching the page.
                         contract.KindForm(
-                            kind=kind, keys=[asdict(offer) for offer in form_for(built, kind)]
+                            kind=kind, keys=[asdict(offer) for offer in form_for(built, kind, file)]
                         )
                         for kind in KINDS
                     ),
@@ -1548,12 +1511,12 @@ class Api:
         asked = query.root
         revision = self._opened()
         try:
-            file = _source(revision, Path(asked.file))
+            file = source_path(revision, Path(asked.file))
         except NotInProjectError as outside:
             return _error(404, "not-found", str(outside))
         built = revision.index
         if built is None:
-            return _error(409, UNREADABLE, _NOTHING_LOADED)
+            return _nothing_loaded(revision, "interface")
         unseen = _declaring_refusal(revision, asked, file)
         if unseen is not None:
             return unseen
@@ -1567,69 +1530,38 @@ class Api:
         ):
             named = asked.name
         cache: dict[Path, Document] = {}
-        try:
-            plan = _declaration_plan_of(asked, built, file, cache)
-        except DeclarationRefusalError as refused:
-            return _refusal(revision, refused.code, refused.message, named)
-        derived = self._derive(revision)
-        try:
-            self._refuse_generated(revision, (edit.path for edit in plan.edits))
-            self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
-            planned = previewed(plan.edits, derived.stamps)
-        except EditError as refused:
-            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
-        return Reply(
-            200,
-            written(
-                contract.PlanReply(
-                    revision=revision.number, changes=_planned_changes(revision, derived, planned)
-                )
-            ),
+        return self._answered(
+            revision, lambda: _declaration_plan_of(asked, built, file, cache), cache, named=named
         )
 
     def _description_plan(self, query: DescriptionPlanQuery, body: None) -> Reply:
         revision = self._opened()
         try:
-            file = _source(revision, Path(query.file))
+            file = source_path(revision, Path(query.file))
         except NotInProjectError as outside:
             return _error(404, "not-found", str(outside))
         built = revision.index
         if built is None:
-            return _error(409, UNREADABLE, _NOTHING_LOADED)
+            return _nothing_loaded(revision, "interface")
         # Written into one file, as a declaration is: refused, naming that file alone, where it is
         # the one that did not load, what it declares being unknown.
         if not _file_of(revision, file).loaded:
-            return _error(
-                409,
-                UNREADABLE,
-                f"{file.name} did not load, so what it declares is unknown and nothing can be "
-                "described in it",
+            return _did_not_load(
+                [file.name], "what it declares is unknown and nothing can be described in it"
             )
+        # A refusal that nothing is found is about the name only where the index lacks it, as
+        # `_declaration_plan` asks: where it holds the name, the refusal is about this file, and
+        # its own sentence stands.
+        named = None
+        if query.name not in built.declarations:
+            named = query.name
         cache: dict[Path, Document] = {}
-        try:
-            plan = describe_declaration(built, file, query.name, query.description, cache)
-        except DeclarationRefusalError as refused:
-            # A refusal that nothing is found is about the name only where the index lacks it,
-            # as `_declaration_plan` asks: where it holds the name, the refusal is about this
-            # file, and its own sentence stands.
-            named = None
-            if query.name not in built.declarations:
-                named = query.name
-            return _refusal(revision, refused.code, refused.message, named)
-        derived = self._derive(revision)
-        try:
-            self._refuse_generated(revision, (edit.path for edit in plan.edits))
-            self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
-            planned = _changing(previewed(plan.edits, derived.stamps))
-        except EditError as refused:
-            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
-        return Reply(
-            200,
-            written(
-                contract.PlanReply(
-                    revision=revision.number, changes=_planned_changes(revision, derived, planned)
-                )
-            ),
+        return self._answered(
+            revision,
+            lambda: describe_declaration(built, file, query.name, query.description, cache),
+            cache,
+            named=named,
+            changing=True,
         )
 
     def _values(self, query: ValuesQuery, body: None) -> Reply:
@@ -1640,14 +1572,19 @@ class Api:
             return _unresolved(revision)
         try:
             grid = grid_of(dictionary, built, name)
-        except ValueRefusalError as refused:
+        except PlanRefusalError as refused:
             # Both codes are reachable - a name the project has not, and a shape of more
-            # dimensions than a grid draws - so both arms need a status and a test reaching
-            # them. An `if`/`else` rather than a ternary: a conditional expression registers
-            # no branch at all with coverage.py, which is how an untested arm hid here before.
-            if refused.code == "not-found":
-                return _error(404, refused.code, refused.message)
-            return _error(409, refused.code, refused.message)
+            # dimensions than a grid draws - each answered as a plan's refusal is: 404 and 409.
+            if refused.code == "not-found" and name in built.declarations:
+                # Declared, and in no grid: a structure, whose values are its members', or an
+                # object the analysis dropped - so no such name is said not to be declared.
+                return _refusal(
+                    revision,
+                    "invalid",
+                    no_grid_because(built, name, self._derive(revision).findings, {}),
+                    None,
+                )
+            return _refusal(revision, refused.code, refused.message, None)
         derived = self._derive(revision)
         cache: dict[Path, Document] = {}
         return Reply(
@@ -1680,7 +1617,7 @@ class Api:
                     unshown=grid.unshown,
                     owner=grid.owner,
                     file=grid.file,
-                    findings=_listed(derived, _grid_findings(derived, grid), cache),
+                    findings=_listed(derived, _grid_findings(derived, built, grid), cache),
                 )
             ),
         )
@@ -1690,64 +1627,28 @@ class Api:
         built, dictionary = revision.index, revision.dictionary
         if built is None or dictionary is None:
             return _unresolved(revision)
-        try:
+        cache: dict[Path, Document] = {}
+
+        def plan() -> Plan:
             raw = _number(query.raw)
-            plan = set_cell(dictionary, built, query.name, query.at, raw, {})
-        except ValueRefusalError as refused:
-            # Both codes again, as in _values above - a name the project has not, and every
-            # other refusal - so both arms need a status and a test reaching them: a ternary
-            # here would read the same but hide an untested arm from the coverage gate, the
-            # same blind spot that let two earlier defects through.
-            if refused.code == "not-found":
-                return _error(404, refused.code, refused.message)
-            return _error(409, refused.code, refused.message)
-        derived = self._derive(revision)
-        try:
-            self._refuse_generated(revision, (edit.path for edit in plan.edits))
-            self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
-            planned = _changing(previewed(plan.edits, derived.stamps))
-        except EditError as refused:
-            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
-        return Reply(
-            200,
-            written(
-                contract.PlanReply(
-                    revision=revision.number, changes=_planned_changes(revision, derived, planned)
-                )
-            ),
-        )
+            return set_cell(dictionary, built, query.name, query.at, raw, cache)
+
+        return self._answered(revision, plan, cache, changing=True)
 
     def _cells_plan(self, query: CellsPlanQuery, body: None) -> Reply:
         revision = self._opened()
         built, dictionary = revision.index, revision.dictionary
         if built is None or dictionary is None:
             return _unresolved(revision)
-        try:
+        cache: dict[Path, Document] = {}
+
+        def plan() -> Plan:
             # As many counts as elements: the query refuses any other pairing.
             pairs = zip(query.at.split(","), query.raw.split(","), strict=True)
             cells = [(at, _number(raw)) for at, raw in pairs]
-            plan = set_cells(dictionary, built, query.name, cells, {})
-        except ValueRefusalError as refused:
-            # Both codes, as `_value_plan` above: a name the project has not, and every other
-            # refusal. A statement rather than a ternary, so the gate can see both arms.
-            if refused.code == "not-found":
-                return _error(404, refused.code, refused.message)
-            return _error(409, refused.code, refused.message)
-        derived = self._derive(revision)
-        try:
-            self._refuse_generated(revision, (edit.path for edit in plan.edits))
-            self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
-            planned = _changing(previewed(plan.edits, derived.stamps))
-        except EditError as refused:
-            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
-        return Reply(
-            200,
-            written(
-                contract.PlanReply(
-                    revision=revision.number, changes=_planned_changes(revision, derived, planned)
-                )
-            ),
-        )
+            return set_cells(dictionary, built, query.name, cells, cache)
+
+        return self._answered(revision, plan, cache, changing=True)
 
     def _values_plan(self, query: ValuesPlanQuery, body: None) -> Reply:
         name = query.name
@@ -1755,30 +1656,13 @@ class Api:
         built, dictionary = revision.index, revision.dictionary
         if built is None or dictionary is None:
             return _unresolved(revision)
-        try:
+        cache: dict[Path, Document] = {}
+
+        def plan() -> Plan:
             flat = [_number(piece) for piece in query.raw.split(",")]
-            plan = set_values(dictionary, built, name, _folded(flat, dictionary, name), {})
-        except ValueRefusalError as refused:
-            # Both codes, as `_value_plan` above: a name the project has not, and every other
-            # refusal. A statement rather than a ternary, so the gate can see both arms.
-            if refused.code == "not-found":
-                return _error(404, refused.code, refused.message)
-            return _error(409, refused.code, refused.message)
-        derived = self._derive(revision)
-        try:
-            self._refuse_generated(revision, (edit.path for edit in plan.edits))
-            self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
-            planned = _changing(previewed(plan.edits, derived.stamps))
-        except EditError as refused:
-            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
-        return Reply(
-            200,
-            written(
-                contract.PlanReply(
-                    revision=revision.number, changes=_planned_changes(revision, derived, planned)
-                )
-            ),
-        )
+            return set_values(dictionary, built, name, _folded(flat, dictionary, name), cache)
+
+        return self._answered(revision, plan, cache, changing=True)
 
     def _compare(self, query: CompareQuery, body: None) -> Reply:
         revision = self._opened()
@@ -1818,6 +1702,11 @@ class Api:
                     # `CompareReply.baseline_findings`' own docstring is what that matching would be
                     # re-deriving, unreliably, from text a page does not own.
                     baseline_findings=[_finding(filed, None, cache) for filed in baseline_findings],
+                    statements={
+                        "error": result.statements[0],
+                        "warning": result.statements[1],
+                        "info": result.statements[2],
+                    },
                     renames=[
                         {"id": entry["id"], "old": entry["from"], "new": entry["to"]}
                         for entry in result.renames
@@ -1831,8 +1720,67 @@ class Api:
         open, or none of its analyses landed yet."""
         return self.session.current()
 
+    def _answered(
+        self,
+        revision: Revision,
+        plan: Callable[[], Plan],
+        cache: dict[Path, Document],
+        *,
+        named: str | None = None,
+        changing: bool = False,
+    ) -> Reply:
+        """What a plan route answers of the plan ``plan`` makes against ``revision``: its refusal
+        as :func:`_refusal` answers one about ``named``; then the plan refused where it writes
+        under the build tree a build generates the project in (:meth:`_refuse_generated`), or a
+        file an edit wrote that no analysis has read yet (:meth:`_refuse_unanalysed`); and
+        otherwise previewed as ``PlanReply`` from ``cache``, the documents ``plan`` read - leaving
+        out, where ``changing``, each file its edit would leave as it was (:func:`_changing`).
+
+        A plan refused ``stale`` - a file no longer holding, at a place the plan points at, what
+        the analysis found there - is refused ``analysing`` first where an edit wrote a file the
+        plan read and no analysis has read it since: such an edit, made through ddd gui, moves
+        every place below what it puts in or takes out, and the plan asked once its analysis
+        lands is judged against what that analysis read. ``stale`` is answered where no such
+        edit waits, a file having been saved from elsewhere.
+
+        The one answer of every plan route but two: the Files tab's, which judges a plan between
+        its refusals and its preview, and the variable panel's settlement, which answers more
+        beside it. Written into each route, it was eight copies of one tail (2:I10)."""
+        try:
+            made = plan()
+        except PlanRefusalError as refused:
+            if refused.code == STALE:
+                try:
+                    self._refuse_unanalysed(revision, cache)
+                except EditError as waiting:
+                    return _edit_refusal(waiting)
+            return _refusal(revision, refused.code, refused.message, named)
+        derived = self._derive(revision)
+        try:
+            self._refuse_generated(
+                revision,
+                (edit.path for edit in made.edits),
+                (edit.path for edit in made.edits if edit.creates),
+            )
+            self._refuse_unanalysed(revision, (edit.path for edit in made.edits))
+            planned = previewed(made.edits, derived.stamps, cache)
+        except EditError as refused:
+            return _edit_refusal(refused)
+        if changing:
+            planned = _changing(planned)
+        return Reply(
+            200,
+            written(
+                contract.PlanReply(
+                    revision=revision.number, changes=_planned_changes(revision, derived, planned)
+                )
+            ),
+        )
+
     def _refuse_unanalysed(self, revision: Revision, paths: Iterable[Path]) -> None:
-        """Refuse a plan changing a file an edit wrote since ``revision``'s analysis began.
+        """Refuse a plan changing a file an edit wrote since ``revision``'s analysis began - or,
+        of a plan refused because a place it points at moved, reading one (:meth:`_answered`):
+        ``paths`` is the files it changes, or the ones it read.
 
         Computed all the same, it would carry the fingerprint the analysis read that file at, and
         the edit engine would refuse its Apply as stale; and where it points into the file comes
@@ -1853,14 +1801,19 @@ class Api:
             )
 
     def _refuse_generated(
-        self, revision: Revision, written: Iterable[Path], created: Iterable[Path] = ()
+        self,
+        revision: Revision,
+        written: Iterable[Path],
+        created: Iterable[Path] = (),
+        added: Iterable[Path] = (),
     ) -> None:
         """Refuse a plan writing under the build tree a build generates the open project in
         (:func:`ddd.gui.session.generated_refusal`): its description, a file created beside it,
         or any other file the tree holds, each the build's, and undone or lost when the build
         writes it again. ``written`` is every file the plan changes, ``created`` the ones of them it
         creates, which only a plan making a file - New file, adopting a vocabulary, a first
-        shared file - has.
+        shared file - has, and ``added`` the existing descriptions it brings into the includes,
+        resolved, which Add a file alone has: each offered the line that registers it instead.
 
         The session refuses the same edit on arrival; asked here, the reader reads why before
         choosing it, and before :meth:`_refuse_unanalysed`, since no analysis landing changes this
@@ -1870,6 +1823,7 @@ class Api:
             revision,
             (derived.resolve(path) for path in written),
             (derived.resolve(path) for path in created),
+            added,
         )
         if refused is not None:
             raise EditError(GENERATED, refused)
@@ -1909,8 +1863,11 @@ class Api:
         Kept only where all it reads is the revision and the files the revision read: a save to
         one of those is what the poll notices, making a new revision, so the revision's number
         says when the answer has gone stale. The Files and the Units tabs are not kept for that
-        reason: both expand the includes on disk as it stands, which no revision records, and a
-        file appearing where a pattern matches starts no analysis.
+        reason: both read the disk as it stands, which no revision records yet. A file new to a
+        pattern belongs to no revision until the poll notices the directory the pattern expands in
+        and the analysis it asks for lands, a poll interval later or a whole analysis while one
+        runs; and a file no include names - ``units.ddd.json`` beside the description, whether
+        adopting may write it - is watched by nothing.
 
         Keyed by the edits the session has written as well as by the revision: an edit is written
         at once and answered then, its analysis following, so an answer reading its files as they
@@ -1950,7 +1907,7 @@ class Api:
         snapshot = self.session.snapshot()
         project = None
         if snapshot.project is not None:
-            name = _name_in(_read_json(snapshot.project), "project")
+            name = name_in(read_json(snapshot.project), "project")
             project = {"path": snapshot.project.as_posix(), "name": name}
         revision = snapshot.revision
         return written(
@@ -2040,6 +1997,16 @@ def _error(status: int, code: str, message: str) -> Reply:
     return Reply(status, {"error": code, "message": message})
 
 
+def _edit_refusal(refused: EditError) -> Reply:
+    """A refusal of the edit engine's as every route answers it: ``409`` for one the page can act
+    on (:data:`REFUSALS`), ``500`` for any other. Decided here alone, so that one refusal is
+    answered alike whichever route met it - an edit, an undo, or a plan the engine made in
+    memory (2:I10)."""
+    if refused.code in REFUSALS:
+        return _error(409, refused.code, str(refused))
+    return _error(500, refused.code, str(refused))
+
+
 def _finding(
     filed: Filed, source: SourceFile | None, cache: dict[Path, Document]
 ) -> dict[str, Any]:
@@ -2060,6 +2027,8 @@ def _finding(
             severity=finding.severity,
             message=finding.message,
             pointer="" if finding.location is None else finding.location.pointer,
+            line=None if finding.location is None else finding.location.line,
+            column=None if finding.location is None else finding.location.column,
             notes=[
                 {
                     "message": text,
@@ -2090,7 +2059,7 @@ def _route(route: FindingRoute | None) -> dict[str, Any] | None:
 
 def _module(file: SourceFile) -> Module:
     """A file of the revision, as the graph wants it: named by its component, or by the file's
-    own stem when it did not load that far."""
+    own stem when it did not load or names none."""
     stem = file.path.name.removesuffix(".ddd.json")
     return Module(
         PurePosixPath(file.path.as_posix()),
@@ -2114,7 +2083,7 @@ def _undeclared(revision: Revision, name: str) -> Reply:
     gone missing, which reads the same as changed - are two different statements: this answers
     each file the one that is true of it, never the other.
     """
-    unread = [file.path.name for file in revision.files if not file.loaded]
+    unread = _unread(revision)
     if unread:
         return _error(
             409,
@@ -2144,10 +2113,36 @@ def _while_unread(revision: Revision, consequence: str) -> Reply | None:
     said it had rewritten, and a removal finds nothing naming what that file may still name -
     ``ddd check`` fails the project once the file loads. Refused whole rather than done in part,
     as the language server refuses (:meth:`ddd.lsp.server.Server._unreadable`), until it does."""
-    unread = [file.path.name for file in revision.files if not file.loaded]
+    unread = _unread(revision)
     if not unread:
         return None
-    return _error(409, UNREADABLE, f"{', '.join(unread)} did not load, so {consequence}")
+    return _did_not_load(unread, consequence)
+
+
+def _nothing_loaded(revision: Revision, noun: str) -> Reply:
+    """The refusal of a change of the project's ``noun`` - a unit, a type, a constant, a section, a
+    raster, an interface - while ``revision`` has no index, the analysis having read too little of
+    the project to say where anything is: ``unreadable``, naming each file that did not load - the
+    project description, where its own read stopped the analysis - or the description itself
+    where every file read loaded, there being no other file to name."""
+    named = _unread(revision) or [revision.project.name]
+    return _did_not_load(named, f"no {noun} of the project can be changed")
+
+
+def _did_not_load(named: Sequence[str], consequence: str) -> Reply:
+    """``named did not load, so consequence``: the sentence each refusal of a change for files
+    that did not load is answered in, written once - ``unreadable``, naming the files and what
+    could not be done for them. :func:`_undeclared` says it of a name instead, one no file that
+    loaded declares."""
+    return _error(409, UNREADABLE, f"{', '.join(named)} did not load, so {consequence}")
+
+
+def _unread(revision: Revision) -> list[str]:
+    """Each file of ``revision`` that did not load, as a refusal names it: by its name, and two of
+    one name in different folders by as much of their paths as tells them apart
+    (:func:`~ddd.lsp.navigation.told_apart`), so that a reader sent to repair one is not sent to
+    whichever came first."""
+    return told_apart([file.path for file in revision.files if not file.loaded])
 
 
 def _declaring_refusal(
@@ -2164,11 +2159,8 @@ def _declaring_refusal(
     if isinstance(asked, RemoveDeclaration):
         return _unseen_refusal(revision, asked)
     if not _file_of(revision, file).loaded:
-        return _error(
-            409,
-            UNREADABLE,
-            f"{file.name} did not load, so what it declares is unknown and nothing can be "
-            "declared in it",
+        return _did_not_load(
+            [file.name], "what it declares is unknown and nothing can be declared in it"
         )
     if asked.scope in PRODUCING_SCOPES:
         return _while_unread(revision, _PRODUCING[asked.scope])
@@ -2176,7 +2168,7 @@ def _declaring_refusal(
 
 
 def _file_of(revision: Revision, file: Path) -> SourceFile:
-    """The revision's record of ``file``, a path :func:`_source` resolved and allowed: a file of
+    """The revision's record of ``file``, a path :func:`source_path` resolved and allowed: a file of
     the revision's, so one is found."""
     return next(entry for entry in revision.files if entry.path == file)
 
@@ -2228,9 +2220,10 @@ def _appeared_since(revision: Revision) -> list[str]:
     Every description the revision read whose kind is ``project`` - the root, and each
     sub-project - has its entries expanded by the loader's own rule
     (:func:`ddd.file_plans.included_entries`). A file one of them reaches that the revision
-    lacks appeared since: saved where a pattern matches it, or moved there. The session's poll
-    compares only the files a revision read, so a new file does not start an analysis, and
-    judged against a revision that never read it, an error of that file read as the change's.
+    lacks appeared since: saved where a pattern matches it, or moved there. Such a file belongs
+    to no revision until the poll notices the directory the pattern expands in and the analysis
+    it asks for lands, a poll interval later or a whole analysis while one runs; judged in that
+    window against a revision that never read it, an error of that file read as the change's.
 
     Asked beside :func:`_changed_since`, and only where a plan is judged, as that is. Sound
     there: every run of such a revision analysed the project, so every plain entry named a file
@@ -2285,9 +2278,9 @@ def _changed_since(file: SourceFile) -> bool:
 def _unit_plan_of(
     asked: RenameUnit | AddUnit | DescribeUnit | RemoveUnit | AdoptUnits,
     built: Index,
-    project: UnitProject,
+    project: VocabularyProject,
     cache: dict[Path, Document],
-) -> UnitPlan:
+) -> Plan:
     """The plan ``asked`` names, over the parts its model read."""
     if isinstance(asked, RenameUnit):
         return rename_unit(built, project, asked.unit, asked.to, cache)
@@ -2302,7 +2295,7 @@ def _unit_plan_of(
 
 def _type_plan_of(
     asked: SetTypeKey | RenameType, built: Index, cache: dict[Path, Document]
-) -> TypePlan:
+) -> Plan:
     """The plan ``asked`` names, over the parts its model read."""
     if isinstance(asked, SetTypeKey):
         return set_key(built, asked.name, asked.key, asked.raw, cache)
@@ -2312,13 +2305,13 @@ def _type_plan_of(
 def _constant_plan_of(
     asked: SetConstantKey | RenameConstant | AddConstant | RemoveConstant,
     built: Index,
-    project: SharedProject,
+    project: Callable[[], VocabularyProject],
     cache: dict[Path, Document],
-) -> SharedPlan:
+) -> Plan:
     """The plan ``asked`` names, over the parts its model read.
 
-    ``project`` is unused by three of the four: only ``add`` may have to create a constants
-    file, which is the one verb that needs to know where the project's constants files are.
+    ``project`` is called by ``add`` alone: it may have to create a constants file, the one verb
+    that needs to know where the project's constants files are (2:I9).
     """
     if isinstance(asked, SetConstantKey):
         return set_entry(CONSTANTS, built, asked.name, asked.key, asked.raw, cache)
@@ -2332,7 +2325,7 @@ def _constant_plan_of(
     return add_entry(
         CONSTANTS,
         built,
-        project,
+        project(),
         asked.name,
         {"value": asked.raw, "description": '""'},
         cache,
@@ -2342,9 +2335,9 @@ def _constant_plan_of(
 def _section_plan_of(
     asked: SetSectionKey | RenameSection | AddSection | RemoveSection,
     built: Index,
-    project: SharedProject,
+    project: Callable[[], VocabularyProject],
     cache: dict[Path, Document],
-) -> SharedPlan:
+) -> Plan:
     """The plan ``asked`` names, over the parts its model read.
 
     The same four verbs as :func:`_constant_plan_of`, differing only in ``add``: a section is
@@ -2361,15 +2354,15 @@ def _section_plan_of(
     if isinstance(asked, RemoveSection):
         return remove_entry(SECTIONS, built, asked.name, cache)
     declared = _declared(SECTIONS, asked.model_dump())
-    return add_entry(SECTIONS, built, project, asked.name, declared, cache)
+    return add_entry(SECTIONS, built, project(), asked.name, declared, cache)
 
 
 def _raster_plan_of(
     asked: SetRasterKey | RenameRaster | AddRaster | RemoveRaster,
     built: Index,
-    project: SharedProject,
+    project: Callable[[], VocabularyProject],
     cache: dict[Path, Document],
-) -> SharedPlan:
+) -> Plan:
     """The plan ``asked`` names, over the parts its model read.
 
     The same four verbs as :func:`_section_plan_of`, and the same ``add``: one json text per key
@@ -2383,7 +2376,7 @@ def _raster_plan_of(
     if isinstance(asked, RemoveRaster):
         return remove_entry(RASTERS, built, asked.name, cache)
     declared = _declared(RASTERS, asked.model_dump())
-    return add_entry(RASTERS, built, project, asked.name, declared, cache)
+    return add_entry(RASTERS, built, project(), asked.name, declared, cache)
 
 
 def _required_keys(vocabulary: Vocabulary) -> list[str]:
@@ -2483,18 +2476,19 @@ def _listed(
     ]
 
 
-def _grid_findings(derived: Derived, grid: Grid) -> list[Pair]:
-    """The findings about a grid's own ``init``, filed at its declaration's ``definition.init``:
-    asked only of the findings on the file the grid is read from, which is resolved already.
-    None for a grid that not exactly one declaration produces, which has no file and no place of
-    its own to hold one."""
-    if grid.pointer is None or grid.file is None:
-        return []
-    at = f"{grid.pointer}.definition.init"
+def _grid_findings(derived: Derived, built: Index, grid: Grid) -> list[Pair]:
+    """The findings about the ``init`` of each declaration producing a grid's object, filed at its
+    ``definition.init``: asked only of the findings on those declarations' files. Every
+    producer's, not the grid's file's alone: a finding at a producing declaration's ``init`` leads
+    to this grid (:data:`ddd.finding_routes.WITHIN_INIT`), and one that several declarations
+    produce, which has no file of its own and can be read and not changed, listed none of them
+    (14:M8)."""
+    sites = built.producers.get(grid.name, ())
+    places = {(derived.resolve(site.path), f"{site.pointer}.init") for site in sites}
     return [
         (file, found)
-        for file, found in derived.findings.on(Path(grid.file))
-        if found.location is not None and found.location.pointer == at
+        for file, found in derived.findings.on_any(site.path for site in sites)
+        if found.location is not None and (derived.resolve(file), found.location.pointer) in places
     ]
 
 
@@ -2513,7 +2507,7 @@ def _files_plan_of(
     asked: CreateFile | AddFile | RemoveFile,
     revision: Revision,
     cache: dict[Path, Document],
-    refuse: Callable[[Sequence[PlannedEdit]], None],
+    refuse: Callable[[Sequence[PlannedEdit], Sequence[Path]], None],
 ) -> _FilesPlanned:
     """The plan ``asked`` names, over the parts its model read. A row's key is passed on as it
     arrived: :func:`ddd.file_plans.remove_plan` resolves it to compare, as
@@ -2521,15 +2515,16 @@ def _files_plan_of(
     instead, a key ending in a link would be named by what the link leads to, which may lie
     outside what is served.
 
-    ``refuse`` is asked of each plan's edits, once the plan's own refusals have been asked and
-    before anything is judged: a description a build generates is refused there
-    (:meth:`Api._refuse_generated`), and judging it would run the analysis again for a change
+    ``refuse`` is asked of each plan's edits, with the existing description an add brings in,
+    once the plan's own refusals have been asked and before anything is judged: a description a
+    build generates is refused there (:meth:`Api._refuse_generated`), the file added offered the
+    line that registers it instead, and judging it would run the analysis again for a change
     that cannot be made; and judged, a description an edit wrote and no analysis has read yet
     would be refused ``stale`` instead, for the very write the reader made
     (:meth:`Api._refuse_unanalysed`)."""
     if isinstance(asked, CreateFile):
         edits = _creation(revision, asked.kind, asked.name, asked.component, cache)
-        refuse(edits)
+        refuse(edits, ())
         return _FilesPlanned(edits)
     if isinstance(asked, AddFile):
         return _addition(revision, asked.path, cache, refuse)
@@ -2560,8 +2555,12 @@ def _creation(
         if file.name is None:
             continue
         taken.append(file.name)
-    units = unit_project(
-        revision.project, [file.path for file in revision.files if not file.loaded], cache
+    units = vocabulary_project(
+        revision.project,
+        "units",
+        [file.path for file in revision.files if not file.loaded],
+        cache,
+        skims=True,
     )
     return create_plan(
         revision.project,
@@ -2580,13 +2579,13 @@ def _addition(
     revision: Revision,
     entry: str,
     cache: dict[Path, Document],
-    refuse: Callable[[Sequence[PlannedEdit]], None],
+    refuse: Callable[[Sequence[PlannedEdit], Sequence[Path]], None],
 ) -> _FilesPlanned:
     """An existing file appended to the includes, and the errors it is counted to bring -
     previewed, never refused for them.
 
     Refused, in this order: a file outside what the session serves, decided by
-    :func:`ddd.gui.session._served` itself so that adding a file and reading it never disagree;
+    :func:`ddd.gui.session.served_path` itself so that adding a file and reading it never disagree;
     then :func:`ddd.file_plans.add_plan`'s own, which the disk and the description answer;
     then a file :func:`ddd.gui.session.kind_of` - the rule ``State.files`` shows a kind by -
     finds no kind of description in: a python file, which a project names among its plugins,
@@ -2607,26 +2606,26 @@ def _addition(
     typed = spelled_with_slashes(entry)
     added = resolve_path(revision.project.parent / typed)
     try:
-        _served(revision, added)
+        served_path(revision, added)
     except NotInProjectError:
         serves = (directory.as_posix() for directory in revision.served)
-        raise FileRefusalError("invalid", outside_served(entry, serves)) from None
+        raise PlanRefusalError("invalid", outside_served(entry, serves)) from None
     plan = add_plan(revision.project, entry, cache)
-    kind = kind_of(added, _read_json(added))
+    kind = kind_of(added, read_json(added))
     if kind == "plugin":
-        raise FileRefusalError(
+        raise PlanRefusalError(
             "invalid",
             f"{entry} is a python file, which a project names among its plugins rather than its "
             "includes",
         )
     if kind == "unknown":
-        raise FileRefusalError(
+        raise PlanRefusalError(
             "invalid",
             f"{entry} is no kind of file a project includes: it cannot be read as json, or its "
             f"top level holds none of {', '.join(DESCRIPTION_KINDS[:-1])} and "
             f"{DESCRIPTION_KINDS[-1]}",
         )
-    refuse(plan.edits)
+    refuse(plan.edits, (added,))
     if not revision.analysed:
         return _FilesPlanned(
             plan.edits,
@@ -2640,7 +2639,7 @@ def _removal(
     revision: Revision,
     path: Path,
     cache: dict[Path, Document],
-    refuse: Callable[[Sequence[PlannedEdit]], None],
+    refuse: Callable[[Sequence[PlannedEdit], Sequence[Path]], None],
 ) -> _FilesPlanned:
     """Every entry whose key ``path`` resolves to taken out, refused where the project without
     them would have an error more than it has now at its place.
@@ -2666,7 +2665,7 @@ def _removal(
     link to a directory, a path no entry spells."""
     plan = remove_plan(revision.project, path, cache)
     removing = plan.removed[0]
-    refuse(plan.edits)
+    refuse(plan.edits, ())
     if not revision.analysed:
         return _FilesPlanned(
             plan.edits,
@@ -2678,12 +2677,12 @@ def _removal(
     if errors:
         where, first = errors[0]
         if len(errors) == 1:
-            raise FileRefusalError(
+            raise PlanRefusalError(
                 "invalid",
                 f"removing {removing} would leave one error more than the project has now at "
                 f"its place, in {where.name}: {first.message}",
             )
-        raise FileRefusalError(
+        raise PlanRefusalError(
             "invalid",
             f"removing {removing} would leave {len(errors)} errors more than the project has "
             f"now at their places, the first in {where.name}: {first.message}",
@@ -2735,7 +2734,7 @@ def _declaration_plan_of(
     built: Index,
     file: Path,
     cache: dict[Path, Document],
-) -> DeclarationPlan:
+) -> Plan:
     """The plan ``asked`` names, over the parts its model read.
 
     A definition is read here, rather than by the query, as json text is read everywhere else in
@@ -2750,9 +2749,9 @@ def _declaration_plan_of(
     try:
         definition = json_value(asked.definition)
     except EditError as malformed:
-        raise DeclarationRefusalError("invalid", "the definition is not json") from malformed
+        raise PlanRefusalError("invalid", "the definition is not json") from malformed
     if not isinstance(definition, dict):
-        raise DeclarationRefusalError("invalid", "the definition is not json")
+        raise PlanRefusalError("invalid", "the definition is not json")
     return declare_object(built, file, asked.scope, definition, cache)
 
 
@@ -2780,10 +2779,10 @@ def _planned_changes(
     root having made it part of the project.
 
     An undo's own preview needs no such check: opening a project empties the stack, and no edit
-    made since can have written a file outside, being resolved through :func:`_source`.
+    made since can have written a file outside, being resolved through :func:`source_path`.
     """
     for entry in planned:
-        _served(revision, derived.resolve(entry.path))
+        served_path(revision, derived.resolve(entry.path))
     return [
         {
             "file": derived.resolve(entry.path).as_posix(),
@@ -2842,13 +2841,13 @@ def _number(text: str) -> float:
     ``json.loads`` raises a plain ``ValueError`` for, not a ``JSONDecodeError``.
     """
     if "[" in text or "{" in text:
-        raise ValueRefusalError("invalid", f"'{text}' is not a number")
+        raise PlanRefusalError("invalid", f"'{text}' is not a number")
     try:
         value = json.loads(text)
     except ValueError as malformed:
-        raise ValueRefusalError("invalid", f"'{text}' is not a number") from malformed
+        raise PlanRefusalError("invalid", f"'{text}' is not a number") from malformed
     if not isinstance(value, int | float) or isinstance(value, bool):
-        raise ValueRefusalError("invalid", f"'{text}' is not a number")
+        raise PlanRefusalError("invalid", f"'{text}' is not a number")
     return value
 
 

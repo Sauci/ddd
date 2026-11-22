@@ -70,8 +70,7 @@ from ddd.loading import parse_json_text
 from ddd.lsp.navigation import Index, Site, renameable_at
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import (
-    UnitProject,
-    UnitRefusalError,
+    VocabularyProject,
     add_unit,
     engine_edit,
     rename_unit,
@@ -86,6 +85,7 @@ from ddd.models import (
     scalar_conversion,
 )
 from ddd.models.objects import FIXED_BY_A_TYPE, STORAGE_NAMES, storage_keys
+from ddd.plans import PlanRefusalError
 from ddd.value_identity import same_value
 
 PROPAGATED_KEYS: Final = frozenset(
@@ -128,7 +128,8 @@ both sides state them, and a consumer that leaves them out defers to the produce
 spread a range into a declaration that deferred, or to strip the one range anybody stated,
 would be a fix on a declaration the checker calls clean - and taking it would change the range
 the a2l publishes without a finding before or after. Two stated ranges that differ are still
-reconciled both ways.
+reconciled both ways. Where no declaration states them there is nobody to defer to, and a
+settlement writes them on the producers (:func:`settle`).
 """
 
 QUICK_FIX: Final = "quickfix"
@@ -234,7 +235,7 @@ class Asked:
     came of, the document's path stands in: nothing else is told from it."""
 
     built: Index
-    project: UnitProject | None = None
+    project: VocabularyProject | None = None
     """Where a unit's plans are made in it, for a request about a unit; ``None`` otherwise, and
     for a project reached beyond the document's (:attr:`Elsewhere.holding`)."""
 
@@ -264,7 +265,7 @@ def actions(
     pointer: str,
     cache: dict[Path, Document],
     reported: Sequence[dict[str, Any]] = (),
-    project: UnitProject | None = None,
+    project: VocabularyProject | None = None,
 ) -> list[dict[str, Any]]:
     """What an editor may offer at this position, in one project, which reaches nothing beyond
     itself: :func:`actions_across` for that project alone.
@@ -606,7 +607,11 @@ def _sent_out(key: str, name: str, raw: str | None, elsewhere: int) -> str:
 
 
 def _renamed_in(
-    built: Index, project: UnitProject | None, cache: dict[Path, Document], unit: str, new: str
+    built: Index,
+    project: VocabularyProject | None,
+    cache: dict[Path, Document],
+    unit: str,
+    new: str,
 ) -> dict[str, list[dict[str, Any]]] | None:
     """``unit`` respelled ``new`` in one project alone, as ``ddd gui`` plans it in the project it
     has open; ``None`` where the plan is refused, would be made in a buffer that has moved what the
@@ -619,7 +624,7 @@ def _renamed_in(
         return None
     try:
         return text_edits(rename_unit(built, project, unit, new, cache), cache)
-    except (UnitRefusalError, EditError):
+    except (PlanRefusalError, EditError):
         return None
 
 
@@ -802,7 +807,7 @@ def _vocabulary_actions(
     for built, project in planning:
         # Refused, or not an edit the engine can make in the buffer as it stands - a units file
         # caught halfway through an edit: either way there is nothing to offer.
-        with contextlib.suppress(UnitRefusalError, EditError):
+        with contextlib.suppress(PlanRefusalError, EditError):
             added.append(text_edits(add_unit(built, project, unit, cache), cache))
     plans: list[tuple[str, dict[str, list[dict[str, Any]]] | None]] = []
     if added and all(changes == added[0] for changes in added):
@@ -847,7 +852,7 @@ class Unsettled:
     """One declaration a settlement cannot change, and why not."""
 
     site: Site
-    reason: Literal["unreachable", "kind", "type", "storage", "load"]
+    reason: Literal["unreachable", "kind", "type", "storage", "load", "unproduced"]
     """``unreachable``: its file no longer names the variable at that pointer, or no longer
     reads as json. ``kind``: its kind has no such key, or requires the one being taken out.
     ``type``: it names a declared type that fixes the key to another value, or whose entry has
@@ -855,7 +860,10 @@ class Unsettled:
     key is the storage it named, or would name it a second way - what
     :func:`ddd.models.objects.storage_keys` answers. ``load``: the models or the analysis refuse
     its definition with the key written, or the type it names, by a rule none of the others
-    holds - :func:`loading_problem`."""
+    holds - :func:`loading_problem`. ``unproduced``: the key is one a declaration may leave to
+    whoever states it (:data:`DEFERRED_KEYS`), no declaration states it, and none produces the
+    variable, so that none is the one to state it - every declaration is answered so, by
+    :func:`settle`."""
 
     type_name: str | None = None
     """The declared type that fixes the key, when ``reason`` is ``type``."""
@@ -957,6 +965,7 @@ def settled_at(
     cache: dict[Path, Document],
     *,
     withholding: bool = True,
+    deferring: bool = True,
 ) -> Settled | Unsettled | None:
     """What one declaration does about ``raw`` for ``key``: take it, refuse it, or nothing.
 
@@ -964,6 +973,9 @@ def settled_at(
     leaving a deferred key to whoever states it. The body of :func:`settle`'s own loop, lifted
     so that an action changing one declaration asks it the same question a whole settlement
     asks of each: the two must not drift into two readings of "can this declaration take it".
+    ``deferring=False`` is the one question a settlement asks that no action changing one
+    declaration does: of a producer of a variable no declaration states a deferred key of, which
+    has nobody to leave it to (:func:`settle`).
 
     A declaration naming a declared type takes none of the keys the type fixes - every key of
     :data:`ddd.models.objects.FIXED_BY_A_TYPE`, the ``datatype`` as much as what it means: it
@@ -1001,7 +1013,7 @@ def settled_at(
             return Unsettled(site, "type", typename)
         return None
     stated = document.raw_at(f"{site.pointer}.{key}")
-    if _already(key, stated, raw) or (key in DEFERRED_KEYS and stated is None):
+    if _already(key, stated, raw) or (deferring and key in DEFERRED_KEYS and stated is None):
         return None
     named = [
         name for name in STORAGE_NAMES if document.value_at(f"{site.pointer}.{name}") is not None
@@ -1041,16 +1053,49 @@ def settle(
 
     ``withholding`` is :func:`settled_at`'s, passed to every declaration: ``False`` settles a
     value that leaves a definition unable to load, which only the panel's reader may ask for.
+
+    A key a declaration may leave to whoever states it (:data:`DEFERRED_KEYS`) is taken by none
+    that leaves it, as the checker reads it. Where no declaration states it, every one has left it
+    and nobody is there to state it: the producers state it then - every declaration of a
+    producing scope, both of two - and the readers go on leaving it to them (decision 3.3), not
+    asked at all. Each was read through the type it names, so that a reader naming a type that
+    states none leaves it as the analysis reads it, where asked it would have answered that its
+    type fixes the key. With none producing the variable no declaration is the one to state it,
+    and every one is answered ``unproduced``. Decided here, over every declaration, and never by
+    :func:`settled_at` alone, whose answer for one declaration the editor's actions changing one
+    ask.
     """
+    sites = built.declarations.get(name, ())
+    deferring = True
+    if (
+        key in DEFERRED_KEYS
+        and raw is not None
+        and not any(_states(built, site, name, key, cache) for site in sites)
+    ):
+        producers = built.producers.get(name, ())
+        if not producers:
+            return Settlement((), tuple(Unsettled(site, "unproduced") for site in sites))
+        sites, deferring = producers, False
     changes: list[Settled] = []
     unsettled: list[Unsettled] = []
-    for site in built.declarations.get(name, ()):
-        decided = settled_at(built, site, name, key, raw, cache, withholding=withholding)
+    for site in sites:
+        decided = settled_at(
+            built, site, name, key, raw, cache, withholding=withholding, deferring=deferring
+        )
         if isinstance(decided, Settled):
             changes.append(decided)
         elif decided is not None:
             unsettled.append(decided)
     return Settlement(tuple(changes), tuple(unsettled))
+
+
+def _states(built: Index, site: Site, name: str, key: str, cache: dict[Path, Document]) -> bool:
+    """Whether the declaration at ``site`` states ``key``, as the checks read it: in its file, or
+    through the type it names (:func:`_resolved`). One its file no longer holds where the index
+    found it, or whose type's entry has moved, is not known to state none, and counts as stating
+    it, as :func:`_remove_here` counts it."""
+    document = _at_site(site, name, cache)
+    return document is None or _resolved(built, site, document, key, cache) is not None
 
 
 @dataclass(frozen=True, slots=True)

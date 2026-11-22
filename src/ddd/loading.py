@@ -494,7 +494,7 @@ class Workspace:
     nothing that reports findings analyses a project whose loading filed an error - the hover
     resolving one anyway throws its findings away.
 
-    Not the list :attr:`ddd.lsp.units.UnitProject.units_files` holds: a plan reads that one out
+    Not the list :attr:`ddd.lsp.units.VocabularyProject.files` holds: a plan reads that one out
     of the description's own ``includes`` alone, telling a units file by the ``units`` key at its
     top whether it loads or not, where this one holds every units file of the tree, a
     sub-project's included.

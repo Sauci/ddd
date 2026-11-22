@@ -313,9 +313,18 @@ The commands
        with the component table, a Units tab - listing the project's units and
        maintaining its vocabulary - a Findings tab of every finding, worst first, and a
        Compare tab asking whether the open project can replace a baseline delivery the
-       reader names, one tab away. A variable's panel shows every key its declarations
+       reader names, one tab away. The Findings and Compare tabs list a disagreement on each
+       file it concerns, as the component table counts it on each, and the line above each of
+       the three tables counts it once, as ``ddd check`` and ``ddd compare`` do. A variable's
+       panel shows every key its declarations
        share, says which of them they disagree about, and settles one on every declaration
-       at once. A ``definition-mismatch`` finding carries that settlement as a button of
+       at once. Limits that no declaration states are written on the producer - on each of
+       two, where two produce the variable - its readers leaving them to it as ``ddd check``
+       reads them; a variable no declaration produces is refused them, since none is the one
+       to state them. A declaration naming a type and one spelling what that type fixes agree,
+       as ``ddd check`` reads them: the ``typename`` row disagrees only where two declarations
+       name different types, and a unit of no text beside none is no disagreement. A
+       ``definition-mismatch`` finding carries that settlement as a button of
        its own, one per disagreeing key, reaching every declaration that disagrees, not only the
        one the finding names. Opened on a consumer it takes the producing component's
        value; opened on the producer's own row, where the same disagreement is filed a
@@ -343,8 +352,9 @@ The commands
        project's own where there is not, or a new object of one of six kinds - and
        takes one away. A variable another component declares ``local`` is not offered: no
        other component may declare it in any scope, and writing the declaration would be a
-       ``local-conflict``. A component's page also holds the description of that
-       component's own declaration of the variable, in the variable's panel, as a text
+       ``local-conflict``; its name typed in as a new object's all the same is refused,
+       naming the component that keeps it. A component's page also holds the description
+       of that component's own declaration of the variable, in the variable's panel, as a text
        field: a description is the declaration's and not a key the declarations share,
        two components describing one variable in their own words. It is planned,
        previewed, applied and undone as any key the panel writes is - one ``set`` at the
@@ -376,9 +386,14 @@ The commands
        axis are offered whatever type they name; anything else needs numeric storage - a
        datatype of its own or a scalar type - so a dimensioned declaration naming a structured
        type is shown there and not offered, and so is a deeper shape, and a scalar a file
-       initialises with a list. Cells typed into are held together, each showing what was typed
-       into it, and previewed as one change - in a sentence naming how many elements it sets,
-       the first five of them and what each is set to, then how many more, and the producing
+       initialises with a list. Asked for the values of a name the project does declare and
+       holds no grid of - a structured variable, whose values are its members', or an object
+       the analysis dropped, or a curve over an axis it dropped - ``GET /api/values`` is
+       refused ``invalid`` and says why, naming the finding that dropped it, and never that
+       the project declares no such name, which it says only of a name nothing declares.
+       Cells typed into are held together, each showing what was typed into it, and
+       previewed as one change - in a sentence naming how many elements it sets, the first
+       five of them and what each is set to, then how many more, and the producing
        file it lands in - that one Apply writes, like every other change here, and one undo
        puts back. Each cell typed is written where it stands, the rest of the file staying as
        it was, its spellings and its layout too, where the file writes its ``init`` out far
@@ -397,7 +412,12 @@ The commands
        pasted along with it - previewed and undone the same way, in place of any cells typed
        before it, as a cell typed after it takes the table's place. Its header is discarded
        unread, so one naming a different axis is caught only by that preview, not by the paste
-       itself. Every field
+       itself. A table past about 10,000 counts is not one ``ddd gui`` takes: one whose counts
+       outgrow the address a request carries - past about 8,000 counts of five digits each - is
+       refused as it is pasted, before anything is asked of the server, in a sentence naming the
+       object and saying to set its values cell by cell, or in its file in an editor. Any other
+       plan whose request would outgrow that address is refused the same way, naming its route.
+       Every field
        of the page reads a number the same way, in decimal notation: an optional sign, digits
        with an optional fraction or a fraction alone, and an optional exponent, the white
        space around it ignored. A number written in hexadecimal, binary or octal, ``Infinity``,
@@ -454,7 +474,8 @@ The commands
        own digits, and read a bound as a cell of the datatype the declarations state reads a
        number: a float's as the double it is, written as a float, and any other's refused past
        2^53 however it is spelled, and wherever the double would send another number than the
-       one typed. Under
+       one typed. A bound is sent in the digits it was typed in, ``1e3`` as ``1e3`` and
+       ``12.50`` as ``12.50``, a float's given a point where it was typed whole. Under
        the grid, the object's values are drawn as a picture too: a marker at each point
        and a line joining them where a row holds more than one, laid against its axis's
        own breakpoints - unevenly spaced, exactly as those breakpoints are - or over
@@ -472,7 +493,19 @@ The commands
        what each fixes and what names it;
        what a scalar type fixes is changed there, and renaming a type rewrites every
        declaration and member naming it in one edit, but an external type is refused,
-       its name being the one the header defining it spells.
+       its name being the one the header defining it spells. A value the type's entry
+       would not load with - a datatype that is none, a maximum below its minimum, a
+       factor of 0 - is refused there before it is planned, in the words ``ddd check``
+       files it in, since a types file that does not load takes every type it declares
+       with it. A type saved since the analysis, and still json, is answered as it is saved until
+       the next analysis files what is wrong with it: a member without its ``name``, or whose
+       ``bits`` is no integer, is listed with the keys that read and the others empty, and an
+       external's header that is no text is none, where the panel would otherwise be an internal
+       error. A type ``ddd check`` refuses already is not refused again for it: a change
+       that leaves that refusal as it was is planned, the value a row holds among them,
+       and so is one that mends it. A type a second file declares again is the first's, as
+       a repeated entry of a shared file is: the repetition is listed on its panel and
+       counted on its row at both places it is filed.
        Every change is written into the files in their own layout and checked
        the way ``ddd check`` checks them. A change is refused as a whole, every file
        left as it was, where a file it changes was saved from elsewhere since it was
@@ -498,7 +531,10 @@ The commands
        verdict is the one ``ddd compare`` exits on, and the project's own errors count in it
        as the baseline's and the comparison's do, so that a project the Findings tab shows
        errors on cannot replace a baseline; the answer says how many errors the project has of
-       its own. A finding that names a place in
+       its own. While ``plugin-changed`` stands as an error, as it does by default, it is one of
+       them, so the verdict is a refusal until the server is restarted or the plugin's file holds
+       the bytes it was imported from again, where ``ddd compare``, which imports every plugin
+       afresh, never files it. A finding that names a place in
        this project leads there, as on the Findings tab: a plugin's comparison rule files at
        the declaration it is about. The comparison's own findings name the whole delivery
        rather than a place in one file, and the baseline's own, marked ``in the baseline:``,
@@ -565,7 +601,16 @@ The commands
        there by ``dimension-value`` rather than refused: the interface does not invent a rule
        the format itself does not have. A finding
        naming a constant, a section or a raster leads to the tab, a name no file declares
-       landing on the form that declares it.
+       landing on the form that declares it. An entry repeating a name declared before it,
+       which the analysis leaves out, is that name's: the repetition, filed at the entry and
+       again at the first, is listed on that name's panel and counted on its row at both, as
+       the Units tab lists a unit listed twice.
+       A file an ``includes`` entry names by a plain path that no file answers is listed in
+       ``State.files`` as a file of no kind that did not load, and the description holding the
+       entry, which parsed and matched its shape, as one that did: a refusal naming the files that
+       did not load names the missing file, never the description, and the finding stays filed
+       at the entry, in the description. An entry that is a pattern naming several files does not
+       say which of them could not be read, and its error stays the description's.
        A Files tab lists the root project's own ``includes``, one row per entry in the
        description's own order - a pattern's own row followed immediately by every file it
        matched, indented beneath it - each named as the description spells it, or, for one
@@ -691,6 +736,10 @@ The commands
        ``CMakeLists.txt`` beside it, with the line that registers it there: ``; create
        newcomp.ddd.json beside /home/you/project/src/pump/pump.ddd.json instead, and add
        ddd_add_component(<target> JSON newcomp.ddd.json) to the CMakeLists.txt there, replacing
+       <target> with your component's target`` - and an existing description added with Add a
+       file offered the same line, in the ``CMakeLists.txt`` beside it, where it lies outside
+       the build tree: ``; add ddd_add_component(<target> JSON spare.ddd.json) to the
+       CMakeLists.txt beside /home/you/project/src/spare/spare.ddd.json instead, replacing
        <target> with your component's target``. The record beside the description is what says
        so, read for the project it names whatever its format and its severities, and whether or
        not ``-b`` names the build directory. A project given to ``ddd_generate()`` with
@@ -699,43 +748,74 @@ The commands
        directory, beside it. Any other record beside a description makes it a generated one,
        one without the key included, as every record is that a module wrote before the key
        existed: a project given with such a record beside it stays refused until the build is
-       configured again, and the module writes the key.
+       configured again, and the module writes the key. A record there that does not read as
+       one, a write of it cut short among them, says nothing either way, and the description is
+       refused until the record reads, the refusal naming it - ``Fw.ddd.json may be generated
+       by a build: the build record beside it, /home/you/project/build/ddd/fw/ddd-build.json,
+       does not read as one, so nothing under /home/you/project/build is written from here
+       until it does``.
+       A pattern of ``includes`` is watched in each directory it expands in, and a ``**``
+       expands in every directory it walks, hidden ones among them: at a project's root, as in
+       ``**/*.ddd.json``, it watches the checkout's ``.git``, its ``node_modules`` and its build
+       trees, so committing, checking out, installing a package or building there asks for an
+       analysis - no plan or edit is refused for it - and every directory under that root is
+       looked at each time the server looks for changes on disk, as each file an analysis
+       reads is.
+       A plugin named by its path that changed since the server imported it is reported with
+       ``plugin-changed`` on its file, an error by default: a module is imported once per
+       process, so the server goes on running the old code until it is restarted. A module a
+       plugin imports is not watched, and a plugin named as a module is not compared, so editing
+       either takes a restart unsaid.
        Large projects stay responsive. An edit is answered once its files are written, before
        it is analysed, and the change shows where it was made; its findings follow once the
        project has been analysed again, the heading saying ``Updating the findings…`` until
        then, and every panel listing findings saying so too, in its own place. A request
        answered while an analysis runs shares one interpreter with it. Measured on a
        developer's desktop over a generated project of 100,000 declarations, each asked
-       halfway through an analysis: an edit and a variable's plan were answered within a
-       tenth of a second, and the state of a revision just analysed in 0.19 to 0.61 s, while
-       the Files tab, which lists every file its patterns reach on disk at each request, and
-       the panel of a unit every component states, which reads each file stating it, each took
-       about two seconds; and an analysis took 5.1 to 6.0 s beside a page of findings asked
-       every tenth of a second, as scrolling the Findings tab asks them, against 3.8 to 4.5 s
-       alone. A plan can take longer where the file it changes is large: over a generated
-       project of 35,000 declarations, the plan of a variable declared in a component of 1,166
-       of them, 16,331 lines, took 1.3 s asked the same way and 0.8 s with no analysis
-       running, nearly all of it spent finding which of that file's lines the change replaces.
+       halfway through an analysis: the state of a revision just analysed was answered in
+       0.19 to 0.61 s, while the Files tab, which lists every file its patterns reach on disk
+       at each request, and the panel of a unit every component states, which reads each file
+       stating it, each took about two seconds; and an analysis took 5.1 to 6.0 s beside a
+       page of findings asked every tenth of a second, as scrolling the Findings tab asks
+       them, against 3.8 to 4.5 s alone. Asked the same way on the same desktop, over
+       generated projects of 100,000 declarations in the mixed, large and many shapes, clean
+       and findings-heavy, each held in memory, a variable's plan was answered in 43 to 493 ms,
+       within the second a panel has, and an edit in 121 to 940 ms, past the half second an
+       Apply has to show its change in four of the seven runs, at 540 to 940 ms, and in one run
+       at 35,000 declarations, at 547 ms. A plan stays well within a second where the file it
+       changes is large, the lines it shows read off the places its edit replaces rather than
+       found by comparing the whole file: with no analysis running, the plan of a variable
+       declared in one or two of a generated project's largest components took 34 to 72 ms at
+       35,000 declarations, each component holding 1,168 of them over 16,359 to 16,943 lines,
+       and 97 to 213 ms at 100,000, each holding 3,334 over 46,683 to 48,350 lines. A change
+       reaching every component takes longer: renaming the unit stated in the most files took
+       1.2 to 1.3 s to plan at 35,000 declarations and 3.5 to 4.1 s at 100,000, and 2.2 to
+       2.4 s and 6.6 to 7.3 s to apply, the project held in memory, where no write waits for a
+       disk.
        The server stopping is reported only once an ask that failed outright - its connection
        refused or reset, never a slow answer alone, which nothing here times out - is asked
        again and fails the same way, not after the first failure by itself.
        A plan that would change a file an edit wrote since the revision it is judged
        against was analysed is refused until that edit's own analysis has landed, naming
        the file - ``an edit that wrote pump.ddd.json has not been analysed yet, so this
-       change can be planned once it has``. Renaming, describing or taking out a unit,
+       change can be planned once it has`` - and so is a plan refused for a place that
+       moved, below, where it reads a file such an edit wrote, whichever file the place is
+       in, rather than refused ``stale``. Renaming, describing or taking out a unit,
        changing or renaming a type, changing, renaming or taking out a constant, a section
-       or a raster, setting an object's values and reading a variable into a component are
-       refused ``stale`` where a file no longer holds, at a place the plan points at, what
-       the analysis found there - the file saved from elsewhere since, an entry or a
-       declaration put in above or taken out - until the project is analysed again, naming
+       or a raster, setting an object's values, reading a variable into a component and
+       describing a declaration are refused ``stale`` where a file no longer holds, at a
+       place the plan points at, what the analysis found there - the file saved from
+       elsewhere since, an entry or a declaration put in above or taken out - until the
+       project is analysed again, naming
        the file - ``units.ddd.json changed since the project was analysed, so renaming
        'rpm' cannot be planned until the project is analysed again`` - rather than made
        where another now stands. While a file of the project did not load, a plan that
        renames a type, a constant, a section, a raster or a unit, takes out a constant,
        a section, a raster, a unit or a declaration, or settles a key on every
        declaration of a variable, is refused ``unreadable``, naming each file that did
-       not - ``b.ddd.json did not load, so renaming 'Speed_t' could not reach every place
-       that names it`` - rather than made over the files that did, which would leave the
+       not, two of one name by as much of their paths as tells them apart - ``b.ddd.json
+       did not load, so renaming 'Speed_t' could not reach every place that names it`` -
+       rather than made over the files that did, which would leave the
        old name in the one that did not, or take out what it still names. So is a plan that
        declares an object, or reads a variable, as an output or a local, which a file that
        did not load may produce or declare already; and one that writes into the file that
@@ -747,7 +827,12 @@ The commands
        once with its name, read from its description as it stands and kept in the heading
        from then on; ``Analysing the project…`` stands where the tab's own content goes,
        until the first analysis lands, and every answer needing a revision is refused until
-       then, in the same words - ``the open project has not been analysed yet``. A panel's own plan
+       then, in the same words - ``the open project has not been analysed yet``. An analysis
+       that raises - a plugin failing while the project is read, say - is printed in the
+       terminal ``ddd gui`` runs in, ``ddd gui: analysing the project failed:`` and its reason,
+       and the state the page reads carries the same reason until an analysis succeeds: the
+       revision before it stands meanwhile, or none, and the next poll asks for another
+       analysis. A panel's own plan
        request goes out at once the first time a field asks for one; typed text asks
        again only after a pause in the reader's typing; a pick from a list, or Enter,
        always goes out at once, first time or later. The
@@ -756,6 +841,13 @@ The commands
        Types, Units, Shared files and Files tabs' own, a component's own declarations, a
        unit's own places and a variable's keys - draws only the rows in view, in a box of
        its own.
+       A build record this DDD cannot use - written by a newer DDD, or naming a check this one
+       has not got - applies its severities to no analysis: the start page lists it with its
+       reason, as the language server logs one, the state the page reads carries it beside the
+       open project's revision, and the terminal is told of it once, and again whenever its
+       reason changes - ``ddd gui: /home/you/project/build/ddd/fw/ddd-build.json: written in
+       format 3 by a newer DDD, and this one understands up to format 2; this record is
+       ignored, so its severities apply to no analysis``.
        ``-b DIR`` names a build directory as for ``ddd lsp``, ``--host 0.0.0.0``
        listens beyond this computer for a container, ``--port N`` fixes the port and
        ``--no-browser`` only prints the address. ``--host`` takes that address, the

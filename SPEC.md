@@ -831,11 +831,14 @@ The `origin` key is what lets a tool tell a description the build writes from on
 given: where `ddd_generate` is given a `PROJECT` and an `OUTPUT_DIRECTORY` that is the
 description's own directory, the record lies beside a hand-written project and names it. The
 browser interface edits a project whose record says `given` and refuses to write into any other
-named by its record, the next configure writing a collected description again. A record without
-the key is read as `collected`, which is what it was taken for before the key existed: reading it
-as `given` would open every build made before to edits the next configure undoes, and a project
-given with such a record beside it stays refused until the build is configured again. The key is
-named `origin` and not `description`, which is a declaration's free text in the description files
+named by its record, the next configure writing a collected description again; a record beside a
+description that does not read as one, a write of it cut short among them, cannot say whether the
+build writes it, and the interface refuses that description too, naming the record, until the
+record reads. A record without the key is read as `collected`, which is what it was taken for
+before the key existed: reading it as `given` would open every build made before to edits the
+next configure undoes, and a project given with such a record beside it stays refused until the
+build is configured again. The key is named `origin` and not `description`, which is a
+declaration's free text in the description files
 ([section 3.2](#32-software-component-description)).
 
 The key is written for a given description alone, and that record is stamped `2`: the record is
@@ -1197,7 +1200,10 @@ one on the project, and contributing checks, comparison rules and an artefact of
   saved, and whenever the server reads the project description to find out whether it
   includes an opened file
   ([section 7.2](#72-editor-integration)). A module is imported once per process; an edit
-  takes effect in the next run, and in the editor after the server is restarted. A module
+  takes effect in the next run, and in the editor and in `ddd gui` after the server is
+  restarted, which `ddd gui` says meanwhile with `plugin-changed` on the file of a plugin
+  named by its path. A module a plugin imports is not watched, and a plugin named as a
+  module is not compared, so an edit of either takes the restart unsaid. A module
   that cannot be found is `plugin-not-found`; one that raises or exits the interpreter
   during import, exposes no `PLUGIN`, exposes a malformed one, or claims a name another
   plugin already has is `plugin-invalid`. A plugin's `name` matches `[a-z][a-z0-9_]*` and
@@ -1206,8 +1212,8 @@ one on the project, and contributing checks, comparison rules and an artefact of
   `<check>` matching `[a-z][a-z0-9]*(-[a-z0-9]+)*`.
   Malformed means: no `PLUGIN`, a `PLUGIN` that is not a `Plugin`, a name outside the
   grammar or reserved, a check identifier outside its grammar, or a check registered twice.
-  Both checks have a fixed severity, because a project cannot be interpreted without the
-  plugins it names.
+  `plugin-not-found` and `plugin-invalid` have a fixed severity, because a project cannot be
+  interpreted without the plugins it names.
 - `"extensions"` (optional): the settings of each plugin, keyed by plugin name - a key
   outside the `[a-z][a-z0-9_]*` a plugin's `name` matches is one no plugin could claim, and
   is `schema` - validated
@@ -1389,6 +1395,12 @@ Errors:
   model of the plugin's own that raises or exits while a file is checked or while a project is
   read to find out whether it contains an open file, or while a block is validated
   ([section 3.11](#311-plugins)). Fixed severity, for the same reason.
+- `plugin-changed`: filed by `ddd gui` alone, on the file of a plugin named by its path
+  ([section 3.11](#311-plugins)) that holds other bytes than the server imported it from. A
+  module is imported once per process, so the server goes on running the old code until it
+  is restarted, and every finding of an analysis after the edit is that code's: an error by
+  default, for that reason. The same bytes written again are no change, and `ddd check`, which
+  imports every plugin afresh, never files it.
 - `unknown-extension`: an `extensions` block names a plugin the project does not load. A block
   only means something to the plugin that owns it; relaxing the check is how a project
   deliberately carries a block no installed plugin interprets, which then reaches the
@@ -1725,7 +1737,11 @@ run is reported as an error - the candidate's own, the baseline's carried ones a
 comparison's alike - and the exit code follows the verdict
 ([section 7](#7-tool-interface)). `ddd compare`, `ddd check --baseline` and the Compare tab of
 `ddd gui` give one pair one verdict, since they ask one function: the tab counts the open project's own errors in it as the commands do, under the strictest
-reading of the build records that grade it, and says how many the project has of its own. When the baseline carries an error, the comparison is
+reading of the build records that grade it, and says how many the project has of its own.
+While `plugin-changed` stands as an error, as it does by default, the tab counts it as one of the
+open project's own errors, so its verdict is a refusal until the server is restarted or the
+plugin's file holds the bytes it was imported from again, where the commands, which import every
+plugin afresh, never file it. When the baseline carries an error, the comparison is
 made and the verdict is a refusal; when a side cannot be read, no verdict is printed and the exit
 code is 1.
 
@@ -3113,13 +3129,13 @@ The server asks the client to watch every description file and every build recor
 `**/*.ddd.json` and `**/ddd-build.json`, once the client has said it is initialized, wherever the
 client announced that it takes such a registration while the session runs; a client that did not is
 asked for nothing, and a file changed behind the editor's back is read again at the next open or
-save. A description the client reports changed is checked again where its findings are on screen,
-whatever is open, and while no document is open whether they are or not: with a document of another
-project open, a pull that mended a project nobody had open left its findings on screen as they were.
-A change of a build record is a change of which projects there are and of their severities: the
-records are searched for again, and the open documents and every file whose findings are on screen
-are checked again under them. A record is never checked as a description, nor is any other file the
-client reports that is not one.
+save. A description the client reports changed is checked again where its findings are on screen
+or a check ran from it, whatever is open, and while no document is open whether they are or not:
+with a document of another project open, a pull that mended a project nobody had open left its
+findings on screen as they were. A change of a build record is a change of which projects there are
+and of their severities: the records are searched for again, and the open documents and every file
+whose findings are on screen are checked again under them. A record is never checked as a
+description, nor is any other file the client reports that is not one.
 
 A message body the server cannot parse is answered with the protocol's parse or
 invalid-request error and does not stop the server, and a request whose parameters are not

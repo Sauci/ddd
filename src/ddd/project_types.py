@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any, Final
 
 from ddd.diagnostics import Diagnostic
-from ddd.findings_by_file import FindingsByFile, Pair
+from ddd.findings_by_file import FindingsByFile, Pair, noted_at
 from ddd.lsp.navigation import Index, Site
 from ddd.lsp.ranges import Document, read
 from ddd.variables import declarations_of
@@ -41,8 +41,12 @@ alongside its interface, at ``component.types[i]`` rather than a types file's ow
 SCALAR_KEYS: Final = ("datatype", "unit", "conversion", "limits")
 """What a scalar type fixes, in the order the panel lists it."""
 
-MEMBER_KEYS: Final = ("name", "member", "typename", "datatype", "unit", "bits", "dimensions")
-"""What a structure's member is shown with, in the order the panel's columns run."""
+REPEATED: Final = "duplicate-type"
+"""The check the loader files a later entry under that repeats a type's name, in another file - one
+file declaring a name twice does not load - filed at that entry, of which the analysis keeps
+nothing, with a note naming the first. Of the findings filed where the index records no type, it is
+the one that is a type's (:func:`located_in_type`), as
+:attr:`ddd.project_shared.Vocabulary.repeated` is a shared entry's."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,32 +91,18 @@ class Use:
 def type_rows(
     built: Index, findings: FindingsByFile, cache: dict[Path, Document]
 ) -> tuple[TypeRow, ...]:
-    """Every type the project declares, by name, with what it is and how much it has to fix.
+    """Every type the project declares, by name, with what it is and how much it has to fix: each
+    row :func:`row_of`'s, so that the table and a panel's own row count a type's findings by the
+    one rule, :func:`type_findings`'.
 
-    Each row counts the findings of its own entry's file alone, which :class:`FindingsByFile`
-    resolved once per file rather than once per (type, finding) pair: the same answer as
-    :func:`located_in_type` asked of every finding, at O(types + files) resolves instead of
-    O(types x findings) with two each.
+    A row asks the findings of its own entry's file, and of the files of the findings naming its
+    record by a note, which :class:`FindingsByFile` resolved once per file, and walks no other:
+    O(types + files) resolves instead of O(types x findings) with two each.
 
     The rows are the index's, a type taken out of its file since the analysis among them until the
     next one lands; what each says of itself is read where the index recorded it (:func:`_said`).
     """
-    rows = []
-    for name in sorted(built.types):
-        site = built.types[name]
-        kind, description = _said(built, name, cache)
-        rows.append(
-            TypeRow(
-                name=name,
-                kind=kind,
-                description=description,
-                uses=len(built.type_uses.get(name, ())),
-                findings=sum(
-                    1 for _, found in findings.on(site.path) if _within_entry(found, site)
-                ),
-            )
-        )
-    return tuple(rows)
+    return tuple(row_of(built, name, findings, cache) for name in sorted(built.types))
 
 
 def row_of(
@@ -150,13 +140,16 @@ def _said(built: Index, name: str, cache: dict[Path, Document]) -> tuple[str, st
 
 
 def type_findings(built: Index, name: str, findings: FindingsByFile) -> list[Pair]:
-    """Every finding filed inside ``name``'s own entry, in the order given: what
-    :func:`located_in_type` keeps of every finding, asked only of the findings on the file the
-    entry is in, which are the only ones it can keep. Trusts ``name`` is one of ``built.types``,
-    as :func:`row_of` does."""
+    """Every finding of ``name``'s own, in the order given: what :func:`located_in_type` keeps of
+    every finding, asked only of the findings on the file the entry is in and on the files of the
+    findings naming its record by a note (:meth:`~ddd.findings_by_file.FindingsByFile.noting`) -
+    a later entry repeating its name is on one of those - which are the only ones it can keep.
+    Trusts ``name`` is one of ``built.types``, as :func:`row_of` does."""
+    site = built.types[name]
+    files = [site.path, *(file for file, _ in findings.noting(site.path, site.pointer))]
     return [
         (file, found)
-        for file, found in findings.on(built.types[name].path)
+        for file, found in findings.on_any(files)
         if located_in_type(built, name, file, found, findings.resolve)
     ]
 
@@ -203,17 +196,23 @@ def located_in_type(
     finding: Diagnostic,
     resolve: Callable[[Path], Path] = Path.resolve,
 ) -> bool:
-    """Whether a finding shown on ``file`` is filed inside that type's own entry - its own
+    """Whether a finding shown on ``file`` is that type's own: filed inside its own entry - its own
     ``unknown-unit``, ``type-kind``, ``duplicate-type``, ``init-invalid`` or
-    ``limits-out-of-range``, and anything else a check files at a pointer under it.
+    ``limits-out-of-range``, and anything else a check files at a pointer under it - or the
+    loader's refusal of a later entry repeating its name (:data:`REPEATED`), filed at that entry
+    in another file and naming this one's record by its note. The panel that refusal leads to is
+    this type's, the later entry's name being this one's, and it lists the refusal at both places
+    it is filed, its note's being this entry's own (14:M8).
 
     ``resolve`` resolves both paths compared; :func:`type_findings` passes its findings' own
     (:meth:`ddd.findings_by_file.FindingsByFile.resolve`), which resolves no path a revision's
     analysis resolved already."""
     site = built.types.get(name)
-    if site is None or resolve(site.path) != resolve(file):
+    if site is None:
         return False
-    return _within_entry(finding, site)
+    if resolve(site.path) == resolve(file) and _within_entry(finding, site):
+        return True
+    return finding.check == REPEATED and noted_at(finding, site.path, site.pointer, resolve)
 
 
 def _within_entry(finding: Diagnostic, site: Site) -> bool:
@@ -282,13 +281,32 @@ def members_of(built: Index, name: str, cache: dict[Path, Document]) -> tuple[di
 
 
 def _member(entry: dict[str, Any]) -> dict[str, Any]:
-    """One member as the panel's columns read it, its dimensions rendered as text."""
-    shown: dict[str, Any] = {key: entry[key] for key in MEMBER_KEYS if key in entry}
-    sized = shown.get("dimensions")
-    if isinstance(sized, list):
-        # A dimension is an integer or the name of a declared constant; the column shows either.
-        shown["dimensions"] = tuple(str(entry) for entry in sized)
-    return shown
+    """One member as the panel's columns read it, every key of the panel's columns answered.
+
+    Each key is read by what the reply wants of it, as :func:`_string` reads a type's: a save
+    that still parses but holds a member without its ``name``, or a ``bits`` that is no integer,
+    is answered before the next analysis files its finding, and what the file holds there is not
+    an answer. A ``name`` that is no text reads ``""``, a ``member`` that is neither of the two
+    reads ``value``, a ``typename``, ``datatype``, ``unit`` or ``bits`` of the wrong kind reads
+    ``None`` and ``dimensions`` that is no list reads none; a dimension is an integer or the
+    name of a declared constant, and the column shows either as text.
+    """
+    sized = entry.get("dimensions")
+    bits = entry.get("bits")
+    return {
+        "name": _text(entry.get("name")) or "",
+        "member": "bits" if entry.get("member") == "bits" else "value",
+        "typename": _text(entry.get("typename")),
+        "datatype": _text(entry.get("datatype")),
+        "unit": _text(entry.get("unit")),
+        "bits": bits if isinstance(bits, int) and not isinstance(bits, bool) else None,
+        "dimensions": tuple(str(each) for each in sized) if isinstance(sized, list) else (),
+    }
+
+
+def _text(value: object) -> str | None:
+    """``value`` where it is text, else ``None``."""
+    return value if isinstance(value, str) else None
 
 
 def _string(built: Index, name: str, key: str, cache: dict[Path, Document]) -> str:

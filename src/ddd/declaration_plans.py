@@ -7,6 +7,14 @@ engine makes every change ``ddd gui`` makes and part 5's stack puts any of them 
 Nothing here formats json either. ``ddd.editing.insertion`` lays a value out in the layout of
 the place it goes - a key per line, a container of literals on one line - which is exactly how
 the description files spell a declaration.
+
+Each verb answers a :class:`~ddd.plans.Plan` - of one file always, as it happens: a declaration is
+written into the component that makes it, and nothing else moves - or raises a
+:class:`~ddd.plans.PlanRefusalError`: ``invalid`` where the change cannot be made - a name that
+may not be used, a key the kind has not, a required key left out, a scope this name may not take,
+a value the models themselves refuse; ``not-found`` where the file declares no interface, or no
+declaration of that name; ``stale`` where the declaration read from holds another object where
+the index found it, its file having changed since the analysis read it.
 """
 
 from __future__ import annotations
@@ -15,7 +23,7 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final, Literal
+from typing import Final
 
 from ddd.analysis import PRODUCER_KEYS
 from ddd.editing import Operation
@@ -23,12 +31,11 @@ from ddd.identity import new_id
 from ddd.lsp.edits import type_conversions
 from ddd.lsp.navigation import Index, Site, changed_since, drift, rename_problem
 from ddd.lsp.ranges import Document, read
-from ddd.lsp.units import PlannedEdit
 from ddd.models.component import Scope
 from ddd.models.objects import definition_keys, definition_problem
+from ddd.plans import Plan, PlannedEdit, PlanRefusalError
 from ddd.pointers import parent_pointer
 from ddd.variable_keys import KEY_ORDER, KeyOffer, offer_for
-from ddd.variables import component_of
 
 KINDS: Final = ("measurement", "parameter", "value_block", "curve", "map", "axis")
 """The six kinds a declaration may be, in the order the form offers them."""
@@ -77,15 +84,20 @@ class Declarable:
     """``measurement`` … ``axis``, or ``""`` when no declaration of it states one."""
 
     producer: str | None
-    """The component producing it; ``None`` when nothing does."""
+    """The component producing it, as the analysis loaded it; ``None`` when nothing does."""
 
 
-def declarable(built: Index, file: Path, cache: dict[Path, Document]) -> tuple[Declarable, ...]:
+def declarable(built: Index, file: Path) -> tuple[Declarable, ...]:
     """Every name the project declares that ``file`` does not and a scope may take there, sorted
-    by name.
+    by name, each with the component producing it.
 
     A name some component declares ``local`` is left out: :func:`scopes_for` answers it no scope,
-    and the name field is not offered a name the form has no scope to write it with.
+    and the name field is not offered a name the form has no scope to write it with. A producer is
+    named as the analysis loaded its component, which the index holds
+    (:attr:`~ddd.lsp.navigation.Index.components`), and no file is read: read off each producer's
+    file instead, every one of them parsed, the panel of the largest component of a generated
+    project of 100,000 declarations, offering 46,666 names, took 1.60 to 1.96 s to answer, and
+    takes 0.35 to 0.49 s (Linux development PC, three askings each).
     """
     here = file.resolve()
     return tuple(
@@ -93,8 +105,8 @@ def declarable(built: Index, file: Path, cache: dict[Path, Document]) -> tuple[D
             name=name,
             kind=built.kinds.get(name, ""),
             producer=(
-                component_of(read(produced[0].path, cache), produced[0].path)
-                if (produced := built.producers.get(name) or [])
+                built.components[produced[0].path]
+                if (produced := built.producers.get(name))
                 else None
             ),
         )
@@ -138,55 +150,40 @@ def _kept_by(built: Index, name: str) -> str | None:
     return None
 
 
-def form_for(built: Index, kind: str) -> tuple[KeyOffer, ...]:
+def _refuse_kept(built: Index, name: str) -> None:
+    """Refuse declaring ``name`` in a component other than the one that keeps it ``local``
+    (:func:`_kept_by`), naming that one: a declaration of it anywhere else, in any scope, is a
+    ``local-conflict``. One sentence for a read of it and for a new object of its name alike:
+    the chooser offers it to no other component, so it is said only to a name asked for all the
+    same."""
+    if (keeper := _kept_by(built, name)) is not None:
+        raise PlanRefusalError(
+            "invalid",
+            f"'{name}' is local to component '{keeper}', so no other component may declare it",
+        )
+
+
+def form_for(built: Index, kind: str, file: Path) -> tuple[KeyOffer, ...]:
     """What a new declaration of that kind asks for: one offer per key of ``KEY_ORDER`` the
     kind accepts, each with no value in play and ``required`` as the models have it.
+
+    The choosers offer what a declaration in ``file`` may name, which leaves out another
+    component's locals.
 
     A kind nothing declares answers empty rather than raising: ``definition_keys`` answers two
     empty sets for one, and the endpoint refuses before reaching here.
     """
     accepted, required = definition_keys(kind)
     return tuple(
-        offer_for(built, key, None, required=key in required)
+        offer_for(built, key, None, required=key in required, files={file.resolve()})
         for key in KEY_ORDER
         if key in accepted
     )
 
 
-@dataclass(frozen=True, slots=True)
-class DeclarationPlan:
-    """Everything one change of an interface takes: one edit per file, sorted by path.
-
-    One file, always, as it happens - a declaration is written into the component that makes
-    it, and nothing else moves - but the shape is :class:`~ddd.type_plans.TypePlan`'s so that
-    :func:`ddd.project_units.previewed` previews all three tabs' plans.
-    """
-
-    edits: tuple[PlannedEdit, ...]
-
-
-class DeclarationRefusalError(Exception):
-    """A change of an interface that cannot be planned, and the code both clients refuse with."""
-
-    code: Literal["invalid", "not-found", "stale"]
-    """``invalid``: the change cannot be made - a name that may not be used, a key the kind has
-    not, a required key left out, a scope this name may not take, a value the models themselves
-    refuse. ``not-found``: the file declares no interface, or no declaration of that name.
-    ``stale``: the declaration read from holds another object where the index found it, its file
-    having changed since the analysis read it."""
-
-    message: str
-    """The sentence the refusal is shown with."""
-
-    def __init__(self, code: Literal["invalid", "not-found", "stale"], message: str) -> None:
-        super().__init__(message)
-        self.code = code
-        self.message = message
-
-
 def read_object(
     built: Index, file: Path, name: str, scope: str, cache: dict[Path, Document]
-) -> DeclarationPlan:
+) -> Plan:
     """What reading an object the project already has takes.
 
     One ``insert`` appending a declaration that carries the producer's own definition, less
@@ -217,20 +214,16 @@ def read_object(
     here, entries = _interface(file, cache)
     sites = built.declarations.get(name)
     if not sites:
-        raise DeclarationRefusalError("not-found", f"the project declares no '{name}'")
+        raise PlanRefusalError("not-found", f"the project declares no '{name}'")
     if any(site.path == here for site in sites):
-        raise DeclarationRefusalError("invalid", f"this component already declares '{name}'")
-    if (keeper := _kept_by(built, name)) is not None:
-        raise DeclarationRefusalError(
-            "invalid",
-            f"'{name}' is local to component '{keeper}', so no other component may declare it",
-        )
+        raise PlanRefusalError("invalid", f"this component already declares '{name}'")
+    _refuse_kept(built, name)
     if scope not in scopes_for(built, name):
-        raise DeclarationRefusalError("invalid", f"'{name}' may not be declared '{scope}' here")
+        raise PlanRefusalError("invalid", f"'{name}' may not be declared '{scope}' here")
     owner = (built.producers.get(name) or sites)[0]
     stated = read(owner.path, cache).value_at(owner.pointer)
     if not isinstance(stated, dict) or stated.get("name") != name:
-        raise DeclarationRefusalError(
+        raise PlanRefusalError(
             "stale", changed_since((owner.path,), f"'{name}' cannot be declared here")
         )
     definition = {key: value for key, value in stated.items() if key not in CARRIED_BY_A_READER}
@@ -248,14 +241,18 @@ def declare_object(
     scope: str,
     definition: Mapping[str, object],
     cache: dict[Path, Document],
-) -> DeclarationPlan:
+) -> Plan:
     """What declaring a new object takes: one ``insert`` appending the definition given.
 
     Refused before a file is touched for a name the project may not use, in
     :func:`~ddd.lsp.navigation.rename_problem`'s own sentence - a new declaration lands in the
     namespace a rename guards, so it gets the same answers rather than a second set derived
-    here. A declaration whose scope is one of :data:`PRODUCING_SCOPES` is stamped with a fresh
-    id, after its ``name``, where every stamped declaration of the examples carries one.
+    here - but a name another component keeps ``local`` first, naming that component as a read
+    of it is refused (:func:`_refuse_kept`): no chooser offers it, and that the project declares
+    it already does not say where, nor that no scope would do. A local of this file's own is
+    the project's name like any other. A declaration whose scope is one of
+    :data:`PRODUCING_SCOPES` is stamped with a fresh id, after its ``name``, where every stamped
+    declaration of the examples carries one.
 
     Stamped, the definition is asked of the models (:func:`~ddd.models.definition_problem`) - a
     rule crossing two keys, a ``datatype`` wanting a ``conversion`` among them, is not something
@@ -268,33 +265,33 @@ def declare_object(
     here, entries = _interface(file, cache)
     name, kind = definition.get("name"), definition.get("kind")
     if not isinstance(name, str) or not isinstance(kind, str):
-        raise DeclarationRefusalError("invalid", "a definition states a 'name' and a 'kind'")
+        raise PlanRefusalError("invalid", "a definition states a 'name' and a 'kind'")
     if kind not in KINDS:
-        raise DeclarationRefusalError("invalid", f"'{kind}' is not a kind: {', '.join(KINDS)}")
+        raise PlanRefusalError("invalid", f"'{kind}' is not a kind: {', '.join(KINDS)}")
     if scope not in SCOPES:
-        raise DeclarationRefusalError("invalid", f"'{scope}' is not a scope: {', '.join(SCOPES)}")
+        raise PlanRefusalError("invalid", f"'{scope}' is not a scope: {', '.join(SCOPES)}")
+    if all(site.path != here for site in built.declarations.get(name, ())):
+        _refuse_kept(built, name)
     problem = rename_problem(built, name)
     if problem is not None:
-        raise DeclarationRefusalError("invalid", problem)
+        raise PlanRefusalError("invalid", problem)
     if "id" in definition:
-        raise DeclarationRefusalError("invalid", "an id is this server's to mint, not the page's")
+        raise PlanRefusalError("invalid", "an id is this server's to mint, not the page's")
     if extra := sorted(set(definition) - _statable(kind)):
-        raise DeclarationRefusalError("invalid", f"a {kind} has no '{extra[0]}' to state")
+        raise PlanRefusalError("invalid", f"a {kind} has no '{extra[0]}' to state")
     _, required = definition_keys(kind)
     if missing := sorted(required - set(definition)):
-        raise DeclarationRefusalError("invalid", f"a {kind} must state '{missing[0]}'")
+        raise PlanRefusalError("invalid", f"a {kind} must state '{missing[0]}'")
     stated = dict(definition)
     if scope in PRODUCING_SCOPES:
         stated = _stamped(name, stated)
     problem = definition_problem(stated, type_conversions(built, cache))
     if problem is not None:
-        raise DeclarationRefusalError("invalid", problem)
+        raise PlanRefusalError("invalid", problem)
     return _appended(here, entries, scope, stated)
 
 
-def remove_declaration(
-    built: Index, file: Path, name: str, cache: dict[Path, Document]
-) -> DeclarationPlan:
+def remove_declaration(built: Index, file: Path, name: str, cache: dict[Path, Document]) -> Plan:
     """What removing a declaration takes: one ``remove`` at its index in the interface.
 
     ``built`` is unread - the index says which components declare a name, and this needs the
@@ -307,13 +304,13 @@ def remove_declaration(
     for position in range(len(entries)):
         if document.value_at(f"{INTERFACE}[{position}].definition.name") == name:
             operation = Operation("remove", f"{INTERFACE}[{position}]")
-            return DeclarationPlan((PlannedEdit(here, (operation,)),))
-    raise DeclarationRefusalError("not-found", f"{here.name} declares no '{name}'")
+            return Plan((PlannedEdit(here, (operation,)),))
+    raise PlanRefusalError("not-found", f"{here.name} declares no '{name}'")
 
 
 def describe_declaration(
     built: Index, file: Path, name: str, description: str, cache: dict[Path, Document]
-) -> DeclarationPlan:
+) -> Plan:
     """What describing a declaration takes: one ``set`` at its own ``description``, or one
     ``remove`` of that key where ``description`` is the empty text, which is the model's default.
 
@@ -333,15 +330,15 @@ def describe_declaration(
     here = file.resolve()
     sites = [site for site in built.declarations.get(name, ()) if site.path.resolve() == here]
     if not sites:
-        raise DeclarationRefusalError("not-found", f"{here.name} declares no '{name}'")
+        raise PlanRefusalError("not-found", f"{here.name} declares no '{name}'")
     site = sites[0]
     if drift((Site(site.path, f"{site.pointer}.name"),), name, cache):
-        raise DeclarationRefusalError(
+        raise PlanRefusalError(
             "stale", changed_since((here,), f"the description of '{name}' cannot be set")
         )
     pointer = f"{site.pointer}.description"
     if not _writable(description):
-        raise DeclarationRefusalError(
+        raise PlanRefusalError(
             "invalid", "a description holds a character that no file can hold, a lone surrogate"
         )
     if description:
@@ -350,12 +347,12 @@ def describe_declaration(
         # would write an escape.
         operation = Operation("set", pointer, json.dumps(description, ensure_ascii=False))
     elif read(here, cache).value_at(pointer) is None:
-        raise DeclarationRefusalError(
+        raise PlanRefusalError(
             "invalid", f"{here.name} states no description of '{name}', so there is none to remove"
         )
     else:
         operation = Operation("remove", pointer)
-    return DeclarationPlan((PlannedEdit(here, (operation,)),))
+    return Plan((PlannedEdit(here, (operation,)),))
 
 
 def _writable(text: str) -> bool:
@@ -396,7 +393,7 @@ def _interface(file: Path, cache: dict[Path, Document]) -> tuple[Path, list[obje
     here = file.resolve()
     entries = read(here, cache).value_at(INTERFACE)
     if not isinstance(entries, list):
-        raise DeclarationRefusalError("not-found", f"{here.name} declares no interface")
+        raise PlanRefusalError("not-found", f"{here.name} declares no interface")
     return here, entries
 
 
@@ -406,7 +403,7 @@ def _appended(
     scope: str,
     definition: Mapping[str, object],
     condition: str | None = None,
-) -> DeclarationPlan:
+) -> Plan:
     """The plan that appends one declaration: an ``insert`` at the end of the interface, its
     ``condition`` - where it has one - between its scope and its definition, as the model orders
     them."""
@@ -416,4 +413,4 @@ def _appended(
     entry["definition"] = definition
     raw = json.dumps(entry)
     operation = Operation("insert", f"{INTERFACE}[{len(entries)}]", raw)
-    return DeclarationPlan((PlannedEdit(here, (operation,)),))
+    return Plan((PlannedEdit(here, (operation,)),))

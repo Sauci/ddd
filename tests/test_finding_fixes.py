@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 
@@ -680,6 +680,58 @@ class TestAMismatch:
             },
         )
         assert fixes_for("unknown-unit", root / "a.ddd.json", DEFINITION, {}, built) == ()
+
+
+class TestLimitsPastWhatADoubleHolds:
+    """3:M9. Two ranges whose maxima differ past 2^53 are two to ``ddd check``, which files the
+    ``definition-mismatch``, and were one to the rule every fix is built by, which read each bound
+    as the double nearest it: the finding carried no fix, in the page or in the editor."""
+
+    FILES: ClassVar[dict[str, Any]] = {
+        "a.ddd.json": component(
+            "A", declare("output", "Speed", "uint64", limits={"min": 0, "max": 2**53 + 1})
+        ),
+        "b.ddd.json": component(
+            "B", declare("input", "Speed", "uint64", limits={"min": 0, "max": 2**53})
+        ),
+    }
+
+    def test_the_reader_s_finding_takes_the_producer_s_range_and_the_check_goes_green(
+        self, tmp_path: Path
+    ) -> None:
+        built, root = built_of(tmp_path, **self.FILES)
+        assert "definition-mismatch" in analysed(root)
+        reader = root / "b.ddd.json"
+        offered = fixes_for("definition-mismatch", reader, DEFINITION, {}, built)
+        assert titles(offered) == ["Use the limits declared in a"]
+        (edit,) = offered[0].changes
+        assert edit.path == reader
+        assert [(o.op, o.pointer) for o in edit.operations] == [("set", f"{DEFINITION}.limits")]
+        assert json.loads(edit.operations[0].raw or "") == {"min": 0, "max": 2**53 + 1}
+        reader.write_text(
+            edit_text(reader.read_text(encoding="utf-8"), edit.operations),
+            encoding="utf-8",
+            newline="",
+        )
+        assert "definition-mismatch" not in analysed(root)
+
+    def test_the_editor_offers_both_ways(self, tmp_path: Path) -> None:
+        built, root = built_of(tmp_path, **self.FILES)
+        reader = root / "b.ddd.json"
+        decisions = reconciliations(built, reader, read(reader, {}), f"{DEFINITION}.limits", {})
+        assert [decision.title for decision in decisions] == [
+            "Use the limits declared in a",
+            "Apply this limits to 1 other declaration of 'Speed'",
+        ]
+
+
+def analysed(root: Path) -> list[str]:
+    """The checks ``ddd check`` files of the project under ``root``."""
+    bag = DiagnosticBag()
+    workspace = load_workspace(root / "p.ddd.json", bag)
+    assert workspace is not None
+    analyze(workspace, bag)
+    return checks(bag)
 
 
 class TestAMismatchThatWouldNotLoad:

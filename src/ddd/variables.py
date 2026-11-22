@@ -13,14 +13,16 @@ from __future__ import annotations
 
 import codecs
 import difflib
+from bisect import bisect_right
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from itertools import accumulate
 from pathlib import Path
 from typing import Any, Final
 
 from ddd.diagnostics import Diagnostic
 from ddd.difflib_lock import ONE_THREAD_IN_DIFFLIB
-from ddd.editing import UNREADABLE, EditError, Operation, edit_text
+from ddd.editing import UNREADABLE, EditError, Operation, TextEdit, edit_spans
 from ddd.lsp.edits import PROPAGATED_KEYS, Settlement, Unsettled, loading_problem
 from ddd.lsp.navigation import Index, Site
 from ddd.lsp.ranges import Document, read
@@ -35,6 +37,7 @@ SETTLE_CODES: Final = {
     "kind": "invalid",
     "storage": "invalid",
     "load": "invalid",
+    "unproduced": "invalid",
 }
 """The code ``ddd gui`` refuses a settlement with, for each reason a declaration cannot take it."""
 
@@ -192,23 +195,30 @@ def operations_for(
 
 
 def preview(
-    settlement: Settlement, key: str, fingerprints: Mapping[Path, str]
+    settlement: Settlement,
+    key: str,
+    fingerprints: Mapping[Path, str],
+    cache: Mapping[Path, Document] | None = None,
 ) -> tuple[Planned, ...]:
     """The edit a settlement comes to, file by file, and the lines it changes in each - made by
     the edit engine in memory and never written.
 
     Each file carries the fingerprint the analysis read it at, from ``fingerprints`` (keyed by
     resolved path), so that applying the preview after the file changed on disk is refused as
-    stale rather than made to text nobody previewed.
+    stale rather than made to text nobody previewed. ``cache`` is the one the settlement was
+    decided on, whose documents :func:`planned` makes each edit from.
     """
     return tuple(
-        planned(path, operations, fingerprints)
+        planned(path, operations, fingerprints, cache)
         for path, operations in operations_for(settlement, key)
     )
 
 
 def planned(
-    path: Path, operations: tuple[Operation, ...], fingerprints: Mapping[Path, str]
+    path: Path,
+    operations: tuple[Operation, ...],
+    fingerprints: Mapping[Path, str],
+    cache: Mapping[Path, Document] | None = None,
 ) -> Planned:
     """The edit of one file the analysis read, and the lines it changes, made in memory.
 
@@ -220,6 +230,12 @@ def planned(
     as a key is that resolved path already, as every path of an analysis's own index is, and a
     plan renaming a unit stated in every file of a large project resolved every one of them
     again.
+
+    The lines it changes are read off the spans the engine's edit replaced
+    (:func:`lines_replaced`), never found by comparing the file before and after it. The edit is
+    made from the document ``cache`` - the plan's own - holds for the file, where the file reads
+    as that document still (:func:`ddd.editing.edit_spans`): whoever planned the operations read
+    the file already, to find where they go or that it still holds what they point at.
     """
     stamp = fingerprints.get(path)
     if stamp is None:
@@ -230,22 +246,116 @@ def planned(
         text = path.read_bytes().removeprefix(codecs.BOM_UTF8).decode("utf-8")
     except (OSError, UnicodeDecodeError):
         raise EditError(UNREADABLE, f"{path} can no longer be read as utf-8") from None
-    return Planned(path, stamp, operations, hunks(text, edit_text(text, operations)))
+    edited = edit_spans(text, operations, None if cache is None else cache.get(path))
+    return Planned(path, stamp, operations, lines_replaced(text, edited.replaced))
+
+
+def lines_replaced(before: str, replaced: Sequence[TextEdit]) -> tuple[Hunk, ...]:
+    """The lines a change replaces in ``before``, each run of them numbered as the text stood,
+    read off the spans of it the change replaced - in order and none overlapping, as
+    :attr:`ddd.editing.Edited.replaced` holds them: a plan's lines.
+
+    A span lies on the lines from the one it begins on to the one it ends on, and spans lying on
+    one line are one run. A span beginning a line that a carriage return alone ends the line
+    before lies on that line too: a line feed written there makes one line break of the two.
+    Of a run's lines, those reading the same before and after at either end are no part of it,
+    the last ones first: an entry taken out ends where the next one begins, so the line it
+    reaches into reads as it did once the entry is gone - that line is the next entry's, and the
+    lines taken out are the entry's own. Runs that then meet, no line left as it was between
+    them, are one. A text's lines are what ``str.splitlines`` reads, as :func:`hunks` reads them.
+
+    Only the lines a span lies on are compared (:func:`_alike_at_the_ends`), however long the
+    file. :func:`hunks` compares every line of it, by difflib where a line the change writes is
+    held elsewhere in the file, as it is wherever a unit is stated twice: over the 48,350 lines of
+    the largest component of a generated project of 100,000 declarations, one unit set in it, it
+    took 6.8 s, and the plan of that variable, declared there and in a component as large, 13.4 s
+    (Linux development PC).
+    """
+    if not replaced:
+        return ()
+    kept = before.splitlines(keepends=True)
+    starts = [0, *accumulate(map(len, kept))]
+    # The end of the text is on its last line, past a line break that ends the text as much as
+    # where none does: a run holding that line holds it alike before and after, and leaves it out.
+    last = max(len(kept) - 1, 0)
+
+    def line_of(offset: int) -> int:
+        return min(bisect_right(starts, offset) - 1, last)
+
+    def first_line_of(edit: TextEdit) -> int:
+        line = line_of(edit.start)
+        if line and starts[line] == edit.start and before[edit.start - 1] == "\r":
+            return line - 1
+        return line
+
+    runs: list[tuple[int, int, list[TextEdit]]] = []
+    for edit in replaced:
+        first, final = first_line_of(edit), line_of(edit.end)
+        if runs and first <= runs[-1][1]:
+            runs[-1] = (runs[-1][0], final, [*runs[-1][2], edit])
+        else:
+            runs.append((first, final, [edit]))
+    found: list[Hunk] = []
+    for first, final, edits in runs:
+        start = starts[first]
+        end = starts[final + 1] if final + 1 < len(starts) else len(before)
+        pieces: list[str] = []
+        reached = start
+        for edit in edits:
+            pieces += (before[reached : edit.start], edit.text)
+            reached = edit.end
+        pieces.append(before[reached:end])
+        hunk = _changed(first + 1, before[start:end].splitlines(), "".join(pieces).splitlines())
+        if hunk is not None and found and found[-1].line + len(found[-1].before) == hunk.line:
+            met = found.pop()
+            hunk = _changed(met.line, met.before + hunk.before, met.after + hunk.after)
+        if hunk is not None:
+            found.append(hunk)
+    return tuple(found)
+
+
+def _changed(line: int, before: Sequence[str], after: Sequence[str]) -> Hunk | None:
+    """The hunk of ``before``, its first line numbered ``line``, replaced by ``after``, less the
+    lines that read alike at either end (:func:`_alike_at_the_ends`); ``None`` where every line
+    does, and nothing changed."""
+    head, tail = _alike_at_the_ends(before, after)
+    if head + tail == len(before) == len(after):
+        return None
+    return Hunk(
+        line + head,
+        tuple(before[head : len(before) - tail]),
+        tuple(after[head : len(after) - tail]),
+    )
+
+
+def _alike_at_the_ends(before: Sequence[str], after: Sequence[str]) -> tuple[int, int]:
+    """How many lines the two read alike at their start, and then at their end, none of them
+    counted twice: the end first, as :func:`lines_replaced` reads a run."""
+    shortest = min(len(before), len(after))
+    tail = 0
+    while tail < shortest and before[-1 - tail] == after[-1 - tail]:
+        tail += 1
+    head = 0
+    while head < shortest - tail and before[head] == after[head]:
+        head += 1
+    return head, tail
 
 
 def hunks(before: str, after: str) -> tuple[Hunk, ...]:
     """The lines a change replaces in a text, each run of them numbered as the text stood: what
-    ``difflib.SequenceMatcher`` answers over the lines of the two texts.
+    ``difflib.SequenceMatcher`` answers over the lines of the two texts - for an undo's preview,
+    which holds the text a file stands at and the one it is put back to, and no operation. A
+    plan's lines are read off the spans its operations replace instead (:func:`lines_replaced`).
 
-    Answered without difflib for a change made in place (:func:`_replaced_in_place`): renaming a
-    unit to a spelling nothing used made such a change of every file it touched, all 1,167, in a
-    generated project of 35,000 declarations. Any other change goes to difflib over both texts
-    whole: matching the lines the two share at their start and at their end first would number
-    some of them otherwise. Where the lines taken out are spelled like the lines beside them,
-    which of those difflib names depends on the text all around - taking the first of six
-    declarations out of a component, it answers lines 5 to 17, where the head matched first
-    would answer lines 8 to 20 (``tests/test_variables.py``). That one call into difflib holds
-    :data:`ddd.difflib_lock.ONE_THREAD_IN_DIFFLIB`, for this file alone.
+    Answered without difflib for a change made in place (:func:`_replaced_in_place`): putting back
+    a unit renamed to a spelling nothing used makes such a change of every file the rename
+    touched, all 1,167, in a generated project of 35,000 declarations. Any other change goes to
+    difflib over both texts whole: matching the lines the two share at their start and at their
+    end first would number some of them otherwise. Where the lines taken out are spelled like the
+    lines beside them, which of those difflib names depends on the text all around - taking the
+    first of six declarations out of a component, it answers lines 5 to 17, where the head
+    matched first would answer lines 8 to 20 (``tests/test_variables.py``). That one call into
+    difflib holds :data:`ddd.difflib_lock.ONE_THREAD_IN_DIFFLIB`, for this file alone.
     """
     old, new = before.splitlines(), after.splitlines()
     in_place = _replaced_in_place(old, new)
@@ -295,7 +405,9 @@ def _replaced_in_place(old: list[str], new: list[str]) -> tuple[Hunk, ...] | Non
 
 
 def refusal(unsettled: Unsettled, name: str, key: str) -> tuple[str, str]:
-    """The code and the sentence ``ddd gui`` refuses a settlement with, naming the declaration."""
+    """The code and the sentence ``ddd gui`` refuses a settlement with, naming the declaration -
+    or the variable, where every declaration of it reads it and none is the one to state a key a
+    reader leaves to its producer (``unproduced``)."""
     where = f"the declaration of '{name}' in {unsettled.site.path.name}"
     if unsettled.reason == "type":
         sentence = f"{where} names the type '{unsettled.type_name}', which fixes its {key}"
@@ -310,6 +422,11 @@ def refusal(unsettled: Unsettled, name: str, key: str) -> tuple[str, str]:
         )
     elif unsettled.reason == "load":
         sentence = _would_not_load(unsettled.site, name, key, unsettled.problem)
+    elif unsettled.reason == "unproduced":
+        sentence = (
+            f"no declaration of '{name}' produces it, and a declaration reading it leaves its "
+            f"{key} to the one that does"
+        )
     else:
         sentence = f"{where} is no longer where the last analysis found it"
     return SETTLE_CODES[unsettled.reason], sentence

@@ -3,7 +3,9 @@
 ``ddd gui`` analyses a project on a thread of its own and answers its requests on others, and
 both reach difflib: an analysis to suggest the name meant where one no file declares is written
 (:func:`ddd.analysis.close_units`, and ``get_close_matches`` in ``ddd.analysis._did_you_mean``),
-a request for the lines a planned change replaces (:func:`ddd.variables.hunks`). On Python
+a request for the lines an undo would put back (:func:`ddd.variables.hunks`). A plan asked
+difflib for the lines its change replaces until those were read off the spans its operations
+replace (:func:`ddd.variables.lines_replaced`), and asks nothing of it since. On Python
 3.14.4 - Ubuntu's 3.14.4-1ubuntu0.2, a build with the GIL, its JIT built and off - two threads in
 difflib at once have broken it, for a reason nobody has found:
 
@@ -29,7 +31,8 @@ machine busy it was not seen at all.
 This lock keeps that pairing from happening, and fixes nothing in the interpreter. Each call
 holds it for itself alone - one ``ratio()`` of a suggestion, one ``get_close_matches``, one
 file's ``get_opcodes()`` - and lets it go as it returns, never around a loop of calls: an
-analysis lets it go after each comparison it makes, and a plan after each file it diffs.
+analysis lets it go after each comparison it makes, and an undo's preview after each file it
+diffs.
 """
 
 from __future__ import annotations

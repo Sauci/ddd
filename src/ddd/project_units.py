@@ -17,12 +17,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ddd.diagnostics import Diagnostic
+from ddd.editing import TextEdit
 from ddd.finding_routes import UNIT_CHECKS
 from ddd.findings_by_file import FindingsByFile, Pair
 from ddd.lsp.navigation import Index, Site, UnitSite
 from ddd.lsp.ranges import Document, read
-from ddd.lsp.units import PlannedEdit, UnitProject, UnitRefusalError, adoption, listing_files
-from ddd.variables import Planned, declarations_of, hunks, planned, role_of
+from ddd.lsp.units import VocabularyProject, adoption, listing_files
+from ddd.plans import PlannedEdit, PlanRefusalError
+from ddd.variables import Planned, declarations_of, lines_replaced, planned, role_of
 
 
 @dataclass(frozen=True, slots=True)
@@ -212,7 +214,7 @@ def _sites(built: Index, unit: str) -> tuple[Site, ...]:
     )
 
 
-def adoptable(built: Index | None, project: Callable[[], UnitProject]) -> int | None:
+def adoptable(built: Index | None, project: Callable[[], VocabularyProject]) -> int | None:
     """How many units adopting a vocabulary would list - every unit in use, none where the
     project states none - or ``None`` where adopting is refused.
 
@@ -238,7 +240,7 @@ def adoptable(built: Index | None, project: Callable[[], UnitProject]) -> int | 
         return None
     try:
         planned = adoption(built, project())
-    except UnitRefusalError:
+    except PlanRefusalError:
         return None
     if planned is None:
         return 0
@@ -246,24 +248,34 @@ def adoptable(built: Index | None, project: Callable[[], UnitProject]) -> int | 
 
 
 def previewed(
-    edits: Sequence[PlannedEdit], fingerprints: Mapping[Path, str]
+    edits: Sequence[PlannedEdit],
+    fingerprints: Mapping[Path, str],
+    cache: Mapping[Path, Document] | None = None,
 ) -> tuple[Planned, ...]:
     """The edit a plan comes to, file by file in the plan's order, and the lines it changes in
     each - made by the edit engine in memory and never written.
 
-    Takes a plan's edits rather than the plan itself, so that a :class:`~ddd.type_plans.TypePlan`
-    and a :class:`~ddd.lsp.units.UnitPlan` - two different dataclasses sharing one shape - are
+    Takes a plan's edits rather than the plan itself, so that a :class:`~ddd.plans.Plan` - every
+    tab's but the Files tab's - and the Files tab's plan, which carries more beside its edits, are
     both previewed by the one function, instead of each tab writing its own copy of it.
 
     A file the plan changes carries the fingerprint the analysis read it at, from
     ``fingerprints`` (keyed by resolved path), exactly as :func:`ddd.variables.preview` has it.
     A file the plan creates has none - ``POST /api/edit`` creates a file for a change without
-    one - and its one hunk is the whole file, at line 1.
+    one - and its one hunk is the whole file, at line 1: the one span of an empty text its one
+    ``set`` replaces, read as every plan's lines are (:func:`ddd.variables.lines_replaced`).
+    ``cache`` is the one the plan was made with, whose documents each edit is made from
+    (:func:`ddd.variables.planned`).
     """
     return tuple(
-        Planned(edit.path, None, edit.operations, hunks("", edit.operations[0].raw or ""))
+        Planned(
+            edit.path,
+            None,
+            edit.operations,
+            lines_replaced("", (TextEdit(0, 0, edit.operations[0].raw or ""),)),
+        )
         if edit.creates
-        else planned(edit.path, edit.operations, fingerprints)
+        else planned(edit.path, edit.operations, fingerprints, cache)
         for edit in edits
     )
 

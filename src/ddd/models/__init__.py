@@ -88,6 +88,7 @@ from ddd.models.types import (
     bitfield_range,
     check_string_member_shape,
     scalar_conversion,
+    type_problem,
 )
 from ddd.models.units import Unit, UnitDeclaration, UnitsFile
 
@@ -187,4 +188,5 @@ __all__ = [
     "spelled_dimensions",
     "stored_counts",
     "string_type_problem",
+    "type_problem",
 ]

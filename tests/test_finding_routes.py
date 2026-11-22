@@ -353,6 +353,56 @@ class TestRoutes:
         )
         assert route == Route("values", "Bad")
 
+    def test_any_finding_on_a_reader_s_init_leads_to_its_variable(self, tmp_path: Path) -> None:
+        """A reader's ``init`` is checked as a producer's is, an ``init-invalid`` filed at it
+        beside its ``consumer-storage``: the values grid is the producer's and lists neither
+        (14:M8), so both lead to the variable, whose panel lists every finding under the reader's
+        declaration."""
+        root = built(tmp_path, **READ_WITH_AN_INIT)
+        assert route_of(
+            "init-invalid",
+            root / "r.ddd.json",
+            "component.interface[0].definition.init",
+            "component",
+            True,
+            {},
+        ) == Route("variable", "Gain")
+
+    def test_a_finding_on_a_local_s_init_leads_to_that_object_s_values(
+        self, tmp_path: Path
+    ) -> None:
+        """A local produces what it declares, as an output does: the grid is its own."""
+        write_tree(tmp_path, {"a.ddd.json": component("A", declare("local", "Own", init=3))})
+        assert route_of(
+            "init-invalid",
+            tmp_path / "a.ddd.json",
+            "component.interface[0].definition.init",
+            "component",
+            True,
+            {},
+        ) == Route("values", "Own")
+
+    @pytest.mark.parametrize("scope", [5, "sideways", None])
+    def test_an_init_whose_scope_no_longer_reads_as_one_leads_to_the_variable(
+        self, tmp_path: Path, scope: object
+    ) -> None:
+        """A file saved since the analysis with a scope that is no scope, or none, no longer says
+        whether the declaration produces what it declares: the finding leads to the variable,
+        whose panel lists every finding under the declaration whatever its scope."""
+        declaration = declare("output", "Gain", init=3)
+        del declaration["scope"]
+        if scope is not None:
+            declaration["scope"] = scope
+        write_tree(tmp_path, {"a.ddd.json": component("A", declaration)})
+        assert route_of(
+            "init-invalid",
+            tmp_path / "a.ddd.json",
+            "component.interface[0].definition.init",
+            "component",
+            True,
+            {},
+        ) == Route("variable", "Gain")
+
     def test_a_finding_elsewhere_in_the_declaration_still_leads_to_the_variable(
         self, tmp_path: Path, cache
     ) -> None:
@@ -587,6 +637,14 @@ PLACED = {
     "a.ddd.json": component("A", declare("output", "Gain", section=".calib")),
 }
 
+READ_WITH_AN_INIT = {
+    "w.ddd.json": component("W", declare("output", "Gain", init=3)),
+    "r.ddd.json": component("R", declare("input", "Gain", init=4)),
+}
+"""A producer and a reader of one variable, each stating an ``init``: the reader's is the
+``consumer-storage`` the analysis files at it, only the producer deciding what the variable
+starts as, and the values grid is the producer's, in ``w.ddd.json``."""
+
 # The same tree with the definition placed in a section no file declares, which is exactly the
 # state `unknown-section` reports: the name is in the definition and nowhere else.
 PLACED_NOWHERE = {
@@ -660,28 +718,30 @@ class TestASection:
             {},
         ) == Route("variable", "Gain")
 
-    def test_the_same_check_at_its_other_key_opens_that_object_s_values(
+    def test_the_same_check_at_its_other_key_leads_to_the_declaration_too(
         self, tmp_path: Path
     ) -> None:
         """`PRODUCER_KEYS` gives `consumer-storage` exactly two keys, `init` and `section` - the
         other three entries there are `consumer-raster`, `consumer-identity` and
-        `consumer-extension`, one key each. The `init` copy is claimed by `WITHIN_INIT`, which
-        opens the values grid, so both of this check's keys lead to a screen of the variable's own
-        and the `section` key agrees with its sibling rather than inventing a third destination.
+        `consumer-extension`, one key each. Either copy is filed on a reader, which states what
+        only the producer may: the values grid `WITHIN_INIT` opens is the producer's, read from
+        another file and listing the findings at the producer's own `init` alone, so it never
+        listed this one (14:M8). Both of this check's keys lead to the declaration that states
+        them, whose variable's panel lists every finding under it.
 
-        That is the argument `ABOUT_THE_DECLARATION`'s docstring makes, and until the branch's
-        final review nothing asserted it: this test used to aim at `definition.raster`, which is
-        `consumer-raster`'s key and not this check's at all, so it pinned a pair the analysis never
-        files. It passed, and could not have failed for the right reason."""
-        root = built(tmp_path, **PLACED)
+        That is the argument `ABOUT_THE_DECLARATION`'s docstring makes. This test once aimed at
+        `definition.raster`, `consumer-raster`'s key and not this check's at all, and later at a
+        producer's `init`, where the analysis never files it: each passed, and could not have
+        failed for the right reason."""
+        root = built(tmp_path, **READ_WITH_AN_INIT)
         assert route_of(
             "consumer-storage",
-            root / "a.ddd.json",
+            root / "r.ddd.json",
             "component.interface[0].definition.init",
             "component",
             True,
             {},
-        ) == Route("values", "Gain")
+        ) == Route("variable", "Gain")
 
     def test_duplicate_section_leads_to_the_section_its_entry_declares(
         self, tmp_path: Path

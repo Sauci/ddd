@@ -1,6 +1,6 @@
 import type { CompareReply, State } from "../api/types";
-import { compareRouteReason, compareRows, fileNameIn } from "../lib/compare";
-import { countsOf, findingCounts, routeHref, routeLabel, routeOf } from "../lib/findings";
+import { compareLine, compareRouteReason, compareRows, fileNameIn } from "../lib/compare";
+import { placeOf, routeHref, routeLabel, routeOf } from "../lib/findings";
 import type { Route } from "../lib/route";
 import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
@@ -98,9 +98,7 @@ export function CompareView(props: CompareViewProps) {
               ? "This project can replace the baseline."
               : "This project cannot replace the baseline."}
           </p>
-          <p className="summary">
-            {findingCounts(countsOf(rows.map((entry) => entry.finding)), false)}
-          </p>
+          <p className="summary">{compareLine(reply)}</p>
           <div className={row !== undefined ? "with-panel" : undefined}>
             <div>
               <CompareTableView rows={rows} selected={props.selected} onSelect={props.onSelect} />
@@ -112,6 +110,7 @@ export function CompareView(props: CompareViewProps) {
                   label={routeLabel(row.finding, props.state)}
                   href={routeHref(row.finding)}
                   reason={compareRouteReason(row, props.state)}
+                  place={placeOf(row.finding, fileNameIn(row.fromBaseline))}
                   fileName={fileNameIn(row.fromBaseline)}
                   onOpen={() => {
                     const route = routeOf(row.finding);

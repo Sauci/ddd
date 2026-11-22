@@ -1384,7 +1384,11 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
 - **A unit rename's plan parses each file twice** (task 3, `13:C1`): the in-place guard and the
   plan each parse every file, so the plan of a unit stated in 1,167 files takes 1.55 s where it
   took 1.14 s, widening a budget the plans already miss (spec §3). Branch 10, task 5 owns it,
-  with the plans it measures against their budgets.
+  with the plans it measures against their budgets. *(Done by branch 10, task 5: a plan's edit is
+  made from the document the plan read, so each file a rename writes is scanned once as it stands
+  and once as its edit leaves it. Over the 1,167 files of a generated project of 35,000
+  declarations the rename's plan took 1,273 ms in two runs of `tools/bench_gui.py`, where it took
+  1,608 and 1,631 ms, still past its second, as branch 10's entry on the budgets says.)*
 - **`ddd id --assign` syncs the files it stamps one after another** (task 6, `2:I6`): it hands
   `apply_changes` one file at a time, so nothing batches the syncs, as an edit's are batched.
   Measured on the Linux development PC's NVMe disk (ext4) over the generated project of 35,000
@@ -1394,7 +1398,12 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
 - **The variable's key chooser still offers another component's locals** (task 9, `13:I6`): for an
   `axis` or an `input` it lists a name another component declares `local`, which `declarable`
   leaves out, and choosing it writes a `local-conflict`, the harm `13:I6` was graded for. Branch
-  10 lists `variable_keys.py`, where the chooser's offer is made.
+  10 lists `variable_keys.py`, where the chooser's offer is made. *(Done by branch 10, task 3:
+  `variable_keys._objects` leaves out a name a component declares `local` unless every file the
+  offer is for is the one that keeps it, reading the owner off `Index.scopes` as `_kept_by` does;
+  a variable's panel offers by the files its declarations are in, and `form_for` by the file the
+  new declaration is written into. A type's panel, which is no component's declaration, still
+  lists them all.)*
 - **A description given with `PROJECT` whose record sits beside it reads as generated** (task 4,
   `1:C4`; R2): `ddd_generate()` writes `ddd-build.json` into `OUTPUT_DIRECTORY` with or without
   `PROJECT`, and where that is the description's own directory the record names a hand-written
@@ -1430,7 +1439,9 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
 - **A read-only file is answered `500`** (task 5, `13:I4`): `unwritable`, refused before anything
   is staged, takes the status of a write that failed, where a refusal the reader can mend is a
   `409` elsewhere; another status is a change of the contract. Branch 10 lists `gui/api.py`, which
-  chooses it, and the contract.
+  chooses it, and the contract. *(Done by branch 10, task 6: `unwritable` is a refusal, which the
+  one mapping answers `409` from an edit, an undo and the undo's preview alike, and the page shows
+  the server's sentence; a code the mapping does not know is still a `500`.)*
 - **An undo left half written forward keeps its entry** (task 2, `16:M23`): after an `unwritable`
   undo that put a file back but could not write the others forward again, the entry stays on the
   stack, so a later undo of it is refused `stale` and the edits beneath it are out of reach until
@@ -1448,23 +1459,38 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
 - **A plan an unanalysed edit moved reads as `stale`** (task 3): where an edit of the page's own
   moved the place a plan points at, the plan is refused `stale` before that edit's analysis lands,
   ahead of the `analysing` refusal the CLI page documents for the case. Branch 10 lists
-  `object_values.py` and `gui/api.py`.
+  `object_values.py` and `gui/api.py`. *(Done by branch 10, task 6: a plan refused `stale` is
+  answered `analysing` instead where an edit of the page's own, not yet analysed, wrote a file the
+  plan read, whichever file its place is in; a place moved by a save from elsewhere is `stale`
+  still. The Files tab's judge still answers `stale` for such an edit, as branch 10's entry
+  says.)*
 - **A settled value whose declaration moved is refused `unreadable`** (task 3): where the other
   plans say `stale`, as the changelog states; the page draws the two alike. No branch owns
   `variables.py`.
 - **Fingerprints across several build records** (task 3): a file several runs read takes the
   fingerprint of the first run that read it, not the index's run, so a file saved and put back
   between two runs can carry the fingerprint of bytes other than the index's; several records
-  only, and rare. Branch 10 lists `gui/session.py` (R110).
+  only, and rare. Branch 10 lists `gui/session.py` (R110). *(Done by branch 10, task 4: the run the
+  index comes from is chosen once, and its read is what the files' fingerprints are taken from, a
+  file it did not read taking the first run's read as before.)*
 - **A generated project left unrecognised** (task 4): a record that does not parse is read as no
   record, and `ddd build-info --output` writes one unstaged, so a write that dies can leave it
   half written; and a build configured at another path, a container's mount, names a project the
   path opened does not match. Either can leave a generated description editable. An empty
   `CMAKE_HOME_DIRECTORY` reads as the working directory besides: the description's own directory
   is refused all the same, and only how much of the build tree around it is refused changes.
-  Branch 10 lists `gui/session.py` (R110), branch 12 `cli.py`.
+  Branch 10 lists `gui/session.py` (R110), branch 12 `cli.py`. *(Done by branch 10, task 4, in
+  part: a record beside a description that does not read as one, a write of it cut short among
+  them, is no longer read as no record, and the description is refused as generated, naming the
+  record, until it reads, the record watched so that its repair is noticed; and an empty
+  `CMAKE_HOME_DIRECTORY` names no source tree. `ddd build-info --output`'s unstaged write stays
+  branch 12's, and a build configured at another path the maintainer's, nothing the session reads
+  telling the two paths are one.)*
 - **An existing description added to a generated project** (task 4): is refused without the
-  `ddd_add_component()` line a new file is offered with. Branch 10 lists `gui/*.py`.
+  `ddd_add_component()` line a new file is offered with. Branch 10 lists `gui/*.py`. *(Done by
+  branch 10, task 4: Add a file offers that line too, to add to the `CMakeLists.txt` beside the
+  description, passing over one under the build tree, which goes with the tree; an edit posted
+  with an entry written by hand is still told the build's membership alone.)*
 - **The editor's own id fix** (tasks 6 and 10): the language server places an id with
   `identity.insertions`, always breaking the line, so for a one-line object or a file of bare
   carriage returns it writes other bytes than the page's fix and `ddd id`, and on a one-line file
@@ -1477,14 +1503,21 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
 - **What a refusal names while a file does not load** (task 7): one saying that nothing loaded
   names no file, two unread files of one name in different directories are named alike, and a
   dangling include is told of the project description. Branch 10 lists `gui/api.py`, branch 9
-  `lsp/units.py`.
+  `lsp/units.py`. *(Done by branch 10, tasks 6 and 9: the did-not-load sentence is written once
+  and names each file that did not load, two of one name by as much of their paths as tells them
+  apart, in the server's refusals and in the Types and Shared files tabs' own line; and a missing
+  include is listed as the file that did not load, its finding staying filed at the entry. An
+  entry whose pattern names several files leaves its error with the description, as branch 10's
+  entry says.)*
 - **A file saved half way after the analysis** (task 7): a file typed into after the analysis and
   then saved half way is unseen by a plan, which checks the fingerprints of the files it writes
   alone. Branch 10 lists `gui/*.py`.
 - **An input stays answered while a file does not load** (task 7, R15): a local of the same name in
   the unread file is a `local-conflict` once it loads. Branch 10 lists `declaration_plans.py`.
 - **A hidden local's name typed into the add panel** (task 9): is told the project declares it
-  already, not whose local it is. Branch 10 lists `declaration_plans.py`.
+  already, not whose local it is. Branch 10 lists `declaration_plans.py`. *(Done by branch 10,
+  task 6: `declare_object` refuses the name in the sentence a read of it is refused in, naming
+  the component that keeps it.)*
 - **The would-not-load sentence** (task 8): it reads "with that dimensions", and a removal's names
   a value it does not write; the panel keys each sentence by its words, so two alike, from two
   files of one name, share a key. No branch owns `variables.py`; branch 11 lists `components/*`.
@@ -1494,7 +1527,10 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
 - **What the panel's check does not ask** (task 8): a shape mixing a constant with numbers the
   analysis refuses whatever the constant is planned without its sentence, and a type's key is read
   at the index's pointer with no name checked (`_fixed_by`); `type_plans.set_key` is branch 10,
-  task 1's. Branch 13 lists `models/*`, branch 10 `lsp/edits.py`.
+  task 1's. Branch 13 lists `models/*`, branch 10 `lsp/edits.py`. *(Done by branch 10, task 1, in
+  part: `type_plans.set_key` asks the models of the type entry as the plan leaves it
+  (`type_problem`), refusing a value it would not load with. `_fixed_by` checks the name since
+  branch 9's task 7 (R173), and the shape mixing a constant with numbers stays branch 13's.)*
 - **A pattern character typed through a link** (task 11): a relative entry naming a file with a
   pattern character, typed through a link the kernel cannot follow `..` after, is checked as the
   file but read by `expand_include` as a pattern matching nothing. Branch 13 lists `loading.py`.
@@ -1505,7 +1541,10 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   longer on top is refused `stale` and asks for a whole analysis; and the line printed for an
   analysis that failed on a refusing request raises where stderr cannot be written, replacing the
   `409` with a `500`, which the analyser's own thread suppresses. Branch 10 lists
-  `gui/session.py` (R110).
+  `gui/session.py` (R110). *(Done by branch 10, task 9: an undo of an entry no longer on top is
+  refused `stale` without asking for an analysis, the stack having moved and not the disk; and the
+  line is printed through the one function that loses a line it cannot write, so the refusal stays
+  the answer. The poller's own failure print is still bare, as branch 10's entry says.)*
 - **One case the threat model sets aside** stays as `docs/gui_security.rst` draws that model. No
   branch owns it.
 
@@ -1729,14 +1768,23 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   what holds, saying that the walk for plugins raises on nothing the next analysis would not; and
   a reorder of `includes`, allowed, reorders the plugins the included descriptions name, as
   `_plugins_named`'s docstring says. Branch 10 lists `gui/*.py` and `tests/test_gui_*.py`, so the
-  claim is its to correct.
+  claim is its to correct. *(Done by branch 10, task 6: the read's comment, the walk's docstring
+  and the test's say what holds - each file read as the loader reads it, or not at all, and the
+  walk following the includes further than the loader's 64 levels, failing closed beyond what the
+  analysis reads; the walk itself is unchanged.)*
 - **Three readings of `includes`** (task 1): `_plugins_named` and `_includes_of` are nearly one
   function written twice, and `_named_by` reads `includes` a third way. Branch 14, which moves
-  code across `src/ddd/`, or branch 10, which lists `gui/*.py`.
+  code across `src/ddd/`, or branch 10, which lists `gui/*.py`. *(Done by branch 10, task 6:
+  `_listed` is the one reading of a description's lists those three made, the plugins guard, the
+  poll's watch and `named_by` asking it. `_included`, which reads an edit's output, reads
+  `includes` another way, and the watch copies the loader's reading of one entry, as branch 10's
+  entries say.)*
 - **The create rule inside the plugins refusal** (task 1; R103, R111): what kind a created file
   is, and that it is named `*.ddd.json`, are judged inside `_refuse_plugins`, whose call from the
   Files plan keeps its `plugins` refusal alone. No plan names another, so nothing turns on it, but
-  the rule belongs beside `_creatable` or `_confined`. Branch 10 lists `gui/*.py`.
+  the rule belongs beside `_creatable` or `_confined`. Branch 10 lists `gui/*.py`. *(Done by
+  branch 10, task 6: `_refuse_created_kind` judges it beside `_creatable` and `_confined`, each
+  change still judged whole, in the order an edit lists them.)*
 - **The Files tab's `plugins` refusal on the screenshots** (task 1; R112): the tab can now show a
   plan's `plugins` refusal, which no reference screenshot shows. Branch 11 lists
   `gui/screenshots/references/`, or the pull request says so in a sentence.
@@ -1746,7 +1794,9 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   path is fed by the builds those records describe only where that path lies under the start
   directory, though a request may name a path in the open project's own directory;
   `_readable_project`'s docstring says so. Passing the project's own directory to the feed too is
-  branch 10's, which lists `gui/*.py`.
+  branch 10's, which lists `gui/*.py`. *(Done by branch 10, task 4: the feed reads records under
+  every directory the revision serves, the open project's own among them; the start page's
+  listing keeps the start directory alone.)*
 - **A description's suffix and its case** (task 2): the record filter and the walk for
   descriptions compare `.ddd.json` case-sensitively, where the create rule and the loader's
   extension check do not, and `DESCRIPTION_SUFFIX` repeats `loading.DDD_SUFFIX`. Branch 14's
@@ -1773,7 +1823,8 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
 - **The standard library's refusals close with bytes unread** (task 5, `12:M7`): its own refusals
   of a request `ddd gui` cannot read close without reading what follows, so on Windows a reset can
   lose one before the browser reads it, where the refusals `ddd gui` writes itself read the rest
-  first. Branch 10 lists `gui/*.py`.
+  first. Branch 10 lists `gui/*.py`. *(Done by branch 10, task 7: they read the rest before the
+  close as those do, `501` and `505` among them.)*
 - **A test's server takes up to half a second to stop** (task 3; R126): the serving loop reads its
   stop only when `select` returns, as `socketserver`'s loop did, so every server-backed test waits
   up to the poll interval as it ends; a wake-up the selector watches would end it at once.
@@ -1802,7 +1853,8 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
 - **"Their builds" and "its own directory"** (D0, `12:I4`; R114): both read ambiguously in
   `_readable_project`'s docstring and in branch 7's entry above on the directories a record is
   read under. Branch 10 lists `gui/*.py`, for the docstring; the entry's wording is branch 9's
-  D0's.
+  D0's. *(Done by branch 10, task 4, for the docstring, which names the builds those records
+  describe and the open project's own directory; branch 9's D0 reworded the entry, R154.)*
 - **The opening's items held to their entries** (task 1, `4:I8`; R132, R139, R150): the opening of
   Unreleased names about eighty migrations a second time, each beside its entry, and nothing
   holds an item to the entry it names, though later branches will rewrite entries. A test that
@@ -1959,7 +2011,178 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   characters long, beside branch 7's entry on lines past 100 columns. Branch 15 lists the pages.
 - **The progress log's rows** (D0): branch 8's row names its ids by the headings of its tasks and
   may miss some, and says it is not merged, which #94 since was; that row and branch 9's are branch
-  10's D0's (R228).
+  10's D0's (R228). Corrected by branch 10's D0, which filled
+  both: row 8 is marked merged into master (`96900155`) and row 9 is added (#95, `c011143b`).
+- **A component two projects include, taken out of one** (the re-review of the final wave): a
+  component that two projects include is taken out of one of them, which a save or a change behind
+  the editor does, is not open, and no build record runs the other project: its findings are
+  withdrawn until the other project is next checked. Before branch 9 it kept the first project's
+  findings, stale. Running the other project's place again would settle it, at the cost of a second
+  pass of the check. The maintainer's to weigh, and PR #95's body names it.
+
+**Branch 10:**
+- **The type judge's sentence, and the spread of limits across images** (task 1, `3:I1`,
+  `3:I2`; R267): a type plan is refused where the entry would carry a problem it did not carry,
+  told apart by the problem's sentence, so a change bringing another problem worded exactly as the
+  entry's own is planned; and the editor's spread of limits across images writes a project's
+  producers, or answers `unproduced` there, in an arm no test reaches and which may be out of
+  reach, a spread writing to no declaration but one that states limits already. The
+  maintainer's.
+- **A `**` at a project's root** (task 4, `14:I5`; R239, R313): it watches the checkout's `.git`,
+  its `node_modules` and its build trees, as the session's module docstring and the gui row of the
+  command reference say, so that committing, installing packages or building there asks for an
+  analysis, and each round of the poll stamps every directory under that root. No plan or edit is
+  refused for it. Leaving such directories out would part the watch from the loader's walk, which
+  goes into them. The maintainer's; branch 15 lists the page.
+- **What the poll does not notice** (tasks 4a and 4b, `14:I4`, `14:I5`; R260, R270, R273,
+  R274): a record a build writes where the search for records had found nothing, elsewhere than
+  beside the description, and a plugin named as a module and installed since, are noticed only
+  once something else changes; a module a plugin imports is not watched, and a plugin named as a
+  module is not compared, so editing either takes a restart nothing tells of; and the Compare tab
+  reports no plugin of a baseline's that changed since `ddd gui` imported it. Tracking what a
+  plugin imports is a design decision 14.2's change does not ask for. The maintainer's.
+- **The watch's own reading of an entry** (task 4): `_expanded_in` reads an `includes` entry as a
+  file first and then as a pattern walked from its own anchor, as `ddd.loading` does, in code of
+  its own; sharing it takes a public reading in `ddd.loading`, and the two differ on python 3.12
+  over a name too long for the file system, the loader asking `Path.is_file` where the watch asks
+  `os.path.isfile`. Both are pinned by the watch's tests. Branch 13 lists `loading.py`, and
+  branch 14 moves code across `src/ddd/`.
+- **The line offered for a description added to a generated project** (task 4): `_registered`
+  names the `CMakeLists.txt` beside the description whether one is there or not. The maintainer's.
+- **A plugin path holding a NUL in a description that validates** (the final wave): the loader
+  resolves it and raises, so `ddd check` ends with exit 2 and the analysis of `ddd gui` fails,
+  where the watch passes such a path over and a description that does not validate reports its
+  own error. Branch 12 lists `plugins.py`.
+- **The plugin's digest and the bytes run** (task 4, `14:I4`): `plugin-changed` compares a digest
+  of the bytes the loader read just before it imports the file, and the import reads the file
+  again, or runs the bytecode cached beside it wherever the time and size it recorded still match.
+  A save between the two reads is told as a change until the restart, failing safe; an edit of the
+  same size within one tick of the file's time runs code the digest does not describe. Running the
+  bytes digested, `exec(compile(source, path, "exec"))`, would close both at the cost of the
+  bytecode cache of path plugins. And since the loader reads the source itself, a `.py` plugin
+  that cannot be read but whose bytecode cache is valid is `plugin-invalid` in every command, as
+  the changelog says. Branch 12 lists `plugins.py`.
+- **The budgets a rename of every component misses** (task 5, `14:I6`; R279): on the
+  Linux development PC, the projects held in memory, the plan of the rename of the unit stated in
+  the most files took 1,211 to 1,311 ms at 35,000 declarations and 3,459 to 4,073 ms at 100,000,
+  against the second a panel has, and its Apply 2,242 to 2,388 ms and 6,635 to 7,261 ms, against
+  the half second an Apply's own change has; and an edit asked halfway through an analysis, held
+  to that half second too, took longer in four of seven runs at 100,000, 540 to 940 ms, and in one
+  at 35,000, 547 ms. The plan's time is the position scanner, `lsp/ranges.py`, reading once each
+  file the rename looks in; the Apply's is `edited` asked twice of each change, by the plugins
+  refusal and by `apply_changes`, each reading the file and reading back what it leaves, so four
+  scans of every file changed. One `edited` per change would about halve the Apply, the first way
+  out, which would still take over half a second at either size: meeting either budget takes a
+  plan and an Apply that do not scan every file they touch. What a change reaching every
+  component costs is a question of design beyond `14:I6`'s. The maintainer's.
+- **The bench's arm for a variable that moved** (task 5): `_in_the_largest_file`, finding the
+  variable no longer where the analysis found it, raises the message of the other case, that it
+  states no unit of its own. No later branch lists `tools/`, so it is the maintainer's.
+- **Two readings of an unparsed file** (task 6, `2:I9`; R243, R286): `vocabulary_project`, the one
+  function `project_of` and `unit_project` became, keeps the two families' readings of a file
+  that does not parse apart, by `skims`. While a project's only units file is half written, its
+  top-level key not yet there, it reads as no units file at all, and Add unit is refused
+  `invalid`, saying the project has none to add to; a shared file stopped at the same point is
+  reported as a file that did not parse. One meaning would change what one family's `add` creates
+  or refuses. The maintainer's; no later branch changes what `lsp/units.py` does.
+- **What is left of `2:I10`** (task 6): two copies each of `_plan`, `_raw` and `_protocol_edit`,
+  and more than one shape for the edit of a single file, none of them in pass 2's move 4; and the
+  units' and the shared `_names`, one function written twice since task 6. Branch 14 moves code
+  across `src/ddd/`.
+- **The Files tab's judge and the page's own waiting edit** (task 6; R296): a removal or an
+  addition the tab judges against a file an edit of the page's own wrote, before that edit's
+  analysis lands, is refused `stale`, saying the file changed since the analysis, where the other
+  plans answer `analysing`: spec §5 words the tab's judgement so, and a reader asks again by hand
+  where `analysing` would have waited. The maintainer's.
+- **Two refusals naming less than they could** (task 6): `_refuse_unanalysed` names once two files
+  of one name that one waiting edit wrote, where `told_apart` over their resolved paths would tell
+  them apart; and `/api/compare` answers that the project did not resolve without naming the file
+  that did not load, as `_unresolved` names it. The maintainer's.
+- **An edit past its limit read as `ddd gui` not answering** (task 7, `15:I4`; R298): what
+  follows a refused body is drained up to 1,048,576 bytes or two seconds, so on Windows a reset
+  can lose the answer to an Apply past `EDIT_BODY`'s 8 MiB, and to an Apply past 1 MiB refused
+  `401` or `403` for its token or its origin before its body is read, and the page then reads the
+  server as not answering. The most a generated project's rename posts, 4,725,352 bytes, is a
+  little over half the limit. The way out is for `request` to refuse, unsent, a body larger than
+  `EDIT_BODY`, as it refuses an address past the request line's limit. The maintainer's: no later
+  branch lists `gui/src/api/client.ts` for behaviour.
+- **Decision 3.6's figure** (task 7, `3:I8`; R300): its sentence says a table past about 10,000
+  counts is not one `ddd gui` takes, where the address already refuses one past about 8,000 counts
+  of five digits each, as the gui row says, and a float map of long decimals sooner. The
+  decision's wording is the maintainer's to change.
+- **Where the Compare panel draws a finding's place** (task 8, `16:I8`): below its related line,
+  where it can read as that related place's own. Branch 11 lists `components/*`.
+- **The page drawing `failed` and `refused`** (task 9, `14:M7`, `14:M11`; R256): the state says
+  why the last analysis failed and which build records this DDD cannot use, and the page draws
+  neither, so until branch 11 a failed analysis reads as analysing still. Branch 11's task 7, one
+  banner naming what did not load.
+- **An entry whose pattern names several files, and the description read after the analysis**
+  (task 9, `14:M9`): the error of such an entry stays with the description, so `ddd gui` lists
+  the description as the file that did not load, where the language server counts neither as
+  unloaded, as `SourceFile.loaded` and the gui row say; and `named_at` reads the description again
+  after the analysis, so a save reordering `includes` in between may name another file as the one
+  that did not load until the next revision, as the language server's `_unread` may. Taking the
+  entry from what the run itself read would close the second. The maintainer's: no later branch
+  changes what `lsp/navigation.py` does.
+- **The poller's own failure print** (task 9; R110): the line the poller prints when a poll fails
+  is printed bare, where every other print of the session goes through `_printed`; in the server,
+  where an analyser runs and stamping raises nothing, no poll fails, so the thread it would end is
+  not reached. The maintainer's.
+- **The Types tab's row count** (task 9, `14:M8`): counting a row's findings by its panel's rule
+  takes about three times as long at 1,000 types with 1,000 findings in one file, a third of a
+  second, memoised per revision and within the tab's second; asking `_within_entry` before
+  resolving either path would halve it. The maintainer's.
+- **Docstrings and a default the code has outgrown** (tasks 1 to 9): `fieldBound`'s docstring and
+  the reference page still speak of the double the page no longer sends; `type_plans`' module
+  docstring says a refused value takes every type of its file with it, which a refused derived
+  range does not; `_choices`' docstring runs on; `_listed`'s calls it the session's one reading
+  of `includes`, beside `_included`; `_refusal`'s account of `name=None` leaves out its newer
+  callers; `Route.name` names fewer kinds than `FindingRoute.name`; `TypeReply.findings` has no
+  docstring; `SourceFile.loaded` opens loosely for a missing include; `PlanReply` says each plan
+  route and leaves out `files-plan`; the developer page's account of `settle` and `settled_at`
+  names neither the producer rule nor `unproduced`; `graph_of`'s check that an object has an
+  owner is dead, mypy needing `owner` narrowed before it goes; and `_described`'s `unloaded`
+  defaults to loaded. Branch 14 takes the code and, in its task 10, the docstrings the code has
+  outgrown; branch 15 the pages.
+- **Two modules grown** (tasks 4 to 9): `gui/session.py` runs to about 2,000 lines and
+  `gui/api.py` to about 2,900. Branch 14 moves code across `src/ddd/`.
+- **Tests branch 10 leaves** (tasks 1 to 9): no test settles a variable with one reader and no
+  producer, nor asks `/api/type-plan` for a refused derived range or an external's header;
+  `an_instance` hard-codes the type `Inlet_t`; the table of pairs' external-type row filters
+  `type-kind` whatever the key, its typename rows' word `datatype` explained in a comment alone;
+  `writeUnseen`'s precondition, that no served pattern watches the directory above the file's, is
+  neither stated nor pinned; `SAYING_PLUGIN` is written twice; the guard of private names reached
+  across modules misses chained attributes and `getattr`; no test makes a plan whose place moved
+  once the waiting edit's analysis lands, as its docstring says; one test asks `_finding` three
+  times for one tuple, and one computes a column from the end of its fixture; a test pins the
+  private `_unloaded`; `FirstFails` is written twice, `Failing` three times and `Unwritable`
+  twice; and the pin of `PlanReply` skips `files-plan` unsaid. Branch 16 lists `tests/*` and
+  `gui/e2e/*`.
+- **The changelog's long entries** (the last D; R312): the entry on limits written on the producer
+  says "Nothing to migrate", where a client of the api that sets limits on a variable nobody
+  produces meets a refusal; and the entries on what the poll notices, on `plugin-changed` and on a
+  finding leading to its panel run long, as branch 9's do. The api is internal. For whoever curates
+  0.12.0's notes, branch 15's task 11 among them.
+- **Lines past the wrap** (D0 and the last D; R312): D0's rewording runs a line of the editor page
+  to 115 columns, beside branch 9's entry on lines past the wrap, and two lines of the changelog
+  that earlier branches wrote run to 112 and 126 columns. Branch 15 lists the pages and
+  `CHANGELOG.md`.
+- **The page gates' notices** (tasks 1 to 9): Biome's deprecation notice, Vite's warning on a
+  chunk's size, Vitest's hint on its cache and a line on stderr in the journeys, each from before
+  the branch, beside branch 7's entry on the two notes. The maintainer's.
+- **What branch 10 left of the entries naming it** (B10-12, B10-30; R240, R258): branch 1's file
+  saved half way after the analysis, whose check at every plan would cost a stat per file at
+  every keystroke, and its input answered while a file does not load, R15's trade, are the
+  maintainer's; so are its entries on `editing.py` and `variables.py`, which branch 10 changed for
+  a plan's spans and hunks alone: a create racing another's, what a refused write says, a folder
+  a stage cannot be made in, a settled value refused `unreadable` - where the other plans answer
+  `stale`, and since task 6 `analysing` for the page's own waiting edit - and the would-not-load
+  sentence, whose keys on the panel stay branch 11's. Branch 3's `1e-400` is refused at the query
+  since branch 6, `1e400` in a block staying branch 13's task 7's; branch 7's repaired schema
+  letting plugins run stays the maintainer's call under decision M7; branch 8's terminal line on a
+  launch code presented again is left as it is, no finding asking it; and branch 9's fix taking
+  another image's answer, and a unit added, are the maintainer's, branch 10's change to the
+  settlement not reaching them.
 
 ## Rulings taken
 
@@ -3027,6 +3250,366 @@ Every departure from a task's text, with its reason, numbered `R1`, `R2`, and so
 - **R228.** The final wave writes branch 9's rulings from R153 and its *Left open* entries; the
   progress log's rows are branch 10's D0's.
 
+**Branch 10:**
+- **R229.** Branch 10 runs a D0, then tasks 1 to 9 in order, 4, 6 and 9 in parts (R238, R247,
+  R257), then its changelog as the last D (R4), then the whole-branch review and one final wave,
+  the order of branches 2 to 9 (R153; ruling B10-1). Every order its tasks need between them is
+  their numbering's already.
+- **R230.** D0 also rewords SPEC 7.2's sentence on a description the client reports changed, and
+  the pins `tests/test_documentation.py` holds of it and of the editor page's (ruling B10-2):
+  SPEC 7.2 is the rule's fourth home, beside the three D0's brief named (R155).
+- **R231.** Each task brings the rule it changes to every home, and takes the test file of each
+  module it changes, beyond the Files list, by R100's rule as R155 applied it (ruling B10-3): the
+  list names `declaration_plans.py`, `object_values.py`, `plugins.py` and `shared_plans.py` but
+  not their tests, and until branch 15 the README is one of a rule's homes. Task 1 takes
+  `type_plans.py` and the models' home of its judge, task 4 its check's homes, task 5
+  `variables.py`, `editing.py` and `project_units.py`, task 6 R246's modules, task 7 the security
+  page, and tasks 8 and 9 the page's files their findings reach. Branch 15 rewrites the pages
+  anyway.
+- **R232.** A task that changes `gui/*.py` runs the journeys after building the page, one that
+  changes a contract model regenerates the page's schemas first, never committing them, and one
+  that changes `gui/src` runs the page's gates (ruling B10-4). A new field of `State` or of
+  `Finding` is required, as the contract's tests pin every field, so every literal of either in
+  the page's tests and stories carries it; where a component or a story changes, the screenshots
+  compare, and every reference that moves is embedded in the pull request with its sentence.
+  Windows is proved by CI's three journey legs alone.
+- **R233.** Task 1's judge of a type plan asks the models about the type entry as the plan leaves
+  it - validated as a type, a scalar's derived range held finite as the analysis holds it -
+  through `type_problem`, beside `definition_problem` in the models, which `type_plans.set_key`
+  asks (ruling B10-5): `definition_problem` validates a data object's definition, which a type
+  entry is not, so asked of a type it refuses every plan, and the task's one rule for both
+  clients holds of the models answering. A module branch 13 lists gains a function.
+- **R234.** The judge refuses a type plan the models refuse, `invalid`, in their words, as the
+  vocabularies' plans refuse, and decision 13.5's planned-with-a-sentence stays the variable
+  panel's alone (ruling B10-6): `PlanReply` has no `unloadable`, the Types tab has no place to draw
+  one, and a types file the loader refuses takes every type it declares with it. Task 1 asks
+  nothing new of `settle`, whose half of `3:I1` branch 1's task 8 closed.
+- **R235.** "Min and Max travel as text" is read as `limitsRaw` writing each bound in the digits
+  typed, a float's keeping its point, its signature and every check before it unchanged, under
+  decision M3 (ruling B10-7): the page still refuses a bound it cannot hold exactly, and the
+  server's `limits_refusal` stays. Moving the template to the server would change both panels'
+  screens, branch 11's.
+- **R236.** "The producer" is every declaration of a producing scope, an output or a local's own,
+  so where two produce, both take the limits; where no declaration states limits and none
+  produces, the plan is refused, saying none produces the variable (ruling B10-8). The rule is
+  decided in `settle` over every declaration, `settled_at`'s answer for one declaration kept for
+  the editor's actions, and the gui row says it: decision 3.3 is silent on none and two, and an
+  empty answer is the silence `3:I2` is about. A variable that is only read cannot be given
+  limits from the panel.
+- **R237.** Task 3's table holds, for each pair of pass 14's categories, the panel's word against
+  whether `ddd check` files `definition-mismatch` on that key, and the panel reads silence as the
+  models' default for a key they default, `unit` as `""` (ruling B10-9). Three pairs stay apart by
+  design, each held as what it says: `kind`, which no row shows; two types of one meaning, which
+  the `typename` row tells apart; and an external type beside a scalar, which the check files as
+  `type-kind`. The task's rule alone left two of the finding's pairs apart.
+- **R238.** Task 4 runs as 4a, `14:I5` with the session's *Left open* entries, and 4b, `14:I4`,
+  each with its own brief, commits and review (R174; ruling B10-10). A plugin whose bytes moved
+  since they were imported is reported by a check of its own, `plugin-changed`, which `ddd gui`
+  files on the plugin's file, saying the server has to be restarted, with every home a check has:
+  the registry, the check reference, the README's and SPEC's tables, SPEC's and the plugin page's
+  sentences on editing a plugin, their pins and the changelog. `plugin-invalid` says the module
+  exposes no well-formed `PLUGIN`, and reusing it would change a check's meaning.
+- **R239.** Task 4a stamps, beside the files the analysis read, the directory each `includes`
+  pattern expands in, every directory a `**` walks among them, every path a `plugins` list
+  spells, loaded or not, and every build record the search finds, the refused among them; the
+  stamps join the analysis's own signature and never `named_by`, which a comparison's baseline is
+  stamped by (ruling B10-11). Creating or removing an entry moves its directory's time, and a
+  refused record mended is a change the page must notice. The cost: a stat per directory and
+  record at every poll, every directory under a project's root where a `**` starts there
+  (*Left open*, branch 10).
+- **R240.** Task 5 takes `variables.py`, `editing.py` and `project_units.previewed`, with their
+  tests, beyond the Files list, a plan's lines coming from the spans the engine's own edits
+  replace, at once and in turn (ruling B10-12): the lines `14:I6` names are `variables.py`'s, and
+  only the engine knows what an operation replaced. Spans touching one line make one hunk, so the
+  journeys' counts hold; the undo's preview, two texts and no operation, keeps difflib.
+  `tests/test_editing_at_once.py` runs whenever `editing.py` changes (R221).
+- **R241.** Task 5 makes `POST /api/open` answer the open project, or one the last listing found,
+  before it walks the start directory, walking for any other path, and the bench times the open
+  through `POST /api/open`: both, where the finding offers either (ruling B10-13). Timed as it
+  was, the open would have recorded a budget missed and mended nothing. A project created since
+  the last listing costs one walk, as every open did. R261 holds the open answered so to the
+  walk's own checks.
+- **R242.** Task 5's red tests count work, not time: a plan's hunks enter no difflib, the lines
+  they compare stay near each span however long the file, `declarable` reads no producer's file,
+  and a `set` reads no included file for its project (ruling B10-14). The bench's two new
+  measures, a plan in the largest file and an applied rename, each with its budget, are run on
+  the Linux development PC at 35,000 and 100,000 declarations and written on the reference and
+  developer pages, and branch 1's unit rename that parsed each file twice is measured with them
+  and given one parse. No gate times the machine.
+- **R243.** `2:I9`'s other half, `project_of` and `unit_project` made one function, goes to task
+  6's first part, pass 2's move 4, once task 5 asks `project_of` for `add` alone (ruling B10-15):
+  task 5's text kept `2:I9`'s cost and left the rule written twice, the two disagreeing on what a
+  file that does not parse means. R286 keeps both readings.
+- **R244.** Task 5's applied rename records the bytes its body is, and task 7 sets the limit of
+  `POST /api/edit` from the largest of them, with room for longer paths, testing it through the
+  socket (ruling B10-16): the bench applies through `Api.handle`, which no body limit reaches, so
+  in process an applied rename passes however the server would refuse it. R297 sets the limit.
+- **R245.** Task 6 makes public every private name reached across modules, the five `gui/api.py`
+  took from `gui/session.py` and the one `gui/compare.py` took since branch 6, `_named_by` (ruling
+  B10-17): `2:M2` is about every such name, six at the branch's start.
+- **R246.** Task 6's one `Plan` and one plan refusal replace the plans of one field and the
+  refusals the finding names, in a module below `lsp` and `gui` that each plan module imports
+  without a cycle, `ddd.plans`; `lsp/units.py`, `type_plans.py`, `file_plans.py`, `lsp/server.py`,
+  `lsp/edits.py` beyond the settlement and `project_units.py` join the list with their tests
+  (ruling B10-18): pass 2's move 4 names those classes, half of them in modules the list left
+  out. The editor's modules change in a branch of the page's server, their behaviour kept.
+- **R247.** Task 6 runs as 6a - one `Plan`, one refusal and one `_answered`, the names public,
+  R243's one function and the *Left open* entries that keep behaviour, the suite passing
+  unchanged - and 6b, the *Left open* entries that change what a refusal answers, made once in
+  `_answered`, each part with its own brief, commits and review (ruling B10-19): a refactor
+  reviewed with behaviour changes inside it can be read as neither.
+- **R248.** Task 7 raises the body limit of `POST /api/edit` alone, as that route's own, read
+  only once a request has shown the token and the page's origin, and keeps `MAX_BODY` for every
+  other body, `POST /open`'s among them, and for the drain (ruling B10-20): raised, `MAX_BODY`
+  would have every route read the larger size before refusing a body. The cost: two limits where
+  there was one.
+- **R249.** Task 7 brings the limit to the security page's sentence on what a body may promise,
+  beyond the list, and decision 3.6's sentence into the refusal and onto the gui row of the
+  command reference (ruling B10-21): the guide the decision names is branch 15's, written from
+  the GUI as branch 10 leaves it.
+- **R250.** "A plan past the request line's limit says why" covers every plan the page asks by
+  `GET`: `request` refuses an address past the limit before it sends it, naming the route;
+  values-plan's sentence says, as decision 3.6 has it, that a table past about 10,000 counts is
+  not one `ddd gui` takes, and how else to set it; and the standard library's refusals drain what
+  is left before the close, as `ddd gui`'s own do (ruling B10-22). One plan alone was guarded
+  before, any other past the line meeting the standard library's page. The cost: one comparison
+  per request.
+- **R251.** Task 7's brief carries the verification of `3:I8` whole, where it had been cut short
+  (ruling B10-23): a finding and its verification read together are a task's specification, and
+  the comment it corrects is in the task's own file.
+- **R252.** `contract.Finding` gains `line` and `column`, required and null where the loader gave
+  none, on every finding, and the panel draws `file:line:column`, or the pointer, where a finding
+  leads nowhere; task 8 takes the page's half beyond the list - the place said in
+  `lib/findings.ts` beside `noRouteReason`, its line in `FindingPanelView`, the stories' fixtures
+  and every `Finding` of the page's tests, the references it moves and a journey of a half-saved
+  file (ruling B10-24): what the panel draws is the page's. Branch 10's pull request becomes one
+  of the page's, its screenshots embedded, and branch 11 edits a component branch 10 changed.
+- **R253.** Task 9's first part counts statements in a field of its own, `State.statements`, and
+  keeps `counts` as the rows the Findings window sizes itself by, the lines above the tables
+  reading the statements, and the journeys and the `State` literals changing with them (ruling
+  B10-25): `counts` changed in place would size the window below its rows, the last ones never
+  drawn. Two counts in the state, and page files branch 11 lists change here.
+- **R254.** `/api/values` answering a structured variable, a dropped object and a curve of a
+  structure is read as `14:M3`'s change: the refusal says why there is no grid, naming the
+  finding that dropped the object, and never that the project declares no such name (ruling
+  B10-26). A grid of a structure's members is a design the finding does not ask for, and the
+  Shape column's button for one is `3:I3`'s, branch 14's task 6, so the button still offers a
+  grid that answers with a sentence.
+- **R255.** Task 9's second part takes `project_types.py`, and its third `finding_routes.py` and
+  `project_shared.py`, each with its test, beyond the list (ruling B10-27): the findings' own
+  lines are there.
+- **R256.** Task 9's third part lands `14:M7` and `14:M11` as fields of `State`, why the last
+  analysis failed and which build records this DDD cannot use, with their reasons, as the start
+  page lists them, and a refused record gets a line in the terminal, as `ddd lsp` logs one; the
+  page's drawing of both is branch 11's task 7, one banner naming what did not load (ruling
+  B10-28): a line drawn here would be drawn again there. Until branch 11 the page is told and
+  shows neither (*Left open*, branch 10).
+- **R257.** Task 9 runs as four parts, each with its own brief, commits and review (R174; ruling
+  B10-29): 9a the counts and names, 9b the reads, 9c what the page is told, with two of R110's
+  corners, and 9d the contract's sentences, after tasks 2, 6 and 8 changed some of them.
+- **R258.** Each *Left open* entry naming branch 10 or a file of its list goes into the task
+  rewriting its function, or nowhere, with its reason (ruling B10-30): R110's three entries to
+  tasks 4a and 9c, and the chooser's locals to task 3, read off `Index.scopes` since
+  `declaration_plans` imports `variable_keys`; the entries marked done say where the others
+  went, and *Left open*, branch 10, what went nowhere.
+- **R259.** `plugin-changed` is an error by default, which `ddd gui` alone files, on the plugin's
+  file; `ddd check` imports afresh and never files it, and no plan or edit is refused while it
+  stands: every finding after the change is the old code's, and a warning would leave the
+  headline's error count over an analysis of code no longer on disk. An error where a warning
+  might do, until the restart the finding asks for.
+- **R260.** A module a plugin imports is not watched, as `14:I4`'s trigger has it: the pages say
+  that editing one takes a restart, and *Left open* records it as the maintainer's, tracking a
+  plugin's imports being a design decision 14.2's smaller change does not ask for.
+- **R261.** An open answered without the walk passes every check the walk's answer passes, branch
+  7's confinement under the start directory among them, and a description deleted or replaced
+  since the listing is walked for or refused, never answered from the listing: a listing read
+  once is a snapshot, and the opens are what branch 7 hardened. The bench times the open of the
+  project named on the command line, which needs no walk; a listed project's open, which may
+  walk, is untimed, as the developer page says.
+- **R262.** The screenshots are compared by CI's `gui-screenshots` job on the pushed commit, never
+  by a local run, whose `npm ci` downloads from the registry (R188's reason); a reference that
+  moves on purpose is taken from that job's artifact, made in the pinned Playwright image, looked
+  at, and committed by the task that moved it. The cost: a reference committed a CI run after
+  its change, a red run between (R302).
+- **R263.** Where a pin D0 changed with its words was not seen red against the old ones, an
+  ablation killing it stands for the red, as R203 has it for page pins.
+- **R264.** Branch 9's *Left open* entry on the progress log's rows stays, saying that branch 10's
+  D0 filled both: the section is read as what is open.
+- **R265.** A structure member's derived range stays the analysis's to refuse: a type plan sets a
+  key of a type's entry and never a member's, so no plan makes a member's range infinite, and a
+  member naming a changed scalar type is held by that type's own check.
+- **R266.** At the maintainer's word of 2026-11-21, no pause at a pull request: once branch 10's
+  is open, branch 11 follows at once, stacked on it, and so on, the leave unchanged.
+- **R267.** Task 1's judge plans a change that leaves the type entry's own problem as it was, the
+  same sentence from `type_problem` before and after, refuses one that brings a problem the entry
+  did not carry, naming its key, and plans one that mends it: the judge guards what a change
+  writes, the analysis files what the entry carries, and a reader who has only selected a row is
+  not to be refused. A type the analysis refuses stays editable in its other keys, its finding on
+  screen.
+- **R268.** Task 4a's changes to three journeys and to a paragraph of the developer page stand
+  beyond the Files list (R231): the journeys test the server whose watch `14:I5` widened, and a
+  write that stopped being unseen is the change's own consequence.
+- **R269.** Two of `14:I5`'s four cases already held at task 4a's base, by branch 2's fix, and
+  their tests stay as regression tests: red first holds of the behaviour the task changes.
+- **R270.** What the poll still does not see after task 4a - a record a build writes where the
+  search for records had found nothing, and a plugin named as a module and installed since - goes
+  to *Left open*, as the module docstring says.
+- **R271.** The Windows legs of tasks 4a, 4b and 5, and task 5's screenshots, are proved by CI on
+  the pushed commit, each leg run once: a systematic failure of a cross-directory rename or of a
+  directory's time on Windows shows in one run. CI has no journey leg on macOS.
+- **R272.** `plugin-changed` stays relaxable: the fixed checks are fixed because something went
+  unread or cannot be interpreted, which a plugin read and run is not, and a reader who relaxes
+  it does so by a `-W` of their own.
+- **R273.** A plugin named as a module is not compared, as a module a plugin imports is not: the
+  import system resolves it, from its package's other files and its bytecode, so its digest
+  would not be of the bytes that ran. The pages say so, and *Left open* records it.
+- **R274.** The Compare tab counts `plugin-changed` among the open project's own errors, so its
+  verdict is a refusal while a plugin stands changed, the comparison's rules being the old
+  plugin's then; SPEC 4.1's sentence says that exception and the restart that ends it. A
+  baseline's own changed plugins go to *Left open*.
+- **R275.** The gui row of the command reference says that a plugin edited while the server runs
+  is reported as `plugin-changed` and takes a restart, and that a plugin's imports and a plugin
+  named as a module are not compared: a home task 4b's notes missed, mended before its review.
+- **R276.** SPEC 3.11 names the two plugin checks of a fixed severity where it said both, a third
+  standing beside them now: a home of the rule (R231), pinned.
+- **R277.** The gui row's sentence on the Compare tab's verdict says the exception R274 states
+  too, a third home of SPEC 4.1's rule (R231).
+- **R278.** No journey, story or Vitest test draws a finding of `plugin-changed`'s shape, a
+  plugin's check on the plugin's file leading nowhere: the controller looked at one in the
+  running app before task 4b was complete, and it drew as such a finding draws.
+- **R279.** The rename's plan and its Apply missing their budgets are recorded as measured,
+  written as missed on the developer page and given a *Left open* entry with their profile and
+  the first way out: `14:I6`'s own case, a plan in the largest file, meets its second at both
+  sizes, and what a rename reaching every component costs is a question of design beyond the
+  finding's change. Decision 14.5 read as mending every plan here would be the same work, done
+  when a task takes it.
+- **R280.** The bench's projects were held in memory, so that no write of an Apply waited for a
+  disk; the pages say so, and a disk would only lengthen a miss recorded already.
+- **R281.** A plan is held to the second a panel has, being what a panel draws before it offers
+  Apply, and `BUDGETS` holds every measure spec §3 gives a figure, so that the bench says met or
+  missed of each: what decision 14.5's binding asks of it. The cost: a budget column on three
+  older measures.
+- **R282.** The reference page's sentence giving an edit and a plan asked while an analysis runs
+  as answered within a tenth of a second is task 5's to restate, `14:I6` naming it beside the
+  sentence the task restated, and is restated from the bench's runs.
+- **R283.** One span over lines whose middle line is unchanged is one hunk, R240's rule, and
+  80265bb7's message stands, the final gate running the suite without the line it removed; no
+  commit is amended.
+- **R284.** The bench is not run again after task 5's first round, the code it times being
+  unchanged since its runs but for lines the suite holds equal, and its open never reaching
+  `walk_finds`.
+- **R285.** `walk_finds` finding a description through a junction, which the walk passes over and
+  which only Windows has, goes to a second round of task 5 once 6a has reported, one agent at a
+  time: it now asks `is_junction()` beside `is_symlink()`, and the walk leaves a junction out on
+  python 3.12 as on 3.13. f3cdad90 to 8677d9d6 stay red on the Windows legs, for the pull request
+  to name (R314).
+- **R286.** `vocabulary_project` keeps the two families' readings of a file that does not parse,
+  by `skims`, its docstring saying both and why: one meaning would change what one family's `add`
+  creates or refuses, which task 6's first part, keeping behaviour, may not. *Left open* records
+  what it leaves.
+- **R287.** Fifty-six test calls change shape for the one reader task 6's first part makes, their
+  assertions kept, as an AST comparison shows: two call shapes cannot become one function
+  otherwise.
+- **R288.** The refusal class is `PlanRefusalError`, as ruff's N818 asks; `source_path` and
+  `served_path` say what they return; the guard on private names reached across modules sits
+  with the package's other guards; and a page comment naming a renamed function follows it.
+- **R289.** 56d3d038 was pushed with task 6a's ten commits under it, unreviewed, so that CI read
+  task 5's Windows fix while 6a's review ran: no pull request was open on the branch, and what
+  that review found landed as new commits on top.
+- **R290.** The plan routes that can answer a change of no lines - a unit's, a type's, and a
+  constant's, a section's and a raster's - are pinned to keep a file their edit leaves
+  unchanged, behaviour kept, an ablation of `changing` failing each; whether they should answer
+  that nothing changes stays out, the type key's case being P19b-13's, the maintainer's.
+- **R291.** Every `unwritable` is answered `409`, a disk's refusal to write among them, and a code
+  the one mapping does not know is still a `500`, pinned with a code of its own.
+- **R292.** A plan is answered `analysing` in place of its own refusal only where it is refused
+  `stale`, the waiting edits asked of every file the plan read: asked before a plan that would be
+  made, it would change successful answers no entry asks about, so such a plan is made against a
+  file still being analysed, as before.
+- **R293.** The Files tab's refusal of a first units file names the files that did not load
+  apart too, beyond 6b's notes: the same defect, in one more refusal.
+- **R294.** The page's own line on what did not load, in the Types and Shared files tabs, tells
+  two files of one name apart, in 6b's round: R189 keeps the page's halves of naming unread files
+  in branch 10, and the notes had named the server's sentences alone.
+- **R295.** A tab tells a file that did not load apart from every file that did not load, as the
+  server does, so a folder is shown only where another unread file shares the name, and one file
+  has one name on the page and in a refusal.
+- **R296.** The Files tab's judge answering `stale` for a file the page's own waiting edit wrote is
+  not 6b's: its entry is about a plan whose place an edit moved, and the judge's words are spec
+  §5's. It goes to *Left open*.
+- **R297.** `POST /api/edit` takes 8 MiB, corrected before task 7's review from the 4 MiB sized on
+  task 5's largest body: every shape the project's own generator makes at 100,000 declarations
+  fits, the chain shape's 4,725,352 bytes the most at any density, with room for paths of 443
+  bytes, and a chain project's rename refused by its own tool is the defect `15:I4` names. The
+  body is read only after the token and the origin are checked (R248). The cost: an
+  authenticated body of 8 MiB read into memory.
+- **R298.** The drain behind a refusal stays at `MAX_BODY`, as R248 has it, so an edit past its
+  limit can read as `ddd gui` not answering: *Left open* says so, with `request` refusing such a
+  body before it is sent as the way out. No measured plan comes near the limit.
+- **R299.** Task 7's drain takes the standard library's `501` and `505` too, the same close
+  without a drain, and `15:I4` stands in two commits, a correcting one where amending is not
+  allowed.
+- **R300.** Decision 3.6's "past about 10,000 counts" stays its words, the maintainer's, "about"
+  hedging them and the gui row giving the five-digit figure; the pull request names it.
+- **R301.** The changelog's account of a finding's line and column is the last D's (R4), and the
+  place is named as the panel's heading names its file, one name per panel, so two files of one
+  name that the heading names alike are named alike there too.
+- **R302.** Task 8's references are brought from CI's run at 9a's head with 9a's own, and
+  committed by 9a's implementer, in a commit of their own naming `16:I8`: one CI run instead of
+  two, and no second agent beside 9a's. 2d149ae9 to de0260e0 are red on the screenshots job,
+  6c073aea closing the range, for the pull request to name (R314).
+- **R303.** The gui row's sentence on what the line above each table counts stands beyond the
+  notes, a home of `14:M1`'s rule (R231).
+- **R304.** Each file's own counts still count a disagreement on every file it concerns, R253
+  keeping `counts` as the rows the window sizes itself by, and `graph_of`'s `index` is
+  keyword-only with a default, three tests catching a call that leaves it out.
+- **R305.** `14:M9` is read as a missing include named as the file that did not load, as R197 has
+  a refusal name the file an include names and not the project description; the notes had
+  restated the *Left open* entry's defect.
+- **R306.** Task 9b corrects a docstring of `finding_routes.py`, 9c's file, that its change made
+  untrue, and makes `lsp/navigation.named_at` public, a private name it reaches across modules
+  (R245); SPEC states nothing of it, and `SourceFile.loaded`'s sentence is 9d's.
+- **R307.** A type declared twice and a grid of two producing declarations are `14:M8`'s too,
+  each a finding whose panel would not list it, and task 9c takes both before its review: the
+  Types tab lists the repetition and counts it at both places, and a grid of two producers lists
+  the findings at each one's init, its route kept since the router cannot tell one producer from
+  two.
+- **R308.** Task 9c changes `findings_by_file.py` and its test beyond the list: a repetition is
+  tied to its name only by its note, and a pinned test forbids walking every finding. The cost:
+  about 4 ms a revision at 100,000 declarations.
+- **R309.** Task 9c's round mends a comment of `gui/src/screens/UndoStrip.tsx`, branch 11's file,
+  untrue since a misdirected undo stopped asking for an analysis: one line touched a branch early.
+- **R310.** `Grid.pointer` is kept, its docstring reworded, a test still asserting it: removing a
+  field a test asserts is a behaviour change 9c's round was not asked for.
+- **R311.** That every finding leads to a panel that lists it is left unsaid in the contract,
+  untrue of the Files tab, whose row only counts findings; the docstrings of `Route.name` and
+  `TypeReply.findings` go to *Left open*.
+- **R312.** Branch 10's changelog entries follow the code where the last D's brief was loose: a
+  plan refused naming its route, the state carrying `failed` and `refused`, which the page does
+  not draw yet, and `/api/values` answering `409` for a declared name with no grid, made an item
+  for a client. The two lines past 100 columns that earlier branches wrote are left, and
+  *Left open* names them.
+- **R313.** The final wave takes the whole-branch review's six Minors, each a few lines in a file
+  the branch touched: the watch passes over a plugin path the system will not resolve, so that a
+  description failing its schema beside one reports that error; `_appeared_since` and
+  `keyedFindings` give the reasons they now have; the developer and reference pages record the
+  edit asked while an analysis runs as missing its half second; the changelog says the command
+  line's project opens wherever it lies; and the session's docstring and the gui row say what a
+  `**` at a project's root watches. A NUL in a plugin path of a description that validates goes
+  to branch 12, and a root `**`'s cost to the maintainer (*Left open*, branch 10).
+- **R314.** As R45 kept one of branch 1's commits that failed a gate, branch 10's middle commits
+  that leave one red stay as they are, and the pull request names each: 7a30cf58 on the
+  documentation's pins; 213a1e16 to c8b266bf, two journeys racing until cf047cd9; f3cdad90 to
+  8677d9d6 on the Windows legs (R285); 257379ac, f53fe9a4, ebcbbf2c, 003c0f56 and 0c3c84a0 on
+  `ruff check`; b61d25fa on coverage; and 2d149ae9 to de0260e0 on the screenshots (R302). Every
+  Python gate was run at each middle commit of task 6's first part, and of task 9's third up to
+  its review; every other middle commit is known green on ruff, its format, mypy and the
+  documentation's pins, and on nothing more. A bisect stopping at one needs a skip, and the
+  maintainer can squash them at the merge.
+- **R315.** The final wave writes branch 10's rulings from R229, its *Left open* entries, and a
+  mark on each entry of an earlier branch it closed, as those were marked before; the progress
+  log's row for branch 10 is branch 11's D0's, which knows the pull request's number.
+
 ## Progress log
 
 | Branch | Pull request | Merged | Notes |
@@ -3038,7 +3621,8 @@ Every departure from a task's text, with its reason, numbered `R1`, `R2`, and so
 | 5, `fix/generated-artefacts` | #89 | 2026-11-17, into its stacked base (`1883c717`); reached master through #91 (`f695ddef`) on 2026-11-18 | Its Critical (`1:C1`) and what the branch covers: what the C and a2l writers produce, and the option that made the C undefined; the re-review's residuals carried into branch 6's D0; branch 2's four *Left open* entries that named its Files list are now the maintainer's, it having taken none of them |
 | 6, `fix/comparison-verdicts` | #90 | 2026-11-18, into its stacked base (`8a469220`); reached master through #92 (`921df5dc`) the same day | Its two Criticals (`1:C3`, `7:C1`) and what the branch covers: whether a delivery can replace another, for readers that may be precompiled (decision M1); the re-review's residuals carried into branch 7's D0 |
 | 7, `fix/gui-server-hardening` | #93 | 2026-11-18, into master (`2fbd374b`) | Pass 12's findings and `9:M8`, on what `ddd gui`'s server lets an edit change, where it listens, what it prints and how it answers, named by id alone (decision M4); the re-review's residuals carried into branch 8's D0 |
-| 8, `fix/release-machinery` | #94 | not merged | Pass 20's findings and what branch 8 covers: what a release publishes wrong and the notes it carries (`4:I7`, `4:I8`, `5:I1`, `4:M12`, `20:I2`, `20:I3`, `20:M5`, `20:M4`, `20:M6`, `20:M13` in part, `20:M16`, `20:M2`, `20:M3`, `20:M7`, `20:M11`, `20:M12`, `20:M15`, `20:I4`), named by id alone (decision M4); the re-review's two residuals carried into branch 9's D0 |
+| 8, `fix/release-machinery` | #94 | 2026-11-19, into master (`96900155`) | Pass 20's findings and what branch 8 covers: what a release publishes wrong and the notes it carries (`4:I7`, `4:I8`, `5:I1`, `4:M12`, `20:I2`, `20:I3`, `20:M5`, `20:M4`, `20:M6`, `20:M13` in part, `20:M16`, `20:M2`, `20:M3`, `20:M7`, `20:M11`, `20:M12`, `20:M15`, `20:I4`), named by id alone (decision M4); the re-review's two residuals carried into branch 9's D0 |
+| 9, `fix/editor` | #95 | 2026-11-21, into master (`c011143b`) | Pass 10's findings and what branch 9 covers: the language server, `ddd lsp` and the VS Code extension (`10:I1`, `10:I2`, `10:I3`, `10:I4`, `10:I5`, `10:I6`, `10:I13`, `10:I8`, `10:I9`, `10:I10`, `10:I11`, `10:I12`, `10:M1` to `10:M12`, `14:M13`), named by id alone (decision M4); the re-review's residuals carried into branch 10's D0 |
 
 ## Self-review
 

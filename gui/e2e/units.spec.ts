@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CONTROLLER, chooseUnit, drift, renameValueA, SENSOR_HUB, scrolledIntoView } from "./demo";
 import { expect, test } from "./fixtures";
@@ -168,6 +168,56 @@ test("after Apply the panel stays on the unit applied, and asks again only what 
   await expect(panel.getByRole("combobox", { name: "Unit of ValueA" })).toHaveValue("rpm");
   await expect(panel.getByText("Nothing to change")).toBeVisible();
   expect(asked.filter((entry) => entry !== 'settle "rpm"')).toEqual([]);
+});
+
+test("a unit settled into a read-only file is refused in the server's words, writes nothing, and is applied once the file is writable", async ({
+  page,
+  gui,
+}) => {
+  const controller = join(gui.directory, CONTROLLER);
+  const hub = join(gui.directory, SENSOR_HUB);
+  const before = { controller: readFileSync(controller), hub: readFileSync(hub) };
+  const mode = statSync(controller).mode & 0o7777;
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("button", { name: "Set the unit of ValueA" }).click();
+  const panel = page.getByRole("complementary", { name: "ValueA" });
+  await chooseUnit(page, "rpm");
+  await expect(
+    panel.getByText("Changes 2 files: controller.ddd.json, sensor_hub.ddd.json"),
+  ).toBeVisible();
+  const settle = panel.getByRole("region", { name: "Settle the key" });
+
+  // Read-only to everyone, as a checkout kept read-only is: Windows' read-only flag on Windows.
+  chmodSync(controller, 0o444);
+  try {
+    const answered = page.waitForResponse(
+      (response) => new URL(response.url()).pathname === "/api/edit",
+    );
+    await settle.getByRole("button", { name: "Apply to 2 files" }).click();
+    // A refusal the reader can mend, `409`, where a `500` is ddd gui failing on the request.
+    const answer = await answered;
+    expect([answer.status(), (await answer.json()).error]).toEqual([409, "unwritable"]);
+    await expect(settle.getByRole("status")).toHaveText(
+      /^The change was refused: .*controller\.ddd\.json is read-only, so nothing was written$/,
+    );
+    // Neither file of the edit is written: the one it may write is refused with the other.
+    expect(readFileSync(controller).equals(before.controller)).toBe(true);
+    expect(readFileSync(hub).equals(before.hub)).toBe(true);
+  } finally {
+    chmodSync(controller, mode);
+  }
+
+  // Writable again, the same unit chosen again - typed and taken with Enter, the field reading
+  // it already - is applied to both files.
+  const picker = panel.getByRole("combobox", { name: "Unit of ValueA" });
+  await picker.clear();
+  await picker.pressSequentially("rpm");
+  await picker.press("Enter");
+  await settle.getByRole("button", { name: "Apply to 2 files" }).click();
+  await expect(panel.getByRole("gridcell", { name: "rpm", exact: true })).toHaveCount(2);
+  expect(readFileSync(controller).equals(before.controller)).toBe(false);
+  expect(readFileSync(hub).equals(before.hub)).toBe(false);
 });
 
 test("the picker lists the variable's units, then the project's, narrowed by what is typed", async ({

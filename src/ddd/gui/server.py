@@ -29,11 +29,16 @@ this one trusts nothing it did not hand out itself:
   answered as it is. So ``localhost`` is this server itself, whichever of the two addresses a
   browser tries, signed out until the address it printed is opened there, and no other program
   can listen on ``[::1]`` at that port;
+* a ``POST``'s body is read up to 1,048,576 bytes, an edit's up to 8,388,608 once it has shown
+  the token and this server's own origin, since an Apply posts every change of its plan
+  (:data:`EDIT_BODY`);
 * a ``POST`` refused before its body is read has that body read and thrown away, at most
   1,048,576 bytes of it, rather than left unread; where its length cannot be read this way, the
   connection closes behind the answer instead, draining until the client closes, two seconds
   pass, or 1,048,576 bytes are read, whichever is first. Closing one with bytes still unread
-  resets it on Windows, which can lose the refusal before it reaches the browser.
+  resets it on Windows, which can lose the refusal before it reaches the browser. A request the
+  standard library refuses before this server reads it - ``400``, ``414``, ``431``, ``501`` or
+  ``505`` - is drained the same way behind its answer.
 
 The pages are served with an explicit content type per extension. The platform's guess is not
 used: on Windows ``mimetypes`` reads the registry, which can map ``.js`` to ``text/plain``, and a
@@ -84,12 +89,37 @@ ask, short enough that a code a local reader of ``/proc`` raced from the launch 
 for long."""
 
 MAX_BODY: Final = 1024 * 1024
-"""The largest request body accepted; an edit of a description file is a few hundred bytes."""
+"""The largest request body accepted but an edit's (:data:`EDIT_BODY`), and the most drained
+behind a refusal - of a body refused before it is read, or of what follows a request the standard
+library refused (:meth:`_Handler._send`, :func:`_linger`): a sign-in, an open or an undo posts a
+few dozen bytes."""
+
+EDIT_BODY: Final = 8 * 1024 * 1024
+"""The largest body ``POST /api/edit`` accepts, eight times :data:`MAX_BODY`: an Apply posts every
+change of its plan, each file's path, fingerprint and operations (15:I4). Every project the
+project's own generator makes (``tools/generate_project.py``) fits under it at 100,000
+declarations, whatever its shape and its density of findings, measured renaming the unit stated
+in the most files, as the benchmark's applied rename does (``tools/bench_gui.py``), at the
+densities that reach the most declarations of it. The ``mixed``, ``large`` and ``many`` shapes post
+up to 1,948,716 bytes clean or findings-heavy and 2,352,764 at the most, ``many`` at
+``--unread 0.375``. The ``chain`` one, 50,000 components of two declarations each, posts the most:
+4,213,186 bytes clean, 4,706,936 findings-heavy, and 4,725,352 at ``--unread 0.625`` or
+``0.875``, which reach as many declarations and rename ``Nm``, a character longer than the ``A``
+the others rename: 18,751 operations over 12,501 files, their paths taking 1,875,138 bytes, 138
+to 150 each. Within this limit each of those paths could be 443 bytes long, (8,388,608 -
+4,725,352 + 1,875,138) / 12,501: past the 259 bytes a stock Windows' longest path, 259
+characters, takes in ASCII, though not the 777 of one of three-byte characters, which each of the
+``many`` shape's 3,334 paths could take, 1,959 bytes long at its most.
+
+Read only once a request has shown this server's token and its own origin (:meth:`_Handler._route`):
+every other body is read up to :data:`MAX_BODY`, ``POST /open``'s among them, and every body
+refused before it is read is drained by that."""
 
 LINGER_SECONDS: Final = 2.0
-"""How long a connection closed with a body still arriving is drained before its close (P18-31):
-long enough for the client to read the answer it was written first, short enough that a sender
-who never stops holds its thread no longer than that."""
+"""How long a connection closed with a body, or the rest of a refused request, still arriving is
+drained before its close (P18-31, :meth:`_Handler.send_error`): long enough for the client to
+read the answer it was written first, short enough that a sender who never stops holds its
+thread no longer than that."""
 
 OPEN_BODY: Final = 1024
 """The largest body ``POST /open`` accepts, far tighter than :data:`MAX_BODY`: a sign-in body
@@ -305,7 +335,8 @@ def _refuse(request: socket.socket) -> None:
 
 
 def _linger(connection: socket.socket) -> None:
-    """Shut the writing side of a connection closed with a body still arriving, and drain what
+    """Shut the writing side of a connection closed with a body still arriving, or what follows
+    a request the standard library refused (:meth:`_Handler.send_error`), and drain what
     arrives before the close - until the client closes, :data:`LINGER_SECONDS` pass, or
     :data:`MAX_BODY` bytes have been read, whichever is first - so that the close is no reset
     that could throw the answer away before the client reads it (P18-31). The time is counted
@@ -640,34 +671,37 @@ class _Handler(BaseHTTPRequestHandler):
 
     _linger = False
     """Whether this connection is closed with a request's body unread - too long to read, of no
-    length to read by, or sent with a ``Transfer-Encoding``. Its answer is written, its writing
+    length to read by, or sent with a ``Transfer-Encoding`` - or with what follows a request the
+    standard library refused unread (:meth:`send_error`). Its answer is written, its writing
     side shut, and what still arrives drained before the close (:meth:`finish`), so that the
     close is no reset."""
 
     def _declared(self) -> int | None:
         """The length a body refused before it is read is drained by (:meth:`_send`): its
-        ``Content-Length`` (:meth:`_content_length`). ``None`` - its connection closed after the
-        answer instead - for one that is no length, one past :data:`MAX_BODY`, or any
-        ``Transfer-Encoding`` (P19a-10): a chunked body has no ``Content-Length``, and drained as
-        a length of none, it would be left on the connection, to be read as the next request."""
+        ``Content-Length`` (:meth:`_content_length`), of at most :data:`MAX_BODY` whatever the
+        route - an edit's own limit is read only once its token and origin are, as its body is.
+        ``None`` - its connection closed after the answer instead - for one that is no length,
+        one past :data:`MAX_BODY`, or any ``Transfer-Encoding`` (P19a-10): a chunked body has no
+        ``Content-Length``, and drained as a length of none, it would be left on the connection,
+        to be read as the next request."""
         if "Transfer-Encoding" in self.headers:
             return None
-        return self._content_length()
+        return self._content_length(MAX_BODY)
 
-    def _content_length(self) -> int | None:
+    def _content_length(self, limit: int) -> int | None:
         """The length the request's ``Content-Length`` spells, if it is one this server reads: a
-        length, of at most :data:`MAX_BODY` - and ``0`` with no ``Content-Length`` at all.
-        ``None`` for one that is no length, or one past :data:`MAX_BODY`."""
+        length, of at most ``limit`` - and ``0`` with no ``Content-Length`` at all. ``None`` for
+        one that is no length, or one past ``limit``."""
         length = self.headers.get("Content-Length", "0")
         if not (length.isascii() and length.isdecimal()):
             return None
         # Leading zeros are stripped before int() reads anything: int() refuses a string of more
         # than 4,300 digits whatever their value - by default; sys.get_int_max_str_digits() says
-        # how many. What is left is past MAX_BODY if it has more digits than MAX_BODY's seven,
+        # how many. What is left is past the limit if it has more digits than the limit has,
         # which settles it without converting it, and is read as its value otherwise: zeros
         # alone, however many, are a length of 0.
         significant = length.lstrip("0") or "0"
-        if len(significant) > len(str(MAX_BODY)) or int(significant) > MAX_BODY:
+        if len(significant) > len(str(limit)) or int(significant) > limit:
             return None
         return int(significant)
 
@@ -745,7 +779,7 @@ class _Handler(BaseHTTPRequestHandler):
             if not self._from_this_page():
                 self._send_json(403, {"error": "forbidden", "message": _FORBIDDEN})
                 return
-            body = self._body()
+            body = self._body(MAX_BODY)
             if body is None:
                 return
             # Drained by _body() (part 18's P18-31), then refused on its length before _exchange
@@ -771,7 +805,10 @@ class _Handler(BaseHTTPRequestHandler):
             return
         body = None
         if method == "POST":
-            body = self._body()
+            # An edit's own limit, past MAX_BODY, read here alone: once the request has shown the
+            # token and this server's own origin, so that no request without them is read further
+            # than before (15:I4, EDIT_BODY).
+            body = self._body(EDIT_BODY if url.path == "/api/edit" else MAX_BODY)
             if body is None:
                 return
         # Blank values kept: what a blank means is each route's own to say - the empty text for
@@ -879,16 +916,20 @@ class _Handler(BaseHTTPRequestHandler):
         kind = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
         return origin in self._own_origins() and kind == "application/json"
 
-    def _body(self) -> bytes | None:
+    def _body(self, limit: int) -> bytes | None:
+        """The request's body, read up to ``limit`` bytes - its route's own: :data:`EDIT_BODY` for
+        an edit, :data:`MAX_BODY` for any other - or ``None`` once it is refused: ``400`` for a
+        ``Content-Length`` that is no length, ``413`` for one past ``limit``, its answer naming
+        it."""
         length = self.headers.get("Content-Length", "0")
         if not (length.isascii() and length.isdecimal()):
             self._send_json(400, {"error": "bad-request", "message": "Content-Length is no length"})
             return None
         # By its Content-Length alone, not _declared: a body sent with a Transfer-Encoding that
         # comes this far is read as one of none, as it always was (P19a-10 left it so).
-        size = self._content_length()
+        size = self._content_length(limit)
         if size is None:
-            message = f"a request body is at most {MAX_BODY} bytes"
+            message = f"a request body is at most {limit} bytes"
             self._send_json(413, {"error": "too-large", "message": message})
             return None
         body = self.rfile.read(size)
@@ -969,7 +1010,13 @@ class _Handler(BaseHTTPRequestHandler):
         the page served, ``nosniff``, no referrer, and ``no-store`` as every refusal here has it
         (12:M7). Nothing is logged, as nothing is by this server (:meth:`log_message`). Never by
         way of :meth:`_send`: the request may be one whose headers were never read, and
-        :meth:`_send` reads them for a ``POST``'s body."""
+        :meth:`_send` reads them for a ``POST``'s body.
+
+        What follows the line it is refused at - the rest of a line too long, the headers after
+        it, a body - is left unread, and drained before the close (:meth:`finish`), as a refusal
+        of this server's own is: closed with it unread, the close is a reset, which can lose the
+        answer before the browser reads it (12:M7, the plan's *Left open* entry)."""
+        self._linger = True
         short, long = self.responses.get(code, ("???", "???"))
         reason = short if message is None else message
         page = self.error_message_format % {
@@ -992,7 +1039,8 @@ class _Handler(BaseHTTPRequestHandler):
 
     def finish(self) -> None:
         """Close the files the connection was read and written through, then - if its last
-        answer left a body unread - drain it before the server closes it (:func:`_linger`)."""
+        answer left a body, or the rest of a request the standard library refused, unread -
+        drain it before the server closes it (:func:`_linger`)."""
         super().finish()
         if self._linger:
             _linger(self.request)

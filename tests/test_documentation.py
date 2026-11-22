@@ -11,6 +11,7 @@ import argparse
 import ast
 import contextlib
 import dataclasses
+import inspect
 import io
 import itertools
 import json
@@ -49,6 +50,10 @@ from ddd.backends.c.model import (
 )
 from ddd.cli import EXIT_OK, EXIT_USAGE, _build_parser, cmake_module_directory, main, schema_models
 from ddd.diagnostics import CHECKS, Severity
+from ddd.gui import session as gui_session
+from ddd.gui.compare import Compared, _own_errors
+from ddd.gui.contract import CompareReply
+from ddd.gui.server import EDIT_BODY
 from ddd.loading import FILE_KINDS
 from ddd.models import MAX_ELEMENTS, Component, DataObject, Datatype, ObjectKind, ScalarType
 from ddd.toolbox.findings import FINDINGS
@@ -810,6 +815,20 @@ class TestTheCommandPage:
         assert listed is not None
         assert set(re.findall(r"``([a-z]+)``", listed.group(1))) == set(schema_models())
 
+    def test_a_table_past_about_10_000_counts_is_said_to_be_set_cell_by_cell(self) -> None:
+        """Decision 3.6, as ``client.ts`` refuses such a table (3:I8), and what is refused besides
+        it: every plan whose request would outgrow one address."""
+        text = flattened(self.COMMAND_PAGE)
+        assert (
+            "A table past about 10,000 counts is not one ``ddd gui`` takes: one whose counts "
+            "outgrow the address a request carries"
+        ) in text
+        assert (
+            "in a sentence naming the object and saying to set its values cell by cell, or in its "
+            "file in an editor. Any other plan whose request would outgrow that address is refused "
+            "the same way, naming its route."
+        ) in text
+
     def test_the_values_grid_is_said_to_refuse_a_whole_number_past_2_53(self) -> None:
         """What ``objectValues.ts`` and ``object_values.py`` do with a number the page's double
         cannot hold, said where the grid is described."""
@@ -1054,6 +1073,26 @@ def generate_options(artefact: str) -> set[str]:
         for option in action.option_strings
         if option.startswith("--")
     }
+
+
+class TestWhatAnEditMayPost:
+    """``POST /api/edit``'s own limit, said on the developer page beside the benchmark's bodies it
+    is sized above, as the server holds it (15:I4)."""
+
+    def test_the_developer_page_says_the_chain_shapes_body_and_the_limit_holding_it(self) -> None:
+        text = flattened(PAGES["docs/developer_documentation.rst"])
+        assert (
+            "The ``chain`` shape's, which these runs leave out, is 4,213,186 bytes at 100,000 "
+            "declarations clean and 4,706,936 findings-heavy"
+        ) in text
+        assert (
+            "The most the generator makes at any density of findings is the chain shape's at "
+            "``--unread 0.625`` or ``0.875``, 4,725,352 bytes"
+        ) in text
+        assert (
+            f"Each is held, as the runs' bodies are, by the {EDIT_BODY:,} bytes ``POST /api/edit`` "
+            "takes"
+        ) in text
 
 
 class TestTheA2lOptions:
@@ -11121,8 +11160,8 @@ class TestTheServerWatchesWhatItReads:
                 "and a file changed behind the editor's back is read again at the next open or "
                 "save.",
                 "A description the client reports changed is checked again where its findings are "
-                "on screen, whatever is open, and while no document is open whether they are or "
-                "not:",
+                "on screen or a check ran from it, whatever is open, and while no document is "
+                "open whether they are or not:",
                 "A change of a build record is a change of which projects there are and of their "
                 "severities: the records are searched for again, and the open documents and every "
                 "file whose findings are on screen are checked again under them. A record is never "
@@ -11149,7 +11188,8 @@ class TestTheServerWatchesWhatItReads:
                 "takes such a registration while the session runs, as VS Code's does; a client "
                 "that does not is asked for nothing, and a file changed behind it is read again at "
                 "the next open or save. A description changing is checked again where its findings "
-                "are on screen, whatever is open, and while none is open whether they are or not:",
+                "are on screen or a check ran from it, whatever is open, and while none is open "
+                "whether they are or not:",
                 "A build record changing is a change of which projects there are and of their "
                 "severities: the open documents and every file whose findings are on screen are "
                 "checked again under the records as they now read.",
@@ -11357,3 +11397,338 @@ class TestTheFoldersAreFollowed:
         }
         missing = [what for what, claim in claims.items() if claim not in said]
         assert not missing, f"the changelog no longer says {missing}"
+
+
+class TestWhatTheTypesTabAndTheRangeFieldsSend:
+    """3:I1. A change of a type is asked of the models as the entry would be left, and refused in
+    their words where the loader would refuse the file; and the two fields of a range send the
+    digits typed, where they sent the doubles the page read. The command page and the developer
+    page say so."""
+
+    SAID: ClassVar[dict[str, tuple[str, tuple[str, ...]]]] = {
+        "docs/command_line_interface.rst": (
+            COMMAND_LINE_INTERFACE,
+            (
+                "A value the type's entry would not load with - a datatype that is none, a "
+                "maximum below its minimum, a factor of 0 - is refused there before it is planned, "
+                "in the words ``ddd check`` files it in, since a types file that does not load "
+                "takes every type it declares with it.",
+                # A refusal the entry carries already is its own, and no change's.
+                "A type ``ddd check`` refuses already is not refused again for it: a change that "
+                "leaves that refusal as it was is planned, the value a row holds among them, and "
+                "so is one that mends it.",
+                "A bound is sent in the digits it was typed in, ``1e3`` as ``1e3`` and ``12.50`` "
+                "as ``12.50``, a float's given a point where it was typed whole.",
+            ),
+        ),
+        "docs/developer_documentation.rst": (
+            PAGES["docs/developer_documentation.rst"],
+            (
+                "A key set is asked of the models as the entry would be left, as ``settled_at`` "
+                "asks of a definition: ``ddd.models.type_problem`` validates the entry by its "
+                "``type`` and, for a scalar type, holds the limits its datatype and conversion "
+                "derive finite, as the analysis does, and ``set_key`` refuses what it refuses, "
+                "``invalid``, in the models' words.",
+                "It is asked of the entry as it stands too, and an answer the change leaves as it "
+                "was refuses nothing: a type the analysis refuses already is planned a change "
+                "leaving that refusal as it was, and one mending it.",
+            ),
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(SAID))
+    def test_the_page_says_what_a_type_s_plan_refuses_and_a_range_sends(self, page: str) -> None:
+        text, phrases = self.SAID[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"
+
+
+class TestWhereLimitsNobodyStatesAreWritten:
+    """3:I2. A reader leaves its limits to the producer, and a settlement of limits that no
+    declaration states left them to nobody: the panel said there was nothing to change. The
+    producer states them now, and a variable nobody produces is refused them. The command page
+    says so, on its gui row."""
+
+    def test_the_command_page_says_the_producer_takes_them(self) -> None:
+        assert (
+            "settles one on every declaration at once. Limits that no declaration states are "
+            "written on the producer - on each of two, where two produce the variable - its "
+            "readers leaving them to it as ``ddd check`` reads them; a variable no declaration "
+            "produces is refused them, since none is the one to state them."
+        ) in flattened(COMMAND_LINE_INTERFACE)
+
+
+class TestATypeAndWhatItFixesAreOneThing:
+    """14:I3. The command page says when the ``typename`` row disagrees, as ``ddd check`` reads
+    the declarations."""
+
+    def test_the_command_page_says_the_typename_row_disagrees_between_two_types(self) -> None:
+        assert (
+            "A declaration naming a type and one spelling what that type fixes agree, as "
+            "``ddd check`` reads them: the ``typename`` row disagrees only where two "
+            "declarations name different types, and a unit of no text beside none is no "
+            "disagreement."
+        ) in flattened(COMMAND_LINE_INTERFACE)
+
+
+class TestTheLinesCountEachStatementOnce:
+    """14:M1, decision 14.3. A disagreement is filed on each of the files it concerns, and the
+    line above the Findings tab's table counted it on each, as the Compare tab's did a baseline's:
+    their totals were not the commands', and no page said they differ. Every line above a table of
+    findings counts each finding once now, the tables still holding it on each file, and the
+    command page says so, on its gui row."""
+
+    def test_the_command_page_says_a_disagreement_is_counted_once(self) -> None:
+        said = flattened(COMMAND_LINE_INTERFACE)
+        assert (
+            "The Findings and Compare tabs list a disagreement on each file it concerns, as the "
+            "component table counts it on each, and the line above each of the three tables "
+            "counts it once, as ``ddd check`` and ``ddd compare`` do."
+        ) in said
+        assert "the line above either table" not in said
+
+
+class TestTheGuiRowSaysWhatThePageIsTold:
+    """14:M7, 14:M11, 14:M8. What the page is told of an analysis that raised, of a build record
+    this DDD cannot use, and of an entry repeating a name, which the command page's gui row says
+    where the terminal and the state say it."""
+
+    def test_the_command_page_says_a_failed_analysis_is_printed_and_carried(self) -> None:
+        assert (
+            "An analysis that raises - a plugin failing while the project is read, say - is "
+            "printed in the terminal ``ddd gui`` runs in, ``ddd gui: analysing the project "
+            "failed:`` and its reason, and the state the page reads carries the same reason until "
+            "an analysis succeeds: the revision before it stands meanwhile, or none, and the next "
+            "poll asks for another analysis."
+        ) in flattened(COMMAND_LINE_INTERFACE)
+
+    def test_the_command_page_says_a_refused_record_is_told_in_the_terminal_s_own_line(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The line the page quotes is the one the server prints for a record one format past
+        the one this version reads, its path aside: both follow the code."""
+        from ddd.build_info import BUILD_INFO_FORMAT
+        from ddd.lsp.discovery import load_builds
+
+        said = flattened(COMMAND_LINE_INTERFACE)
+        assert (
+            "A build record this DDD cannot use - written by a newer DDD, or naming a check this "
+            "one has not got - applies its severities to no analysis: the start page lists it "
+            "with its reason, as the language server logs one, the state the page reads carries "
+            "it beside the open project's revision, and the terminal is told of it once, and "
+            "again whenever its reason changes"
+        ) in said
+        record = tmp_path / "ddd-build.json"
+        record.write_text(json.dumps({"format": BUILD_INFO_FORMAT + 1}), encoding="utf-8")
+        refused: dict[Path, str] = {}
+        assert load_builds([record], refused) == []
+        gui_session.Session(tmp_path)._tell_refused([(record, refused[record])])
+        line = capsys.readouterr().err.strip()
+        shown = line.replace(str(record), "/home/you/project/build/ddd/fw/ddd-build.json")
+        assert f"``{shown}``" in said
+
+    def test_the_command_page_says_a_repetition_is_listed_and_counted_at_both_places(
+        self,
+    ) -> None:
+        said = flattened(COMMAND_LINE_INTERFACE)
+        assert (
+            "An entry repeating a name declared before it, which the analysis leaves out, is that "
+            "name's: the repetition, filed at the entry and again at the first, is listed on that "
+            "name's panel and counted on its row at both, as the Units tab lists a unit listed "
+            "twice."
+        ) in said
+        assert (
+            "A type a second file declares again is the first's, as a repeated entry of a shared "
+            "file is: the repetition is listed on its panel and counted on its row at both places "
+            "it is filed."
+        ) in said
+
+
+class TestLimitsAreOneValueExactly:
+    """3:M9. ``same_value`` read each bound of a range as the double nearest it, so that two
+    maxima past 2^53 ``ddd check`` files apart were one value to the panel and to every fix. The
+    developer page, which says what it compares, says it compares them exactly."""
+
+    def test_the_developer_page_says_limits_are_compared_exactly(self) -> None:
+        assert (
+            "limits as the numbers they resolve to, compared exactly as ``definition-mismatch`` "
+            "compares them and never as the doubles nearest them,"
+        ) in flattened(PAGES["docs/developer_documentation.rst"])
+
+
+class TestAPluginChangedUnderDddGui:
+    """14:I4, decision 14.2. A module is imported once per process, so a plugin saved with other
+    bytes once ``ddd gui`` imported it was analysed as its old code, and nothing a reader of ``ddd
+    gui`` met said so. It files ``plugin-changed`` on the plugin's file, a check of its own, until
+    it is restarted or the file holds the bytes it was imported from again, and the pages say so:
+    what it is, that ``ddd check`` never files it, and the edits nothing tells - a module a plugin
+    imports, and a plugin named as a module."""
+
+    SAID: ClassVar[dict[str, tuple[str, tuple[str, ...], tuple[str, ...]]]] = {
+        "SPEC.md": (
+            SPEC,
+            (
+                "A module is imported once per process; an edit takes effect in the next run, and "
+                "in the editor and in `ddd gui` after the server is restarted, which `ddd gui` "
+                "says meanwhile with `plugin-changed` on the file of a plugin named by its path. A "
+                "module a plugin imports is not watched, and a plugin named as a module is not "
+                "compared, so an edit of either takes the restart unsaid.",
+                "- `plugin-changed`: filed by `ddd gui` alone, on the file of a plugin named by "
+                "its path ([section 3.11](#311-plugins)) that holds other bytes than the server "
+                "imported it from. A module is imported once per process, so the server goes on "
+                "running the old code until it is restarted, and every finding of an analysis "
+                "after the edit is that code's: an error by default, for that reason. The same "
+                "bytes written again are no change, and `ddd check`, which imports every plugin "
+                "afresh, never files it.",
+                "`plugin-not-found` and `plugin-invalid` have a fixed severity, because a project "
+                "cannot be interpreted without the plugins it names.",
+                "and says how many the project has of its own. While `plugin-changed` stands as an "
+                "error, as it does by default, the tab counts it as one of the open project's own "
+                "errors, so its verdict is a refusal until the server is restarted or the plugin's "
+                "file holds the bytes it was imported from again, where the commands, which import "
+                "every plugin afresh, never file it.",
+            ),
+            (
+                "an edit takes effect in the next run, and in the editor after the server is",
+                "Both checks have a fixed severity",
+                "that code's: an error for that reason.",
+                "While `plugin-changed` stands, the tab counts it",
+            ),
+        ),
+        "docs/command_line_interface.rst": (
+            COMMAND_LINE_INTERFACE,
+            (
+                "the answer says how many errors the project has of its own. While "
+                "``plugin-changed`` stands as an error, as it does by default, it is one of them, "
+                "so the verdict is a refusal until the server is restarted or the plugin's file "
+                "holds the bytes it was imported from again, where ``ddd compare``, which imports "
+                "every plugin afresh, never files it.",
+                "A plugin named by its path that changed since the server imported it is reported "
+                "with ``plugin-changed`` on its file, an error by default: a module is imported "
+                "once per process, so the server goes on running the old code until it is "
+                "restarted. A module a plugin imports is not watched, and a plugin named as a "
+                "module is not compared, so editing either takes a restart unsaid. Large projects "
+                "stay responsive.",
+            ),
+            (
+                "While ``plugin-changed`` stands it is one of them,",
+                "on its file, an error: a module",
+            ),
+        ),
+        "docs/plugins.rst": (
+            PAGES["docs/plugins.rst"],
+            (
+                "editing the plugin file only takes effect the next time a process starts. ``ddd "
+                "gui`` says so, with ``plugin-changed`` on the file of a plugin named by its path "
+                "that changed since it imported it, until it is restarted or the file holds the "
+                "bytes it was imported from again; a module a plugin imports is not watched, and a "
+                "plugin named as a module is not compared, so editing either takes a restart "
+                "unsaid.",
+            ),
+            (
+                "only takes effect the next time a process starts. A ``.py`` plugin",
+                "says so until it is restarted, with",
+            ),
+        ),
+        "ddd.gui.session": (
+            gui_session.__doc__ or "",
+            (
+                "the revision carries ``plugin-changed`` on the plugin's file, an error by "
+                "default, until ``ddd gui`` is restarted or the file holds the bytes it was "
+                "imported from again (:func:`_tell_changed_plugins`).",
+            ),
+            ("on the plugin's file, an error, until",),
+        ),
+        "docs/consistency_checks.rst": (
+            CONSISTENCY_CHECKS,
+            (
+                "* - ``plugin-changed`` - error - filed by ``ddd gui`` alone, on the file of a "
+                "plugin named by its path that holds other bytes than the server imported it "
+                "from. A module is imported once per process, so the server goes on running the "
+                "old code until it is restarted, and every finding of an analysis after the edit "
+                "is that code's. The same bytes written again are no change, and ``ddd check``, "
+                "which imports every plugin afresh, never files it. A module a plugin imports is "
+                "not watched, and a plugin named as a module is not compared (see "
+                ":doc:`plugins`).",
+            ),
+            (),
+        ),
+        "README.md": (
+            README,
+            (
+                "| error | `plugin-changed` | filed by `ddd gui` alone: a plugin named by its path "
+                "changed since the server imported it, so the server runs the old code until it is "
+                "restarted |",
+            ),
+            (),
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(SAID))
+    def test_the_page_says_ddd_gui_tells_it_and_what_nothing_tells(self, page: str) -> None:
+        text, phrases, stale = self.SAID[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"
+        for phrase in stale:
+            assert phrase not in said, f"{page} still says: {phrase!r}"
+
+    def test_the_registry_says_it_in_one_line(self) -> None:
+        """``ddd checks`` prints it, and the language server's and ``ddd gui``'s readers meet it
+        there first."""
+        assert CHECKS["plugin-changed"].description == (
+            "a plugin named by its path changed since ddd gui imported it, so ddd gui runs the "
+            "old code until it is restarted"
+        )
+
+    def test_the_check_reference_opens_on_the_listing_as_ddd_checks_prints_it(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The page shows the head of ``ddd checks``, in the registry's order, ``plugin-changed``
+        beside the two other checks a plugin's load files."""
+        assert main(["checks"]) == EXIT_OK
+        printed = capsys.readouterr().out.splitlines()
+        block = CONSISTENCY_CHECKS.split("   $ ddd checks\n", 1)[1].split("\n   ...\n", 1)[0]
+        shown = [line.removeprefix("   ") for line in block.splitlines()]
+        assert shown == printed[: len(shown)]
+        assert [line.split()[0] for line in shown[8:11]] == [
+            "plugin-not-found",
+            "plugin-invalid",
+            "plugin-changed",
+        ]
+
+    def test_the_compare_rule_s_docstrings_say_the_tab_counts_it_where_no_command_files_it(
+        self,
+    ) -> None:
+        """The tab's verdict counts the project's own errors as ``ddd compare`` does, and ``ddd
+        gui`` alone files ``plugin-changed``: what SPEC 4.1 and the ``ddd gui`` row say of it, the
+        docstrings saying that verdict is the commands' say too."""
+        said = {
+            "Compared.own_errors": flattened(inspect.getsource(Compared)),
+            "_own_errors": flattened(_own_errors.__doc__ or ""),
+            "CompareReply.verdict": flattened(
+                CompareReply.model_fields["verdict"].description or ""
+            ),
+        }
+        phrases = {
+            "Compared.own_errors": (
+                "is told why. ``plugin-changed`` is among them while it stands as an error, which "
+                "no command files: the verdict then refuses where ``ddd compare`` may not, until "
+                "the server is restarted or the plugin's file holds the bytes it was imported "
+                "from again."
+            ),
+            "_own_errors": (
+                "and so what ``ddd check`` exits 1 on, save ``plugin-changed`` while it stands as "
+                "an error, which ``ddd gui`` alone files."
+            ),
+            "CompareReply.verdict": (
+                "as the exit code of ``ddd compare`` and ``ddd check --baseline`` answers, save "
+                "while ``plugin-changed`` stands as an error among the project's own, which "
+                "neither command files: the verdict then refuses where they may not, until the "
+                "server is restarted or the plugin's file holds the bytes it was imported from "
+                "again."
+            ),
+        }
+        missing = [name for name, phrase in phrases.items() if phrase not in said[name]]
+        assert not missing, f"no longer said of plugin-changed by {missing}"

@@ -168,13 +168,27 @@ export function jsonNumber(
   meaning?: CommaMeaning,
 ): { json: string } | { refusal: string; ambiguous: boolean } {
   const match = matched(text, meaning);
-  if ("refusal" in match) return match;
+  return "refusal" in match ? match : { json: jsonOf(match) };
+}
+
+/** `text` read as `readNumber` reads it, and spelled as `jsonNumber` spells it: what a field that
+ * weighs a number and then sends it as typed reads - a range's two bounds. */
+export function spelledNumber(
+  text: string,
+  meaning?: CommaMeaning,
+): { decimal: Decimal; json: string } | { refusal: string; ambiguous: boolean } {
+  const match = matched(text, meaning);
+  return "refusal" in match ? match : { decimal: decimalOf(match), json: jsonOf(match) };
+}
+
+/** A match of `DECIMAL` as json spells it (`jsonNumber`). */
+function jsonOf(match: RegExpExecArray): string {
   const [, sign, whole = "", fraction, alone, power] = match;
   const point = fraction ?? alone;
-  const json =
+  return (
     `${sign === "-" ? "-" : ""}${whole.replace(/^0+(?=\d)/, "") || "0"}` +
-    `${point === undefined ? "" : `.${point || "0"}`}${power === undefined ? "" : `e${power}`}`;
-  return { json };
+    `${point === undefined ? "" : `.${point || "0"}`}${power === undefined ? "" : `e${power}`}`
+  );
 }
 
 /** What the separators of one number show of themselves: a comma that can only be the decimal

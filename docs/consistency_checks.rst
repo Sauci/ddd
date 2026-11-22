@@ -53,6 +53,7 @@ down should be read after a DDD upgrade:
    include-empty                 error    an include pattern matches no file
    plugin-not-found              error    a project names a plugin that cannot be found (fixed)
    plugin-invalid                error    a plugin module does not expose a well formed PLUGIN, or two plugins claim one name (fixed)
+   plugin-changed                error    a plugin named by its path changed since ddd gui imported it, so ddd gui runs the old code until it is restarted
    duplicate-component           error    two different files declare the same component name
    duplicate-type                error    two different files declare the same type name
    duplicate-unit                error    a unit is declared more than once, in one file or across files
@@ -457,6 +458,15 @@ or an a2l file that does not do what the description says - or that does not com
        already has; and, in the language server and beside the listing of ``ddd sources`` and
        ``ddd artefacts``, a hook or a model of a plugin that raises. Fixed for the same reason
        as ``plugin-not-found``.
+   * - ``plugin-changed``
+     - error
+     - filed by ``ddd gui`` alone, on the file of a plugin named by its path that holds other
+       bytes than the server imported it from. A module is imported once per process, so the
+       server goes on running the old code until it is restarted, and every finding of an
+       analysis after the edit is that code's. The same bytes written again are no change, and
+       ``ddd check``, which imports every plugin afresh, never files it. A module a plugin
+       imports is not watched, and a plugin named as a module is not compared (see
+       :doc:`plugins`).
    * - ``unknown-extension``
      - error
      - an ``extensions`` block, on the project or on a definition, names a plugin the

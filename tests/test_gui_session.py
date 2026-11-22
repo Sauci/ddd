@@ -2325,6 +2325,31 @@ class TestWhatThePollWatches:
         assert session.poll() is True
         assert capsys.readouterr().err.splitlines() == [line]
 
+    def test_a_refused_record_s_line_that_cannot_be_printed_ends_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The line is printed by whichever call made the analysis - opening the project, here,
+        where no analyser runs - and lost where standard error cannot be written, as a failure's
+        is: the call is answered all the same, and the revision published (14:M11)."""
+
+        class Unwritable(io.StringIO):
+            def write(self, text: str) -> int:
+                raise OSError("standard error is closed")
+
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        project_file = tmp_path / "p.ddd.json"
+        build_record(tmp_path, project_file, format=99)
+        session = Session(tmp_path)
+        monkeypatch.setattr(sys, "stderr", Unwritable())
+        session.open(project_file)
+        assert session.revision is not None and len(session.revision.refused) == 1
+
     def test_a_revision_watches_every_description_s_patterns_its_plugins_and_the_records(
         self, tmp_path: Path
     ) -> None:
@@ -2959,6 +2984,32 @@ class TestReadingAndEditing:
         assert "ddd gui: analysing the project failed: boom" in capsys.readouterr().err
         assert session.revision is first
         assert session.poll() is True
+
+    def test_a_wordless_failure_after_a_stale_refusal_is_printed_as_the_state_says_it(
+        self, shared: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The refusal's line says the reason in the words the session says it: an exception
+        raised with nothing to say by its class's name, never an empty reason (14:M7)."""
+
+        class Failing(Session):
+            analyses = 0
+
+            def _analysed(self, project: Path) -> Revision:
+                self.analyses += 1
+                if self.analyses == 2:
+                    raise RuntimeError()
+                return super()._analysed(project)
+
+        session = Failing(shared.parent)
+        session.open(shared)
+        old = unit_of_b(shared, "Hz")
+        (shared.parent / "b.ddd.json").write_text("{}", encoding="utf-8")
+        with pytest.raises(EditError):
+            session.edit([old], "the unit of Torque")
+        assert capsys.readouterr().err.splitlines()[-1] == (
+            "ddd gui: analysing the project failed: RuntimeError"
+        )
+        assert session.snapshot().failed == "RuntimeError"
 
     def test_a_failure_after_a_stale_refusal_that_cannot_be_printed_leaves_the_refusal(
         self, shared: Path, monkeypatch: pytest.MonkeyPatch

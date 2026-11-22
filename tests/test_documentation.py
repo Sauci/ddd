@@ -11489,6 +11489,56 @@ class TestTheLinesCountEachStatementOnce:
         assert "the line above either table" not in said
 
 
+class TestTheGuiRowSaysWhatThePageIsTold:
+    """14:M7, 14:M11, 14:M8. What the page is told of an analysis that raised, of a build record
+    this DDD cannot use, and of an entry repeating a name, which the command page's gui row says
+    where the terminal and the state say it."""
+
+    def test_the_command_page_says_a_failed_analysis_is_printed_and_carried(self) -> None:
+        assert (
+            "An analysis that raises - a plugin failing while the project is read, say - is "
+            "printed in the terminal ``ddd gui`` runs in, ``ddd gui: analysing the project "
+            "failed:`` and its reason, and the state the page reads carries the same reason until "
+            "an analysis succeeds: the revision before it stands meanwhile, or none, and the next "
+            "poll asks for another analysis."
+        ) in flattened(COMMAND_LINE_INTERFACE)
+
+    def test_the_command_page_says_a_refused_record_is_told_in_the_terminal_s_own_line(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The line the page quotes is the one the server prints for a record one format past
+        the one this version reads, its path aside: both follow the code."""
+        from ddd.build_info import BUILD_INFO_FORMAT
+        from ddd.lsp.discovery import load_builds
+
+        said = flattened(COMMAND_LINE_INTERFACE)
+        assert (
+            "A build record this DDD cannot use - written by a newer DDD, or naming a check this "
+            "one has not got - applies its severities to no analysis: the start page lists it "
+            "with its reason, as the language server logs one, the state the page reads carries "
+            "it beside the open project's revision, and the terminal is told of it once, and "
+            "again whenever its reason changes"
+        ) in said
+        record = tmp_path / "ddd-build.json"
+        record.write_text(json.dumps({"format": BUILD_INFO_FORMAT + 1}), encoding="utf-8")
+        refused: dict[Path, str] = {}
+        assert load_builds([record], refused) == []
+        gui_session.Session(tmp_path)._tell_refused([(record, refused[record])])
+        line = capsys.readouterr().err.strip()
+        shown = line.replace(str(record), "/home/you/project/build/ddd/fw/ddd-build.json")
+        assert f"``{shown}``" in said
+
+    def test_the_command_page_says_a_repetition_is_listed_and_counted_at_both_places(
+        self,
+    ) -> None:
+        assert (
+            "An entry repeating a name declared before it, which the analysis leaves out, is that "
+            "name's: the repetition, filed at the entry and again at the first, is listed on that "
+            "name's panel and counted on its row at both, as the Units tab lists a unit listed "
+            "twice."
+        ) in flattened(COMMAND_LINE_INTERFACE)
+
+
 class TestLimitsAreOneValueExactly:
     """3:M9. ``same_value`` read each bound of a range as the double nearest it, so that two
     maxima past 2^53 ``ddd check`` files apart were one value to the panel and to every fix. The

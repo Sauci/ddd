@@ -535,6 +535,8 @@ class TestALaterEntryRepeatingAName:
             assert not located_on(CONSTANTS, built, "TREND_SAMPLES", w, pointing)
         elsewhere = _repeating(w, "constants[0]", c, "constants[1]")
         assert not located_on(CONSTANTS, built, "TREND_SAMPLES", w, elsewhere)
+        another_file = _repeating(c, "constants[1]", w, "constants[0]")
+        assert not located_on(CONSTANTS, built, "TREND_SAMPLES", c, another_file)
         nowhere = _repeating(w, "constants[0]", c, "constants[0]")
         assert not located_on(CONSTANTS, built, "SPARE_CELLS", w, nowhere)
 
@@ -556,6 +558,16 @@ class TestALaterEntryRepeatingAName:
         ]
         assert row_of(CONSTANTS, built, "TREND_SAMPLES", findings, {}).findings == 2
         assert row_of(CONSTANTS, built, "CELLS", findings, {}).findings == 0
+
+    def test_a_name_no_file_declares_has_no_record_a_repetition_could_name(
+        self, tmp_path: Path
+    ) -> None:
+        """Its findings are those at the shapes naming it alone, which the api asks only of a name
+        the index holds: no note is asked about where there is no record to name."""
+        built, _ = built_of(tmp_path, **TWO_HOMES)
+        c, w = tmp_path / "c.ddd.json", tmp_path / "w.ddd.json"
+        findings = Unwalked([(w, _repeating(w, "constants[0]", c, "constants[0]"))])
+        assert entry_findings(CONSTANTS, built, "SPARE_CELLS", findings) == []
 
     def test_each_vocabulary_names_the_check_the_loader_files_a_repetition_under(self) -> None:
         assert [vocabulary.repeated for vocabulary in HELD] == [

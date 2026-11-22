@@ -1,5 +1,6 @@
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import type { Locator } from "@playwright/test";
 import {
   CONTROLLER,
   drift,
@@ -15,9 +16,9 @@ import { expect, test } from "./fixtures";
 // The start page's own states - no project found, a build record this DDD cannot read, the
 // list loading, failing or naming images, a project that does not load, a project opening - and
 // the app around every page: signed in by a launch's code, connecting, the session failing,
-// signed out, analysing the project, the banners of a long poll that fails and of a server that
-// stopped, what is written while it has, a panel just after the edit that made it, and the
-// changes a plan makes (spec 2026-10-08 §5; part 19c).
+// signed out, analysing the project, a project another page opened, the banners of a long poll
+// that fails and of a server that stopped, what is written while it has, a panel just after the
+// edit that made it, and the changes a plan makes (spec 2026-10-08 §5; part 19c).
 
 /** What the page says while its long poll goes unanswered: `App.tsx`'s `stopped` banner. */
 const STOPPED = "ddd gui has stopped. Start it again and open the address it prints.";
@@ -72,19 +73,20 @@ function unreadable(directory: string): void {
  * (`slowAnalyses`). */
 const SLOW = "slow";
 
-/** The demo changed, before `ddd gui` starts on it, so that every analysis takes seconds more while
- * a file named `SLOW` lies in its directory: a project plugin, `slow.py`, whose check sleeps,
- * named in the description's `plugins`. The examples analyse in a few milliseconds, which leaves
- * a journey no moment to see the page between an edit and the analysis that follows it. The
- * journey creates `SLOW` just before the press that edits, so that the analyses `ddd gui` starts
- * with are fast. The plugin reports no finding.
+/** The demo changed - or the project `description` names, in `directory` - before `ddd gui`
+ * starts on it, so that every analysis takes seconds more while a file named `SLOW` lies in
+ * `directory`: a project plugin, `slow.py`, whose check sleeps, named in the description's
+ * `plugins`. The examples analyse in a few milliseconds, which leaves a journey no moment to see
+ * the page between an edit and the analysis that follows it. The journey creates `SLOW` just
+ * before the press that edits, so that the analyses `ddd gui` starts with are fast. The plugin
+ * reports no finding.
  *
  * Not `generatedGui`, whose analysis runs for about a second: the panel of a variable just
  * declared there opens only once the add panel's own reads have answered (`DeclarePanel`'s
  * `onSuccess`), the generated project's `declarable` among them, which takes about as long as the
  * analysis does. Measured in Chrome on the Linux development PC, in six runs the panel opened
  * after the analysis had landed and never said the findings were updating. */
-function slowAnalyses(directory: string): void {
+function slowAnalyses(directory: string, description = "demo.ddd.json"): void {
   const plugin = [
     "import time",
     "from pathlib import Path",
@@ -101,10 +103,36 @@ function slowAnalyses(directory: string): void {
     "",
   ];
   writeFileSync(join(directory, "slow.py"), plugin.join("\n"), "utf8");
-  const description = join(directory, "demo.ddd.json");
-  const data = JSON.parse(readFileSync(description, "utf8"));
+  const path = join(directory, description);
+  const data = JSON.parse(readFileSync(path, "utf8"));
   data.project.plugins = [...(data.project.plugins ?? []), "slow.py"];
-  writeFileSync(description, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+  writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+}
+
+/** The directory, in the copy, of `secondProject`'s project. */
+const SECOND = "second";
+
+/** `secondProject`'s description: the file the page names that project by until the session says
+ * its name (`projectName`, lib/session.ts). */
+const SECOND_DESCRIPTION = "second.ddd.json";
+
+/** A second project in the copy, beside the demo's, under the root the walk for projects searches
+ * (`find_projects`, session.py): SecondDevice, of one component of its own, Pump, so that nothing
+ * it draws is the demo's - the demo's other project, Logging, is one of DemoDevice's own
+ * includes. */
+function secondProject(directory: string): void {
+  const second = join(directory, SECOND);
+  mkdirSync(second);
+  const write = (name: string, body: object) =>
+    writeFileSync(join(second, name), `${JSON.stringify(body, null, 2)}\n`, "utf8");
+  write("pump.ddd.json", { component: { name: "Pump", interface: [] } });
+  write(SECOND_DESCRIPTION, { project: { name: "SecondDevice", includes: ["pump.ddd.json"] } });
+}
+
+/** Where the canvas draws a module's node: the `transform` React Flow places it by, its position
+ * on the canvas whatever the viewport shows of it. */
+function placeOf(node: Locator): Promise<string> {
+  return node.evaluate((element) => (element as HTMLElement).style.transform);
 }
 
 test("an empty directory finds no project, and the start page says so", async ({
@@ -392,6 +420,136 @@ test("a project opened is analysed before its tabs show anything, and the page s
   }
   await expect(page.getByRole("button", { name: "Controller", exact: true })).toBeVisible();
   await expect(page.getByText("Analysing the project…", { exact: true })).toHaveCount(0);
+});
+
+test("a project a second page opens is the one the first names over what it draws, by its file until the session answers, and the arrangement made there is its own", async ({
+  page,
+  copiedGui,
+}) => {
+  const started = await copiedGui("demo", secondProject, { named: false });
+  await page.goto(started.address);
+  await page.getByRole("button", { name: /^DemoDevice/ }).click();
+  const heading = page.getByRole("heading", { level: 1 });
+  const masthead = page.getByRole("banner");
+  const canvas = page.getByRole("region", { name: "Modules" });
+  await expect(canvas.getByRole("button", { name: "Controller", exact: true })).toBeVisible();
+  await expect(heading).toHaveText("DemoDevice");
+
+  // The next ask of the session this page makes is held: it is the one made once the state this
+  // page follows is of another project, and until it is answered the page names that project by
+  // its description's file, the state carrying the description's path and no name.
+  const releaseSession = await held(page, "/api/session");
+  // A second page of the same browser, as a second tab is, signed in by the same address: it
+  // opens the other project from the start page, and the server has one project open at a time.
+  const other = await page.context().newPage();
+  try {
+    await other.goto(started.address);
+    await other.getByRole("button", { name: "Projects", exact: true }).click();
+    await other.getByRole("button", { name: /^SecondDevice/ }).click();
+    await expect(other.getByRole("heading", { level: 1 })).toHaveText("SecondDevice");
+
+    // The first page, never reloaded, draws what the state is of now: SecondDevice's one module.
+    const pump = canvas
+      .locator(".react-flow__node")
+      .filter({ has: page.getByRole("button", { name: "Pump", exact: true }) });
+    await expect(pump).toBeVisible();
+    await expect(canvas.getByRole("button", { name: "Controller", exact: true })).toHaveCount(0);
+    await expect(heading).toHaveText(SECOND_DESCRIPTION);
+    await expect(
+      masthead.getByRole("button", { name: SECOND_DESCRIPTION, exact: true }),
+    ).toBeVisible();
+
+    // Pump moved on the first page while its session is still held, the session naming DemoDevice.
+    const laidOut = await placeOf(pump);
+    const box = await pump.boundingBox();
+    if (box === null) throw new Error("the Pump node has no bounding box");
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 120, box.y + box.height / 2 + 60, { steps: 12 });
+    await page.mouse.up();
+    const dragged = await placeOf(pump);
+    expect(dragged).not.toBe(laidOut);
+
+    // The session answers, and the first page names the project as its description does.
+    releaseSession();
+    await expect(heading).toHaveText("SecondDevice");
+    await expect(masthead.getByRole("button", { name: "SecondDevice", exact: true })).toBeVisible();
+    await expect(masthead.getByRole("button", { name: "DemoDevice" })).toHaveCount(0);
+
+    // The arrangement was kept under the project drawn, not the one the session named then: the
+    // second page, drawn again, finds Pump where the first put it.
+    await other.reload();
+    const theirs = other
+      .getByRole("region", { name: "Modules" })
+      .locator(".react-flow__node")
+      .filter({ has: other.getByRole("button", { name: "Pump", exact: true }) });
+    await expect(theirs).toBeVisible();
+    await expect.poll(() => placeOf(theirs)).toBe(dragged);
+  } finally {
+    releaseSession();
+    await other.close();
+  }
+});
+
+test("a project a second page opens is the one the first names, on a component's page, while that project's first analysis runs", async ({
+  page,
+  copiedGui,
+}) => {
+  const started = await copiedGui(
+    "demo",
+    (directory) => {
+      secondProject(directory);
+      slowAnalyses(join(directory, SECOND), SECOND_DESCRIPTION);
+    },
+    { named: false },
+  );
+  await page.goto(started.address);
+  await page.getByRole("button", { name: /^DemoDevice/ }).click();
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Controller", level: 1 })).toBeVisible();
+
+  // The session asked again held, as in the journey above: until it answers, the first page has
+  // only the state it follows to name the project by.
+  const releaseSession = await held(page, "/api/session");
+  const other = await page.context().newPage();
+  try {
+    await other.goto(started.address);
+    await other.getByRole("button", { name: "Projects", exact: true }).click();
+    const second = other.getByRole("button", { name: /^SecondDevice/ });
+    await expect(second).toBeVisible();
+    // From here on SecondDevice's analyses take seconds, the first one opening it starts among
+    // them: the examples analyse in milliseconds, too soon for the page to be seen between.
+    const slow = join(started.directory, SECOND, SLOW);
+    writeFileSync(slow, "");
+    await second.click();
+    // While that analysis runs, the first page says so where the component's own page stood,
+    // under the name of the project the state is of: the state says which from its first answer,
+    // before any revision of that project is analysed. Both are read off one moment of the page,
+    // the heading and the line under it: once the analysis lands, the heading alone reads the
+    // same whether or not the page named the project before it.
+    await expect(
+      page
+        .locator("section")
+        .filter({
+          has: page.getByRole("heading", { name: SECOND_DESCRIPTION, exact: true, level: 1 }),
+        })
+        .filter({ hasText: "Analysing the project…" }),
+    ).toBeVisible();
+    rmSync(slow);
+    releaseSession();
+  } finally {
+    releaseSession();
+    await other.close();
+  }
+  // The session answered: the masthead names the project as its description does, and leads to
+  // it.
+  await page.getByRole("banner").getByRole("button", { name: "SecondDevice", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("SecondDevice");
+  await expect(
+    page
+      .getByRole("region", { name: "Modules" })
+      .getByRole("button", { name: "Pump", exact: true }),
+  ).toBeVisible();
 });
 
 test("a server that answers again after it stopped lifts the banner, and the page follows the project again", async ({

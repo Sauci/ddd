@@ -1,9 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { type ReactNode, useCallback, useSyncExternalStore } from "react";
+import { type ReactNode, useCallback, useEffect, useSyncExternalStore } from "react";
 import { getSession } from "../api/client";
 import { signedOut } from "../api/token";
 import { SignedOutView } from "../components/SignedOutView";
 import { hrefOf, type ProjectView, type Route } from "../lib/route";
+import { projectName, sessionAskedAgain } from "../lib/session";
 import type { SharedKind } from "../lib/shared";
 import { ComparePage } from "../screens/ComparePage";
 import { ComponentPage } from "../screens/ComponentPage";
@@ -67,7 +68,13 @@ export function App() {
   const out = useSyncExternalStore(signedOut.subscribe, signedOut.current);
   const session = useQuery({ queryKey: ["session"], queryFn: () => getSession() });
   const opened = session.data?.project ?? null;
-  const { state, updating, stopped, failure } = useProjectState(opened !== null);
+  const { state, project, updating, stopped, failure } = useProjectState(opened !== null);
+  // Asked again each time the state followed comes to be of another project than the session
+  // names: another page of the same server opened it (`sessionAskedAgain`, lib/session.ts).
+  const askAgain = sessionAskedAgain(opened, project);
+  useEffect(() => {
+    if (askAgain) void queries.invalidateQueries({ queryKey: ["session"] });
+  }, [askAgain, queries]);
   // One identity for the whole life of the page: the canvas hands this to every module it draws,
   // and a new function each render would lay the canvas out again each render.
   const openComponent = useCallback(
@@ -166,7 +173,7 @@ export function App() {
     page = (
       <section>
         <div className="heading">
-          <h1>{opened.name ?? opened.path}</h1>
+          <h1>{projectName(opened, project)}</h1>
           <UndoStrip state={state} stopped={stopped} />
           {/* Last in the row, so that none of the controls before it ever moves. */}
           <UpdatingStatus updating={updating} />
@@ -186,7 +193,7 @@ export function App() {
           <p className="quiet">Analysing the project…</p>
         ) : route.view === "graph" ? (
           <GraphPage
-            project={opened.path}
+            project={state.project}
             state={state}
             variable={route.variable}
             stopped={stopped}
@@ -239,7 +246,7 @@ export function App() {
     page = (
       <section>
         <div className="heading">
-          <h1>{opened.name ?? opened.path}</h1>
+          <h1>{projectName(opened, project)}</h1>
         </div>
         <p className="quiet">Analysing the project…</p>
       </section>
@@ -294,7 +301,7 @@ export function App() {
           </Button>
           {opened !== null && (
             <Button variant="link" onPress={() => navigate({ page: "project", view: "graph" })}>
-              {opened.name ?? opened.path}
+              {projectName(opened, project)}
             </Button>
           )}
         </nav>

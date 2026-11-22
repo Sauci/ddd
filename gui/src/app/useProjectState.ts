@@ -10,11 +10,15 @@ import { followStates } from "../state/revisions";
  *
  * Every state is followed, the one before the project's first analysis included; `state` is the
  * last of them once it holds an analysed revision, and `null` before - no screen draws, or asks
- * the server anything, until there is one. `updating` says the findings on screen may be about to
- * change, from the last state followed and the page's own last edit.
+ * the server anything, until there is one. `project` is the project the last state followed is of,
+ * analysed or not, and `null` before the first: what the page names (`projectName`,
+ * lib/session.ts), and how it learns that another page opened another project. `updating` says
+ * the findings on screen may be about to change, from the last state followed and the page's own
+ * last edit.
  */
 export function useProjectState(open: boolean): {
   state: State | null;
+  project: string | null;
   updating: boolean;
   stopped: boolean;
   failure: string | null;
@@ -38,6 +42,7 @@ export function useProjectState(open: boolean): {
   }, [open]);
   return {
     state: latest !== null && analysed(latest) ? latest : null,
+    project: latest === null ? null : latest.project,
     updating: latest !== null && updatingOf(latest, ownEdit),
     stopped,
     failure,

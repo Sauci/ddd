@@ -48,6 +48,10 @@ const edgeTypes = { flow: FlowEdge };
 const FLIGHT = 300;
 
 interface Props {
+  /** The path of the project the state is of (`State.project`): what the graph is asked for
+   * under, and what the canvas's arrangement is kept under (`state/positions.ts`). Not the
+   * session's: another page of the same server may have opened this project since the page last
+   * asked it. */
   project: string;
   state: State | null;
   variable: string | undefined;

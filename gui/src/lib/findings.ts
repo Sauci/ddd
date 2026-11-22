@@ -16,10 +16,11 @@ import { baseName } from "./units";
  *
  * Position alone is not a key: the list is rebuilt on every revision, and an unrelated finding
  * appearing or disappearing earlier in it would shift every key after it. Content alone is not
- * enough either, since the API sends no line or column: a consumer whose unit and limits both
- * disagree gets two `definition-mismatch` findings at the same pointer, and a producer with
- * several disagreeing consumers gets one finding mirrored onto it per consumer, so two distinct
- * findings can share severity, check, pointer and message. The key is that content together
+ * enough either, and a line and a column would not make it so, since only a finding in a file
+ * that did not parse carries them: a consumer whose unit and limits both disagree gets two
+ * `definition-mismatch` findings at the same pointer, and a producer with several disagreeing
+ * consumers gets one finding mirrored onto it per consumer, so two distinct findings can share
+ * severity, check, pointer and message. The key is made of those four, the content, together
  * with which repeat of it this is - 0 for the first, 1 for the next with the same content, and
  * so on - which tells such findings apart while staying stable when a differently-keyed finding
  * elsewhere in the list comes or goes.

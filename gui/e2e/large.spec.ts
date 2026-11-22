@@ -54,6 +54,30 @@ function unitFramesWatched(page: Page): Promise<UnitFrame[]> {
   return page.evaluate(() => (window as unknown as { watchedUnit: UnitFrame[] }).watchedUnit);
 }
 
+/** One frame of the Findings tab as a reader saw it: what the line beside its filter says, and how
+ * many rows its box draws - recorded as `watchUnitCell` records, from one continuous recording. */
+type ListingFrame = readonly [line: string, rows: number];
+
+async function watchListing(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const frames: ListingFrame[] = [];
+    (window as unknown as { watchedListing: ListingFrame[] }).watchedListing = frames;
+    const each = () => {
+      const line = document.querySelector(".filter-line")?.textContent ?? "";
+      frames.push([line, document.querySelectorAll(".findings-window [data-index]").length]);
+      requestAnimationFrame(each);
+    };
+    requestAnimationFrame(each);
+  });
+}
+
+/** Every frame `watchListing` has recorded so far, in order. */
+function listingFramesWatched(page: Page): Promise<ListingFrame[]> {
+  return page.evaluate(
+    () => (window as unknown as { watchedListing: ListingFrame[] }).watchedListing,
+  );
+}
+
 /**
  * An edit shows at once, and its findings follow (design doc §5-6, tasks 6 and 8): the component
  * page's own cell already reads the unit just applied while "Updating the findings…" stands in
@@ -439,6 +463,20 @@ test("the Findings tab's filter asks the server for the findings its text finds"
   await expect(filter).toHaveAccessibleDescription("");
   await expect(rows.first().locator(".chip")).toBeVisible();
   await expect(rows.filter({ hasText: "c00500.ddd.json" })).toHaveCount(0);
+
+  // Typed again with the box scrolled to its last row, its first page come already: drawn from its
+  // first row in the very frame its line says how many it leaves, never that line over no row, as
+  // the box's old place would draw it.
+  await page.mouse.wheel(0, 2_000_000);
+  await expect(page.locator('[data-index="24999"]')).toBeVisible();
+  await watchListing(page);
+  await filter.fill("c00500");
+  await expect(first).toContainText("c00500.ddd.json");
+  const frames = await listingFramesWatched(page);
+  expect(frames.some(([line]) => line === "36 of 25,000 findings")).toBe(true);
+  expect(frames.filter(([line, drawn]) => line === "36 of 25,000 findings" && drawn === 0)).toEqual(
+    [],
+  );
 });
 
 /**

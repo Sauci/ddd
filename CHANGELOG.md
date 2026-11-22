@@ -1938,12 +1938,12 @@ A build of DDD from its sources, and a release of it:
   before.  The panel that offers a name to declare names the component producing each from the
   index, as the analysis loaded it, and reads no producer's file, so a producer renamed in its file
   since the analysis is named as it was until the next one reads it.  A project held already is
-  opened without walking for every project first: the one named on the command line, the open
-  project, and one the last listing found, each where the walk would still find it, where it walked
-  the start directory for every project first; a path that is none of those, or that the walk would
-  not find now, is walked for as before.  A change to a shared file's entry, a constant's value
-  among them, no longer looks for the vocabulary's files, which only adding one needs.  Nothing to
-  migrate.
+  opened without walking for every project first: the open project, and one the last listing found,
+  each where the walk would still find it, and the one named on the command line wherever it lies,
+  where it walked the start directory for every project first; a path that is none of those, or
+  that the walk would not find now, is walked for as before.  A change to a shared file's entry, a
+  constant's value among them, no longer looks for the vocabulary's files, which only adding one
+  needs.  Nothing to migrate.
 
 * **A refusal a page can mend is a refusal, and it names the file.**  A file this process may not
   write was refused before anything was staged, as `unwritable`, and answered with the status of the

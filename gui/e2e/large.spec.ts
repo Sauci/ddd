@@ -354,7 +354,11 @@ test("a component page's filter finds a declaration its table does not draw", as
 
   const goTo = page.getByRole("combobox", { name: "Go to a variable" });
   await goTo.pressSequentially("C00530_O0000");
-  await expect(page.getByRole("listbox").getByRole("option")).toHaveCount(1);
+  // The name itself, not a count: while the names are on their way, the list's one row is its
+  // sentence saying so.
+  await expect(
+    page.getByRole("listbox").getByRole("option", { name: "C00530_O0000", exact: true }),
+  ).toBeVisible();
   await goTo.press("Enter");
   await expect(page.getByRole("heading", { name: "C00530", level: 1 })).toBeVisible();
   await expect(filter).toHaveValue("");

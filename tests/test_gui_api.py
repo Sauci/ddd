@@ -6745,6 +6745,58 @@ class TestTheTypesTab:
         assert body["members"][3]["dimensions"] == ["8"]
         assert body["members"][0]["typename"] == "Sample_t"
 
+    @pytest.mark.parametrize(
+        ("key", "saved", "read"),
+        [
+            ("name", None, ""),
+            ("member", "other", "value"),
+            ("bits", "a", None),
+            ("typename", 5, None),
+            ("datatype", 5, None),
+            ("unit", 5, None),
+            ("dimensions", 5, []),
+            ("dimensions", [2, "N"], ["2", "N"]),
+        ],
+    )
+    def test_a_member_saved_with_a_key_the_contract_does_not_hold_is_read_as_saved(
+        self, structures, key: str, saved: object, read: object
+    ) -> None:
+        """A save that still parses is answered while the open revision is the one before it:
+        every key of the member is read by what the reply wants, and the rest is left to the
+        finding the next analysis files."""
+        api, root = structures
+
+        def drift(document: dict[str, Any]) -> None:
+            member = next(t for t in document["types"] if t["name"] == "Sample_t")["members"][0]
+            member[key] = saved
+
+        changed(root, "types.ddd.json", drift)
+        reply = get(api, "/api/type", name="Sample_t")
+        assert reply.status == 200
+        assert reply.body["members"][0][key] == read
+
+    @pytest.mark.parametrize("key", ["name", "member"])
+    def test_a_member_saved_without_a_key_is_read_without_it(self, structures, key: str) -> None:
+        api, root = structures
+
+        def drift(document: dict[str, Any]) -> None:
+            next(t for t in document["types"] if t["name"] == "Sample_t")["members"][0].pop(key)
+
+        changed(root, "types.ddd.json", drift)
+        reply = get(api, "/api/type", name="Sample_t")
+        assert reply.status == 200
+        assert reply.body["members"][0][key] == {"name": "", "member": "value"}[key]
+
+    def test_an_external_saved_with_a_header_that_is_no_text_answers_none(self, structures) -> None:
+        api, root = structures
+
+        def drift(document: dict[str, Any]) -> None:
+            next(t for t in document["types"] if t["name"] == "DriverStatus_t")["header"] = 5
+
+        changed(root, "types.ddd.json", drift)
+        reply = get(api, "/api/type", name="DriverStatus_t")
+        assert (reply.status, reply.body["header"]) == (200, None)
+
     def test_an_external_answers_its_header(self, structures) -> None:
         api, _ = structures
         body = get(api, "/api/type", name="DriverStatus_t").body

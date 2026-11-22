@@ -41,9 +41,6 @@ alongside its interface, at ``component.types[i]`` rather than a types file's ow
 SCALAR_KEYS: Final = ("datatype", "unit", "conversion", "limits")
 """What a scalar type fixes, in the order the panel lists it."""
 
-MEMBER_KEYS: Final = ("name", "member", "typename", "datatype", "unit", "bits", "dimensions")
-"""What a structure's member is shown with, in the order the panel's columns run."""
-
 
 @dataclass(frozen=True, slots=True)
 class TypeRow:
@@ -282,13 +279,32 @@ def members_of(built: Index, name: str, cache: dict[Path, Document]) -> tuple[di
 
 
 def _member(entry: dict[str, Any]) -> dict[str, Any]:
-    """One member as the panel's columns read it, its dimensions rendered as text."""
-    shown: dict[str, Any] = {key: entry[key] for key in MEMBER_KEYS if key in entry}
-    sized = shown.get("dimensions")
-    if isinstance(sized, list):
-        # A dimension is an integer or the name of a declared constant; the column shows either.
-        shown["dimensions"] = tuple(str(entry) for entry in sized)
-    return shown
+    """One member as the panel's columns read it, every key of the panel's columns answered.
+
+    Each key is read by what the reply wants of it, as :func:`_string` reads a type's: a save
+    that still parses but holds a member without its ``name``, or a ``bits`` that is no integer,
+    is answered before the next analysis files its finding, and what the file holds there is not
+    an answer. A ``name`` that is no text reads ``""``, a ``member`` that is neither of the two
+    reads ``value``, a ``typename``, ``datatype``, ``unit`` or ``bits`` of the wrong kind reads
+    ``None`` and ``dimensions`` that is no list reads none; a dimension is an integer or the
+    name of a declared constant, and the column shows either as text.
+    """
+    sized = entry.get("dimensions")
+    bits = entry.get("bits")
+    return {
+        "name": _text(entry.get("name")) or "",
+        "member": "bits" if entry.get("member") == "bits" else "value",
+        "typename": _text(entry.get("typename")),
+        "datatype": _text(entry.get("datatype")),
+        "unit": _text(entry.get("unit")),
+        "bits": bits if isinstance(bits, int) and not isinstance(bits, bool) else None,
+        "dimensions": tuple(str(each) for each in sized) if isinstance(sized, list) else (),
+    }
+
+
+def _text(value: object) -> str | None:
+    """``value`` where it is text, else ``None``."""
+    return value if isinstance(value, str) else None
 
 
 def _string(built: Index, name: str, key: str, cache: dict[Path, Document]) -> str:

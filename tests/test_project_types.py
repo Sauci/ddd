@@ -338,3 +338,55 @@ class TestWhatATypeStates:
         assert members[0]["typename"] == "Sample_t"
         assert members[3]["dimensions"] == ("8",)
         assert members_of(built, "Temperature_t", cache) == ()
+
+
+class TestAMemberAsSaved:
+    def test_a_member_is_read_by_what_each_key_is_answered_as(self, tmp_path: Path) -> None:
+        """Every key of a member is answered, its own where it holds what the reply wants and
+        otherwise the empty reading: no key raises, and none is left out. The file is saved after
+        the analysis read it, as a person typing into it saves it."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "types.ddd.json"),
+                "types.ddd.json": types(struct_type("S_t", value_member("a", unit="rpm"))),
+            },
+        )
+        built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
+        saved = json.loads((tmp_path / "types.ddd.json").read_text(encoding="utf-8"))
+        saved["types"][0]["members"] = [
+            {"member": True, "bits": True, "dimensions": "2"},
+            {"name": "a", "member": "bits", "bits": 3, "dimensions": [2, "N"]},
+            {"name": "b", "typename": "T_t", "datatype": "uint8", "unit": "rpm"},
+            7,
+        ]
+        (tmp_path / "types.ddd.json").write_text(json.dumps(saved), encoding="utf-8")
+        assert members_of(built, "S_t", {}) == (
+            {
+                "name": "",
+                "member": "value",
+                "typename": None,
+                "datatype": None,
+                "unit": None,
+                "bits": None,
+                "dimensions": (),
+            },
+            {
+                "name": "a",
+                "member": "bits",
+                "typename": None,
+                "datatype": None,
+                "unit": None,
+                "bits": 3,
+                "dimensions": ("2", "N"),
+            },
+            {
+                "name": "b",
+                "member": "value",
+                "typename": "T_t",
+                "datatype": "uint8",
+                "unit": "rpm",
+                "bits": None,
+                "dimensions": (),
+            },
+        )

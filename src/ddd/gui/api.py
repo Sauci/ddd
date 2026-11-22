@@ -1000,7 +1000,9 @@ class Api:
         derived = self._derive(revision)
         row = row_of(built, name, derived.findings, cache)
         stated = fixed_by(built, name, cache)
-        header = stated.get("header")
+        # An external's header is read as the reply wants it, text: a save that still parses may
+        # hold another json value there, before the next analysis files its finding.
+        header = json.loads(stated.get("header", "null"))
         return Reply(
             200,
             written(
@@ -1011,7 +1013,7 @@ class Api:
                     file=derived.resolve(site.path).as_posix(),
                     pointer=site.pointer,
                     description=row.description,
-                    header=None if header is None else json.loads(header),
+                    header=header if isinstance(header, str) else None,
                     keys=[
                         asdict(offer_for(built, key, stated.get(key), required=key in REQUIRED))
                         for key in SCALAR_KEYS
@@ -1029,18 +1031,7 @@ class Api:
                         }
                         for use in uses_of(built, name, cache)
                     ],
-                    members=[
-                        {
-                            "name": member["name"],
-                            "member": member["member"],
-                            "typename": member.get("typename"),
-                            "datatype": member.get("datatype"),
-                            "unit": member.get("unit"),
-                            "bits": member.get("bits"),
-                            "dimensions": member.get("dimensions", ()),
-                        }
-                        for member in members_of(built, name, cache)
-                    ],
+                    members=list(members_of(built, name, cache)),
                     findings=_listed(derived, type_findings(built, name, derived.findings), cache),
                 )
             ),

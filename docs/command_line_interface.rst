@@ -496,7 +496,11 @@ The commands
        would not load with - a datatype that is none, a maximum below its minimum, a
        factor of 0 - is refused there before it is planned, in the words ``ddd check``
        files it in, since a types file that does not load takes every type it declares
-       with it. A type ``ddd check`` refuses already is not refused again for it: a change
+       with it. A type saved since the analysis, and still json, is answered as it is saved until
+       the next analysis files what is wrong with it: a member without its ``name``, or whose
+       ``bits`` is no integer, is listed with the keys that read and the others empty, and an
+       external's header that is no text is none, where the panel would otherwise be an internal
+       error. A type ``ddd check`` refuses already is not refused again for it: a change
        that leaves that refusal as it was is planned, the value a row holds among them,
        and so is one that mends it.
        Every change is written into the files in their own layout and checked

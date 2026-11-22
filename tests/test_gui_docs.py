@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from ddd.gui.api import ROUTES
+from ddd.gui.server import EDIT_BODY
 
 PAGE = Path(__file__).parents[1] / "docs" / "gui_security.rst"
 
@@ -227,6 +228,18 @@ def test_the_page_says_to_open_ddd_gui_from_its_own_address_alone() -> None:
         "than from a link someone else wrote, or an address that sends the browser on to it."
         in _prose()
     )
+
+
+def test_the_page_says_how_much_an_edit_may_post_once_it_has_shown_the_token() -> None:
+    """The edit's own limit, as the server holds it (15:I4), and read only past the gate."""
+    assert (
+        f"``POST /api/edit`` alone may promise more, up to {EDIT_BODY:,} bytes, since an Apply "
+        "posts every change of its plan"
+    ) in _prose()
+    assert (
+        "but only once it has shown the token and this server's own origin: refused before "
+        "that, it is read and drained as any other ``POST`` is."
+    ) in _prose()
 
 
 def test_the_page_says_a_wait_for_the_state_gives_its_slot_back_once_the_page_has_gone() -> None:

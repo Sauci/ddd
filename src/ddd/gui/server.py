@@ -29,6 +29,9 @@ this one trusts nothing it did not hand out itself:
   answered as it is. So ``localhost`` is this server itself, whichever of the two addresses a
   browser tries, signed out until the address it printed is opened there, and no other program
   can listen on ``[::1]`` at that port;
+* a ``POST``'s body is read up to 1,048,576 bytes, an edit's up to 4,194,304 once it has shown
+  the token and this server's own origin, since an Apply posts every change of its plan
+  (:data:`EDIT_BODY`);
 * a ``POST`` refused before its body is read has that body read and thrown away, at most
   1,048,576 bytes of it, rather than left unread; where its length cannot be read this way, the
   connection closes behind the answer instead, draining until the client closes, two seconds
@@ -84,7 +87,25 @@ ask, short enough that a code a local reader of ``/proc`` raced from the launch 
 for long."""
 
 MAX_BODY: Final = 1024 * 1024
-"""The largest request body accepted; an edit of a description file is a few hundred bytes."""
+"""The largest request body accepted but an edit's (:data:`EDIT_BODY`), and the most a body
+refused before it is read is drained by (:meth:`_Handler._send`, :func:`_linger`): a sign-in, an
+open or an undo posts a few dozen bytes."""
+
+EDIT_BODY: Final = 4 * 1024 * 1024
+"""The largest body ``POST /api/edit`` accepts, four times :data:`MAX_BODY`: an Apply posts every
+change of its plan, each file's path, fingerprint and operations (15:I4). Renaming the unit stated
+in the most files of a project of 100,000 declarations posts up to 1,948,716 bytes, the
+benchmark's applied rename (``tools/bench_gui.py``), from the ``mixed`` shape, findings-heavy, its
+1,682 paths 138 to 150 bytes long. The ``many`` shape's rename changes the most files of the
+shapes the benchmark runs, 3,334, in 1,852,844 bytes, and within this limit each of its paths
+could be 851 bytes long: past the 777 bytes a stock Windows' longest path takes in UTF-8, 259
+characters of three bytes each. The generator's ``chain`` shape, 50,000 components of two
+declarations each, which no budget names, posts more at 100,000 declarations, 4,213,186 bytes over
+12,502 files, and is refused.
+
+Read only once a request has shown this server's token and its own origin (:meth:`_Handler._route`):
+every other body is read up to :data:`MAX_BODY`, ``POST /open``'s among them, and every body
+refused before it is read is drained by that."""
 
 LINGER_SECONDS: Final = 2.0
 """How long a connection closed with a body still arriving is drained before its close (P18-31):
@@ -646,28 +667,30 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _declared(self) -> int | None:
         """The length a body refused before it is read is drained by (:meth:`_send`): its
-        ``Content-Length`` (:meth:`_content_length`). ``None`` - its connection closed after the
-        answer instead - for one that is no length, one past :data:`MAX_BODY`, or any
-        ``Transfer-Encoding`` (P19a-10): a chunked body has no ``Content-Length``, and drained as
-        a length of none, it would be left on the connection, to be read as the next request."""
+        ``Content-Length`` (:meth:`_content_length`), of at most :data:`MAX_BODY` whatever the
+        route - an edit's own limit is read only once its token and origin are, as its body is.
+        ``None`` - its connection closed after the answer instead - for one that is no length,
+        one past :data:`MAX_BODY`, or any ``Transfer-Encoding`` (P19a-10): a chunked body has no
+        ``Content-Length``, and drained as a length of none, it would be left on the connection,
+        to be read as the next request."""
         if "Transfer-Encoding" in self.headers:
             return None
-        return self._content_length()
+        return self._content_length(MAX_BODY)
 
-    def _content_length(self) -> int | None:
+    def _content_length(self, limit: int) -> int | None:
         """The length the request's ``Content-Length`` spells, if it is one this server reads: a
-        length, of at most :data:`MAX_BODY` - and ``0`` with no ``Content-Length`` at all.
-        ``None`` for one that is no length, or one past :data:`MAX_BODY`."""
+        length, of at most ``limit`` - and ``0`` with no ``Content-Length`` at all. ``None`` for
+        one that is no length, or one past ``limit``."""
         length = self.headers.get("Content-Length", "0")
         if not (length.isascii() and length.isdecimal()):
             return None
         # Leading zeros are stripped before int() reads anything: int() refuses a string of more
         # than 4,300 digits whatever their value - by default; sys.get_int_max_str_digits() says
-        # how many. What is left is past MAX_BODY if it has more digits than MAX_BODY's seven,
+        # how many. What is left is past the limit if it has more digits than the limit has,
         # which settles it without converting it, and is read as its value otherwise: zeros
         # alone, however many, are a length of 0.
         significant = length.lstrip("0") or "0"
-        if len(significant) > len(str(MAX_BODY)) or int(significant) > MAX_BODY:
+        if len(significant) > len(str(limit)) or int(significant) > limit:
             return None
         return int(significant)
 
@@ -745,7 +768,7 @@ class _Handler(BaseHTTPRequestHandler):
             if not self._from_this_page():
                 self._send_json(403, {"error": "forbidden", "message": _FORBIDDEN})
                 return
-            body = self._body()
+            body = self._body(MAX_BODY)
             if body is None:
                 return
             # Drained by _body() (part 18's P18-31), then refused on its length before _exchange
@@ -771,7 +794,10 @@ class _Handler(BaseHTTPRequestHandler):
             return
         body = None
         if method == "POST":
-            body = self._body()
+            # An edit's own limit, past MAX_BODY, read here alone: once the request has shown the
+            # token and this server's own origin, so that no request without them is read further
+            # than before (15:I4, EDIT_BODY).
+            body = self._body(EDIT_BODY if url.path == "/api/edit" else MAX_BODY)
             if body is None:
                 return
         # Blank values kept: what a blank means is each route's own to say - the empty text for
@@ -879,16 +905,20 @@ class _Handler(BaseHTTPRequestHandler):
         kind = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
         return origin in self._own_origins() and kind == "application/json"
 
-    def _body(self) -> bytes | None:
+    def _body(self, limit: int) -> bytes | None:
+        """The request's body, read up to ``limit`` bytes - its route's own: :data:`EDIT_BODY` for
+        an edit, :data:`MAX_BODY` for any other - or ``None`` once it is refused: ``400`` for a
+        ``Content-Length`` that is no length, ``413`` for one past ``limit``, its answer naming
+        it."""
         length = self.headers.get("Content-Length", "0")
         if not (length.isascii() and length.isdecimal()):
             self._send_json(400, {"error": "bad-request", "message": "Content-Length is no length"})
             return None
         # By its Content-Length alone, not _declared: a body sent with a Transfer-Encoding that
         # comes this far is read as one of none, as it always was (P19a-10 left it so).
-        size = self._content_length()
+        size = self._content_length(limit)
         if size is None:
-            message = f"a request body is at most {MAX_BODY} bytes"
+            message = f"a request body is at most {limit} bytes"
             self._send_json(413, {"error": "too-large", "message": message})
             return None
         body = self.rfile.read(size)

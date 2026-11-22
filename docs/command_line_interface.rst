@@ -825,9 +825,12 @@ The commands
        such a file declares says what its panel says, that no file that loaded declares it
        and which did not load, and not that no file declares it. Opening a project answers at
        once with its name, read from its description as it stands and kept in the heading
-       from then on; ``Analysing the project…`` stands where the tab's own content goes,
-       until the first analysis lands, and every answer needing a revision is refused until
-       then, in the same words - ``the open project has not been analysed yet``. An analysis
+       until another project is opened, in that page or another: the server has one project
+       open at a time, and every page names the new one from then on, by its description's
+       file until the server has said its name; ``Analysing the project…`` stands where the
+       tab's own content goes, until the first analysis lands, and every answer needing a
+       revision is refused until then, in the same words - ``the open project has not been
+       analysed yet``. An analysis
        that raises - a plugin failing while the project is read, say - is printed in the
        terminal ``ddd gui`` runs in, ``ddd gui: analysing the project failed:`` and its reason,
        and the state the page reads carries the same reason until an analysis succeeds: the

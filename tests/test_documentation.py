@@ -11545,6 +11545,24 @@ class TestTheGuiRowSaysWhatThePageIsTold:
         ) in said
 
 
+class TestEveryPageNamesTheProjectOpen:
+    """15:I3. The server has one project open at a time, and a page asked which as it loaded or
+    opened one, and never again: once another page opened another project, it went on naming the
+    first while it drew the second. A page names the project the state it follows is of now, by
+    its description's file until the session, asked again, names it, and the command page's gui
+    row says so where it said the name was kept from then on."""
+
+    def test_the_command_page_says_every_page_names_the_project_opened_last(self) -> None:
+        said = flattened(COMMAND_LINE_INTERFACE)
+        assert (
+            "Opening a project answers at once with its name, read from its description as it "
+            "stands and kept in the heading until another project is opened, in that page or "
+            "another: the server has one project open at a time, and every page names the new one "
+            "from then on, by its description's file until the server has said its name;"
+        ) in said
+        assert "kept in the heading from then on" not in said
+
+
 class TestLimitsAreOneValueExactly:
     """3:M9. ``same_value`` read each bound of a range as the double nearest it, so that two
     maxima past 2^53 ``ddd check`` files apart were one value to the panel and to every fix. The

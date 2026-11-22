@@ -32,6 +32,8 @@ test("a reader can ask whether this delivery replaces the last", async ({ page, 
   const verdict = page.getByRole("status").filter({ hasText: "replace the baseline" });
   await expect(verdict).toHaveText("This project can replace the baseline.");
   await expect(page.getByText("Nothing to report")).toBeVisible();
+  // No table of findings stands under it, empty: the line says there is nothing to list (16:M1).
+  await expect(page.getByRole("grid", { name: "Findings" })).toHaveCount(0);
 
   // ValueA's *producing* declaration, in SensorHub - not Controller's own reading of it, which
   // is what `drift`/`driftIn` change elsewhere for `definition-mismatch`. Resolution follows the

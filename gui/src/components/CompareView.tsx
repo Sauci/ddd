@@ -99,39 +99,44 @@ export function CompareView(props: CompareViewProps) {
               : "This project cannot replace the baseline."}
           </p>
           <p className="summary">{compareLine(reply)}</p>
-          <div className={row !== undefined ? "with-panel" : undefined}>
-            <div>
-              <CompareTableView rows={rows} selected={props.selected} onSelect={props.onSelect} />
-            </div>
-            {row !== undefined && (
-              <div key={props.selected}>
-                <FindingPanelView
-                  finding={row.finding}
-                  label={routeLabel(row.finding, props.state)}
-                  href={routeHref(row.finding)}
-                  reason={compareRouteReason(row, props.state)}
-                  place={placeOf(row.finding, fileNameIn(row.fromBaseline))}
-                  fileName={fileNameIn(row.fromBaseline)}
-                  onOpen={() => {
-                    const route = routeOf(row.finding);
-                    if (route !== null) props.onOpen(route);
-                  }}
-                  // Nothing here ever offers a fix: `POST /api/edit` changes the open project,
-                  // and a comparison's own finding names no place in it to change (see `reason`
-                  // above), while a baseline's finding is not about the open project at all.
-                  fixes={null}
-                  chosen={undefined}
-                  onChoose={() => {}}
-                  changesShown={false}
-                  onChangesShown={() => {}}
-                  onApply={() => {}}
-                  refusal={null}
-                  busy={busy}
-                  onClose={() => props.onSelect(undefined)}
-                />
+          {/* No table where the line says there is nothing to report: a long table draws the rows
+              in view, and with none its box is nothing high - the header cut away, and still in
+              the document for a screen reader. */}
+          {rows.length > 0 && (
+            <div className={row !== undefined ? "with-panel" : undefined}>
+              <div>
+                <CompareTableView rows={rows} selected={props.selected} onSelect={props.onSelect} />
               </div>
-            )}
-          </div>
+              {row !== undefined && (
+                <div key={props.selected}>
+                  <FindingPanelView
+                    finding={row.finding}
+                    label={routeLabel(row.finding, props.state)}
+                    href={routeHref(row.finding)}
+                    reason={compareRouteReason(row, props.state)}
+                    place={placeOf(row.finding, fileNameIn(row.fromBaseline))}
+                    fileName={fileNameIn(row.fromBaseline)}
+                    onOpen={() => {
+                      const route = routeOf(row.finding);
+                      if (route !== null) props.onOpen(route);
+                    }}
+                    // Nothing here ever offers a fix: `POST /api/edit` changes the open project,
+                    // and a comparison's own finding names no place in it to change (see `reason`
+                    // above), while a baseline's finding is not about the open project at all.
+                    fixes={null}
+                    chosen={undefined}
+                    onChoose={() => {}}
+                    changesShown={false}
+                    onChangesShown={() => {}}
+                    onApply={() => {}}
+                    refusal={null}
+                    busy={busy}
+                    onClose={() => props.onSelect(undefined)}
+                  />
+                </div>
+              )}
+            </div>
+          )}
           <h2 className="panel-heading">Renamed objects</h2>
           <p className="rename-note">
             A calibration dataset, a recording or a test script keyed by the old spelling needs this

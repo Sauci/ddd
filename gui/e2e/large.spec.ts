@@ -318,6 +318,8 @@ test("the Table tab's filter finds a component the table does not draw", async (
 
   await filter.fill("c00500");
   await expect(filter).toHaveAccessibleDescription("1 of 666 components");
+  // A status: a screen reader hears the count as it changes.
+  await expect(page.getByRole("status").filter({ hasText: "1 of 666 components" })).toBeVisible();
   await expect(table.getByRole("row")).toHaveCount(2);
   await expect(page.locator("p.summary")).toHaveText("0 errors, 10000 warnings");
   await table.getByRole("button", { name: "C00500", exact: true }).click();
@@ -327,7 +329,8 @@ test("the Table tab's filter finds a component the table does not draw", async (
 /**
  * A component page's filter (16:I14): C00000's 32 declarations are more than its table draws, so
  * its last, `C00000_X0015`, is not in the document until the filter leaves it, whose row then
- * opens its panel as any row does.
+ * opens its panel as any row does. The filter is that component's: another component's page,
+ * reached from the go-to without leaving the page, starts with none.
  */
 test("a component page's filter finds a declaration its table does not draw", async ({
   page,
@@ -348,6 +351,15 @@ test("a component page's filter finds a declaration its table does not draw", as
   await expect(filter).toHaveAccessibleDescription("1 of 32 declarations");
   await table.getByRole("row", { name: /C00000_X0015/ }).click();
   await expect(page.getByRole("complementary", { name: "C00000_X0015" })).toBeVisible();
+
+  const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+  await goTo.pressSequentially("C00530_O0000");
+  await expect(page.getByRole("listbox").getByRole("option")).toHaveCount(1);
+  await goTo.press("Enter");
+  await expect(page.getByRole("heading", { name: "C00530", level: 1 })).toBeVisible();
+  await expect(filter).toHaveValue("");
+  await expect(filter).toHaveAccessibleDescription("");
+  await expect(page.getByRole("grid", { name: "Declarations of C00530" })).toBeVisible();
 });
 
 /**
@@ -404,6 +416,16 @@ test("the Findings tab's filter asks the server for the findings its text finds"
   await expect.poll(() => withinFindingsWindow(page, first)).toBe(true);
   await expect(rows.filter({ hasNotText: "c00500.ddd.json" })).toHaveCount(0);
   await expect(page.locator(".summary")).toHaveText("25000 findings · 10000 warnings, 15000 notes");
+
+  // A listing of more pages than one: each is asked under the filter, the last row of 15,000 the
+  // last of c00665.ddd.json's, as in the whole list's own order.
+  await filter.fill("missing-id");
+  await expect(filter).toHaveAccessibleDescription("15,000 of 25,000 findings");
+  await page.mouse.wheel(0, 2_000_000);
+  const last = page.locator('[data-index="14999"]');
+  await expect(last).toBeVisible();
+  await expect(last).toContainText("missing-id");
+  await expect(last).toContainText("c00665.ddd.json");
 
   await filter.fill("nothing like it");
   await expect(filter).toHaveAccessibleDescription("no finding matches");

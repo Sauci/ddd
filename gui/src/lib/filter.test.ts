@@ -139,9 +139,10 @@ describe("the line beside a filter", () => {
     expect(filterLine("missing", 15000, 25000, FINDINGS)).toBe("15,000 of 25,000 findings");
   });
 
-  test("of one, in the singular", () => {
+  test("of one, in the singular, the noun counting the table's rows", () => {
     expect(filterLine("Hub", 1, 1, COMPONENTS)).toBe("1 of 1 component");
     expect(filterLine("Speed", 1, 1, PLACES)).toBe("1 of 1 place");
+    expect(filterLine("c00500", 1, 666, COMPONENTS)).toBe("1 of 666 components");
   });
 
   test("that nothing matches, where it leaves none", () => {

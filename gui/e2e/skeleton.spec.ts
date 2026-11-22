@@ -310,6 +310,13 @@ test("the masthead's go-to opens a variable on the page of the component produci
   page,
   gui,
 }) => {
+  // Every text the go-to asks the server for: never the empty one, which the field holds before
+  // anything is typed and again once a name is gone to.
+  const asked: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/names") asked.push(url.searchParams.get("text") ?? "");
+  });
   await page.goto(gui.address);
   const goTo = page.getByRole("combobox", { name: "Go to a variable" });
   const list = page.getByRole("listbox");
@@ -337,6 +344,9 @@ test("the masthead's go-to opens a variable on the page of the component produci
   await expect(page).toHaveURL(/\/component\?file=[^&]*sensor_hub\.ddd\.json&variable=ValueA$/);
   await expect(page.getByRole("heading", { name: "SensorHub", level: 1 })).toBeVisible();
   await expect(page.getByRole("complementary", { name: "ValueA" })).toBeVisible();
+  await expect(goTo).toHaveValue("");
+  expect(asked).toContain("ValueA");
+  expect(asked).not.toContain("");
 });
 
 /**

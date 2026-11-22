@@ -528,12 +528,17 @@ class Api:
         number = 0
         edits = 0
         files: list[dict[str, Any]] = []
+        refused: list[dict[str, str]] = []
         counts = statements = (0, 0, 0)
         if revision is not None:
             number = revision.number
             edits = revision.edits
             counts = self._derive(revision).counts
             statements = revision.statements
+            refused = [
+                {"record": record.as_posix(), "reason": reason}
+                for record, reason in revision.refused
+            ]
             files = [
                 {
                     "path": file.path.as_posix(),
@@ -565,6 +570,7 @@ class Api:
                         "info": statements[2],
                     },
                     failed=snapshot.failed,
+                    refused=refused,
                     undoable=None if top is None else {"at": top.at, "label": top.label},
                     analysing=snapshot.analysing,
                     edits=edits,

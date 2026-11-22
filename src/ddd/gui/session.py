@@ -330,6 +330,13 @@ class Revision:
     project description, there or not, which says whether a build generates it
     (:attr:`generated`). Empty for a revision made any other way - a test's."""
 
+    refused: tuple[tuple[Path, str], ...] = ()
+    """Every build record the analysis's search for builds found and this version cannot use -
+    written by a newer DDD, or naming a check it has not got - with why, sorted by path: the
+    search :func:`find_projects` makes for the start page, which lists the same records. None
+    of their severities applies to this revision, and the terminal is told of each
+    (:meth:`Session._tell_refused`). Empty for a revision made any other way - a test's."""
+
     @property
     def dictionary(self) -> DataDictionary | None:
         """What the analysis resolved to, or ``None`` when it did not get that far."""
@@ -553,6 +560,10 @@ class Session:
         self._asked: Path | None = None
         self._running = False
         self._failed: str | None = None
+        # The refused build records the terminal was last told of, each with its reason
+        # (`_tell_refused`): read and written by the one analysis running, and never under the
+        # lock, being printed.
+        self._told: frozenset[tuple[Path, str]] = frozenset()
         self._stopping = threading.Event()
         self._poller: threading.Thread | None = None
         self._analyser: threading.Thread | None = None
@@ -857,14 +868,16 @@ class Session:
         served: tuple[Path, ...] = (self.root,)
         if not project.parent.is_relative_to(self.root):
             served = (self.root, project.parent)
-        ignored: dict[Path, str] = {}  # the start page is where a refused record is reported
+        # Every record found that this version cannot use, and why: the revision carries them
+        # (`Revision.refused`), as the start page lists them.
+        refused: dict[Path, str] = {}
         # Every record found, apart from reading them: the revision watches each, the refused
         # among them (`Revision.watched`). Read under every directory served, a request's rule
         # (`_readable_project`).
         found = build_files(self.root, self.build_directories)
         builds = tuple(
             info
-            for info in _offering(load_builds(found, ignored), *served)
+            for info in _offering(load_builds(found, refused), *served)
             if Path(info.project).resolve() == project
         )
         runs = _runs(project, builds)
@@ -908,6 +921,7 @@ class Session:
             resolved_paths=_resolved_paths(files, findings),
             generated=_generated(project, self.root),
             watched=watched,
+            refused=tuple(sorted(refused.items())),
         )
 
     def _request(self) -> None:
@@ -1018,9 +1032,25 @@ class Session:
             # why: the one line is that reason, and the next poll asks again. Printed before the
             # failure is published, so that whatever waits for it finds the line written.
             print(f"ddd gui: analysing the project failed: {failed}", file=sys.stderr)
+        else:
+            self._tell_refused(revision.refused)
         finally:
             with self._changed:
                 self._finished(begun, revision, failed)
+
+    def _tell_refused(self, refused: Iterable[tuple[Path, str]]) -> None:
+        """Print a line for each build record of ``refused`` (:attr:`Revision.refused`) the
+        terminal has not been told of with that reason since it was last refused, as the language
+        server logs one: once, and again whenever its reason changes, or it is refused again once
+        mended - never at every analysis. Before the revision is published, as an analysis's
+        failure is printed, and lost where standard error cannot be written (:func:`_printed`)."""
+        told = frozenset(refused)
+        for record, reason in sorted(told - self._told):
+            _printed(
+                f"ddd gui: {record}: {reason}; this record is ignored, so its severities apply "
+                "to no analysis"
+            )
+        self._told = told
 
     def _finished(self, begun: _Begun, revision: Revision | None, failed: str | None) -> None:
         """What an analysis leaves once it has ended, made holding the lock: nothing, where the

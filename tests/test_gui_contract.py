@@ -117,6 +117,7 @@ class TestThePageFollowsTheAnalyser:
             "counts",
             "statements",
             "failed",
+            "refused",
             "undoable",
             "analysing",
             "edits",
@@ -149,6 +150,21 @@ class TestThePageFollowsTheAnalyser:
             "it in - never empty - or ``None`` where it finished: the revision before it stands "
             "meanwhile, ``revision`` being ``0`` where there is none, the next poll asks for "
             "another analysis, and the first to succeed clears it."
+        )
+
+    def test_the_state_lists_the_build_records_refused_as_the_start_page_does(self) -> None:
+        """14:M11: a record this DDD cannot use was listed on the start page alone, and a project
+        opened on the command line was analysed without it in silence."""
+        state = contract.api_schema()["$defs"]["State"]
+        assert state["properties"]["refused"]["items"] == {"$ref": "#/$defs/RefusedBuild"}
+        assert (
+            contract.State.model_fields["refused"].annotation == tuple[contract.RefusedBuild, ...]
+        )
+        assert _described("State")["refused"] == (
+            "Every build record the search for builds found and this DDD cannot use - written by "
+            "a newer DDD, or naming a check it has not got - with why, sorted by path, as "
+            "``GET /api/projects`` lists them: the search this revision's analysis made, so none "
+            "before the first. No analysis applies their severities."
         )
 
     def test_the_revision_is_nought_before_the_open_projects_first_analysis(self) -> None:

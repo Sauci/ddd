@@ -36,7 +36,7 @@ from conftest import (
     stopped,
     write_tree,
 )
-from ddd.build_info import BuildInfo, build_info_text
+from ddd.build_info import BUILD_INFO_FORMAT, BuildInfo, build_info_text
 from ddd.diagnostics import Diagnostic, Severity, SeverityPolicy, UnknownCheckError
 from ddd.editing import (
     INVALID,
@@ -2282,6 +2282,48 @@ class TestWhatThePollWatches:
         assert session.poll() is True
         assert session.revision is not None and len(session.revision.builds) == 1
         assert checks_of(session)["unused-output"] is Severity.ERROR
+
+    def test_a_refused_build_record_is_carried_by_its_revision_and_printed_once(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """14:M11. A record this DDD cannot use was said on the start page alone, which a project
+        opened on the command line never draws, and the terminal said nothing: the revision
+        carries it now, with its reason, and the terminal gets its line as the language server
+        logs one - once, and again whenever that changes, never at every analysis."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        project_file = tmp_path / "p.ddd.json"
+        record = build_record(tmp_path, project_file, format=99).resolve()
+        reason = (
+            f"written in format 99 by a newer DDD, and this one understands up to format "
+            f"{BUILD_INFO_FORMAT}"
+        )
+        line = (
+            f"ddd gui: {record}: {reason}; this record is ignored, so its severities apply to "
+            "no analysis"
+        )
+        session = opened_and_settled(project_file)
+        assert session.revision is not None and session.revision.refused == ((record, reason),)
+        assert capsys.readouterr().err.splitlines() == [line]
+        component_file = tmp_path / "a.ddd.json"
+        component_file.write_text(
+            component_file.read_text(encoding="utf-8").replace('"rpm"', '"Hz"'), encoding="utf-8"
+        )
+        assert session.poll() is True
+        assert session.revision.refused == ((record, reason),)
+        assert capsys.readouterr().err == ""
+        build_record(tmp_path, project_file)
+        assert session.poll() is True
+        assert session.revision.refused == ()
+        assert capsys.readouterr().err == ""
+        build_record(tmp_path, project_file, format=99)
+        assert session.poll() is True
+        assert capsys.readouterr().err.splitlines() == [line]
 
     def test_a_revision_watches_every_description_s_patterns_its_plugins_and_the_records(
         self, tmp_path: Path

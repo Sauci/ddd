@@ -826,6 +826,13 @@ The commands
        Types, Units, Shared files and Files tabs' own, a component's own declarations, a
        unit's own places and a variable's keys - draws only the rows in view, in a box of
        its own.
+       A build record this DDD cannot use - written by a newer DDD, or naming a check this one
+       has not got - applies its severities to no analysis: the start page lists it with its
+       reason, as the language server logs one, the state the page reads carries it beside the
+       open project's revision, and the terminal is told of it once, and again whenever its
+       reason changes - ``ddd gui: /home/you/project/build/ddd/fw/ddd-build.json: written in
+       format 3 by a newer DDD, and this one understands up to format 2; this record is
+       ignored, so its severities apply to no analysis``.
        ``-b DIR`` names a build directory as for ``ddd lsp``, ``--host 0.0.0.0``
        listens beyond this computer for a container, ``--port N`` fixes the port and
        ``--no-browser`` only prints the address. ``--host`` takes that address, the

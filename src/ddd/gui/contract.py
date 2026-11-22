@@ -368,6 +368,12 @@ class State(_Frozen):
     ``revision`` being ``0`` where there is none, the next poll asks for another analysis, and the
     first to succeed clears it."""
 
+    refused: tuple[RefusedBuild, ...]
+    """Every build record the search for builds found and this DDD cannot use - written by a
+    newer DDD, or naming a check it has not got - with why, sorted by path, as
+    ``GET /api/projects`` lists them: the search this revision's analysis made, so none before
+    the first. No analysis applies their severities."""
+
     undoable: UndoableEdit | None
     """The last edit the interface made and has not put back, or ``None`` when it has made
     none: what makes the Undo control appear without a request of its own."""

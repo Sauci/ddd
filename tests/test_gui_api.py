@@ -1840,6 +1840,30 @@ class TestState:
         mended = get(api, "/api/state").body
         assert (mended["revision"], mended["failed"]) == (2, None)
 
+    def test_the_state_lists_the_refused_build_records_as_the_start_page_does(
+        self, root: Path
+    ) -> None:
+        """14:M11: a record this DDD cannot use was told on the start page alone, which a project
+        opened on the command line never draws; the state lists it beside the revision analysed
+        without it, in the start page's own words."""
+        from conftest import build_record
+        from ddd.build_info import BUILD_INFO_FORMAT
+
+        newer = BUILD_INFO_FORMAT + 1
+        record = build_record(root, root / "p.ddd.json", format=newer)
+        checking = build_record(
+            root, root / "p.ddd.json", image="test.elf", severity=["no-such-check=error"]
+        )
+        session = Session(root)
+        session.open(root / "p.ddd.json")
+        api = Api(session, root / "p.ddd.json", wait_seconds=0.05)
+        refused = get(api, "/api/state").body["refused"]
+        assert refused == get(api, "/api/projects").body["refused"]
+        assert [entry["record"] for entry in refused] == sorted(
+            path.resolve().as_posix() for path in (record, checking)
+        )
+        assert refused[0]["reason"].startswith(f"written in format {newer} by a newer DDD")
+
     def test_every_finding_says_where_it_leads(self, api: Api) -> None:
         # The root fixture's two components declare Speed, and `a.ddd.json` states no id: every
         # finding this project reports is about that declaration, and each says so.
@@ -4281,6 +4305,7 @@ class TestBeforeTheFirstAnalysis:
                 "counts": {"error": 0, "warning": 0, "info": 0},
                 "statements": {"error": 0, "warning": 0, "info": 0},
                 "failed": None,
+                "refused": [],
                 "undoable": None,
                 "analysing": True,
                 "edits": 0,

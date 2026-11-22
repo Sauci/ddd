@@ -754,6 +754,13 @@ The commands
        by a build: the build record beside it, /home/you/project/build/ddd/fw/ddd-build.json,
        does not read as one, so nothing under /home/you/project/build is written from here
        until it does``.
+       A pattern of ``includes`` is watched in each directory it expands in, and a ``**``
+       expands in every directory it walks, hidden ones among them: at a project's root, as in
+       ``**/*.ddd.json``, it watches the checkout's ``.git``, its ``node_modules`` and its build
+       trees, so committing, checking out, installing a package or building there asks for an
+       analysis - no plan or edit is refused for it - and every directory under that root is
+       looked at each time the server looks for changes on disk, as each file an analysis
+       reads is.
        A plugin named by its path that changed since the server imported it is reported with
        ``plugin-changed`` on its file, an error by default: a module is imported once per
        process, so the server goes on running the old code until it is restarted. A module a

@@ -25,7 +25,12 @@ rewritten each make a new revision, as a file saved does. So does a plugin named
 edited once this process imported it, whose analysis runs the module of its old bytes, a module
 being imported once per process: the revision carries ``plugin-changed`` on the plugin's file, an
 error by default, until ``ddd gui`` is restarted or the file holds the bytes it was imported from
-again (:func:`_tell_changed_plugins`). A build record written where none was, elsewhere than beside
+again (:func:`_tell_changed_plugins`). A ``**`` expands in every directory it walks, hidden ones
+too, as the loader's walk goes into them (:func:`_expanded_in`): at a project's root,
+``**/*.ddd.json`` say, it watches the checkout's ``.git``, its ``node_modules`` and its build
+trees, so that committing, fetching, installing packages or building there asks for an analysis,
+though no plan or edit is refused for it, and every round stamps each directory under that root
+as it stamps each file. A build record written where none was, elsewhere than beside
 the project description - a new build tree's, or a new image's - and a plugin named as a module and
 installed since are noticed when something else changes, and an edit of a plugin named as a
 module, or of a module a plugin imports, is told by nothing, which are limits of the preview.

@@ -104,8 +104,9 @@ export function sentAgain(method: string | undefined, error: unknown): boolean {
 const LINE_LIMIT = 65536;
 
 /** What one address may carry, asked with `method`: the line is the method, a space, the address,
- * ` HTTP/1.1` and a CRLF, so a `GET`'s address has 65521 bytes of it - and every byte of an encoded
- * address is ascii, so its length in characters is its length in bytes. */
+ * ` HTTP/1.1` and a CRLF, so a `GET`'s address has 65521 bytes of it - and an address the page
+ * builds is ascii, its query encoded as a browser sends it (`encoded`), so its length in
+ * characters is the bytes sent. */
 function addressLimit(method: string | undefined): number {
   return LINE_LIMIT - `${(method ?? "GET").toUpperCase()}  HTTP/1.1\r\n`.length;
 }
@@ -222,7 +223,7 @@ function findingsQuery(query: FindingsQuery): string {
   if (query.file !== undefined) parts.push(["file", query.file]);
   if (query.check !== undefined) parts.push(["check", query.check]);
   if (parts.length === 0) return "";
-  return `?${parts.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join("&")}`;
+  return `?${parts.map(([key, value]) => `${key}=${encoded(value)}`).join("&")}`;
 }
 
 export const getFile = (path: string, fetchImpl: Fetch = fetch) =>
@@ -470,10 +471,16 @@ function held<Q extends object>(plan: Held<Q>): Q {
  * own model of it (`ddd.gui.queries`), so that a parameter it does not take, or one it requires
  * left out, fails the type check rather than reaching the server. */
 function queryOf<Q extends object>(query: Q): string {
-  const parts = Object.entries(query).map(
-    ([key, value]) => `${key}=${encodeURIComponent(String(value))}`,
-  );
+  const parts = Object.entries(query).map(([key, value]) => `${key}=${encoded(String(value))}`);
   return parts.length === 0 ? "" : `?${parts.join("&")}`;
+}
+
+/** A query's value as a browser sends it: `encodeURIComponent`'s spelling, and `'` as `%27` - of
+ * the characters `encodeURIComponent` leaves as they are, the one a browser encodes in the query of
+ * an http address (the URL standard's special-query set). So the address the page holds is, byte
+ * for byte, the one sent, and `request` measures what is sent (3:I8). */
+function encoded(value: string): string {
+  return encodeURIComponent(value).replace(/'/g, "%27");
 }
 
 function post(body: unknown): Ask {

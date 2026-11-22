@@ -542,6 +542,44 @@ describe("requests to the server", () => {
     expect(calls.urls).toHaveLength(1);
   });
 
+  test("an address its apostrophes carry past the line is refused, counted as it is sent", async () => {
+    // A browser sends `'` in the query of an http address as `%27`, three bytes, where
+    // `encodeURIComponent` leaves it as it is: counted as one, this address of 65,521 characters
+    // as typed was let through, sent as 65,541 and answered 414.
+    const calls = recorded();
+    const head = "/api/description-plan?file=%2Ftmp%2Fc.ddd.json&name=ParameterA&description=";
+    const description = `${"'".repeat(10)}${"x".repeat(65521 - head.length - 10)}`;
+    const refused = getDescriptionPlan(
+      { file: "/tmp/c.ddd.json", name: "ParameterA", description },
+      calls.fetch,
+    );
+    await expect(refused).rejects.toMatchObject({
+      status: 414,
+      code: "too-long",
+      message:
+        "/api/description-plan cannot be asked in one request: its address needs 65541 " +
+        "characters, and ddd gui reads at most 65521",
+    });
+    expect(calls.urls).toEqual([]);
+  });
+
+  test("an apostrophe in a query is asked for as %27, as a browser sends it", async () => {
+    // Both builders of a query: the routes' own (`queryOf`) and the findings page's.
+    const calls = recorded();
+    await getDescriptionPlan(
+      { file: "/tmp/c.ddd.json", name: "ParameterA", description: "the driver's" },
+      calls.fetch,
+    );
+    await getFindings({ file: "C:/p/o'brien.ddd.json" }, calls.fetch);
+    expect(calls.urls).toEqual([
+      [
+        "/api/description-plan?file=%2Ftmp%2Fc.ddd.json&name=ParameterA&description=the%20driver%27s",
+        { credentials: "omit" },
+      ],
+      ["/api/findings?file=C%3A%2Fp%2Fo%27brien.ddd.json", { credentials: "omit" }],
+    ]);
+  });
+
   test("a POST's address is held to its own line, one byte shorter for its method", async () => {
     const calls = recorded();
     const address = `/api/edit?${"a".repeat(65521 - "/api/edit?".length)}`;

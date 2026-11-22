@@ -599,6 +599,12 @@ The commands
        the format itself does not have. A finding
        naming a constant, a section or a raster leads to the tab, a name no file declares
        landing on the form that declares it.
+       A file an ``includes`` entry names by a plain path that no file answers is listed in
+       ``State.files`` as a file of no kind that did not load, and the description holding the
+       entry, which parsed and matched its shape, as one that did: a refusal naming the files that
+       did not load names the missing file, never the description, and the finding stays filed
+       at the entry, in the description. An entry that is a pattern naming several files does not
+       say which of them could not be read, and its error stays the description's.
        A Files tab lists the root project's own ``includes``, one row per entry in the
        description's own order - a pattern's own row followed immediately by every file it
        matched, indented beneath it - each named as the description spells it, or, for one

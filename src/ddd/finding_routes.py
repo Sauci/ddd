@@ -73,8 +73,9 @@ about the file, which it names. Neither is filed in a component, which is why bo
 beside :data:`CONSTANT_CHECKS` and above the gate :data:`COMPONENT_KIND` guards.
 
 ``file-not-found``, filed at an entry too where a plain path names no file, is not here: it is a
-load check, so the description carrying it counts as not loaded, and :func:`route_of` answers
-nothing before any arm is tried.
+load check about the file the entry names, which did not load, so the row it concerns is reached
+by the tab and :func:`route_of` answers nothing for it. The description holding the entry loaded,
+and the findings beside it lead where they would.
 
 What this costs: a sub-project's findings route to paths no row of the tab holds. An
 ``include-empty`` in a sub-project's own ``includes`` names that sub-project's entry, whichever

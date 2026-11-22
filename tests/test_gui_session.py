@@ -475,6 +475,51 @@ class TestOpening:
         assert (broken.kind, broken.name, broken.loaded) == ("unknown", None, False)
         assert revision.dictionary is None
 
+    def test_an_include_naming_a_file_that_is_not_there_is_the_file_that_did_not_load(
+        self, tmp_path: Path
+    ) -> None:
+        """The description holding the entry read and matched its shape, and the file the entry
+        names is the one nothing could read: listed the other way round, every route told the
+        reader the project description was what to repair."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "gone.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        revision = first_revision(tmp_path, tmp_path / "p.ddd.json")
+        described = {f.path.name: (f.kind, f.loaded) for f in revision.files}
+        assert described == {
+            "p.ddd.json": ("project", True),
+            "a.ddd.json": ("component", True),
+            "gone.ddd.json": ("unknown", False),
+        }
+        # The finding stays where the entry is: the description is the file to open to mend it.
+        assert [(f.file.name, f.diagnostic.check) for f in revision.findings] == [
+            ("p.ddd.json", "file-not-found")
+        ]
+
+    def test_an_include_naming_several_files_leaves_the_error_on_the_description(
+        self, tmp_path: Path
+    ) -> None:
+        """A pattern does not say which of the files it matches could not be read, so none is
+        named for it: the description holding it stays the file that did not load."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "lib/*.ddd.json"),
+                "lib/a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        (tmp_path / "lib" / "bad.ddd.json").write_bytes(b"\xff\xfe{")
+        revision = first_revision(tmp_path, tmp_path / "p.ddd.json")
+        assert {f.path.name: f.loaded for f in revision.files} == {
+            "p.ddd.json": False,
+            "a.ddd.json": True,
+            "bad.ddd.json": True,
+        }
+
     def test_a_file_that_cannot_be_read_is_described_as_empty(self, tmp_path: Path) -> None:
         described = module._described(tmp_path / "gone.ddd.json", [], None)
         assert (described.kind, described.fingerprint) == ("unknown", fingerprint(b""))
@@ -1186,8 +1231,8 @@ class TestTheAnalyser:
     def test_where_no_analyser_runs_a_project_including_a_path_no_system_reads_opens_all_the_same(
         self, tmp_path: Path
     ) -> None:
-        """Opening answers with the revision, the path listed as an empty file of no kind and its
-        refusal filed where the project names it, which leaves the project not loaded."""
+        """Opening answers with the revision, the path listed as an empty file of no kind that did
+        not load, and its refusal filed where the project names it."""
         project_file = unreachable(tmp_path)
         session = Session(tmp_path)
         session.open(project_file)
@@ -1195,9 +1240,9 @@ class TestTheAnalyser:
         assert revision is not None and findings_of(revision) == [unreadable(project_file)]
         described = {f.path.name: (f.kind, f.loaded, f.fingerprint) for f in revision.files}
         assert described == {
-            "p.ddd.json": ("project", False, fingerprint(project_file.read_bytes())),
+            "p.ddd.json": ("project", True, fingerprint(project_file.read_bytes())),
             "a.ddd.json": ("component", True, fingerprint((tmp_path / "a.ddd.json").read_bytes())),
-            NUL_ENTRY: ("unknown", True, fingerprint(b"")),
+            NUL_ENTRY: ("unknown", False, fingerprint(b"")),
         }
         (filed,) = revision.findings
         assert filed.diagnostic.location is not None

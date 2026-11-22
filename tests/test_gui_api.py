@@ -4708,6 +4708,48 @@ class TestVariable:
             "'Torque' is not declared in any file that loaded, and b.ddd.json did not load"
         )
 
+    def test_a_dangling_include_is_the_file_that_did_not_load_not_the_description(
+        self, tmp_path: Path
+    ) -> None:
+        """``gone.ddd.json`` is named by an include and is not there: every refusal naming the
+        files that did not load names it, and not the description, which parsed and matched."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "gone.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        assert get(api, "/api/variable", name="Torque") == Reply(
+            409,
+            {
+                "error": "unreadable",
+                "message": "'Torque' is not declared in any file that loaded, "
+                "and gone.ddd.json did not load",
+            },
+        )
+        assert get(api, "/api/unit-plan", action="adopt") == Reply(
+            409,
+            {
+                "error": "unreadable",
+                "message": "gone.ddd.json did not load, "
+                "so adopting could not list every unit in use",
+            },
+        )
+        assert get(api, "/api/values", name="Speed") == Reply(
+            409,
+            {
+                "error": "unreadable",
+                "message": "gone.ddd.json did not load, so no object's values can be read",
+            },
+        )
+        state = get(api, "/api/state").body
+        assert {file["path"].rsplit("/", 1)[1]: file["loaded"] for file in state["files"]} == {
+            "p.ddd.json": True,
+            "a.ddd.json": True,
+            "gone.ddd.json": False,
+        }
+
     def test_a_name_only_a_file_that_changed_since_declares_is_not_said_to_be_gone(
         self, tmp_path: Path
     ) -> None:
@@ -12732,17 +12774,23 @@ class TestTheFilesTab:
             "empty-vocabulary": {"kind": "file", "name": keys[0]},
         }
 
-    def test_a_missing_file_s_finding_leads_nowhere(self, tmp_path: Path) -> None:
-        """`file-not-found` is a load check, so the description carrying it did not load and its
-        findings lead nowhere - the `include-empty` beside it among them. Its row is reached by
-        the tab, not by a link."""
+    def test_a_missing_file_s_finding_leads_nowhere_and_the_description_beside_it_loaded(
+        self, tmp_path: Path
+    ) -> None:
+        """`file-not-found` leads nowhere: its row is reached by the tab, not by a link. The file
+        that did not load is the one it names, so the description carrying it loaded, and the
+        `include-empty` beside it leads to its own row."""
         api = opened(tmp_path, ENTRIES_OF_EVERY_SHAPE)
         routes = {
             finding["check"]: finding["route"]
             for finding in every_finding(api)
             if finding["file"] == posix(tmp_path, "p.ddd.json")
         }
-        assert routes == {"file-not-found": None, "include-empty": None}
+        keys = [entry["key"] for entry in get(api, "/api/files").body["entries"]]
+        assert routes == {
+            "file-not-found": None,
+            "include-empty": {"kind": "file", "name": keys[3]},
+        }
 
     def test_the_files_need_an_open_project(self, root: Path) -> None:
         reply = get(Api(Session(root)), "/api/files")

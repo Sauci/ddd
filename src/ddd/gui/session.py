@@ -85,7 +85,7 @@ from ddd.loading import (
 )
 from ddd.lsp.diagnostics import Run, finding_identity, group_findings, run_build, run_project
 from ddd.lsp.discovery import BUILD_DIRECTORY_PATTERNS, build_files, discover, load_builds
-from ddd.lsp.navigation import LOAD_CHECKS, Index
+from ddd.lsp.navigation import LOAD_CHECKS, Index, named_at
 from ddd.lsp.ranges import Document
 from ddd.plugins import changed_since_imported, plugin_files
 
@@ -860,8 +860,10 @@ class Session:
         _tell_changed_plugins(runs, plugins)
         grouped, covered = _grouped(runs, project)
         registered = {info.identifier: info for run in runs for info in run.bag.registered.values()}
+        unloaded = _unloaded(grouped)
         files = tuple(
-            _described(path, grouped.get(path, ()), read.get(path)) for path in sorted(covered)
+            _described(path, grouped.get(path, ()), read.get(path), path in unloaded)
+            for path in sorted(covered)
         )
         findings = _filed(grouped)
         return Revision(
@@ -1541,11 +1543,35 @@ def _files_read(runs: Sequence[Run], indexed: Run | None) -> dict[Path, FileRead
     return read
 
 
-def _described(path: Path, findings: Iterable[Diagnostic], read: FileRead | None) -> SourceFile:
+def _unloaded(grouped: Mapping[Path, Sequence[Diagnostic]]) -> set[Path]:
+    """The files an error of one of :data:`~ddd.lsp.navigation.LOAD_CHECKS` says did not load: the
+    file it is filed on, but for one the loader reports at the include entry naming a single file
+    it could not read, which is about that file - the description holding the entry read and
+    matched its shape, and listed as the one that did not load it sent the reader to repair the
+    wrong file, where the file named was the one missing. An entry naming several files does not
+    say which of them could not be read, and the error stays the description's."""
+    unloaded: set[Path] = set()
+    for path, found in grouped.items():
+        for finding in found:
+            if finding.check not in LOAD_CHECKS or finding.severity is not Severity.ERROR:
+                continue
+            named = None
+            if finding.location is not None:
+                named = named_at(finding.check, finding.location)
+            if named is not None and len(named) == 1:
+                unloaded.add(named[0])
+            else:
+                unloaded.add(path)
+    return unloaded
+
+
+def _described(
+    path: Path, findings: Iterable[Diagnostic], read: FileRead | None, unloaded: bool = False
+) -> SourceFile:
     """One file of a revision, as its analysis read it (``read``) and never as the disk holds it
     once the analysis is over: a save landing in between holds other bytes than the ones the
     findings and the index are of. A file no run's read parsed has no such record and is read as
-    it stands (:func:`_as_it_stands`)."""
+    it stands (:func:`_as_it_stands`). ``unloaded`` is :func:`_unloaded`'s say of this file."""
     listed = list(findings)
     if read is None:
         read = _as_it_stands(path)
@@ -1553,7 +1579,7 @@ def _described(path: Path, findings: Iterable[Diagnostic], read: FileRead | None
         path=path,
         kind=_kind_shown(path, read.kind),
         name=read.name,
-        loaded=not any(f.check in LOAD_CHECKS and f.severity is Severity.ERROR for f in listed),
+        loaded=not unloaded,
         fingerprint=read.fingerprint,
         errors=sum(1 for f in listed if f.severity is Severity.ERROR),
         warnings=sum(1 for f in listed if f.severity is Severity.WARNING),

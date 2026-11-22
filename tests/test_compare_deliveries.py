@@ -118,6 +118,19 @@ class TestTheCandidatesOwnErrors:
         assert own >= 1
         assert reply.body["own_errors"] == own
 
+    def test_a_disagreement_is_counted_on_each_file_it_concerns_as_the_state_counts_it(
+        self, tmp_path: Path
+    ) -> None:
+        """``own_errors`` is ``State.counts``' error: the rows, a disagreement once on each file,
+        and not ``State.statements``', which counts it once."""
+        baseline = _baseline(tmp_path)
+        api = _candidate(tmp_path, OWN_ERRORS["a reader that disagrees with its producer"])
+        reply = get(api, "/api/compare", baseline=baseline.as_posix())
+        state = get(api, "/api/state").body
+        assert state["statements"]["error"] == 1
+        assert state["counts"]["error"] == 2
+        assert reply.body["own_errors"] == state["counts"]["error"]
+
     def test_a_clean_candidate_is_told_it_has_none_of_its_own(self, tmp_path: Path) -> None:
         baseline = _baseline(tmp_path)
         api = _candidate(tmp_path, {})

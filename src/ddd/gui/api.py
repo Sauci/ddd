@@ -5,12 +5,14 @@ its method, its path, its query and its body, and leaves as a :class:`Reply`, so
 the page can get is tested without a network in between. The API is internal - the page and the
 server ship in one wheel - and changes with the package.
 
-Every request and response body is a model of :mod:`ddd.gui.contract`: a request is read with
-:meth:`~pydantic.BaseModel.model_validate_json`, refusing anything the page's own types would
-not have sent, and a response is built as a model and written by :func:`ddd.gui.depth.written` -
-never a hand-assembled ``dict`` - so the shape answered here and the shape
-``gui/src/generated/api.ts`` declares cannot drift apart, and an answer nested deeper than the
-serializer writes is refused, ``409``, rather than failing to be written.
+Every request and every answer but a refusal is a model of :mod:`ddd.gui.contract`: a query is read
+as its route's model and a body with :meth:`~pydantic.BaseModel.model_validate_json`, refusing
+anything the page's own types would not have sent, and an answer is built as a model and written by
+:func:`ddd.gui.depth.written` - never a hand-assembled ``dict`` - so the shape answered here and the
+shape ``gui/src/generated/api.ts`` declares cannot drift apart, and an answer nested deeper than the
+serializer writes is refused, ``409``, rather than failing to be written. A refusal is the one body
+that is no model: ``{"error": code, "message": text}``, two strings that ``_error`` alone builds,
+which the page reads as its ``ApiError`` and ``gui/src/generated/api.ts`` does not declare.
 """
 
 from __future__ import annotations
@@ -2057,7 +2059,7 @@ def _route(route: FindingRoute | None) -> dict[str, Any] | None:
 
 def _module(file: SourceFile) -> Module:
     """A file of the revision, as the graph wants it: named by its component, or by the file's
-    own stem when it did not load that far."""
+    own stem when it did not load or names none."""
     stem = file.path.name.removesuffix(".ddd.json")
     return Module(
         PurePosixPath(file.path.as_posix()),

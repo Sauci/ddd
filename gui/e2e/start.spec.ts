@@ -129,17 +129,28 @@ const SECOND = "second";
  * its name (`projectName`, lib/session.ts). */
 const SECOND_DESCRIPTION = "second.ddd.json";
 
-/** A second project in the copy, beside the demo's, under the root the walk for projects searches
- * (`find_projects`, session.py): SecondDevice, of one component of its own, Pump, so that nothing
- * it draws is the demo's - the demo's other project, Logging, is one of DemoDevice's own
- * includes. */
+/** A project in a directory of the copy, `folder`, beside the demo's, under the root the walk for
+ * projects searches (`find_projects`, session.py): `name`, described by `<folder>.ddd.json`, of one
+ * component of its own, so that nothing it draws is the demo's - the demo's other project, Logging,
+ * is one of DemoDevice's own includes. */
+function projectOfOne(directory: string, folder: string, name: string, component: string): void {
+  const where = join(directory, folder);
+  mkdirSync(where);
+  const write = (file: string, body: object) =>
+    writeFileSync(join(where, file), `${JSON.stringify(body, null, 2)}\n`, "utf8");
+  const file = `${component.toLowerCase()}.ddd.json`;
+  write(file, { component: { name: component, interface: [] } });
+  write(`${folder}.ddd.json`, { project: { name, includes: [file] } });
+}
+
+/** A second project in the copy: SecondDevice, of one component, Pump (`projectOfOne`). */
 function secondProject(directory: string): void {
-  const second = join(directory, SECOND);
-  mkdirSync(second);
-  const write = (name: string, body: object) =>
-    writeFileSync(join(second, name), `${JSON.stringify(body, null, 2)}\n`, "utf8");
-  write("pump.ddd.json", { component: { name: "Pump", interface: [] } });
-  write(SECOND_DESCRIPTION, { project: { name: "SecondDevice", includes: ["pump.ddd.json"] } });
+  projectOfOne(directory, SECOND, "SecondDevice", "Pump");
+}
+
+/** A third project in the copy: ThirdDevice, of one component, Valve (`projectOfOne`). */
+function thirdProject(directory: string): void {
+  projectOfOne(directory, "third", "ThirdDevice", "Valve");
 }
 
 /** Where the canvas draws a module's node: the `transform` React Flow places it by, its position
@@ -563,6 +574,79 @@ test("a project a second page opens is the one the first names, on a component's
     page
       .getByRole("region", { name: "Modules" })
       .getByRole("button", { name: "Pump", exact: true }),
+  ).toBeVisible();
+});
+
+test("a project a second page opens while the first page's ask of the session is on its way is asked for again, and the late answer changes nothing", async ({
+  page,
+  copiedGui,
+}) => {
+  const started = await copiedGui(
+    "demo",
+    (directory) => {
+      secondProject(directory);
+      thirdProject(directory);
+    },
+    { named: false },
+  );
+  await page.goto(started.address);
+  await page.getByRole("button", { name: /^DemoDevice/ }).click();
+  const heading = page.getByRole("heading", { level: 1 });
+  await expect(
+    page
+      .getByRole("region", { name: "Modules" })
+      .getByRole("button", { name: "Controller", exact: true }),
+  ).toBeVisible();
+
+  // The first page's next ask of the session is answered by the server at once, and the answer
+  // kept from the page until released: an answer on its way while the server moves on. `held`
+  // asks the server only once released, too late to name the project open before.
+  let answered = false;
+  let delivered = false;
+  let release = (): void => undefined;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(
+    (url) => url.pathname === "/api/session",
+    async (route) => {
+      const response = await route.fetch();
+      answered = true;
+      await released;
+      await route.fulfill({ response });
+      delivered = true;
+    },
+    { times: 1 },
+  );
+  const other = await page.context().newPage();
+  try {
+    await other.goto(started.address);
+    const projects = other.getByRole("button", { name: "Projects", exact: true });
+    await projects.click();
+    await other.getByRole("button", { name: /^SecondDevice/ }).click();
+    await expect(other.getByRole("heading", { level: 1 })).toHaveText("SecondDevice");
+    // The first page asked which project is open once its state was SecondDevice's, and the
+    // server has answered SecondDevice; then the second page opens a third project.
+    await expect.poll(() => answered).toBe(true);
+    await projects.click();
+    await other.getByRole("button", { name: /^ThirdDevice/ }).click();
+    await expect(other.getByRole("heading", { level: 1 })).toHaveText("ThirdDevice");
+
+    // The first page's state is ThirdDevice's now: it asks again, and names it once answered.
+    await expect(heading).toHaveText("ThirdDevice");
+  } finally {
+    release();
+    await other.close();
+  }
+  // The answer naming SecondDevice reaches the page last, and the page goes on naming ThirdDevice:
+  // read once that answer has come and two frames have been drawn since.
+  await expect.poll(() => delivered).toBe(true);
+  await page.evaluate(
+    () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+  );
+  await expect(heading).toHaveText("ThirdDevice");
+  await expect(
+    page.getByRole("banner").getByRole("button", { name: "ThirdDevice", exact: true }),
   ).toBeVisible();
 });
 

@@ -4,7 +4,7 @@ import { getSession } from "../api/client";
 import { signedOut } from "../api/token";
 import { SignedOutView } from "../components/SignedOutView";
 import { hrefOf, type ProjectView, type Route } from "../lib/route";
-import { projectName, sessionAskedAgain } from "../lib/session";
+import { projectName, sessionAskedFor } from "../lib/session";
 import type { SharedKind } from "../lib/shared";
 import { ComparePage } from "../screens/ComparePage";
 import { ComponentPage } from "../screens/ComponentPage";
@@ -69,12 +69,14 @@ export function App() {
   const session = useQuery({ queryKey: ["session"], queryFn: () => getSession() });
   const opened = session.data?.project ?? null;
   const { state, project, updating, stopped, failure } = useProjectState(opened !== null);
-  // Asked again each time the state followed comes to be of another project than the session
-  // names: another page of the same server opened it (`sessionAskedAgain`, lib/session.ts).
-  const askAgain = sessionAskedAgain(opened, project);
+  // Asked again for each project the state followed comes to be of while the session names
+  // another: another page of the same server opened it (`sessionAskedFor`, lib/session.ts). Keyed
+  // by that project, so that a state moving on while an ask is out asks once more, cancelling the
+  // ask before it, whose answer may name the project before.
+  const askedFor = sessionAskedFor(opened, project);
   useEffect(() => {
-    if (askAgain) void queries.invalidateQueries({ queryKey: ["session"] });
-  }, [askAgain, queries]);
+    if (askedFor !== null) void queries.invalidateQueries({ queryKey: ["session"] });
+  }, [askedFor, queries]);
   // One identity for the whole life of the page: the canvas hands this to every module it draws,
   // and a new function each render would lay the canvas out again each render.
   const openComponent = useCallback(

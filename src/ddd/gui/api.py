@@ -1685,6 +1685,11 @@ class Api:
                     # `CompareReply.baseline_findings`' own docstring is what that matching would be
                     # re-deriving, unreliably, from text a page does not own.
                     baseline_findings=[_finding(filed, None, cache) for filed in baseline_findings],
+                    statements={
+                        "error": result.statements[0],
+                        "warning": result.statements[1],
+                        "info": result.statements[2],
+                    },
                     renames=[
                         {"id": entry["id"], "old": entry["from"], "new": entry["to"]}
                         for entry in result.renames

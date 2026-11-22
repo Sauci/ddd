@@ -2482,17 +2482,21 @@ export const CAN_REPLACE: CompareReply = {
   own_errors: 0,
   findings: [],
   baseline_findings: [],
+  statements: { error: 0, warning: 0, info: 0 },
   renames: [],
 };
 
 /** A delivery it cannot: two of `compare`'s own errors and a warning, one of the baseline's own
- * errors besides, and the one rename its own `renamed-object` reports. */
+ * errors besides, and the one rename its own `renamed-object` reports. The baseline's error is
+ * listed once - the copy the server also files at ValueB's declaration, where its note points, is
+ * left out - so each row is a statement of its own. */
 export const CANNOT_REPLACE: CompareReply = {
   revision: 7,
   verdict: false,
   own_errors: 0,
   findings: [CHANGED_INTERFACE, REMOVED_OBJECT, RENAMED_OBJECT],
   baseline_findings: [BASELINE_DUPLICATE_ID],
+  statements: { error: 3, warning: 1, info: 0 },
   renames: [RENAME_ROW],
 };
 

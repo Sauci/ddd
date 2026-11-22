@@ -304,6 +304,10 @@ test("the baseline's own findings are named as the baseline's and lead nowhere, 
   await expect(page.getByRole("status").filter({ hasText: "replace the baseline" })).toHaveText(
     "This project cannot replace the baseline.",
   );
+  // One statement of the baseline's, filed on both of the files it concerns: the line above the
+  // table counts it once, as `ddd compare` prints it, over its two rows.
+  await expect(page.getByText("1 finding · 1 error", { exact: true })).toBeVisible();
+  await expect(page.getByRole("row", { name: /definition-mismatch/ })).toHaveCount(2);
 
   // The baseline's analysis files the drift on both components, each row's message behind "in
   // the baseline: " (`BASELINE_PREFIX`, deliveries.py), and its File cell names the file as the

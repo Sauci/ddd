@@ -79,17 +79,6 @@ export function findingsTotal(counts: FindingCounts): number {
   return counts.error + counts.warning + counts.info;
 }
 
-/** How many findings of a list there are of each severity: what the Compare tab counts its own
- * reply's list by, as the state counts a revision's. One at `ignore` - which the server never
- * reports - is counted under none. */
-export function countsOf(findings: readonly Finding[]): FindingCounts {
-  const counts = { error: 0, warning: 0, info: 0 };
-  for (const finding of findings) {
-    if (finding.severity !== "ignore") counts[finding.severity] += 1;
-  }
-  return counts;
-}
-
 /** How a line counting findings ends while they may be about to change (spec 6): an edit is
  * waiting for its analysis, or an analysis runs. */
 const UPDATING = " · updating";
@@ -99,10 +88,11 @@ function counted(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`;
 }
 
-/** The line above a table of findings, from how many there are of each severity: the Findings
- * tab's from the statements the state counts, each once as `ddd check` counts them, the Compare
- * tab's from its own list's. Where `updating` - the counts may be about to change - it ends by
- * saying so; the Compare tab's, counting a reply of its own rather than the revision, never does. */
+/** The line above a table of findings, from how many statements there are of each severity, each
+ * once however many files it is filed on (decision 14.3): the Findings tab's from the state's, as
+ * `ddd check` counts them, the Compare tab's from its reply's, as `ddd compare` does
+ * (`compareLine`). Where `updating` - the counts may be about to change - it ends by saying so;
+ * the Compare tab's, counting a reply of its own rather than the revision, never does. */
 export function findingCounts(counts: FindingCounts, updating: boolean): string {
   const total = findingsTotal(counts);
   const parts = COUNTED.filter(([severity]) => counts[severity] > 0).map(([severity, one, many]) =>

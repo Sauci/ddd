@@ -208,6 +208,28 @@ class TestFindingsComeAPageAtATime:
         )
         assert contract.State.model_fields["statements"].annotation is contract.FindingCounts
 
+    def test_a_comparison_counts_each_statement_once_as_ddd_compare_does(self) -> None:
+        """The Compare tab's line too (decision 14.3): a baseline's disagreement is filed on each
+        of its files, and listed so, and is one statement."""
+        reply = contract.api_schema()["$defs"]["CompareReply"]
+        assert list(reply["properties"]) == [
+            "revision",
+            "verdict",
+            "own_errors",
+            "findings",
+            "baseline_findings",
+            "statements",
+            "renames",
+        ]
+        assert reply["required"] == list(reply["properties"])
+        assert _described("CompareReply")["statements"] == (
+            "How many findings of each severity ``findings`` and ``baseline_findings`` make, in "
+            "all: each once, however many files it is filed on, as ``ddd compare`` counts them."
+        )
+        assert contract.CompareReply.model_fields["statements"].annotation is (
+            contract.FindingCounts
+        )
+
     def test_a_count_says_nothing_of_a_file_it_may_not_be_about(self) -> None:
         """One model counts a file's findings, a module's and a whole revision's: its words are
         true of each, and the field holding it says which."""

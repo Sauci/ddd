@@ -1,5 +1,5 @@
 import type { CompareReply, Finding, State } from "../api/types";
-import { type FindingRow, keyedFindings, noRouteReason } from "./findings";
+import { type FindingRow, findingCounts, keyedFindings, noRouteReason } from "./findings";
 import { baseName } from "./units";
 
 /**
@@ -69,6 +69,14 @@ export function compareRows(reply: CompareReply): CompareRow[] {
       return { finding, key, fromBaseline: baseline, file: fileNameIn(baseline)(finding.file) };
     })
     .sort((one, other) => rank[one.finding.severity] - rank[other.finding.severity]);
+}
+
+/** The line above the Compare tab's table: the statements the reply's two lists make, each once
+ * as `ddd compare` counts them (decision 14.3), where the table lists a baseline's disagreement on
+ * each file it concerns (`compareRows`). Never ending in "updating": it counts a reply of its own,
+ * not the revision. */
+export function compareLine(reply: CompareReply): string {
+  return findingCounts(reply.statements, false);
 }
 
 /**

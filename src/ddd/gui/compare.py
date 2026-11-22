@@ -41,7 +41,8 @@ on the errors :func:`~ddd.deliveries.read_baseline` forwards, prefixed ``"in the
 because those are the baseline's own analysis handed back unchanged - a ``multiple-producers``
 found while reading a baseline given as a multi-file project description carries a note pointing
 at the *other* file that also produces the object, and both copies are the baseline's, whatever
-either happens to be named.
+either happens to be named. They are two rows of one statement, which ``ddd compare`` prints once,
+so the reply counts its findings before they are filed (:attr:`Compared.statements`).
 
 **Whatever it happens to be named is the part a path check cannot settle.** A baseline is named
 under the session root, and the candidate's own files are under it too - a reader may legally
@@ -199,6 +200,12 @@ class Compared:
     project, and being in this list rather than in ``findings`` is what marks a finding as the
     baseline's, not where it resolves to."""
 
+    statements: tuple[int, int, int]
+    """How many errors, warnings and informational findings :attr:`findings` and
+    :attr:`baseline_findings` make: each once, as ``ddd compare`` counts them (decision 14.3),
+    however many files it is filed on - a disagreement the baseline forwards, on each of the
+    files it concerns (the module's docstring)."""
+
     renames: tuple[dict[str, str], ...]
     """Every object the two sides agree is one and the same but call differently now, as
     :func:`ddd.compare.renames` already shapes them - what ``ddd compare --renames`` writes."""
@@ -303,9 +310,21 @@ def compared(revision: Revision, baseline: Path, root: Path, cache: BaselineCach
         comparison.verdict,
         findings,
         baseline_findings,
+        _statements(compare_bag, baseline_bag),
         tuple(renames(comparison.paired)),
         own_errors,
     )
+
+
+def _statements(*bags: DiagnosticBag) -> tuple[int, int, int]:
+    """:attr:`Compared.statements` of ``bags``, the comparison's and the baseline's: every finding
+    each holds, counted before :func:`~ddd.lsp.diagnostics.group_findings` files any of them on
+    the files its notes point at - as ``ddd compare`` counts the one bag it holds both in."""
+    errors, warnings, infos = (
+        sum(bag.count(severity) for bag in bags)
+        for severity in (Severity.ERROR, Severity.WARNING, Severity.INFO)
+    )
+    return (errors, warnings, infos)
 
 
 def _own_errors(revision: Revision) -> int:

@@ -1,7 +1,13 @@
 import { describe, expect, test } from "vitest";
-import type { Finding, FindingsReply, FixReply, ListedFinding, State } from "../api/types";
+import type {
+  Finding,
+  FindingCounts,
+  FindingsReply,
+  FixReply,
+  ListedFinding,
+  State,
+} from "../api/types";
 import {
-  countsOf,
   distinctFindings,
   findingCounts,
   findingsTotal,
@@ -55,6 +61,15 @@ function fileRow(path: string, kind: string, loaded: boolean) {
   };
 }
 
+/** How many of `findings` there are of each severity, as `GET /api/state` counts a revision's. */
+function countedBySeverity(findings: readonly Finding[]): FindingCounts {
+  const counts = { error: 0, warning: 0, info: 0 };
+  for (const each of findings) {
+    if (each.severity !== "ignore") counts[each.severity] += 1;
+  }
+  return counts;
+}
+
 /** A state whose findings are these: counted, as `GET /api/state` counts a revision's, each a
  * statement of its own. */
 function state(findings: Finding[]): State {
@@ -80,8 +95,8 @@ function state(findings: Finding[]): State {
         findings: { error: 1, warning: 0, info: 0 },
       },
     ],
-    counts: countsOf(findings),
-    statements: countsOf(findings),
+    counts: countedBySeverity(findings),
+    statements: countedBySeverity(findings),
     undoable: null,
     analysing: false,
     edits: 0,
@@ -158,20 +173,6 @@ describe("what the tab says about how many there are", () => {
     expect(findingsTotal({ error: 0, warning: 0, info: 0 })).toBe(0);
   });
 
-  // The Compare tab's line: its findings come in one reply, which it counts itself, and the words
-  // are the ones it said before the Findings tab's came from the state's counts.
-  test.each([
-    [[], "Nothing to report"],
-    [[finding()], "1 finding · 1 error"],
-    [
-      [finding(), finding({ severity: "warning" }), finding({ severity: "info" })],
-      "3 findings · 1 error, 1 warning, 1 note",
-    ],
-    [[finding(), finding()], "2 findings · 2 errors"],
-  ])("%#: from a list of its own", (findings, says) => {
-    expect(findingCounts(countsOf(findings), false)).toBe(says);
-  });
-
   // The Table tab's line: errors and warnings, each counted even at none, as the table's own two
   // columns count them - a note has no column, and the line says nothing of notes.
   test.each([
@@ -189,18 +190,6 @@ describe("what the tab says about how many there are", () => {
     [{ error: 3, warning: 1, info: 7 }, "3 errors, 1 warning · updating"],
   ])("%#: the Table tab's line, about to change", (counts, says) => {
     expect(tableLine(counts, true)).toBe(says);
-  });
-
-  test("a list is counted by severity, and a finding nobody reports under none", () => {
-    expect(
-      countsOf([
-        finding({ severity: "info" }),
-        finding({ severity: "error" }),
-        finding({ severity: "info" }),
-        finding({ severity: "warning" }),
-        finding({ severity: "ignore" }),
-      ]),
-    ).toEqual({ error: 1, warning: 1, info: 2 });
   });
 });
 

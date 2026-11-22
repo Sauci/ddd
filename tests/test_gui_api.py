@@ -5615,6 +5615,35 @@ class TestCompare:
         # cannot tell apart from a baseline kept somewhere else entirely.
         assert {Path(f["file"]).name for f in forwarded} == {"a.ddd.json", "b.ddd.json"}
 
+    def test_a_comparison_counts_each_statement_once_as_ddd_compare_does(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """14:M1 on the Compare tab (decision 14.3): a baseline of two components writing one
+        variable forwards its ``multiple-producers``, which is filed on each producer. The reply
+        lists both copies, and its ``statements`` count the one ``ddd compare`` prints."""
+        speed = declare("output", "Speed", unit="rpm", id="aaaaaaaaaaaa")
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", speed),
+                "b.ddd.json": component("B", declare("input", "Speed", unit="rpm")),
+                "base/p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "base/a.ddd.json": component("A", speed),
+                "base/b.ddd.json": component("B", speed),
+            },
+        )
+        baseline, candidate = tmp_path / "base" / "p.ddd.json", tmp_path / "p.ddd.json"
+        assert main(["compare", str(baseline), str(candidate), "--format", "json"]) == EXIT_FINDINGS
+        printed = json.loads(capsys.readouterr().out)["summary"]
+        body = get(api, "/api/compare", baseline=baseline.as_posix()).body
+        assert body["findings"] == []
+        assert [Path(f["file"]).name for f in body["baseline_findings"]] == [
+            "a.ddd.json",
+            "b.ddd.json",
+        ]
+        assert body.get("statements") == printed == {"error": 1, "warning": 0, "info": 0}
+
     @pytest.mark.parametrize("query", [{}, {"baseline": ""}])
     def test_a_missing_baseline_is_bad(self, api: Api, query: dict[str, str]) -> None:
         assert get(api, "/api/compare", **query) == Reply(

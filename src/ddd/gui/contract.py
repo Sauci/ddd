@@ -1560,6 +1560,10 @@ class CompareReply(_Frozen):
     matching that prefix - this field is what that would be re-deriving, unreliably, from text
     a message is free to change."""
 
+    statements: FindingCounts
+    """How many findings of each severity ``findings`` and ``baseline_findings`` make, in all:
+    each once, however many files it is filed on, as ``ddd compare`` counts them."""
+
     renames: tuple[Renamed, ...]
     """Every object the two sides agree is one and the same but call differently now, sorted
     by the new name: what ``ddd compare --renames`` would write for this pair."""

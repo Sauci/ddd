@@ -107,8 +107,9 @@ class Vocabulary:
     repeated: str
     """The check the loader files a later entry under that repeats a name the vocabulary declares
     already - ``duplicate-constant``, ``duplicate-section``, ``duplicate-raster`` - filed at that
-    entry, of which the analysis keeps nothing, with a note naming the first: the one finding
-    filed where no place the index records is that is the entry's (:func:`located_on`)."""
+    entry, of which the analysis keeps nothing, with a note naming the first. Of the findings
+    filed where no place the index records is, it is the one that is an entry's
+    (:func:`located_on`)."""
 
     keys: tuple[str, ...]
     """Every key a reader may change, ``description`` among them, in the order the panel draws

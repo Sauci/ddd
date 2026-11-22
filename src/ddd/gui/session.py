@@ -415,6 +415,14 @@ class NotInProjectError(LookupError):
     the open project, or one outside the directories it serves."""
 
 
+class _NotOnTopError(EditError):
+    """An undo of an edit that is not on top of the stack any more, or of none left: refused
+    ``stale``, as every refusal the page reads the state again on, and asking for no analysis
+    where a write refused ``stale`` asks for one (:meth:`Session._refused`) - nothing on disk is
+    in doubt, the stack having moved and no file, and the analysis would read the disk as the
+    session already knows it."""
+
+
 def find_projects(root: Path, build_directories: Sequence[Path] = ()) -> Found:
     """The projects under ``root``: those a build record names, and the project descriptions a
     bounded walk finds, hidden directories, ``node_modules`` and build trees left out."""
@@ -761,12 +769,16 @@ class Session:
         the undo took.
 
         Only the top of the stack: an ``at`` that is not it is refused as stale, which is what
-        keeps a second window from putting back an edit this one never saw. A refusal - a file
-        changed since, or one that could not be written - leaves the stack as it is, so the
-        reader may put that file back and ask again.
+        keeps a second window from putting back an edit this one never saw - asking for no
+        analysis, since the stack moved and no file did (:class:`_NotOnTopError`). A refusal of
+        the put back - a file changed since, or one that could not be written - leaves the stack
+        as it is, so the reader may put that file back and ask again, and is answered as an
+        edit's is (:meth:`_refused`).
         """
         try:
             return self._undone(at)
+        except _NotOnTopError:
+            raise
         except EditError as refused:
             self._refused(refused)
             raise
@@ -776,7 +788,7 @@ class Session:
             self._required()
             top = self._stack[-1] if self._stack else None
             if top is None or top.at != at:
-                raise EditError(STALE, f"edit {at} is not the one to undo any more")
+                raise _NotOnTopError(STALE, f"edit {at} is not the one to undo any more")
             restore(top.files)
             # Popped only once the files are back: a refused restore leaves the entry where it
             # was.

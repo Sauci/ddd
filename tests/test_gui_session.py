@@ -2837,15 +2837,44 @@ class TestReadingAndEditing:
         assert refused.value.code == UNWRITABLE
         assert session.current() is first
 
-    def test_a_stale_refusal_of_an_undo_asks_for_an_analysis_too(self, shared: Path) -> None:
+    def test_an_undo_of_an_edit_no_longer_on_top_is_refused_asking_no_analysis(
+        self, shared: Path
+    ) -> None:
+        """A second window's undo of an edit this one has undone or covered since: the stack
+        moved, and no file did, so the refusal is ``stale`` and asks for nothing - not the
+        analysis a write refused ``stale`` asks for, which would read the disk as the session
+        already knows it. Neither does an undo with nothing left to undo."""
         session = Session(shared.parent)
         session.open(shared)
         at, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of Torque")
+        for asked in (at + 5, at - 1, None):
+            if asked is None:
+                session.undo(at)
+                asked = at
+            revision, said = session.current(), session.snapshot().version
+            with pytest.raises(EditError) as refused:
+                session.undo(asked)
+            assert refused.value.code == STALE
+            assert session.current() is revision
+            assert session.snapshot().version == said
+
+    def test_an_undo_whose_put_back_is_refused_stale_asks_for_an_analysis(
+        self, shared: Path
+    ) -> None:
+        """The undo of the edit on top, refused because its file was saved since, is a write
+        refused ``stale``: it asks for the analysis that reads what is on disk, as an edit's
+        refusal does, whether or not the poll could see the save."""
+        session = Session(shared.parent)
+        session.open(shared)
+        at, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of Torque")
+        b = shared.parent / "b.ddd.json"
+        b.write_bytes(b.read_bytes().replace(b'"Hz"', b'"rad"'))
         first = session.current().number
         with pytest.raises(EditError) as refused:
-            session.undo(at + 5)
+            session.undo(at)
         assert refused.value.code == STALE
         assert session.current().number > first
+        assert session.undoable is not None and session.undoable.at == at
 
     def test_an_edit_needs_an_open_project(self, shared: Path) -> None:
         with pytest.raises(NoProjectError):

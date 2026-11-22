@@ -89,12 +89,18 @@ export function parseRoute(pathname: string, search: string): Route {
   return { page: "start" };
 }
 
+/** Half of a surrogate pair standing alone, in a name. Under the `u` flag a whole pair is one code
+ * point, an astral character's, so a code point of the category Cs (surrogate) is a half alone.
+ * ES2024's `isWellFormed` asks the same, but Firefox has it from 119 only, and the page is built
+ * for Firefox 114 (Vite's default targets): the guard must not throw where the page draws. */
+const LONE_HALF = /\p{Cs}/u;
+
 /** The address of a page, or `null` where the route names something no address can carry: half of
- * a surrogate pair alone, which a json file can state as an escape and the loader reads as it is
- * (15:I5). `encodeURIComponent` throws on it, so no link is drawn to such a route. Every name the
- * route carries is checked, wherever the address writes it. */
+ * a surrogate pair alone (`LONE_HALF`), which a json file can state as an escape and the loader
+ * reads as it is (15:I5). `encodeURIComponent` throws on it, so no link is drawn to such a route.
+ * Every name the route carries is checked, wherever the address writes it. */
 export function hrefOf(route: Route): string | null {
-  return Object.values(route).every((name) => name.isWellFormed()) ? addressOf(route) : null;
+  return Object.values(route).some((name) => LONE_HALF.test(name)) ? null : addressOf(route);
 }
 
 /** The address of one of the project screen's tabs with nothing selected in it, the one `hrefOf`

@@ -779,8 +779,10 @@ The commands
        page of findings asked every tenth of a second, as scrolling the Findings tab asks
        them, against 3.8 to 4.5 s alone. Asked the same way on the same desktop, over
        generated projects of 100,000 declarations in the mixed, large and many shapes, clean
-       and findings-heavy, each held in memory, a variable's plan was answered in 43 to 493 ms
-       and an edit in 121 to 940 ms. A plan stays well within a second where the file it
+       and findings-heavy, each held in memory, a variable's plan was answered in 43 to 493 ms,
+       within the second a panel has, and an edit in 121 to 940 ms, past the half second an
+       Apply has to show its change in four of the seven runs, at 540 to 940 ms, and in one run
+       at 35,000 declarations, at 547 ms. A plan stays well within a second where the file it
        changes is large, the lines it shows read off the places its edit replaces rather than
        found by comparing the whole file: with no analysis running, the plan of a variable
        declared in one or two of a generated project's largest components took 34 to 72 ms at

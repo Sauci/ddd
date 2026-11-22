@@ -1321,8 +1321,12 @@ and findings-heavy - the plan in the largest file took 34 to 72 ms at 35,000 dec
 3 ms where it is a small one, every one within its second; the open of the project named on the
 command line answered in 9 to 17 ms and in 1 to 51 ms, within its second. The rename's plan took
 1,211 to 1,311 ms and 3,459 to 4,073 ms, and its Apply 2,242 to 2,388 ms and 6,635 to 7,261 ms, each
-missing its budget. The applied rename's body was 505,526 to 647,308 bytes at 35,000 declarations
-and 1,029,010 to 1,948,716 bytes at 100,000, the most from the ``mixed`` shape, findings-heavy.
+missing its budget. An edit asked halfway through an analysis is held to the half second an Apply's
+own change has, as the rename's Apply is, and missed it at 100,000 declarations in four of the
+seven runs, which took 540, 580, 775 and 940 ms where the other three took 121 to 170 ms, and at
+35,000 in one run, of 547 ms. The applied rename's body was 505,526 to 647,308 bytes at 35,000
+declarations and 1,029,010 to 1,948,716 bytes at 100,000, the most from the ``mixed`` shape,
+findings-heavy.
 The ``chain`` shape's, which these runs leave out, is 4,213,186 bytes at 100,000 declarations clean
 and 4,706,936 findings-heavy, its rename changing 12,502 files, replayed with the benchmark's own
 steps up to the body. The most the generator makes at any density of findings is the chain shape's

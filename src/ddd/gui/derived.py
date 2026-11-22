@@ -82,7 +82,9 @@ class Derived:
     what tells two findings of equal content apart in their keys (:func:`key_of`)."""
 
     counts: tuple[int, int, int]
-    """How many errors, warnings and informational findings the revision has."""
+    """How many errors, warnings and informational findings the revision files: a disagreement
+    once on each file it concerns, as the Findings tab lists them, where
+    :attr:`~ddd.gui.session.Revision.statements` counts each finding once."""
 
     def resolve(self, path: Path) -> Path:
         """``path`` resolved: as the revision's own record has it where it names it, else

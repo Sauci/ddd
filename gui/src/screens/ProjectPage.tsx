@@ -13,14 +13,16 @@ interface Props {
 /**
  * The open project's `Table` tab: its components and how many findings each has. The project's
  * name is the heading above the tabs, so this screen and the canvas share it. A row's counts are
- * not marked while the findings update: the line above them is, and the heading says so.
+ * not marked while the findings update: the line above them is, and the heading says so. A row
+ * counts what is filed on its file, a disagreement on each of the files it concerns, and the line
+ * the project's statements, each once as `ddd check` counts them (decision 14.3).
  */
 export function ProjectPage({ state, onComponent }: Props) {
   const updating = useUpdating();
   const components = state.files.filter((file) => file.kind === "component");
   return (
     <>
-      <p className="summary">{tableLine(state.counts, updating)}</p>
+      <p className="summary">{tableLine(state.statements, updating)}</p>
       <LongTable
         aria-label="Components"
         // A press anywhere in a row opens its component, not only a press on the Name button, and

@@ -514,16 +514,18 @@ class Api:
     def _state_of(self, snapshot: Snapshot, project: Path) -> Reply:
         """The state ``snapshot`` says of ``project``, the one open: revision ``0``, no files and
         every count ``0`` before its first analysis. The findings themselves are
-        ``GET /api/findings``'s, a page at a time; this counts them."""
+        ``GET /api/findings``'s, a page at a time; this counts them, as that lists them and as the
+        statements they make (:attr:`~ddd.gui.session.Revision.statements`)."""
         revision = snapshot.revision
         number = 0
         edits = 0
         files: list[dict[str, Any]] = []
-        counts = (0, 0, 0)
+        counts = statements = (0, 0, 0)
         if revision is not None:
             number = revision.number
             edits = revision.edits
             counts = self._derive(revision).counts
+            statements = revision.statements
             files = [
                 {
                     "path": file.path.as_posix(),
@@ -549,6 +551,11 @@ class Api:
                     project=project.as_posix(),
                     files=files,
                     counts={"error": counts[0], "warning": counts[1], "info": counts[2]},
+                    statements={
+                        "error": statements[0],
+                        "warning": statements[1],
+                        "info": statements[2],
+                    },
                     undoable=None if top is None else {"at": top.at, "label": top.label},
                     analysing=snapshot.analysing,
                     edits=edits,

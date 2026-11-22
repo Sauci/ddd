@@ -11472,6 +11472,20 @@ class TestATypeAndWhatItFixesAreOneThing:
         ) in flattened(COMMAND_LINE_INTERFACE)
 
 
+class TestTheLinesCountEachStatementOnce:
+    """14:M1, decision 14.3. A disagreement is filed on each of the files it concerns, and the
+    line above the Findings tab's table counted it on each: its totals were not ``ddd check``'s,
+    and no page said they differ. The lines count each finding once now, the tables still holding
+    it on each file, and the command page says so, on its gui row."""
+
+    def test_the_command_page_says_a_disagreement_is_counted_once(self) -> None:
+        assert (
+            "The Findings tab lists a disagreement on each file it concerns, as the component "
+            "table counts it on each, and the line above either table counts it once, as ``ddd "
+            "check`` does."
+        ) in flattened(COMMAND_LINE_INTERFACE)
+
+
 class TestLimitsAreOneValueExactly:
     """3:M9. ``same_value`` read each bound of a range as the double nearest it, so that two
     maxima past 2^53 ``ddd check`` files apart were one value to the panel and to every fix. The

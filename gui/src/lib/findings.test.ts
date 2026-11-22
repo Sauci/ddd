@@ -55,7 +55,8 @@ function fileRow(path: string, kind: string, loaded: boolean) {
   };
 }
 
-/** A state whose findings are these: counted, as `GET /api/state` counts a revision's. */
+/** A state whose findings are these: counted, as `GET /api/state` counts a revision's, each a
+ * statement of its own. */
 function state(findings: Finding[]): State {
   return {
     revision: 7,
@@ -80,6 +81,7 @@ function state(findings: Finding[]): State {
       },
     ],
     counts: countsOf(findings),
+    statements: countsOf(findings),
     undoable: null,
     analysing: false,
     edits: 0,
@@ -135,7 +137,7 @@ describe("what the tab says about how many there are", () => {
     [{ error: 0, warning: 0, info: 2 }, "2 findings · 2 notes"],
     [{ error: 0, warning: 1, info: 0 }, "1 finding · 1 warning"],
     [{ error: 3, warning: 0, info: 1 }, "4 findings · 3 errors, 1 note"],
-  ])("%#: from the state's counts", (counts, says) => {
+  ])("%#: from the statements the state counts", (counts, says) => {
     expect(findingCounts(counts, false)).toBe(says);
   });
 

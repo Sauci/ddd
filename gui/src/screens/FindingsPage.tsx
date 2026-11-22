@@ -54,9 +54,10 @@ const STALE =
 /** The open project's Findings tab (spec 5.1): every finding, worst first, and the panel of the
  * one selected - its route, its notes, and the one fix the tab offers where it carries one
  * (spec 5.2). The table is a window: the rows in view and a margin, each page of them asked for
- * as the box scrolls to it (spec 6), how many there are in all being the state's own count. When
- * an analysis lands, the window keeps drawing the revision it drew whole until the new one's pages
- * for its rows have all come (`drawnWindow`). */
+ * as the box scrolls to it (spec 6), how many there are in all being the state's own count - a
+ * disagreement on each of its files - where the line above it counts the statements, each once as
+ * `ddd check` counts them (decision 14.3). When an analysis lands, the window keeps drawing the
+ * revision it drew whole until the new one's pages for its rows have all come (`drawnWindow`). */
 export function FindingsPage({ state, stopped, onOpen }: Props) {
   const queries = useQueryClient();
   const updating = useUpdating();
@@ -95,7 +96,7 @@ export function FindingsPage({ state, stopped, onOpen }: Props) {
     {
       revision,
       total,
-      counts: state.counts,
+      statements: state.statements,
       span,
       pages: arrivedPages(
         pages,
@@ -210,7 +211,7 @@ export function FindingsPage({ state, stopped, onOpen }: Props) {
   return (
     <>
       {/* The revision the table draws: the one kept while the newest's pages come (`drawnWindow`). */}
-      <p className="summary">{findingCounts(drawn.counts, updating)}</p>
+      <p className="summary">{findingCounts(drawn.statements, updating)}</p>
       {gone && <Banner tone="warning">This finding is no longer reported.</Banner>}
       {unasked !== null && <Banner tone="error">{unasked.message}</Banner>}
       <div className={finding !== undefined ? "with-panel" : undefined}>

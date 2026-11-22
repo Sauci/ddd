@@ -1121,7 +1121,9 @@ export const HALF_WRITTEN: Finding = {
  * findings, in the revision's own order, which is by file: controller's `unknown-unit` (error)
  * and `storage-mismatch` (warning), pump's `schema` (error), sensor_hub's `missing-id` (info),
  * and user_interface's `unknown-raster` (error) - each check's own default severity,
- * `src/ddd/diagnostics.py`. The state counts them; `PROJECT_FINDINGS_PAGE` lists them. */
+ * `src/ddd/diagnostics.py`. The state counts them; `PROJECT_FINDINGS_PAGE` lists them. Each is
+ * listed on its own file alone - the copy of `storage-mismatch` the analysis also files on
+ * SensorHub, the side its note names, is left out - so each row is a statement of its own. */
 export const PROJECT_FINDINGS: State = {
   revision: 7,
   version: 14,
@@ -1161,6 +1163,7 @@ export const PROJECT_FINDINGS: State = {
     },
   ],
   counts: { error: 3, warning: 1, info: 1 },
+  statements: { error: 3, warning: 1, info: 1 },
   undoable: null,
   analysing: false,
   edits: 0,
@@ -1224,6 +1227,7 @@ export const EMPTIED_FINDINGS: State = {
     ...PROJECT_FINDINGS.files,
   ],
   counts: { error: 3, warning: 1, info: 2 },
+  statements: { error: 3, warning: 1, info: 2 },
 };
 
 /** The one fix the tab offers: `missing-id`, previewed onto SensorHub's ValueA. */
@@ -1416,6 +1420,7 @@ export const NO_FINDINGS: State = {
     },
   ],
   counts: { error: 0, warning: 0, info: 0 },
+  statements: { error: 0, warning: 0, info: 0 },
   undoable: null,
   analysing: false,
   edits: 0,

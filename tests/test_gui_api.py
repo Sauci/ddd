@@ -52,7 +52,7 @@ from conftest import (
 )
 from ddd import __version__
 from ddd.analysis import analyze
-from ddd.cli import EXIT_OK, main
+from ddd.cli import EXIT_FINDINGS, EXIT_OK, main
 from ddd.declaration_plans import PRODUCING_SCOPES
 from ddd.diagnostics import CHECKS, DiagnosticBag, Location, Severity
 from ddd.editing import UNREADABLE, UNVERIFIED, UNWRITABLE, EditError, fingerprint
@@ -1660,6 +1660,56 @@ class TestState:
         assert files["a.ddd.json"]["findings"] == {"error": 0, "warning": 0, "info": 1}
         assert body["counts"] == {"error": 0, "warning": 0, "info": 1}
         assert {f["check"] for f in every_finding(api)} == {"missing-id"}
+
+    def test_the_state_counts_each_statement_once_as_ddd_check_does(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """examples/inconsistent: three of its five findings name a declaration in a second file,
+        and each is filed on both, so the Findings tab lists eight. ``statements`` counts the
+        five, as ``ddd check`` does (decision 14.3); ``counts`` the eight rows the tab lists."""
+        api = opened_example(tmp_path, "inconsistent", "project.ddd.json")
+        description = tmp_path / "inconsistent" / "project.ddd.json"
+        assert main(["check", str(description), "--format", "json"]) == EXIT_FINDINGS
+        checked = json.loads(capsys.readouterr().out)["summary"]
+        body = get(api, "/api/state").body
+        assert body.get("statements") == checked == {"error": 4, "warning": 1, "info": 0}
+        assert body["counts"] == {"error": 7, "warning": 1, "info": 0}
+        assert sum(body["counts"].values()) == get(api, "/api/findings").body["total"]
+
+    def test_a_producer_three_readers_disagree_with_makes_three_statements_over_six_rows(
+        self, tmp_path: Path
+    ) -> None:
+        """Each reader's disagreement is filed on the reader and again on the producer."""
+        readers = {
+            f"r{n}.ddd.json": (f"R{n}", unit) for n, unit in enumerate(("krpm", "Hz", "%"), start=1)
+        }
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "w.ddd.json", *readers),
+                "w.ddd.json": component(
+                    "W", declare("output", "Speed", unit="rpm", id="aaaaaaaaaaaa")
+                ),
+                **{
+                    file: component(name, declare("input", "Speed", unit=unit))
+                    for file, (name, unit) in readers.items()
+                },
+            },
+        )
+        body = get(api, "/api/state").body
+        assert body["statements"] == {"error": 3, "warning": 0, "info": 0}
+        assert body["counts"] == {"error": 6, "warning": 0, "info": 0}
+
+    def test_a_statement_two_builds_make_is_counted_once_and_once_under_each_severity(
+        self, tmp_path: Path
+    ) -> None:
+        """``every_severity``'s two builds: both make the two ``definition-mismatch`` errors and
+        the ``missing-id`` note, each counted once, and grade ``storage-mismatch`` apart - a note
+        under the first, a warning under the second - two statements of it. The rows list every
+        statement naming a second file on both files, each of the two ``storage-mismatch``."""
+        body = get(every_severity(tmp_path, two_builds=True), "/api/state").body
+        assert body["statements"] == {"error": 2, "warning": 1, "info": 2}
+        assert body["counts"] == {"error": 4, "warning": 2, "info": 3}
 
     def test_a_disagreement_carries_its_pointer_and_its_note(self, api: Api, root: Path) -> None:
         assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
@@ -4066,6 +4116,7 @@ class TestBeforeTheFirstAnalysis:
                 "project": posix(root, "p.ddd.json"),
                 "files": [],
                 "counts": {"error": 0, "warning": 0, "info": 0},
+                "statements": {"error": 0, "warning": 0, "info": 0},
                 "undoable": None,
                 "analysing": True,
                 "edits": 0,

@@ -9,6 +9,7 @@ const state = (version: number, revision = 1): State => ({
   project: "/p.ddd.json",
   files: [],
   counts: { error: 0, warning: 0, info: 0 },
+  statements: { error: 0, warning: 0, info: 0 },
   undoable: null,
   analysing: false,
   edits: 0,

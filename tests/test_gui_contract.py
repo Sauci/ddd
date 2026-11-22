@@ -115,6 +115,7 @@ class TestThePageFollowsTheAnalyser:
             "project",
             "files",
             "counts",
+            "statements",
             "undoable",
             "analysing",
             "edits",
@@ -193,9 +194,19 @@ class TestFindingsComeAPageAtATime:
         state = contract.api_schema()["$defs"]["State"]
         assert "findings" not in state["properties"]
         assert _described("State")["counts"] == (
-            "How many findings of each severity the revision has, in all."
+            "How many findings of each severity the revision files, in all: a disagreement once "
+            "on each file it concerns, as ``GET /api/findings`` lists them."
         )
         assert contract.State.model_fields["counts"].annotation is contract.FindingCounts
+
+    def test_the_state_counts_each_statement_once_as_ddd_check_does(self) -> None:
+        """What the page's lines say (decision 14.3): each finding once, where ``counts`` counts
+        a disagreement on each of its files, which the Findings tab's table lists."""
+        assert _described("State")["statements"] == (
+            "How many findings of each severity the revision makes, in all: each once, however "
+            "many files it is filed on, as ``ddd check`` counts them."
+        )
+        assert contract.State.model_fields["statements"].annotation is contract.FindingCounts
 
     def test_a_count_says_nothing_of_a_file_it_may_not_be_about(self) -> None:
         """One model counts a file's findings, a module's and a whole revision's: its words are

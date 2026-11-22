@@ -235,6 +235,7 @@ const STATE = {
   project: "C:/work/demo/demo.ddd.json",
   files: [],
   counts: { error: 0, warning: 0, info: 0 },
+  statements: { error: 0, warning: 0, info: 0 },
   analysing: false,
   edits: 3,
 };

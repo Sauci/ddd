@@ -50,6 +50,7 @@ import contextlib
 import os
 import sys
 import threading
+from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from fnmatch import fnmatch
@@ -82,7 +83,7 @@ from ddd.loading import (
     resolve_path,
     top_level_kind,
 )
-from ddd.lsp.diagnostics import Run, group_findings, run_build, run_project
+from ddd.lsp.diagnostics import Run, finding_identity, group_findings, run_build, run_project
 from ddd.lsp.discovery import BUILD_DIRECTORY_PATTERNS, build_files, discover, load_builds
 from ddd.lsp.navigation import LOAD_CHECKS, Index
 from ddd.lsp.ranges import Document
@@ -238,6 +239,11 @@ class Revision:
     builds: tuple[BuildInfo, ...]
     files: tuple[SourceFile, ...]
     findings: tuple[Filed, ...]
+    statements: tuple[int, int, int]
+    """How many errors, warnings and informational findings the analysis made: each once, as
+    ``ddd check`` counts them (decision 14.3), however many files :attr:`findings` files it on -
+    a disagreement on each of the files it concerns - and however many runs made it."""
+
     resolved: Resolved | None
     """What the analysis resolved the project to, or ``None`` when it did not get that far.
 
@@ -864,6 +870,7 @@ class Session:
             builds=builds,
             files=files,
             findings=findings,
+            statements=_statements(runs),
             # One run's whole answer, never a field picked from each: the plugins a comparison
             # runs the rules of and the dictionary it compares have to be the same read's, and
             # two `next()` calls over the same list would only agree by coincidence.
@@ -1086,6 +1093,21 @@ def _grouped(runs: Sequence[Run], project: Path) -> tuple[dict[Path, list[Diagno
     for run in runs:
         covered |= run.covered | group_findings(run.bag, project, grouped)
     return grouped, covered
+
+
+def _statements(runs: Sequence[Run]) -> tuple[int, int, int]:
+    """:attr:`Revision.statements` of ``runs``: their findings counted before :func:`_grouped`
+    files each on every file it concerns, and each once however many of the runs made it - the
+    same check, severity, place and words, as :func:`~ddd.lsp.diagnostics.group_findings` keeps
+    one of them (:func:`~ddd.lsp.diagnostics.finding_identity`). A finding two builds grade apart
+    is two, one under each severity, as the rows are.
+
+    Measured on the Linux development PC over the 125,000 findings of a generated project of
+    100,000 declarations (``--shape mixed --missing-ids 1 --unread 0.5``): 50 to 55 ms, beside the
+    193 to 204 ms the grouping of the same run takes - three runs each."""
+    made = {finding_identity(finding) for run in runs for finding in run.bag}
+    counted = Counter(severity for _, severity, _, _ in made)
+    return (counted[Severity.ERROR], counted[Severity.WARNING], counted[Severity.INFO])
 
 
 def _resolved_paths(files: Iterable[SourceFile], findings: Iterable[Filed]) -> dict[Path, Path]:

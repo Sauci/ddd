@@ -313,7 +313,9 @@ The commands
        with the component table, a Units tab - listing the project's units and
        maintaining its vocabulary - a Findings tab of every finding, worst first, and a
        Compare tab asking whether the open project can replace a baseline delivery the
-       reader names, one tab away. A variable's panel shows every key its declarations
+       reader names, one tab away. The Findings tab lists a disagreement on each file it
+       concerns, as the component table counts it on each, and the line above either table
+       counts it once, as ``ddd check`` does. A variable's panel shows every key its declarations
        share, says which of them they disagree about, and settles one on every declaration
        at once. Limits that no declaration states are written on the producer - on each of
        two, where two produce the variable - its readers leaving them to it as ``ddd check``

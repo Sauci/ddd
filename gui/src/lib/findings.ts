@@ -100,9 +100,9 @@ function counted(count: number, one: string, many: string): string {
 }
 
 /** The line above a table of findings, from how many there are of each severity: the Findings
- * tab's from the state's counts, the Compare tab's from its own list's. Where `updating` - the
- * counts may be about to change - it ends by saying so; the Compare tab's, counting a reply of its
- * own rather than the revision, never does. */
+ * tab's from the statements the state counts, each once as `ddd check` counts them, the Compare
+ * tab's from its own list's. Where `updating` - the counts may be about to change - it ends by
+ * saying so; the Compare tab's, counting a reply of its own rather than the revision, never does. */
 export function findingCounts(counts: FindingCounts, updating: boolean): string {
   const total = findingsTotal(counts);
   const parts = COUNTED.filter(([severity]) => counts[severity] > 0).map(([severity, one, many]) =>
@@ -115,9 +115,9 @@ export function findingCounts(counts: FindingCounts, updating: boolean): string 
   return updating ? `${line}${UPDATING}` : line;
 }
 
-/** The Table tab's line above its components: the project's errors and its warnings, each counted
- * even at none, as the table's own two columns count them; and, where `updating`, the same ending
- * as `findingCounts`'. */
+/** The Table tab's line above its components: the project's errors and its warnings, from the
+ * statements the state counts, each said even at none, as the table has a column for each; and,
+ * where `updating`, the same ending as `findingCounts`'. */
 export function tableLine(counts: FindingCounts, updating: boolean): string {
   const errors = counted(counts.error, "error", "errors");
   const warnings = counted(counts.warning, "warning", "warnings");

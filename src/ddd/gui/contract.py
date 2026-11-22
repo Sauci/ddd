@@ -355,7 +355,12 @@ class State(_Frozen):
     """Every file the analysis read, sorted by path."""
 
     counts: FindingCounts
-    """How many findings of each severity the revision has, in all."""
+    """How many findings of each severity the revision files, in all: a disagreement once on
+    each file it concerns, as ``GET /api/findings`` lists them."""
+
+    statements: FindingCounts
+    """How many findings of each severity the revision makes, in all: each once, however many
+    files it is filed on, as ``ddd check`` counts them."""
 
     undoable: UndoableEdit | None
     """The last edit the interface made and has not put back, or ``None`` when it has made

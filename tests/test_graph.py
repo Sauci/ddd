@@ -16,6 +16,7 @@ from ddd.ir import (
     ResolvedInstance,
     ResolvedObject,
 )
+from ddd.lsp.navigation import Index, Site
 
 
 def a_module(
@@ -98,6 +99,18 @@ def a_finding(
 def a_note_at(file: str, pointer: str = "") -> tuple[str, Location | None]:
     """A note locating a declaration of ``file``, the shape every disagreement's note has."""
     return ("declared differently here", Location(path=Path(file), pointer=pointer))
+
+
+def declaring(interfaces: dict[str, tuple[str, ...]]) -> Index:
+    """The index of a project whose files declare these names, each file's in the order its
+    interface lists them - every declaration, the ones the analysis drops among them, as the
+    index records each where it is written."""
+    built = Index()
+    for file, names in interfaces.items():
+        for position, name in enumerate(names):
+            site = Site(Path(file), f"component.interface[{position}].definition")
+            built.declarations.setdefault(name, []).append(site)
+    return built
 
 
 class TestFlows:
@@ -231,7 +244,8 @@ class TestDisagreements:
                 "b.ddd.json", "component.interface[0].definition", notes=(a_note_at("a.ddd.json"),)
             )
         ]
-        graph = graph_of(dictionary, [a, b], findings)
+        index = declaring({"a.ddd.json": ("Speed",), "b.ddd.json": ("Speed",)})
+        graph = graph_of(dictionary, [a, b], findings, index=index)
         assert graph.flows[0].disagreements == (
             Disagreement("Speed", "definition-mismatch", Severity.ERROR, "they disagree"),
         )
@@ -249,8 +263,57 @@ class TestDisagreements:
                 "b.ddd.json", "component.interface[1].volatile", notes=(a_note_at("a.ddd.json"),)
             )
         ]
-        (flow,) = graph_of(dictionary, [a, b], findings).flows
+        index = declaring({"b.ddd.json": ("Speed", "Inlet")})
+        (flow,) = graph_of(dictionary, [a, b], findings, index=index).flows
         assert [d.object for d in flow.disagreements] == ["Inlet"]
+        assert flow.severity is Severity.ERROR
+
+    def test_a_disagreement_is_named_by_its_place_not_its_position_among_those_kept(self) -> None:
+        """14:M2. B reads a structure, then ``Other`` of a type nobody declares, which the
+        analysis drops - it is in the index, where B writes it, and not among the dictionary's
+        declarations of B - then ``Speed``, which disagrees, then ``Temp``. The finding points
+        into the third declaration B writes, ``Speed``; the third the analysis kept is ``Temp``."""
+        a, b = a_module("a.ddd.json", "A"), a_module("b.ddd.json", "B")
+        dictionary = a_dictionary(
+            components=(
+                a_component(
+                    "B",
+                    declared("Inlet", "input"),
+                    declared("Speed", "input"),
+                    declared("Temp", "input"),
+                ),
+            ),
+            objects=(an_object("Speed", "A", "B"), an_object("Temp", "A", "B")),
+            instances=(an_instance("Inlet", "A", "B"),),
+        )
+        findings = [
+            a_finding(
+                "b.ddd.json", "component.interface[2].definition", notes=(a_note_at("a.ddd.json"),)
+            )
+        ]
+        index = declaring({"b.ddd.json": ("Inlet", "Other", "Speed", "Temp")})
+        (flow,) = graph_of(dictionary, [a, b], findings, index=index).flows
+        assert [d.object for d in flow.disagreements] == ["Speed"]
+
+    def test_a_disagreement_read_by_its_place_stays_on_the_flow_that_carries_its_object(
+        self,
+    ) -> None:
+        """14:M2's other half. Past ``Other``, dropped, the second declaration the analysis kept
+        of B is its own local ``Mine``, which no flow carries: read by position, the disagreement
+        left every flow, and the arrow read as agreeing."""
+        a, b = a_module("a.ddd.json", "A"), a_module("b.ddd.json", "B")
+        dictionary = a_dictionary(
+            components=(a_component("B", declared("Speed", "input"), declared("Mine", "local")),),
+            objects=(an_object("Speed", "A", "B"), an_object("Mine", "B", local=True)),
+        )
+        findings = [
+            a_finding(
+                "b.ddd.json", "component.interface[1].definition", notes=(a_note_at("a.ddd.json"),)
+            )
+        ]
+        index = declaring({"b.ddd.json": ("Other", "Speed", "Mine")})
+        (flow,) = graph_of(dictionary, [a, b], findings, index=index).flows
+        assert [d.object for d in flow.disagreements] == ["Speed"]
         assert flow.severity is Severity.ERROR
 
     def test_the_worst_severity_wins(self) -> None:
@@ -323,6 +386,7 @@ class TestDisagreements:
         assert graph.flows[0].disagreements == ()
 
     def test_an_unresolved_declaration_index_still_colours_with_no_object(self) -> None:
+        """A place B writes no declaration at - the tenth of two - names nothing."""
         a, b = a_module("a.ddd.json", "A"), a_module("b.ddd.json", "B")
         dictionary = a_dictionary(
             components=(a_component("B", declared("Speed", "input"), declared("Torque", "input")),),
@@ -333,7 +397,8 @@ class TestDisagreements:
                 "b.ddd.json", "component.interface[9].definition", notes=(a_note_at("a.ddd.json"),)
             )
         ]
-        graph = graph_of(dictionary, [a, b], findings)
+        index = declaring({"b.ddd.json": ("Speed", "Torque")})
+        graph = graph_of(dictionary, [a, b], findings, index=index)
         disagreement = graph.flows[0].disagreements[0]
         assert disagreement.object is None
         assert graph.flows[0].severity is Severity.ERROR
@@ -347,14 +412,30 @@ class TestDisagreements:
             objects=(an_object("Speed", "A", "B"),),
         )
         findings = [a_finding("b.ddd.json", "", notes=(a_note_at("a.ddd.json"),))]
-        graph = graph_of(dictionary, [a, b], findings)
+        index = declaring({"b.ddd.json": ("Speed",)})
+        graph = graph_of(dictionary, [a, b], findings, index=index)
         disagreement = graph.flows[0].disagreements[0]
         assert disagreement.object is None
 
-    def test_a_module_with_no_matching_component_still_colours_with_no_object(self) -> None:
-        """A loaded module's name reaches a flow through an object's ``owner``/``consumers``,
-        which is a separate list from the dictionary's ``components`` - so a name with no
-        entry there must not crash the lookup, only leave the object unnamed."""
+    def test_a_finding_placed_nowhere_still_colours_with_no_object(self) -> None:
+        """A finding with no location points into no declaration, whatever the index records."""
+        a, b = a_module("a.ddd.json", "A"), a_module("b.ddd.json", "B")
+        dictionary = a_dictionary(objects=(an_object("Speed", "A", "B"),))
+        placed_nowhere = Diagnostic(
+            "definition-mismatch", Severity.ERROR, "they disagree", None, (a_note_at("a.ddd.json"),)
+        )
+        index = declaring({"b.ddd.json": ("Speed",)})
+        graph = graph_of(
+            dictionary, [a, b], [(PurePosixPath("b.ddd.json"), placed_nowhere)], index=index
+        )
+        assert [d.object for d in graph.flows[0].disagreements] == [None]
+
+    def test_a_file_the_index_records_no_declaration_of_still_colours_with_no_object(
+        self,
+    ) -> None:
+        """The object is read off what the index records of the finding's own file, and a file it
+        records nothing of - one whose component the dictionary does not list either - leaves the
+        object unnamed rather than failing the lookup."""
         a, b = a_module("a.ddd.json", "A"), a_module("b.ddd.json", "B")
         dictionary = a_dictionary(
             components=(a_component("B", declared("Speed", "input")),),
@@ -365,9 +446,27 @@ class TestDisagreements:
                 "a.ddd.json", "component.interface[0].definition", notes=(a_note_at("b.ddd.json"),)
             )
         ]
-        graph = graph_of(dictionary, [a, b], findings)
+        index = declaring({"b.ddd.json": ("Speed",)})
+        graph = graph_of(dictionary, [a, b], findings, index=index)
         disagreement = graph.flows[0].disagreements[0]
         assert disagreement.object is None
+
+    def test_with_no_index_a_disagreement_still_colours_with_no_object(self) -> None:
+        """A revision the analysis could not index names nothing, and still draws what disagrees
+        on every flow between the two files."""
+        a, b = a_module("a.ddd.json", "A"), a_module("b.ddd.json", "B")
+        dictionary = a_dictionary(
+            components=(a_component("B", declared("Speed", "input")),),
+            objects=(an_object("Speed", "A", "B"),),
+        )
+        findings = [
+            a_finding(
+                "b.ddd.json", "component.interface[0].definition", notes=(a_note_at("a.ddd.json"),)
+            )
+        ]
+        (flow,) = graph_of(dictionary, [a, b], findings, index=None).flows
+        assert [d.object for d in flow.disagreements] == [None]
+        assert flow.severity is Severity.ERROR
 
     def test_both_directions_between_one_pair(self) -> None:
         a, b = a_module("a.ddd.json", "A"), a_module("b.ddd.json", "B")
@@ -383,7 +482,8 @@ class TestDisagreements:
                 "a.ddd.json", "component.interface[0].definition", notes=(a_note_at("b.ddd.json"),)
             )
         ]
-        graph = graph_of(dictionary, [a, b], findings)
+        index = declaring({"a.ddd.json": ("Torque",), "b.ddd.json": ("Speed",)})
+        graph = graph_of(dictionary, [a, b], findings, index=index)
         by_pair = {(flow.source, flow.target): flow for flow in graph.flows}
         a_to_b = by_pair[(PurePosixPath("a.ddd.json"), PurePosixPath("b.ddd.json"))]
         b_to_a = by_pair[(PurePosixPath("b.ddd.json"), PurePosixPath("a.ddd.json"))]

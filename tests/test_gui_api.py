@@ -2669,6 +2669,59 @@ class TestGraph:
         )
         assert all(f["severity"] is None for f in body["flows"] if f is not flow)
 
+    @staticmethod
+    def disagreeing_past_a_dropped_declaration(tmp_path: Path, *after: dict[str, Any]) -> Api:
+        """W writing ``Inlet``, a structure, ``Speed`` and ``Temp``, and R reading ``Inlet``, then
+        ``Other`` of a type nobody declares - which the analysis drops, leaving it out of the
+        dictionary's declarations of R - then ``Speed`` in another unit, the disagreement, at
+        ``component.interface[2]``, then ``after``."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "t.ddd.json", "w.ddd.json", "r.ddd.json"),
+                "t.ddd.json": types(struct_type("Inlet_t")),
+                "w.ddd.json": component(
+                    "W",
+                    declare("output", "Inlet", typename="Inlet_t"),
+                    declare("output", "Speed", unit="rpm"),
+                    declare("output", "Temp", unit="degC"),
+                ),
+                "r.ddd.json": component(
+                    "R",
+                    declare("input", "Inlet", typename="Inlet_t"),
+                    declare("input", "Other", typename="Nope_t"),
+                    declare("input", "Speed", unit="krpm"),
+                    *after,
+                ),
+            },
+        )
+        session = Session(tmp_path)
+        session.open(tmp_path / "p.ddd.json")
+        return Api(session, tmp_path / "p.ddd.json")
+
+    def test_a_disagreement_names_the_declaration_it_is_filed_at(self, tmp_path: Path) -> None:
+        """14:M2: the third of R's declarations is ``Speed``, though the third the analysis kept
+        is ``Temp``."""
+        api = self.disagreeing_past_a_dropped_declaration(
+            tmp_path, declare("input", "Temp", unit="degC")
+        )
+        (flow,) = get(api, "/api/graph").body["flows"]
+        assert flow["objects"] == ["Inlet", "Speed", "Temp"]
+        assert [(d["object"], d["check"]) for d in flow["disagreements"]] == [
+            ("Speed", "definition-mismatch")
+        ]
+
+    def test_a_disagreement_stays_on_its_arrow_where_the_name_kept_there_flows_nowhere(
+        self, tmp_path: Path
+    ) -> None:
+        """14:M2's other half: the third declaration R's analysis kept is its own local, which
+        flows nowhere, so read by position the disagreement left the arrow, which read as
+        agreeing."""
+        api = self.disagreeing_past_a_dropped_declaration(tmp_path, declare("local", "Mine"))
+        (flow,) = get(api, "/api/graph").body["flows"]
+        assert flow["severity"] == "error"
+        assert [d["object"] for d in flow["disagreements"]] == ["Speed"]
+
     def test_the_graph_needs_an_open_project(self, root: Path) -> None:
         reply = get(Api(Session(root)), "/api/graph")
         assert (reply.status, reply.body["error"]) == (409, "no-project")

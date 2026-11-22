@@ -1,20 +1,22 @@
 """The graph of one revision: its modules, the flows between them, and what disagrees.
 
 Transport neutral, and the only place that decides what counts as a disagreement between two
-components: everything before this module is a dictionary and its diagnostics, and everything
-after it is a page or an endpoint drawing what this returns. Task 2 is the only caller; it turns
-a revision's files into :class:`Module` and pairs each finding with the file it is filed on, so
-that this module never has to import ``ddd.gui`` to do its own job.
+components: everything before this module is a dictionary, the index of where the project writes
+each name, and the diagnostics, and everything after it is a page or an endpoint drawing what this
+returns. Task 2 is the only caller; it turns a revision's files into :class:`Module` and pairs
+each finding with the file it is filed on, so that this module never has to import ``ddd.gui`` to
+do its own job.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 
 from ddd.diagnostics import Diagnostic, Location, Severity
-from ddd.ir import DataDictionary, ResolvedComponent, ResolvedInstance, ResolvedObject
+from ddd.ir import DataDictionary, ResolvedInstance, ResolvedObject
+from ddd.lsp.navigation import Index, Site
 from ddd.pointers import segments
 
 type _ModulePair = tuple[PurePosixPath, PurePosixPath]
@@ -71,8 +73,15 @@ def graph_of(
     dictionary: DataDictionary | None,
     modules: Iterable[Module],
     findings: Iterable[tuple[PurePosixPath, Diagnostic]],
+    *,
+    index: Index | None = None,
 ) -> Graph:
-    """The graph of one revision: its modules, and a flow per producing-consuming pair."""
+    """The graph of one revision: its modules, and a flow per producing-consuming pair.
+
+    ``index`` is where the project writes each name, the revision's own
+    (:attr:`ddd.gui.session.Revision.index`): what names the object a disagreement is about, by
+    the declaration its finding points into. Without one, every disagreement is drawn unnamed.
+    """
     sorted_modules = tuple(sorted(modules, key=lambda module: module.path))
     if dictionary is None:
         return Graph(sorted_modules, ())
@@ -83,10 +92,12 @@ def graph_of(
     objects_by_pair = _objects_by_pair(
         (*dictionary.objects, *dictionary.instances), paths_by_component
     )
-    components_by_name = {component.name: component for component in dictionary.components}
-    disagreements_by_pair = _disagreements_by_pair(
-        components_by_name, paths_by_component, objects_by_pair, findings
+    declared = (
+        {}
+        if index is None
+        else {site: name for name, sites in index.declarations.items() for site in sites}
     )
+    disagreements_by_pair = _disagreements_by_pair(objects_by_pair, findings, declared)
 
     flows = tuple(
         sorted(
@@ -136,13 +147,12 @@ def _objects_by_pair(
 
 
 def _disagreements_by_pair(
-    components_by_name: dict[str, ResolvedComponent],
-    paths_by_component: dict[str, PurePosixPath],
     objects_by_pair: dict[_ModulePair, set[str]],
     findings: Iterable[tuple[PurePosixPath, Diagnostic]],
+    declared: Mapping[Site, str],
 ) -> dict[_ModulePair, list[Disagreement]]:
-    """Every disagreement a finding carries, attached to the flow(s) its object puts it on."""
-    component_of = {path: name for name, path in paths_by_component.items()}
+    """Every disagreement a finding carries, attached to the flow(s) its object puts it on: the
+    object ``declared`` names at the declaration the finding points into."""
     found: dict[_ModulePair, list[Disagreement]] = {}
     for file, diagnostic in findings:
         # Assumes at most one of a diagnostic's notes locates another module; several would
@@ -154,7 +164,7 @@ def _disagreements_by_pair(
             pairs = [pair for pair in ((file, other), (other, file)) if pair in objects_by_pair]
             if not pairs:
                 continue
-            name = _declared_object(components_by_name, component_of[file], diagnostic.location)
+            name = _declared_object(declared, diagnostic.location)
             disagreement = Disagreement(
                 name, diagnostic.check, diagnostic.severity, diagnostic.message
             )
@@ -164,24 +174,26 @@ def _disagreements_by_pair(
     return found
 
 
-def _declared_object(
-    components_by_name: dict[str, ResolvedComponent], component: str, location: Location | None
-) -> str | None:
-    """The object ``location``'s ``component.interface[<index>]...`` pointer names.
+def _declared_object(declared: Mapping[Site, str], location: Location | None) -> str | None:
+    """The object of the declaration ``location``'s ``component.interface[<index>]...`` pointer
+    points into: the name ``declared`` - the index's record, by site - says the file writes there.
 
-    ``None`` when the pointer does not have that shape, when it names an index the component's
-    declarations do not have, or when the dictionary carries no component of that name at all:
-    the disagreement is still built, only unable to say which object of the flow it is about.
+    Read by its place, never by its position among the declarations the analysis kept: those
+    leave out every one it drops - a repeated name, an unknown type, a curve over a dropped
+    axis - so that past the first dropped, a position names the declaration after the one meant,
+    or one that flows nowhere, and the disagreement leaves the arrow it is about (14:M2).
+
+    ``None`` when the finding has no place, when the pointer does not have that shape, or when
+    the index records no declaration there: the disagreement is still built, only unable to say
+    which object of the flow it is about.
     """
-    parts = segments(location.pointer if location is not None else "")
+    if location is None:
+        return None
+    parts = segments(location.pointer)
     index = parts[2] if len(parts) >= 3 and parts[:2] == ["component", "interface"] else None
     if not isinstance(index, int):
         return None
-    found = components_by_name.get(component)
-    if found is None:
-        return None
-    declarations = found.declarations
-    return declarations[index].name if 0 <= index < len(declarations) else None
+    return declared.get(Site(location.path, f"component.interface[{index}].definition"))
 
 
 def _flow(pair: _ModulePair, objects: set[str], disagreements: list[Disagreement]) -> Flow:

@@ -675,7 +675,7 @@ class Api:
     def _graph_of(self, revision: Revision) -> Reply:
         modules = [_module(file) for file in revision.files if file.kind == "component"]
         findings = [(PurePosixPath(f.file.as_posix()), f.diagnostic) for f in revision.findings]
-        built = graph_of(revision.dictionary, modules, findings)
+        built = graph_of(revision.dictionary, modules, findings, index=revision.index)
         return Reply(
             200,
             written(

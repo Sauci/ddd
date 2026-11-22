@@ -1231,8 +1231,9 @@ left to match nothing. ``restamp`` moves a file's modification time to now and c
 its bytes. The session's watcher compares a file's modification time and size alone
 (``stamped``, in ``src/ddd/gui/session.py``), so its next poll reads a new revision, and the long
 poll the page has open, which would otherwise wait out its ``WAIT_SECONDS``, answers at once: a
-journey needs it to make the page's next read of the state the one ``failing`` fails, to read a
-revision whose answers ``failing`` fails, or to have a pattern expanded again.
+journey needs it to make the page's next read of the state the one ``failing`` fails, or to read
+a revision whose answers ``failing`` fails. A file new to a pattern needs none: the watcher stamps
+the directory the pattern expands in as well, whose time the file moves.
 
 ``openedGui``, a fixture beside ``copiedGui``, serves a copy of the demo as a reader's own ``ddd
 gui`` serves it: started without ``--no-browser``, so that it opens a browser, with the
@@ -1286,20 +1287,54 @@ project half-way through a migration carries, at the density asked for.
 opposed to the clean project the defaults make.
 
 The benchmark measuring ``ddd gui`` on what it makes is in two halves, run by hand and never in
-continuous integration - both are slow, and the machine's own, so a shared or variably loaded
-runner could not answer either honestly. ``.venv/bin/python tools/bench_gui.py PROJECT...``
-times the server half in process, one :class:`~ddd.gui.session.Session` and one
-:class:`~ddd.gui.api.Api` over each project named in turn, in this order: opening it; six of its
-plain ``GET`` endpoints - ``/api/state``, ``/graph``, ``/units``, ``/types``, ``/shared`` and
-``/files``; the Findings tab's first page and one component's own findings; a variable's panel;
-a unit's panel; judging a removal on the Files tab; one analysis; an edit answered and then
+continuous integration - both are slow, and the machine's own, so a shared or variably loaded runner
+could not answer either honestly. ``.venv/bin/python tools/bench_gui.py PROJECT...`` times the
+server half in process, one :class:`~ddd.gui.session.Session` and one :class:`~ddd.gui.api.Api` over
+each project named in turn, in this order: opening it through ``POST /api/open`` - the project named
+on the command line, in the body the start page posts, which the server answers before any walk for
+the projects under its start directory; the open of a project the start page lists, which may walk,
+is not timed - until the answer and until its first analysis has landed; six of its plain ``GET``
+endpoints - ``/api/state``, ``/graph``, ``/units``, ``/types``, ``/shared`` and ``/files``; the
+Findings tab's first page and one component's own findings; a variable's panel; a unit's panel; the
+plan of a variable declared in the component file holding the most declarations
+(``GET /api/settle``); judging a removal on the Files tab; one analysis; an edit answered and then
 analysed; and, once that analysis has landed, planning the rename of the unit stated in the most
-files. Then, over a second session polling once a second, as ``ddd gui``'s own does, three
-requests each asked halfway through an analysis - by the run's own measure of one - to be
-answered while it runs: ``/api/state``, the plan of that edit's own change (``GET /api/settle``,
-what a variable's panel asks while a reader picks a unit), and the edit itself. One answered
-once its analysis had ended is no figure of that, and its row says so in the figure's place,
-the run going on to the next measure. The page half needs the pages built first, and a channel
+files and applying that plan as the page's Apply posts it, undone once its own analysis has landed.
+Then, over a second session polling once a second, as ``ddd gui``'s own does, three requests each
+asked halfway through an analysis - by the run's own measure of one - to be answered while it runs:
+``/api/state``, the plan of that edit's own change (``GET /api/settle``, what a variable's panel
+asks while a reader picks a unit), and the edit itself. One answered once its analysis had ended is
+no figure of that, and its row says so in the figure's place, the run going on to the next measure.
+Each row says how many bytes the reply is, and, for a measure posting a body, how many bytes that
+body is, posted as the page posts one. A measure §3 of
+``docs/superpowers/specs/2026-09-30-gui-large-projects-design.md`` holds to a figure is printed with
+it and with whether it met it (``BUDGETS``): the second a tab or a panel has, which every plan is
+held to as what a panel draws before it offers its Apply; the half second an Apply's own change has;
+and the second the page has to answer once a project is opened. A figure over its budget says the
+page cannot meet it, the page's own work coming on top of the server's.
+
+Run on the Linux development PC over generated projects held in ``/tmp``, a file system kept in
+memory where no write waits for a disk - at 35,000 declarations the ``mixed`` shape, clean and
+findings-heavy, and ``many``, clean; at 100,000 the ``mixed``, ``large`` and ``many`` shapes, clean
+and findings-heavy - the plan in the largest file took 34 to 72 ms at 35,000 declarations and 97 to
+213 ms at 100,000 where that file is a large component, of 1,168 and of 3,334 declarations, and 1 to
+3 ms where it is a small one, every one within its second; the open of the project named on the
+command line answered in 9 to 17 ms and in 1 to 51 ms, within its second. The rename's plan took
+1,211 to 1,311 ms and 3,459 to 4,073 ms, and its Apply 2,242 to 2,388 ms and 6,635 to 7,261 ms, each
+missing its budget. An edit asked halfway through an analysis is held to the half second an Apply's
+own change has, as the rename's Apply is, and missed it at 100,000 declarations in four of the
+seven runs, which took 540, 580, 775 and 940 ms where the other three took 121 to 170 ms, and at
+35,000 in one run, of 547 ms. The applied rename's body was 505,526 to 647,308 bytes at 35,000
+declarations and 1,029,010 to 1,948,716 bytes at 100,000, the most from the ``mixed`` shape,
+findings-heavy.
+The ``chain`` shape's, which these runs leave out, is 4,213,186 bytes at 100,000 declarations clean
+and 4,706,936 findings-heavy, its rename changing 12,502 files, replayed with the benchmark's own
+steps up to the body. The most the generator makes at any density of findings is the chain shape's
+at ``--unread 0.625`` or ``0.875``, 4,725,352 bytes, where the unit renamed is ``Nm`` rather than
+``A``; the ``many`` shape's most is 2,352,764 bytes, at ``--unread 0.375``. Each is held, as the
+runs' bodies are, by the 8,388,608 bytes ``POST /api/edit`` takes (``ddd.gui.server.EDIT_BODY``).
+
+The page half needs the pages built first, and a channel
 naming an installed browser: ``cd gui && npm run build && PLAYWRIGHT_CHANNEL=chrome npm run
 bench`` (``playwright test -c playwright.bench.config.ts``) times it the same way a reader would
 meet it, against a running ``ddd gui`` - ``DDD_BENCH_PROJECT`` naming the ``project.ddd.json``
@@ -1317,7 +1352,8 @@ too. The server half is checked by a smoke test on a small generated project
 (``tests/test_bench_gui.py``); nothing checks the page half beyond ``gui``'s own type checking
 and linting - nothing runs ``gui/bench/page.bench.ts`` outside ``npm run bench`` itself. The
 generator both halves start from is checked on its own (``tests/test_generate_project.py``). The
-figures either half takes on the sizes and shapes it makes are not kept here, but in
+figures either half takes on the sizes and shapes it makes are not kept here, those of the plan
+in the largest file, the rename and the open above aside, but in
 ``docs/superpowers/plans/2026-09-30-gui-large-projects.md``'s own *Figures* section, and the
 pull request that carried them.
 
@@ -1367,7 +1403,8 @@ records as it reads each declaration's kind. ``GET /api/variable`` answers those
 the declarations themselves; ``GET /api/settle`` settles any of the twelve keys of
 ``ddd.lsp.edits.PROPAGATED_KEYS`` and is the same endpoint the unit has always used.
 ``ddd.value_identity.same_value`` decides when two spellings are one value - a conversion
-through the models and an enum by its name, limits as the numbers they resolve to,
+through the models and an enum by its name, limits as the numbers they resolve to, compared
+exactly as ``definition-mismatch`` compares them and never as the doubles nearest them,
 everything else its canonical json text, anything the models refuse outright falling back to
 that text - so the panel's values in play, ``definition-mismatch`` and what
 ``GET /api/settle`` previews can never disagree about one.
@@ -1400,7 +1437,13 @@ a name may not be used, so the tab and the editor cannot disagree - planned as e
 operations rather than the text edits ``rename_edits`` answers, the way the identity fix
 does. ``GET /api/types`` lists them, ``GET /api/type`` answers one with its uses and its
 members, and ``GET /api/type-plan`` previews a change of either kind as ``PlanReply``, which
-the page applies through ``POST /api/edit`` and the undo puts back.
+the page applies through ``POST /api/edit`` and the undo puts back. A key set is asked of the
+models as the entry would be left, as ``settled_at`` asks of a definition:
+``ddd.models.type_problem`` validates the entry by its ``type`` and, for a scalar type, holds the
+limits its datatype and conversion derive finite, as the analysis does, and ``set_key`` refuses
+what it refuses, ``invalid``, in the models' words. It is asked of the entry as it stands too,
+and an answer the change leaves as it was refuses nothing: a type the analysis refuses already
+is planned a change leaving that refusal as it was, and one mending it.
 
 ``ddd.declaration_plans`` sits beside ``ddd.type_plans`` and ``ddd.project_units``: a
 component may add a declaration of a variable the project already declares or of a new

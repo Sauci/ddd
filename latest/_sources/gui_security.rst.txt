@@ -88,6 +88,12 @@ What it defends against
   whichever is first: closing with bytes still unread resets a connection on Windows,
   which can erase the refusal before the browser reads it. That close follows an answer
   already given, unlike the thirty seconds above, which follows none at all.
+  ``POST /api/edit`` alone may promise more, up to 8,388,608 bytes, since an Apply posts
+  every change of its plan - up to 4,725,352 bytes to rename a unit across a generated
+  project of 100,000 declarations, measured over each of the generator's four shapes and
+  its densities of findings, the chain shape's the most - but only once it has shown the
+  token and this server's own origin: refused before that, it is read and drained as any
+  other ``POST`` is.
   ``POST /open``, which anyone who reaches the port may send without the token, takes at
   most 1,024 bytes - a sign-in body is a few dozen - and a longer one is refused ``413``
   before it is parsed, so no json parser ever runs on a body large or deep enough to
@@ -104,7 +110,9 @@ What it defends against
   sees them at all: a request line over 65,536 bytes answers ``414``, and a header line
   over 65,536 bytes, or a request carrying 100 header lines or more - the blank line
   that ends them counted - answers ``431``; ninety-nine is the most ``ddd gui`` ever
-  reads.
+  reads. Each of the standard library's refusals closes its connection behind the answer
+  as ``ddd gui``'s own do, reading and throwing away what still arrives first, so that the
+  close is no reset to erase the answer.
 
 * **The address printed, opened as** ``localhost``. When it listens on loopback, as it
   does by default, ``ddd gui`` listens on ``[::1]`` too, on the very same port, and answers

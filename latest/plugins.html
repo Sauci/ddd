@@ -328,7 +328,11 @@ beside the listing of <code class="docutils literal notranslate"><span class="pr
 name. Keep the module itself stateless - it is imported once per process and reused across
 every project and every run of the language server, so anything it accumulates in a global
 leaks between projects that have nothing to do with each other; editing the plugin file only
-takes effect the next time a process starts. A <code class="docutils literal notranslate"><span class="pre">.py</span></code> plugin is one module, loaded from the
+takes effect the next time a process starts. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> says so, with <code class="docutils literal notranslate"><span class="pre">plugin-changed</span></code> on
+the file of a plugin named by its path that changed since it imported it, until it is
+restarted or the file holds the bytes it was imported from again; a module a plugin imports is
+not watched, and a plugin named as a module is not compared, so editing either takes a restart
+unsaid. A <code class="docutils literal notranslate"><span class="pre">.py</span></code> plugin is one module, loaded from the
 location the project names rather than imported as part of a package: it has no package of
 its own, so <code class="docutils literal notranslate"><span class="pre">from</span> <span class="pre">.</span> <span class="pre">import</span> <span class="pre">helper</span></code> is “attempted relative import with no known parent
 package”, and a plain <code class="docutils literal notranslate"><span class="pre">import</span> <span class="pre">helper</span></code> is resolved against <code class="docutils literal notranslate"><span class="pre">sys.path</span></code> like any other

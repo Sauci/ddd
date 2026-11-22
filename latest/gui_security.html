@@ -191,6 +191,12 @@ arrives until the client closes, two seconds pass, or 1,048,576 bytes are read,
 whichever is first: closing with bytes still unread resets a connection on Windows,
 which can erase the refusal before the browser reads it. That close follows an answer
 already given, unlike the thirty seconds above, which follows none at all.
+<code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/edit</span></code> alone may promise more, up to 8,388,608 bytes, since an Apply posts
+every change of its plan - up to 4,725,352 bytes to rename a unit across a generated
+project of 100,000 declarations, measured over each of the generator’s four shapes and
+its densities of findings, the chain shape’s the most - but only once it has shown the
+token and this server’s own origin: refused before that, it is read and drained as any
+other <code class="docutils literal notranslate"><span class="pre">POST</span></code> is.
 <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/open</span></code>, which anyone who reaches the port may send without the token, takes at
 most 1,024 bytes - a sign-in body is a few dozen - and a longer one is refused <code class="docutils literal notranslate"><span class="pre">413</span></code>
 before it is parsed, so no json parser ever runs on a body large or deep enough to
@@ -207,7 +213,9 @@ page address is. The standard library itself refuses three shapes before this se
 sees them at all: a request line over 65,536 bytes answers <code class="docutils literal notranslate"><span class="pre">414</span></code>, and a header line
 over 65,536 bytes, or a request carrying 100 header lines or more - the blank line
 that ends them counted - answers <code class="docutils literal notranslate"><span class="pre">431</span></code>; ninety-nine is the most <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> ever
-reads.</p></li>
+reads. Each of the standard library’s refusals closes its connection behind the answer
+as <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code>’s own do, reading and throwing away what still arrives first, so that the
+close is no reset to erase the answer.</p></li>
 <li><p><strong>The address printed, opened as</strong> <code class="docutils literal notranslate"><span class="pre">localhost</span></code>. When it listens on loopback, as it
 does by default, <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> listens on <code class="docutils literal notranslate"><span class="pre">[::1]</span></code> too, on the very same port, and answers
 there as it answers on <code class="docutils literal notranslate"><span class="pre">127.0.0.1</span></code>: <code class="docutils literal notranslate"><span class="pre">localhost</span></code> is <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> itself, whichever of

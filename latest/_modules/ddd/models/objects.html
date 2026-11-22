@@ -1226,10 +1226,21 @@
     <span class="k">try</span><span class="p">:</span>
         <span class="n">accepted</span> <span class="o">=</span> <span class="n">_DEFINITION</span><span class="o">.</span><span class="n">validate_python</span><span class="p">(</span><span class="n">definition</span><span class="p">)</span>
     <span class="k">except</span> <span class="n">ValidationError</span> <span class="k">as</span> <span class="n">error</span><span class="p">:</span>
-        <span class="n">first</span> <span class="o">=</span> <span class="n">error</span><span class="o">.</span><span class="n">errors</span><span class="p">(</span><span class="n">include_url</span><span class="o">=</span><span class="kc">False</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
-        <span class="n">cause</span> <span class="o">=</span> <span class="n">first</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"ctx"</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"error"</span><span class="p">)</span>
-        <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">cause</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">cause</span><span class="p">,</span> <span class="ne">Exception</span><span class="p">)</span> <span class="k">else</span> <span class="n">first</span><span class="p">[</span><span class="s2">"msg"</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">first_refused</span><span class="p">(</span><span class="n">error</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">_refused_by_the_analysis</span><span class="p">(</span><span class="n">accepted</span><span class="p">,</span> <span class="n">types</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">first_refused</span><span class="p">(</span><span class="n">error</span><span class="p">:</span> <span class="n">ValidationError</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""The first thing a validation error refuses, in one sentence, as :func:`definition_problem`</span>
+<span class="sd">    says it: a rule crossing keys in the english sentence it raised, unwrapped from pydantic's</span>
+<span class="sd">    ``"Value error, ..."``, and a key of the wrong shape as pydantic says it.</span>
+
+<span class="sd">    One reading for every question an edit asks the models of what it would leave - a definition,</span>
+<span class="sd">    and a type's entry (:func:`ddd.models.types.type_problem`) - so that the two cannot come to say</span>
+<span class="sd">    one refusal in two ways."""</span>
+    <span class="n">first</span> <span class="o">=</span> <span class="n">error</span><span class="o">.</span><span class="n">errors</span><span class="p">(</span><span class="n">include_url</span><span class="o">=</span><span class="kc">False</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">cause</span> <span class="o">=</span> <span class="n">first</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"ctx"</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"error"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">cause</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">cause</span><span class="p">,</span> <span class="ne">Exception</span><span class="p">)</span> <span class="k">else</span> <span class="n">first</span><span class="p">[</span><span class="s2">"msg"</span><span class="p">]</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">string_type_problem</span><span class="p">(</span>

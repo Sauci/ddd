@@ -404,7 +404,12 @@ The commands
        pasted along with it - previewed and undone the same way, in place of any cells typed
        before it, as a cell typed after it takes the table's place. Its header is discarded
        unread, so one naming a different axis is caught only by that preview, not by the paste
-       itself. Every field
+       itself. A table past about 10,000 counts is not one ``ddd gui`` takes: one whose counts
+       outgrow the address a request carries - past about 8,000 counts of five digits each - is
+       refused as it is pasted, before anything is asked of the server, in a sentence naming the
+       object and saying to set its values cell by cell, or in its file in an editor. Any other
+       plan whose request would outgrow that address is refused the same way, naming its route.
+       Every field
        of the page reads a number the same way, in decimal notation: an optional sign, digits
        with an optional fraction or a fraction alone, and an optional exponent, the white
        space around it ignored. A number written in hexadecimal, binary or octal, ``Infinity``,

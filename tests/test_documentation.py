@@ -814,6 +814,20 @@ class TestTheCommandPage:
         assert listed is not None
         assert set(re.findall(r"``([a-z]+)``", listed.group(1))) == set(schema_models())
 
+    def test_a_table_past_about_10_000_counts_is_said_to_be_set_cell_by_cell(self) -> None:
+        """Decision 3.6, as ``client.ts`` refuses such a table (3:I8), and what is refused besides
+        it: every plan whose request would outgrow one address."""
+        text = flattened(self.COMMAND_PAGE)
+        assert (
+            "A table past about 10,000 counts is not one ``ddd gui`` takes: one whose counts "
+            "outgrow the address a request carries"
+        ) in text
+        assert (
+            "in a sentence naming the object and saying to set its values cell by cell, or in its "
+            "file in an editor. Any other plan whose request would outgrow that address is refused "
+            "the same way, naming its route."
+        ) in text
+
     def test_the_values_grid_is_said_to_refuse_a_whole_number_past_2_53(self) -> None:
         """What ``objectValues.ts`` and ``object_values.py`` do with a number the page's double
         cannot hold, said where the grid is described."""

@@ -59,7 +59,9 @@ import type {
  * here and imported where else it is needed (`signIn.ts`), so the two cannot drift apart. */
 export type Fetch = (path: string, init?: RequestInit) => Promise<Response>;
 
-/** A refusal or a failure the server answered with, carrying its code for the page to act on. */
+/** A refusal or a failure the server answered with, carrying its code for the page to act on - or
+ * the refusal `request` makes itself of an address too long to send, `414` and `too-long`, as the
+ * server would have answered it. */
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
@@ -96,6 +98,33 @@ export function sentAgain(method: string | undefined, error: unknown): boolean {
   return (method ?? "GET").toUpperCase() === "GET";
 }
 
+/** The longest request line `ddd gui`'s server reads, its CRLF included: `BaseHTTPRequestHandler`
+ * reads the line with `readline(65537)` and answers **414** to anything longer than 65536 bytes,
+ * and `ddd gui`'s own server is one of those (`GuiServer`, a `ThreadingHTTPServer`). */
+const LINE_LIMIT = 65536;
+
+/** What one address may carry, asked with `method`: the line is the method, a space, the address,
+ * ` HTTP/1.1` and a CRLF, so a `GET`'s address has 65521 bytes of it - and every byte of an encoded
+ * address is ascii, so its length in characters is its length in bytes. */
+function addressLimit(method: string | undefined): number {
+  return LINE_LIMIT - `${(method ?? "GET").toUpperCase()}  HTTP/1.1\r\n`.length;
+}
+
+/** The code of a refusal of an address too long to send (`tooLong`). */
+const TOO_LONG = "too-long";
+
+/** What is said of an ask whose address is longer than one request line carries, as `request`
+ * refuses it, naming its route (3:I8): asked, it would be answered the standard library's 414 page,
+ * whose `Request-URI Too Long` is true and tells a reader nothing of what they asked. */
+function tooLong(address: string, limit: number): ApiError {
+  return new ApiError(
+    414,
+    TOO_LONG,
+    `${pathOf(address)} cannot be asked in one request: its address needs ${address.length} ` +
+      `characters, and ddd gui reads at most ${limit}`,
+  );
+}
+
 export async function request<T>(
   path: string,
   init: Ask = {},
@@ -103,6 +132,9 @@ export async function request<T>(
   kept: Keeper = token,
   out: SignedOut = signedOut,
 ): Promise<T> {
+  // Refused before it is sent, as the server would refuse it: no line past its limit is sent.
+  const limit = addressLimit(init.method);
+  if (path.length > limit) throw tooLong(path, limit);
   // The token goes as a header, and no cookie goes at all: a browser sends a cookie to every
   // port of 127.0.0.1, so to every other server there too (part 18b).
   const held = kept.get();
@@ -403,29 +435,25 @@ export interface ValuesPlanRequest {
   raw: readonly number[];
 }
 
-/** What one address may carry. `BaseHTTPRequestHandler` reads the request line with
- * `readline(65537)` and answers **414** to anything longer than 65536 bytes, and `ddd gui`'s
- * own server is one of those (`GuiServer`, a `ThreadingHTTPServer`). The line is `GET `, the
- * address, ` HTTP/1.1` and a CRLF, so the address itself has 65521 bytes of it - and every byte
- * of an encoded address is ascii, so its length in characters is its length in bytes. */
-const ADDRESS_LIMIT = 65536 - "GET ".length - " HTTP/1.1\r\n".length;
-
 /** The table's change as its query takes it - `ValuesPlanQuery`, the server's own model of it - the
  * counts joined by commas. */
 export const getValuesPlan = async (plan: ValuesPlanRequest, fetchImpl: Fetch = fetch) => {
   const query = queryOf<ValuesPlanQuery>({ name: plan.name, raw: plan.raw.join(",") });
   const address = `/api/values-plan${query}`;
-  // Refused before it is asked for, rather than sent and answered 414: a count costs its own
-  // digits plus the three of the `%2C` before it, which is about 8 000 whole counts and fewer of
-  // a float datatype's, each the shortest spelling of its float (`rawCount`) - up to seventeen
-  // digits for a float64 count no short decimal reads back as. The
-  // shape of the block cannot bound this - the object's own shape is what makes it large - and
-  // the alternative is a reader meeting `Request-URI Too Long` under the grid, which is true
-  // and tells them nothing about their table.
-  if (address.length > ADDRESS_LIMIT) {
-    throw new Error(
-      `'${plan.name}' has too many values to plan in one request: its counts need ` +
-        `${address.length} characters of address, and ddd gui reads at most ${ADDRESS_LIMIT}`,
+  // Refused before it is asked for, as `request` refuses any address too long, but in a sentence
+  // of its own: a table past about 10,000 counts is not one ddd gui takes (decision 3.6). A count
+  // costs its own characters and the three of the `%2C` before it, so a table of five-digit
+  // counts outgrows the address past about 8,000 of them - a 90 by 90 one is asked for, a 91 by
+  // 91 one refused - and one of one-digit counts past about 16,000. A float's count is the
+  // shortest spelling of its float (`rawCount`): about as long as the value typed, where a short
+  // decimal reads back as it, and up to seventeen digits where none does. The shape of the
+  // block cannot bound this - the object's own shape is what makes it large.
+  if (address.length > addressLimit("GET")) {
+    throw new ApiError(
+      414,
+      TOO_LONG,
+      `'${plan.name}' has too many values to plan at once: a table past about 10,000 counts is ` +
+        "not one ddd gui takes; set its values cell by cell, or in its file in an editor",
     );
   }
   return request<PlanReply>(address, {}, fetchImpl);

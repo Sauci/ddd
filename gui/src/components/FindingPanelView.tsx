@@ -10,9 +10,10 @@ export interface FindingPanelViewProps {
   finding: Finding;
   /** What the button that follows it says, or `null` when it leads nowhere. */
   label: string | null;
-  /** The address it carries, so the link is a real one; `null` with `label`. */
+  /** The address it carries, so the link is a real one; `null` with `label`, and where no address
+   * can carry the name it leads to (`hrefOf`). */
   href: string | null;
-  /** Why it leads nowhere, said when `label` is `null`. */
+  /** Why it leads nowhere, said where no link is drawn. */
   reason: string;
   /** Where the finding is, said when it leads nowhere (`placeOf`, `lib/findings.ts`): the line
    * and column in its file, or its pointer; `null` where it names no place. */
@@ -39,8 +40,7 @@ export interface FindingPanelViewProps {
 export function FindingPanelView(props: FindingPanelViewProps) {
   const { finding, label, href, reason, place, fileName, fixes, chosen, refusal, busy } = props;
   const offered = fixes?.fixes ?? [];
-  // Built here rather than inline, so that `label` and `href` - which are null together - narrow
-  // once for the whole row.
+  // Built here rather than inline, so that `label` and `href` narrow once for the whole row.
   const link =
     label !== null && href !== null ? (
       <a

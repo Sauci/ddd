@@ -12,7 +12,10 @@ import { arrivedAfter, hrefOf, parseRoute, type Route } from "../lib/route";
  * was loaded with was chosen by its address (a link from elsewhere, a bookmark, a typed address, a
  * reload), every later one by the reader. A move through history that leaves the route as it was,
  * such as a fragment navigation another window can make, keeps it (`arrivedAfter`, ruling
- * P19a-19). `removalAsked` (`lib/files.ts`) is what reads it. */
+ * P19a-19). `removalAsked` (`lib/files.ts`) is what reads it.
+ *
+ * A route naming what no address can carry (`hrefOf` writes none, 15:I5) is gone to all the same,
+ * the address left as it stands: handed none, `pushState` and `replaceState` keep the page's. */
 export function useRoute(): [
   Route,
   (route: Route, options?: { replace?: boolean }) => void,

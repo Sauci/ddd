@@ -212,7 +212,8 @@ export function routeOf(finding: Finding): Route | null {
   return { page: "component", file: finding.file };
 }
 
-/** The address that route is written as, or `null` when the finding leads nowhere. */
+/** The address that route is written as, or `null` when the finding leads nowhere, or where no
+ * address can carry the name it leads to (`hrefOf`). */
 export function routeHref(finding: Finding): string | null {
   const route = routeOf(finding);
   return route === null ? null : hrefOf(route);
@@ -296,8 +297,13 @@ const SHOWN = new Set(["component", "constants", "types", "units", "sections", "
  * and so the whole of what the file declares, which no panel shows. What is left is a
  * finding that does name a place the file no longer has: a declaration moved since the
  * analysis read it, or a unit no longer stated where it was. Neither is about the project, and
- * neither is a sentence to guess at, so the reason says only what is certain of both. */
+ * neither is a sentence to guess at, so the reason says only what is certain of both.
+ *
+ * A route the server did answer, to a name no address can carry (`hrefOf`, 15:I5), is said
+ * first: such a finding leads somewhere, and no link can take the reader there. */
 export function noRouteReason(finding: Finding, state: State): string {
+  const route = routeOf(finding);
+  if (route !== null && hrefOf(route) === null) return "no address can carry the name it leads to";
   const name = baseName(finding.file);
   const listed = state.files.find((file) => file.path === finding.file);
   if (listed === undefined) return `${name} is not a file of this project`;

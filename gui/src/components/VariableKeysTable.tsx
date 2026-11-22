@@ -95,9 +95,9 @@ export function VariableKeysTable({
               // length; this is only what tells the type checker so under
               // `noUncheckedIndexedAccess`.
               if (cell === undefined) return <Cell />;
-              // `from` and `href` are `null` together (`KeyCell`'s own doc), so narrowing one
-              // through a local, rather than `cell.from`/`cell.href` again inside the handler,
-              // is what keeps the closure below narrowed too.
+              // `from` and `href` narrowed through locals (`KeyCell`'s own doc says when each is
+              // `null`), rather than `cell.from`/`cell.href` again inside the handler, is what
+              // keeps the closure below narrowed too.
               const type = cell.from;
               const href = cell.href;
               return (
@@ -105,8 +105,9 @@ export function VariableKeysTable({
                   {cell.parts === null
                     ? cell.text
                     : cell.parts.map((part, index) => {
-                        // `constant` and `href` are `null` together (`DimensionEntry`'s own doc),
-                        // narrowed through locals for the same reason `type`/`href` are above.
+                        // `constant` and `href` (`DimensionEntry`'s own doc says when each is
+                        // `null`), narrowed through locals for the same reason `type`/`href`
+                        // are above.
                         const constant = part.constant;
                         const opens = part.href;
                         return (

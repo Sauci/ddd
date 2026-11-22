@@ -744,6 +744,31 @@ test("a finding in a variable's panel leads to the unit it names, on the Units t
   ).toBeVisible();
 });
 
+test("a component whose unit holds half of a surrogate pair draws its page, the unit's finding as text", async ({
+  page,
+  copiedGui,
+}) => {
+  // PumpSpeed states a unit of U+D800 and `x`, before the server starts. `JSON.stringify` writes
+  // the lone half as its json escape, plain text in a file that stays utf-8, and the loader reads
+  // it back as it is: the first analysis files `unknown-unit` there, leading to a unit no address
+  // can carry. Decision 17.3 (branch 12's task 9, branch 13's task 7) refuses such a string at the
+  // parser: the task landing it turns this journey into one of the file refused.
+  const gui = await copiedGui("vocabulary", (directory) => {
+    driftIn(directory, PUMP, "PumpSpeed", `${String.fromCharCode(0xd800)}x`);
+  });
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(String(error)));
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Pump", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Pump" }), errors.join("; ")).toBeVisible();
+  await expect(page.getByRole("grid", { name: "Declarations of Pump" })).toBeVisible();
+  // The finding is listed, as text: no link is drawn to the unit it leads to.
+  const finding = page.getByRole("listitem").filter({ hasText: "unknown-unit" });
+  await expect(finding).toContainText("is not a unit this project declares");
+  await expect(finding.getByRole("link")).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
 test("a unit outside the project's vocabulary is said to be, and still offered", async ({
   page,
   vocabularyGui,

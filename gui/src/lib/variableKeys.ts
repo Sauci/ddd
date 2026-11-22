@@ -11,8 +11,9 @@ import { unsettledNote } from "./typing";
 import { textOf, unitRefusal } from "./units";
 
 /** One entry of a `dimensions` value: the text it reads as, and - for a name - the constant it
- * opens. `constant` and `href` are `null` together, exactly as `KeyCell`'s own `from`/`href` are:
- * a literal number names nothing to open (spec 5.3). */
+ * opens. `href` is `null` wherever `constant` is, as `KeyCell`'s own is wherever `from` is - a
+ * literal number names nothing to open (spec 5.3) - and for a name no address can carry
+ * (`hrefOf`), which is then read as text. */
 export interface DimensionEntry {
   text: string;
   constant: string | null;
@@ -25,10 +26,11 @@ export interface KeyCell {
   text: string;
   /** Drawn quiet: nothing is stated here, or this kind has no such key. */
   quiet: boolean;
-  /** The declared type the value comes from, which the cell names after it. */
+  /** The declared type the value comes from, which the cell names after it as a link (`href`). */
   from: string | null;
-  /** Where `from`'s type opens, paired with it exactly as `label` pairs with `href` in
-   * `FindingPanelView`: `null` together with `from`. */
+  /** Where `from`'s type opens, paired with it as `label` pairs with `href` in
+   * `FindingPanelView`: `null` wherever `from` is, and for a type no address can carry
+   * (`hrefOf`), which the cell then does not name. */
   href: string | null;
   /** The preview writes this key into this declaration. */
   changing: boolean;

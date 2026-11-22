@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { arrivedAfter, hrefOf, parseRoute } from "./route";
+import { arrivedAfter, hrefOf, parseRoute, tabHref } from "./route";
 
 test.each([
   ["/", "", { page: "start" }],
@@ -233,11 +233,54 @@ test.each([
   ["/component", "?file=C%3A%2Fp%2Fa.ddd.json"],
   ["/component", "?file=C%3A%2Fp%2Fa.ddd.json&variable=CurveA"],
   ["/component", "?file=C%3A%2Fp%2Fa.ddd.json&variable=CurveA&view=values"],
+  // The bytes utf-8 would give U+D800 alone, which it gives none: decoded, they are replacement
+  // characters, a name an address carries.
+  ["/project", "?view=units&unit=%ED%A0%80x"],
 ] as const)("%s%s is written back as an address of the same route", (pathname, search) => {
   const route = parseRoute(pathname, search);
-  const written = new URL(hrefOf(route), "http://127.0.0.1");
+  const href = hrefOf(route);
+  // A route read off an address never names what no address can carry.
+  if (href === null) throw new Error(`${pathname}${search} was read as a route with no address`);
+  const written = new URL(href, "http://127.0.0.1");
   expect(parseRoute(written.pathname, written.search)).toEqual(route);
 });
+
+/** The two halves of a surrogate pair, each alone a string no address can carry: a json file can
+ * state one as an escape, and the loader reads it as it is (15:I5). */
+const HIGH = String.fromCharCode(0xd800);
+const LOW = String.fromCharCode(0xdc00);
+
+test.each([
+  ["the graph's variable", { page: "project", view: "graph", variable: `${HIGH}x` }],
+  ["a unit", { page: "project", view: "units", unit: `${HIGH}x` }],
+  ["a type", { page: "project", view: "types", type: `x${LOW}` }],
+  ["a shared entry", { page: "project", view: "shared", kind: "constant", name: `${HIGH}x` }],
+  ["a Files row", { page: "project", view: "files", path: `C:/p/${LOW}.ddd.json` }],
+  ["a component's file", { page: "component", file: `C:/p/${HIGH}.ddd.json` }],
+  ["a component's variable", { page: "component", file: "C:/p/a.ddd.json", variable: `${HIGH}x` }],
+  [
+    "a values grid's variable",
+    { page: "component", file: "C:/p/a.ddd.json", variable: `x${LOW}`, view: "values" },
+  ],
+] as const)("%s holding half of a surrogate pair alone has no address", (_, route) => {
+  expect(hrefOf(route)).toBeNull();
+});
+
+test("a name holding a whole surrogate pair is carried, in utf-8", () => {
+  const unit = String.fromCodePoint(0x1f321);
+  expect(hrefOf({ page: "project", view: "units", unit })).toBe(
+    "/project?view=units&unit=%F0%9F%8C%A1",
+  );
+});
+
+// Every tab with nothing selected in it names nothing of the project's, so it always has an
+// address: the one `hrefOf` writes for its bare route.
+test.each(["graph", "table", "units", "types", "shared", "files", "findings", "compare"] as const)(
+  "the %s tab's address is its bare route's",
+  (view) => {
+    expect(tabHref(view)).toBe(hrefOf(parseRoute("/project", `?view=${view}`)));
+  },
+);
 
 /** A Files row's route, as the page was loaded with it. */
 const ROW = parseRoute("/project", "?view=files&path=C%3A%2Fp%2Fa.ddd.json");

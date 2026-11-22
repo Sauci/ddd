@@ -89,8 +89,22 @@ export function parseRoute(pathname: string, search: string): Route {
   return { page: "start" };
 }
 
-/** The address of a page. */
-export function hrefOf(route: Route): string {
+/** The address of a page, or `null` where the route names something no address can carry: half of
+ * a surrogate pair alone, which a json file can state as an escape and the loader reads as it is
+ * (15:I5). `encodeURIComponent` throws on it, so no link is drawn to such a route. Every name the
+ * route carries is checked, wherever the address writes it. */
+export function hrefOf(route: Route): string | null {
+  return Object.values(route).every((name) => name.isWellFormed()) ? addressOf(route) : null;
+}
+
+/** The address of one of the project screen's tabs with nothing selected in it, the one `hrefOf`
+ * writes for that tab's bare route: a tab names nothing of the project's, so it always has one. */
+export function tabHref(view: ProjectView): string {
+  return view === "graph" ? "/project" : `/project?view=${view}`;
+}
+
+/** The address of a page whose every name an address can carry. */
+function addressOf(route: Route): string {
   const variable =
     "variable" in route && route.variable !== undefined
       ? `variable=${encodeURIComponent(route.variable)}`

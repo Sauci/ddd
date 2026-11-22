@@ -4,7 +4,7 @@ import { getSession } from "../api/client";
 import { signedOut } from "../api/token";
 import { SignedOutView } from "../components/SignedOutView";
 import { UndrawnView } from "../components/UndrawnView";
-import { hrefOf, type ProjectView, type Route } from "../lib/route";
+import { type ProjectView, type Route, tabHref } from "../lib/route";
 import { projectName, sessionAskedFor } from "../lib/session";
 import type { SharedKind } from "../lib/shared";
 import { undrawnSentence } from "../lib/undrawn";
@@ -41,7 +41,7 @@ const PROJECT_VIEWS = [
   ["compare", "Compare"],
 ] as const;
 
-/** Each tab's own address, written out one view at a time rather than built from it: `PROJECT_
+/** Each tab's own route, written out one view at a time rather than built from it: `PROJECT_
  * VIEWS.map()` below reads `view` widened to the union of all eight tab literals, and passing
  * that union straight to `hrefOf`/`navigate` stopped type-checking the moment one literal -
  * `shared` - came to name more than one of `Route`'s own shapes (a discriminant with more than
@@ -50,7 +50,7 @@ const PROJECT_VIEWS = [
  * route ever needs more than `{ page, view }` fails to compile right here - which is exactly what
  * `shared` needing `kind`/`name` for its other shape would have hidden behind a cast, rather than
  * a wrong `Route` reaching `navigate` at runtime. The `Record<ProjectView,
- * Route>` annotation is what keeps `BARE_ROUTES[view]` typed as `Route` at the call sites below;
+ * Route>` annotation is what keeps `BARE_ROUTES[view]` typed as `Route` at the call site below;
  * the `satisfies` clause beside it is what stops an entry naming a view other than its own key -
  * `Record` alone accepts `table`'s route under `graph` just as readily, a mistake nothing else
  * here would catch. */
@@ -186,7 +186,7 @@ export function App() {
         <LinkTabs
           label="Project views"
           tabs={PROJECT_VIEWS.map(([view, label]) => ({
-            href: hrefOf(BARE_ROUTES[view]),
+            href: tabHref(view),
             label,
             current: route.view === view,
             onFollow: () => navigate(BARE_ROUTES[view]),

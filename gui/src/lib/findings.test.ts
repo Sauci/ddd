@@ -393,6 +393,15 @@ describe("where a finding leads", () => {
     expect(routeOf(one)).toBeNull();
   });
 
+  test("to no address, where it leads to a unit no address can carry", () => {
+    // Half of a surrogate pair alone, which a json file can state as an escape (`hrefOf`): no
+    // link is drawn, and the route itself is still the screen's.
+    const unit = `${String.fromCharCode(0xd800)}x`;
+    const one = finding({ check: "unknown-unit", route: { kind: "unit", name: unit } });
+    expect(routeHref(one)).toBeNull();
+    expect(routeOf(one)).toEqual({ page: "project", view: "units", unit });
+  });
+
   test("the route itself is what a screen navigates to", () => {
     // The address and the route are one answer in two forms: a link carries the address, and
     // the screen hands the route to the app's own navigate.
@@ -405,6 +414,29 @@ describe("where a finding leads", () => {
 });
 
 describe("why a finding leads nowhere", () => {
+  test("where it leads is a name no address can carry", () => {
+    // Its file loaded and has a page, and the place is still there: what is missing is the
+    // address, which `hrefOf` does not write for half of a surrogate pair alone. Read as a route
+    // the server left out, it would say there is nothing at that place any more.
+    const one = finding({
+      check: "unknown-unit",
+      pointer: "component.interface[0].definition.unit",
+      route: { kind: "unit", name: `${String.fromCharCode(0xd800)}x` },
+    });
+    expect(noRouteReason(one, state([one]))).toBe("no address can carry the name it leads to");
+  });
+
+  test("a route an address carries is never said to lack one", () => {
+    // A panel draws the reason only where it draws no link, which a route with an address always
+    // has; a caller drawing it anyway must not read that no address can carry where it leads.
+    const one = finding({
+      check: "unknown-unit",
+      pointer: "component.interface[0].definition.unit",
+      route: { kind: "unit", name: "degC" },
+    });
+    expect(noRouteReason(one, state([one]))).not.toBe("no address can carry the name it leads to");
+  });
+
   test("its file did not load", () => {
     const one = finding({ route: null });
     const half = state([one]);

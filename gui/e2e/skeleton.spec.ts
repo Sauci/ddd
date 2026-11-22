@@ -214,6 +214,11 @@ test("clicking a module opens its component page, and the back button returns to
 
 test("the table is one tab away", async ({ page, gui }) => {
   await page.goto(gui.address);
+  // The tab is an address of its own, which a new tab or window opens as well.
+  await expect(page.getByRole("link", { name: "Table" })).toHaveAttribute(
+    "href",
+    "/project?view=table",
+  );
   await page.getByRole("link", { name: "Table" }).click();
   await expect(componentRow(page, "Controller").getByRole("gridcell").nth(0)).toHaveText("0");
   await expect(page).toHaveURL(/\?view=table$/);

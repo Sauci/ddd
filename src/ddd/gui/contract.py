@@ -362,6 +362,12 @@ class State(_Frozen):
     """How many findings of each severity the revision makes, in all: each once, however many
     files it is filed on, as ``ddd check`` counts them."""
 
+    failed: str | None
+    """Why the last analysis of the open project raised, in the words the terminal prints it in -
+    never empty - or ``None`` where it finished: the revision before it stands meanwhile,
+    ``revision`` being ``0`` where there is none, the next poll asks for another analysis, and the
+    first to succeed clears it."""
+
     undoable: UndoableEdit | None
     """The last edit the interface made and has not put back, or ``None`` when it has made
     none: what makes the Undo control appear without a request of its own."""

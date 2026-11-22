@@ -812,7 +812,12 @@ The commands
        once with its name, read from its description as it stands and kept in the heading
        from then on; ``Analysing the project…`` stands where the tab's own content goes,
        until the first analysis lands, and every answer needing a revision is refused until
-       then, in the same words - ``the open project has not been analysed yet``. A panel's own plan
+       then, in the same words - ``the open project has not been analysed yet``. An analysis
+       that raises - a plugin failing while the project is read, say - is printed in the
+       terminal ``ddd gui`` runs in, ``ddd gui: analysing the project failed:`` and its reason,
+       and the state the page reads carries the same reason until an analysis succeeds: the
+       revision before it stands meanwhile, or none, and the next poll asks for another
+       analysis. A panel's own plan
        request goes out at once the first time a field asks for one; typed text asks
        again only after a pause in the reader's typing; a pick from a list, or Enter,
        always goes out at once, first time or later. The

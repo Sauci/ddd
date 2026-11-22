@@ -97,6 +97,7 @@ function state(findings: Finding[]): State {
     ],
     counts: countedBySeverity(findings),
     statements: countedBySeverity(findings),
+    failed: null,
     undoable: null,
     analysing: false,
     edits: 0,

@@ -116,6 +116,7 @@ class TestThePageFollowsTheAnalyser:
             "files",
             "counts",
             "statements",
+            "failed",
             "undoable",
             "analysing",
             "edits",
@@ -136,6 +137,18 @@ class TestThePageFollowsTheAnalyser:
         assert described["edits"] == (
             "The last edit or undo this revision's analysis includes - every one numbered up to "
             "it was on disk when the analysis read the files - ``0`` where there is none."
+        )
+
+    def test_the_state_says_why_the_last_analysis_failed(self) -> None:
+        """14:M7: an analysis that raised was told in the terminal alone, and the page read the
+        revision before it, or none, as though nothing had gone wrong."""
+        state = contract.api_schema()["$defs"]["State"]
+        assert state["properties"]["failed"]["anyOf"] == [{"type": "string"}, {"type": "null"}]
+        assert _described("State")["failed"] == (
+            "Why the last analysis of the open project raised, in the words the terminal prints "
+            "it in - never empty - or ``None`` where it finished: the revision before it stands "
+            "meanwhile, ``revision`` being ``0`` where there is none, the next poll asks for "
+            "another analysis, and the first to succeed clears it."
         )
 
     def test_the_revision_is_nought_before_the_open_projects_first_analysis(self) -> None:

@@ -564,6 +564,7 @@ class Api:
                         "warning": statements[1],
                         "info": statements[2],
                     },
+                    failed=snapshot.failed,
                     undoable=None if top is None else {"at": top.at, "label": top.label},
                     analysing=snapshot.analysing,
                     edits=edits,

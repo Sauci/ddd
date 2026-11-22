@@ -927,8 +927,10 @@ class Recording(Session):
         super().__init__(root, poll_interval=3600)
         self.left: list[Snapshot] = []
 
-    def _finished(self, begun: module._Begun, revision: Revision | None) -> None:
-        super()._finished(begun, revision)
+    def _finished(
+        self, begun: module._Begun, revision: Revision | None, failed: str | None
+    ) -> None:
+        super()._finished(begun, revision, failed)
         self.left.append(self._snapshot())
 
 
@@ -1114,6 +1116,130 @@ class TestTheAnalyser:
             settled = session.settled(timeout=10)
             assert settled is not None and settled.edits == at and mismatches(session) == 2
         finally:
+            stopped(session)
+
+    def test_an_analysis_failing_on_the_thread_is_said_until_one_succeeds(
+        self, shared: Path
+    ) -> None:
+        """14:M7. The reason an analysis raised is part of what the session says, the revision
+        before it standing as the newest meanwhile - not that revision alone, as though no
+        analysis had been asked for - until an analysis succeeds."""
+        session = SecondFails(shared.parent)
+        session.gate.set()
+        session.start()
+        try:
+            session.open(shared)
+            first = landed(session)
+            assert first.failed is None
+            session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+            failed = landed(session)
+            assert (failed.revision, failed.failed) == (first.revision, "boom")
+            assert failed.version > first.version
+            assert session.poll() is True
+            mended = landed(session)
+            assert mended.revision is not first.revision and mended.failed is None
+        finally:
+            stopped(session)
+
+    def test_a_first_analysis_failing_is_said_with_no_revision_to_stand(self, shared: Path) -> None:
+        """14:M7. Before any revision the page was told the project was being analysed, and
+        nothing else, for as long as each analysis failed."""
+
+        class FirstFails(Gated):
+            def _analysed(self, project: Path) -> Revision:
+                revision = super()._analysed(project)
+                if self.analyses == 1:
+                    raise RuntimeError("boom")
+                return revision
+
+        session = FirstFails(shared.parent)
+        session.gate.set()
+        session.start()
+        try:
+            session.open(shared)
+            failed = landed(session)
+            assert (failed.revision, failed.failed) == (None, "boom")
+            assert session.poll() is True
+            mended = landed(session)
+            assert mended.revision is not None and mended.failed is None
+        finally:
+            stopped(session)
+
+    def test_where_no_analyser_runs_a_failure_is_said_as_well_as_raised(self, shared: Path) -> None:
+        """The call that asked for the analysis is told by the exception, and every other reader
+        of the session by what it says, as from the analyser's thread."""
+
+        class Failing(Session):
+            analyses = 0
+
+            def _analysed(self, project: Path) -> Revision:
+                self.analyses += 1
+                if self.analyses == 2:
+                    raise RuntimeError("boom")
+                return super()._analysed(project)
+
+        session = Failing(shared.parent)
+        session.open(shared)
+        with pytest.raises(RuntimeError, match=r"^boom$"):
+            session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+        assert session.snapshot().failed == "boom"
+        assert session.poll() is True
+        assert session.snapshot().failed is None
+
+    def test_a_failure_with_no_words_is_said_by_its_class(
+        self, shared: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """An exception raised with nothing to say - ``RuntimeError()`` - is said by its class's
+        name, in the terminal and in what the session says alike, rather than as nothing: an
+        empty reason reads as no failure at all."""
+
+        class Wordless(SecondFails):
+            def _analysed(self, project: Path) -> Revision:
+                try:
+                    return super()._analysed(project)
+                except RuntimeError:
+                    raise RuntimeError() from None
+
+        session = Wordless(shared.parent)
+        session.gate.set()
+        session.start()
+        try:
+            session.open(shared)
+            landed(session)
+            session.edit([unit_of_b(shared, "Hz")], "the unit of Speed")
+            assert landed(session).failed == "RuntimeError"
+            assert capsys.readouterr().err.splitlines()[-1] == (
+                "ddd gui: analysing the project failed: RuntimeError"
+            )
+        finally:
+            stopped(session)
+
+    def test_opening_a_project_lets_go_of_the_last_ones_failure(self, shared: Path) -> None:
+        """The failure is the open project's: another opened is said not to have failed while
+        its own first analysis runs."""
+        write_tree(shared.parent, {"other/q.ddd.json": project("Q")})
+
+        class FirstFails(Gated):
+            def _analysed(self, project: Path) -> Revision:
+                revision = super()._analysed(project)
+                if self.analyses == 1:
+                    raise RuntimeError("boom")
+                return revision
+
+        session = FirstFails(shared.parent)
+        session.gate.set()
+        session.start()
+        try:
+            session.open(shared)
+            begun(session)
+            assert landed(session).failed == "boom"
+            session.gate.clear()
+            session.open(shared.parent / "other" / "q.ddd.json")
+            begun(session)
+            opened = session.snapshot()
+            assert (opened.revision, opened.analysing, opened.failed) == (None, True, None)
+        finally:
+            session.gate.set()
             stopped(session)
 
     def test_where_no_analyser_runs_a_failing_analysis_is_raised_to_the_call_that_asked(
@@ -1338,7 +1464,7 @@ class TestWhatTheSessionSays:
     edit wrote that no analysis has read yet."""
 
     def test_a_session_with_nothing_open_says_so_at_version_nought(self, tmp_path: Path) -> None:
-        assert Session(tmp_path).snapshot() == Snapshot(0, None, None, False, None)
+        assert Session(tmp_path).snapshot() == Snapshot(0, None, None, False, None, None)
 
     def test_a_snapshot_reads_the_undo_entry_with_the_stack_empty_and_with_one(
         self, shared: Path

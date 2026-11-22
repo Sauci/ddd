@@ -6,15 +6,16 @@ dictionary it resolved to. A new revision is made after every edit and undo and 
 of the project changes on disk, by one analysis at a time on a thread of its own: an edit is
 written at once and answered as soon as it is, its analysis following, and the edits landing
 while one analysis runs are all analysed by the one after it. What the session says - the newest
-revision, whether an analysis is asked for or running, the undo entry - is read whole as a
-:class:`Snapshot`, numbered by a version that moves at every change of it, which is what a page
-waits past. A change on disk is noticed by another thread, comparing each file's modification
-time and size once a second: the standard library has no file watcher. Re-checking the 1,683 files
-of a generated project of 100,000 declarations (``--shape mixed --missing-ids 1 --unread 0.5``)
-took 2 to 6 ms a round with nothing else running, and 2.8 to 3.4 s a round while an analysis ran,
-every stat waiting out the analysis's turn of the interpreter - one run of four analyses on the
-Linux development PC, Python 3.14 at its default switch interval, which ``ddd gui`` keeps - which
-is why a round holds no lock while it stamps (:meth:`Session.poll`). Beside the files, a round
+revision, whether an analysis is asked for or running, the undo entry, why the last analysis
+failed where it did - is read whole as a :class:`Snapshot`, numbered by a version that moves at
+every change of it, which is what a page waits past. A change on disk is noticed by another
+thread, comparing each file's modification time and size once a second: the standard library has
+no file watcher. Re-checking the 1,683 files of a generated project of 100,000 declarations
+(``--shape mixed --missing-ids 1 --unread 0.5``) took 2 to 6 ms a round with nothing else running,
+and 2.8 to 3.4 s a round while an analysis ran, every stat waiting out the analysis's turn of the
+interpreter - one run of four analyses on the Linux development PC, Python 3.14 at its default
+switch interval, which ``ddd gui`` keeps - which is why a round holds no lock while it stamps
+(:meth:`Session.poll`). Beside the files, a round
 stamps what can change the analysis though none of them changed (:attr:`Revision.watched`): the
 directory each wildcard include expands in, since creating or removing a file moves its time;
 every file a ``plugins`` list names by its path, loaded or not; and every build record the search
@@ -401,6 +402,12 @@ class Snapshot:
 
     undoable: Undoable | None
 
+    failed: str | None
+    """Why the last analysis of the open project raised (:func:`_failure`), or ``None`` where it
+    finished: :attr:`revision` is the one before it meanwhile, or none, and the first analysis
+    to succeed clears it. Written by whichever thread made the analysis, holding the lock, as the
+    revision is published (:meth:`Session._finished`)."""
+
 
 class NoProjectError(RuntimeError):
     """Asked about the open project while none is open."""
@@ -507,10 +514,11 @@ class Session:
     itself before it answers, and the one its revision asks for in turn, and a failure of either
     is raised to it.
 
-    One lock guards the project, its newest revision, the undo stack, the counters, the request,
-    the stamps and the files written since an analysis began, and every write of them is made
-    holding it. An analysis runs without it, which is what lets an edit be written while one
-    runs. Nothing on disk is touched holding it but the files an edit or an undo writes, and the
+    One lock guards the project, its newest revision, why the last analysis failed, the undo
+    stack, the counters, the request, the stamps and the files written since an analysis began,
+    and every write of them is made holding it. An analysis runs without it, which is what lets
+    an edit be written while one runs. Nothing on disk is touched holding it but the files an
+    edit or an undo writes, and the
     descriptions an edit's change of ``includes`` brings in or drops, read for the plugins they
     name (:func:`refuse_plugins`), so that the number it takes, the stack and the files waiting
     for an analysis move with the write: the poll stamps the files without it (:meth:`poll`), an
@@ -544,6 +552,7 @@ class Session:
         self._fresh: set[Path] = set()
         self._asked: Path | None = None
         self._running = False
+        self._failed: str | None = None
         self._stopping = threading.Event()
         self._poller: threading.Thread | None = None
         self._analyser: threading.Thread | None = None
@@ -589,6 +598,7 @@ class Session:
         with self._lock:
             self._project = path
             self._revision = None
+            self._failed = None
             self._stack = []
             self._written = []
             self._signature = {}
@@ -828,6 +838,7 @@ class Session:
             self._revision,
             self._asked is not None or self._running,
             self._stack[-1] if self._stack else None,
+            self._failed,
         )
 
     def _required(self) -> Revision:
@@ -924,7 +935,7 @@ class Session:
             try:
                 self._analyse_here()
             except Exception as error:
-                _printed(f"ddd gui: analysing the project failed: {error}")
+                _printed(f"ddd gui: analysing the project failed: {_failure(error)}")
 
     def _analyse_here(self) -> None:
         """Make the analyses asked for on this thread, where no analyser was started."""
@@ -992,29 +1003,33 @@ class Session:
         return _Begun(project, stamps, edits)
 
     def _run(self, begun: _Begun, *, raising: bool) -> None:
-        """Make the analysis ``begun`` and publish what it made; one that raises is raised to
-        the caller where ``raising``, and printed otherwise."""
+        """Make the analysis ``begun`` and publish what it made; one that raises is published as
+        failed, with its reason (:attr:`Snapshot.failed`), and raised to the caller where
+        ``raising``, printed otherwise."""
         revision: Revision | None = None
+        failed: str | None = None
         try:
             revision = self._analysed(begun.project)
         except Exception as error:
+            failed = _failure(error)
             if raising:
                 raise
             # A thread that dies here leaves a page that never updates again, and nothing says
             # why: the one line is that reason, and the next poll asks again. Printed before the
             # failure is published, so that whatever waits for it finds the line written.
-            print(f"ddd gui: analysing the project failed: {error}", file=sys.stderr)
+            print(f"ddd gui: analysing the project failed: {failed}", file=sys.stderr)
         finally:
             with self._changed:
-                self._finished(begun, revision)
+                self._finished(begun, revision, failed)
 
-    def _finished(self, begun: _Begun, revision: Revision | None) -> None:
+    def _finished(self, begun: _Begun, revision: Revision | None, failed: str | None) -> None:
         """What an analysis leaves once it has ended, made holding the lock: nothing, where the
         project it read is no longer the one open. Otherwise what it made becomes the newest
         revision, its files and what it watches (:attr:`Revision.watched`) stamped as they were
-        before it read them - a path with no stamp from before :data:`UNKNOWN` - and where it
-        raised instead, ``revision`` being ``None``, nothing is published and every path it
-        stamped is stamped unknown, so that the next poll asks again.
+        before it read them - a path with no stamp from before :data:`UNKNOWN` - and any failure
+        said before it let go of (:attr:`Snapshot.failed`). Where it raised instead, ``revision``
+        being ``None``, nothing is published, every path it stamped is stamped unknown, so that
+        the next poll asks again, and ``failed`` is what the session says of it until then.
 
         Before, never after: stamped after the analysis, a save landing while it ran was already in
         the stamps, so no poll ever saw it and the page kept the findings of bytes no longer on
@@ -1037,8 +1052,10 @@ class Session:
         self._running = False
         if begun.project == self._project:
             if revision is None:
+                self._failed = failed
                 self._signature = dict.fromkeys(begun.stamps, UNKNOWN)
             else:
+                self._failed = None
                 self._numbered += 1
                 self._revision = replace(revision, number=self._numbered, edits=begun.edits)
                 self._signature = {
@@ -1064,6 +1081,13 @@ def _printed(line: str) -> None:
     was telling it, a request's refusal among them, with a server error."""
     with contextlib.suppress(Exception):
         print(line, file=sys.stderr)
+
+
+def _failure(error: Exception) -> str:
+    """Why an analysis raised, in the words the terminal prints it in and the session says it in
+    (:attr:`Snapshot.failed`): the exception's own, or its class's name where it has none - one
+    raised with nothing to say is still a failure, and an empty reason reads as none at all."""
+    return str(error) or type(error).__name__
 
 
 def findings_with(revision: Revision, includes: Sequence[str]) -> tuple[Filed, ...]:

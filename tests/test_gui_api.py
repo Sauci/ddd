@@ -1812,6 +1812,34 @@ class TestState:
         reply = get(Api(Session(root), wait_seconds=0.01), "/api/state", after="0")
         assert (reply.status, reply.body["error"]) == (409, "no-project")
 
+    def test_the_state_says_why_the_last_analysis_failed_until_one_succeeds(
+        self, root: Path
+    ) -> None:
+        """14:M7: the reason was the terminal's alone, and the state read as the revision before
+        it, as though no analysis had been asked for. It stands beside that revision now, until
+        an analysis succeeds."""
+
+        class Failing(Session):
+            analyses = 0
+
+            def _analysed(self, project: Path) -> Revision:
+                self.analyses += 1
+                if self.analyses == 2:
+                    raise RuntimeError("the plugin's hook raised")
+                return super()._analysed(project)
+
+        session = Failing(root)
+        session.open(root / "p.ddd.json")
+        api = Api(session, root / "p.ddd.json", wait_seconds=0.05)
+        assert get(api, "/api/state").body["failed"] is None
+        with pytest.raises(RuntimeError):
+            post(api, "/api/edit", unit_edit(api, root, "Hz"))
+        failed = get(api, "/api/state").body
+        assert (failed["revision"], failed["failed"]) == (1, "the plugin's hook raised")
+        assert session.poll() is True
+        mended = get(api, "/api/state").body
+        assert (mended["revision"], mended["failed"]) == (2, None)
+
     def test_every_finding_says_where_it_leads(self, api: Api) -> None:
         # The root fixture's two components declare Speed, and `a.ddd.json` states no id: every
         # finding this project reports is about that declaration, and each says so.
@@ -4252,6 +4280,7 @@ class TestBeforeTheFirstAnalysis:
                 "files": [],
                 "counts": {"error": 0, "warning": 0, "info": 0},
                 "statements": {"error": 0, "warning": 0, "info": 0},
+                "failed": None,
                 "undoable": None,
                 "analysing": True,
                 "edits": 0,

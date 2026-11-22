@@ -2063,6 +2063,33 @@ class TestAFindingLeadsToAPanelThatListsIt:
         rows = [row for row in get(api, "/api/shared").body["entries"] if row["kind"] == kind]
         assert [row["findings"] for row in rows] == [2]
 
+    @pytest.mark.parametrize("inline", [False, True])
+    def test_a_type_declared_twice_leads_to_a_panel_listing_both_copies(
+        self, tmp_path: Path, inline: bool
+    ) -> None:
+        """A type is repeated across files alone - one file declaring a name twice does not load -
+        and as a shared entry is: ``duplicate-type`` is filed at the later entry, naming the first
+        by its note, and again at the first's own record. The later copy led to the type's panel,
+        which listed the other alone, and the Types tab's row counted one of the two - the later
+        entry in a second types file, or ``inline``, in a component's own types."""
+        later: dict[str, object] = {"types": [scalar_type("Speed_t", "uint8")]}
+        if inline:
+            later = component("C", types=[scalar_type("Speed_t", "uint8")])
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "t.ddd.json", "u.ddd.json"),
+                "t.ddd.json": types(scalar_type("Speed_t", "uint16")),
+                "u.ddd.json": later,
+            },
+        )
+        repeated = [found for found in every_finding(api) if found["check"] == "duplicate-type"]
+        files = sorted(Path(found["file"]).name for found in repeated)
+        assert files == ["t.ddd.json", "u.ddd.json"]
+        assert self.unlisted(api) == []
+        rows = [row for row in get(api, "/api/types").body["types"] if row["name"] == "Speed_t"]
+        assert [row["findings"] for row in rows] == [2]
+
 
 DEMO_FILES: Final = {
     "controller": "components/controller.ddd.json",

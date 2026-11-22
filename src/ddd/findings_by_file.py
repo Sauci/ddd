@@ -20,7 +20,7 @@ by the place each of their notes names too, once, as they are by file
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from pathlib import Path
 
 from ddd.diagnostics import Diagnostic
@@ -115,3 +115,16 @@ class FindingsByFile:
         for path in paths:
             indexes.update(self._grouped.get(self.resolve(path), ()))
         return [self._pairs[index] for index in sorted(indexes)]
+
+
+def noted_at(found: Diagnostic, path: Path, pointer: str, resolve: Callable[[Path], Path]) -> bool:
+    """Whether a note of ``found`` names ``pointer`` of ``path``, the files resolved by
+    ``resolve``: :meth:`FindingsByFile.noting`'s question, asked of one finding. What makes the
+    loader's refusal of a later entry repeating a name the first entry's, wherever the later one
+    is shown - a shared file's entry (:func:`ddd.project_shared.located_on`) or a type
+    (:func:`ddd.project_types.located_in_type`)."""
+    there = resolve(path)
+    return any(
+        note is not None and note.pointer == pointer and resolve(note.path) == there
+        for _, note in found.notes
+    )

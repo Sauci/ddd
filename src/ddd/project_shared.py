@@ -33,7 +33,7 @@ from pydantic import BeforeValidator, TypeAdapter
 
 from ddd.diagnostics import Diagnostic
 from ddd.finding_routes import ABOUT_THE_DECLARATION
-from ddd.findings_by_file import FindingsByFile, Pair
+from ddd.findings_by_file import FindingsByFile, Pair, noted_at
 from ddd.lsp.navigation import Index, Site, conditions_spelling, rename_problem
 from ddd.lsp.ranges import Document, read
 from ddd.models.constants import ConstantValue
@@ -376,11 +376,7 @@ def _repeats(
     entry = vocabulary.entries(built).get(name)
     if entry is None or found.check != vocabulary.repeated:
         return False
-    first = resolve(entry.path)
-    return any(
-        note is not None and note.pointer == entry.pointer and resolve(note.path) == first
-        for _, note in found.notes
-    )
+    return noted_at(found, entry.path, entry.pointer, resolve)
 
 
 def _places(vocabulary: Vocabulary, built: Index, name: str) -> list[Site]:

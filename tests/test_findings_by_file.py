@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ddd.diagnostics import Diagnostic, Location, Severity
-from ddd.findings_by_file import FindingsByFile
+from ddd.findings_by_file import FindingsByFile, noted_at
 
 
 def found(path: Path, pointer: str) -> Diagnostic:
@@ -129,3 +129,23 @@ def test_a_note_s_file_is_resolved_once_as_a_finding_s_is(tmp_path: Path, monkey
     )
     FindingsByFile([(a, noted(a, str(n), c, "constants[0]")) for n in range(5)])
     assert resolved == [a, c]
+
+
+def test_a_note_names_a_place_by_its_file_resolved_and_its_pointer(tmp_path: Path) -> None:
+    """One finding's question: a note with no place of its own names none, and a note naming the
+    pointer of another file, or another pointer of the file, names another place."""
+    (tmp_path / "sub").mkdir()
+    c, w = tmp_path / "c.ddd.json", tmp_path / "w.ddd.json"
+    spelled = tmp_path / "sub" / ".." / "c.ddd.json"
+    hinted = Diagnostic(
+        "duplicate-constant",
+        Severity.ERROR,
+        "declared already",
+        Location(w, "constants[0]"),
+        notes=(("hint", None), ("first declared here", Location(spelled, "constants[0]"))),
+    )
+    resolve = FindingsByFile(()).resolve
+    assert noted_at(hinted, c, "constants[0]", resolve)
+    assert not noted_at(hinted, c, "constants[1]", resolve)
+    assert not noted_at(hinted, w, "constants[0]", resolve)
+    assert not noted_at(found(w, "constants[0]"), c, "constants[0]", resolve)

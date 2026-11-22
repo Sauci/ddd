@@ -502,7 +502,9 @@ The commands
        external's header that is no text is none, where the panel would otherwise be an internal
        error. A type ``ddd check`` refuses already is not refused again for it: a change
        that leaves that refusal as it was is planned, the value a row holds among them,
-       and so is one that mends it.
+       and so is one that mends it. A type a second file declares again is the first's, as
+       a repeated entry of a shared file is: the repetition is listed on its panel and
+       counted on its row at both places it is filed.
        Every change is written into the files in their own layout and checked
        the way ``ddd check`` checks them. A change is refused as a whole, every file
        left as it was, where a file it changes was saved from elsewhere since it was

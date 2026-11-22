@@ -11531,12 +11531,18 @@ class TestTheGuiRowSaysWhatThePageIsTold:
     def test_the_command_page_says_a_repetition_is_listed_and_counted_at_both_places(
         self,
     ) -> None:
+        said = flattened(COMMAND_LINE_INTERFACE)
         assert (
             "An entry repeating a name declared before it, which the analysis leaves out, is that "
             "name's: the repetition, filed at the entry and again at the first, is listed on that "
             "name's panel and counted on its row at both, as the Units tab lists a unit listed "
             "twice."
-        ) in flattened(COMMAND_LINE_INTERFACE)
+        ) in said
+        assert (
+            "A type a second file declares again is the first's, as a repeated entry of a shared "
+            "file is: the repetition is listed on its panel and counted on its row at both places "
+            "it is filed."
+        ) in said
 
 
 class TestLimitsAreOneValueExactly:

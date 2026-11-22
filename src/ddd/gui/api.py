@@ -2220,9 +2220,10 @@ def _appeared_since(revision: Revision) -> list[str]:
     Every description the revision read whose kind is ``project`` - the root, and each
     sub-project - has its entries expanded by the loader's own rule
     (:func:`ddd.file_plans.included_entries`). A file one of them reaches that the revision
-    lacks appeared since: saved where a pattern matches it, or moved there. The session's poll
-    compares only the files a revision read, so a new file does not start an analysis, and
-    judged against a revision that never read it, an error of that file read as the change's.
+    lacks appeared since: saved where a pattern matches it, or moved there. Such a file belongs
+    to no revision until the poll notices the directory the pattern expands in and the analysis
+    it asks for lands, a poll interval later or a whole analysis while one runs; judged in that
+    window against a revision that never read it, an error of that file read as the change's.
 
     Asked beside :func:`_changed_since`, and only where a plan is judged, as that is. Sound
     there: every run of such a revision analysed the project, so every plain entry named a file

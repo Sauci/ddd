@@ -15,6 +15,7 @@ import {
   getFindings,
   getFix,
   getGraph,
+  getNames,
   getProjects,
   getRaster,
   getRasterPlan,
@@ -410,6 +411,16 @@ describe("requests to the server", () => {
       ["/api/values?name=CurveA", { credentials: "omit" }],
       ["/api/value-plan?name=CurveA&at=%5B2%5D&raw=750", { credentials: "omit" }],
       ["/api/value-plan?name=ParameterA&at=&raw=4000", { credentials: "omit" }],
+    ]);
+  });
+
+  test("getNames asks for the names holding a text, encoded", async () => {
+    const calls = recorded();
+    await getNames("C00530_O0000", calls.fetch);
+    await getNames("Value E & 'x'", calls.fetch);
+    expect(calls.urls).toEqual([
+      ["/api/names?text=C00530_O0000", { credentials: "omit" }],
+      ["/api/names?text=Value%20E%20%26%20%27x%27", { credentials: "omit" }],
     ]);
   });
 

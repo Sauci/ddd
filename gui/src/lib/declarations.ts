@@ -291,13 +291,17 @@ export function nameList(names: readonly DeclarableName[], typed: string): NameL
     label: entry.name,
     detail: `${entry.kind} from ${entry.producer ?? "no producer"}`,
   }));
-  const more = matching.length - choices.length;
   return {
     sections:
       choices.length === 0 ? [] : [{ id: "names", title: "This project's variables", choices }],
-    footnote:
-      more === 0
-        ? undefined
-        : `${countText(more)} more ${more === 1 ? "name matches" : "names match"}: type to narrow the list.`,
+    footnote: moreNames(matching.length - choices.length),
   };
+}
+
+/** The line at the foot of a list of names drawn to a cap: how many more names hold the text
+ * than it draws, and to type to narrow them; `undefined` while it draws every one. The declare
+ * form's Name list's, and the masthead's go-to's (`goToList`, lib/goTo.ts). */
+export function moreNames(more: number): string | undefined {
+  if (more === 0) return undefined;
+  return `${countText(more)} more ${more === 1 ? "name matches" : "names match"}: type to narrow the list.`;
 }

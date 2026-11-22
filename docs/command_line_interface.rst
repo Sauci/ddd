@@ -843,7 +843,14 @@ The commands
        rather than every one at once, and every long table - the component table, the
        Types, Units, Shared files, Files and Compare tabs' own, a component's own
        declarations, a unit's own places and a variable's keys - draws only the rows in view,
-       in a box of its own.
+       in a box of its own. The component table, a component's own declarations, a unit's own
+       places and the Findings tab each take a filter, which leaves the rows holding the text
+       typed, whatever its case - a component by its name or its file, a declaration by its
+       name, a place by its name or its file's, and a finding, asked of the server, by its
+       check, its words or its file's name - and says how many rows it leaves of how many. The
+       masthead goes to a variable by a part of its name, listing at most fifty of the names
+       holding it, and opens its panel on the page of the component producing it, or of the
+       first declaring it where none does.
        A build record this DDD cannot use - written by a newer DDD, or naming a check this one
        has not got - applies its severities to no analysis: the start page lists it with its
        reason, as the language server logs one, the state the page reads carries it beside the

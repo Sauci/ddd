@@ -388,6 +388,12 @@ pages need none either; every route below needs the token as a header.
      - 
      - 
    * - ``GET``
+     - ``/api/names``
+     - 
+     - 
+     - 
+     - 
+   * - ``GET``
      - ``/api/units``
      - 
      - 

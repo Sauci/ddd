@@ -298,3 +298,64 @@ test("a dragged module stays where it was put after a revision, and Tidy puts it
     .poll(() => controller.evaluate((node) => (node as HTMLElement).style.transform))
     .toBe(original);
 });
+
+/**
+ * The masthead's go-to (16:I14): its list opens on the first key, saying it is finding names until
+ * they come from the server, and that none matches where none does; Escape empties it. `ValueA`,
+ * which Controller - the component the project lists first - reads and SensorHub produces, typed
+ * key by key, is listed with its kind and its producer, and Enter opens it on SensorHub's page, its
+ * panel open.
+ */
+test("the masthead's go-to opens a variable on the page of the component producing it", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+  const list = page.getByRole("listbox");
+  const options = list.getByRole("option");
+  const release = await held(page, "/api/names");
+  try {
+    await goTo.pressSequentially("V");
+    // React Aria draws what an empty list says as its one row.
+    await expect(options).toHaveText(["Finding names…"]);
+  } finally {
+    release();
+  }
+  // Every name holding a v, by name: CurveA first.
+  await expect(options.first()).toHaveAccessibleName("CurveA");
+  await goTo.pressSequentially("alueZ");
+  await expect(options).toHaveText(["no variable matches"]);
+  await goTo.press("Escape");
+  await expect(goTo).toHaveValue("");
+
+  await goTo.pressSequentially("ValueA");
+  await expect(options).toHaveCount(1);
+  await expect(options.first()).toHaveAccessibleName("ValueA");
+  await expect(options.first()).toHaveAccessibleDescription("measurement in SensorHub");
+  await goTo.press("Enter");
+  await expect(page).toHaveURL(/\/component\?file=[^&]*sensor_hub\.ddd\.json&variable=ValueA$/);
+  await expect(page.getByRole("heading", { name: "SensorHub", level: 1 })).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "ValueA" })).toBeVisible();
+});
+
+/**
+ * A project the analysis could not index (16:I14): the go-to says why under its field, in the
+ * server's words, rather than listing nothing as though no name held the text.
+ */
+test("the masthead's go-to says why a project it cannot search lists no name", async ({
+  page,
+  copiedGui,
+}) => {
+  const gui = await copiedGui("demo", (directory) => {
+    const description = { project: { name: "DemoDevice", includes: 3 } };
+    writeFileSync(join(directory, "demo.ddd.json"), JSON.stringify(description), "utf8");
+  });
+  await page.goto(gui.address);
+  const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+  await goTo.pressSequentially("Value");
+  await expect(goTo).toHaveAccessibleDescription(
+    "demo.ddd.json did not load, so no variable of the project can be found",
+  );
+  await expect(page.getByRole("listbox")).toHaveCount(0);
+});

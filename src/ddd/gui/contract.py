@@ -71,6 +71,8 @@ __all__ = [
     "IncludedEntryReply",
     "KindForm",
     "ListedFinding",
+    "NamedVariable",
+    "NamesReply",
     "Note",
     "OpenProject",
     "OpenRequest",
@@ -661,6 +663,44 @@ class VariableReply(_Frozen):
 
     findings: tuple[Finding, ...]
     """Every finding located on one of them, both sides of a disagreement included."""
+
+
+# --- GET /api/names -------------------------------------------------------------------------
+
+
+class NamedVariable(_Frozen):
+    """One variable the masthead's go-to finds, and the component the page opens its panel on."""
+
+    name: str
+    """The variable's name, as its declarations spell it."""
+
+    kind: str
+    """``measurement`` … ``axis``: what its first declaration states, in the order the project
+    lists its components."""
+
+    file: str
+    """Absolute, posix-separated path of the component the page opens it on: the one producing
+    it - a local's own among them - or, where none does, the first declaring it, in the order the
+    project lists its components."""
+
+    component: str
+    """That component's name."""
+
+
+class NamesReply(_Frozen):
+    """What ``GET /api/names`` answers: the variables of the newest revision whose names hold the
+    text asked, whatever its case - the one it spells exactly first, then the others by name - at
+    most :data:`ddd.gui.api.NAMES_ANSWERED` of them."""
+
+    revision: int
+    """The revision these names are of."""
+
+    total: int
+    """How many names hold the text, in all: more than ``names`` holds where the cap left some
+    out."""
+
+    names: tuple[NamedVariable, ...]
+    """The names answered, the one the text spells exactly first."""
 
 
 # --- GET /api/units -------------------------------------------------------------------------
@@ -1824,6 +1864,7 @@ _ENDPOINTS: tuple[tuple[type[BaseModel], Literal["validation", "serialization"]]
     (UndoRequest, "validation"),
     (UndoReply, "serialization"),
     (VariableReply, "serialization"),
+    (NamesReply, "serialization"),
     (UnitsReply, "serialization"),
     (SettleReply, "serialization"),
     (FixReply, "serialization"),
@@ -1845,6 +1886,7 @@ _ENDPOINTS: tuple[tuple[type[BaseModel], Literal["validation", "serialization"]]
     (queries.FindingsQuery, "validation"),
     (queries.FileQuery, "validation"),
     (queries.VariableQuery, "validation"),
+    (queries.NamesQuery, "validation"),
     (queries.SettleQuery, "validation"),
     (queries.FixQuery, "validation"),
     (queries.UnitQuery, "validation"),

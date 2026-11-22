@@ -24,6 +24,8 @@ import type {
   FixReply,
   Found,
   GraphReply,
+  NamesQuery,
+  NamesReply,
   PlanReply,
   RasterPlanQuery,
   RasterQuery,
@@ -236,6 +238,11 @@ export const getGraph = (fetchImpl: Fetch = fetch) =>
 
 export const getVariable = (name: string, fetchImpl: Fetch = fetch) =>
   request<VariableReply>(`/api/variable${queryOf<VariableQuery>({ name })}`, {}, fetchImpl);
+
+/** The variables whose names hold `text`, whatever its case, as the masthead's go-to lists them:
+ * the one it spells exactly first, at most fifty, and how many hold it in all. */
+export const getNames = (text: string, fetchImpl: Fetch = fetch) =>
+  request<NamesReply>(`/api/names${queryOf<NamesQuery>({ text })}`, {}, fetchImpl);
 
 export const getUnits = (fetchImpl: Fetch = fetch) =>
   request<UnitsReply>("/api/units", {}, fetchImpl);

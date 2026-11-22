@@ -62,6 +62,7 @@ from ddd.findings_by_file import FindingsByFile
 from ddd.gui import contract
 from ddd.gui.api import (
     MEMO,
+    NAMES_ANSWERED,
     ROUTES,
     Api,
     Reply,
@@ -661,6 +662,7 @@ class TestTheRouteTable:
             ("GET", "/api/undo"),
             ("POST", "/api/undo"),
             ("GET", "/api/variable"),
+            ("GET", "/api/names"),
             ("GET", "/api/units"),
             ("GET", "/api/settle"),
             ("GET", "/api/fix"),
@@ -2484,6 +2486,153 @@ class TestFindingsAPageAtATime:
         assert len(api._memo) == MEMO
         assert get(api, "/api/findings", offset="1", limit="1") is second
         assert get(api, "/api/findings", offset="0", limit="1") is not first
+
+
+NAMED_FILES: Final = {
+    "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json", "c.ddd.json"),
+    "a.ddd.json": component("A", declare("output", "EngineSpeed"), declare("input", "Speed")),
+    "b.ddd.json": component("B", declare("output", "Speed"), declare("local", "speed_raw")),
+    "c.ddd.json": component("C", declare("input", "Torque"), declare("input", "EngineSpeed")),
+}
+"""Three components naming four variables: ``Speed``, which A reads before B, its producer, is
+listed; ``speed_raw``, B's own local; and ``Torque``, which C reads and nothing produces."""
+
+
+class TestNamesFoundForTheGoTo:
+    """``GET /api/names`` (16:I14): what the masthead's go-to asks as a reader types - every
+    variable whose name holds the text, whatever its case, the one it spells exactly first, then
+    the others by name, at most :data:`NAMES_ANSWERED` of them, each with its kind and the
+    component the page opens its panel on, and how many hold the text in all."""
+
+    @pytest.fixture
+    def demo(self, tmp_path: Path) -> tuple[Api, Path]:
+        return copied(tmp_path, "demo", "demo.ddd.json")
+
+    def test_each_name_holding_the_text_whatever_its_case_by_name_with_its_component(
+        self, demo: tuple[Api, Path]
+    ) -> None:
+        api, root = demo
+        body = get(api, "/api/names", text="VALUE").body
+        expected = [
+            ("ValueA", "SensorHub", "components/sensor_hub.ddd.json"),
+            ("ValueB", "SensorHub", "components/sensor_hub.ddd.json"),
+            ("ValueC", "SensorHub", "components/sensor_hub.ddd.json"),
+            ("ValueD", "SensorHub", "components/sensor_hub.ddd.json"),
+            ("ValueE", "Controller", "components/controller.ddd.json"),
+            ("ValueF", "Controller", "components/controller.ddd.json"),
+            ("ValueG", "Controller", "components/controller.ddd.json"),
+            ("ValueH", "Controller", "components/controller.ddd.json"),
+            ("ValueI", "UserInterface", "components/user_interface.ddd.json"),
+            ("ValueJ", "EventLogger", "subsystems/logging/event_logger.ddd.json"),
+            ("ValueK", "EventLogger", "subsystems/logging/event_logger.ddd.json"),
+        ]
+        assert body == {
+            "revision": analysed(api)[0].number,
+            "total": 11,
+            "names": [
+                {
+                    "name": name,
+                    "kind": "measurement",
+                    "file": posix(root, file),
+                    "component": component_name,
+                }
+                for name, component_name, file in expected
+            ],
+        }
+
+    def test_each_name_says_its_kind(self, demo: tuple[Api, Path]) -> None:
+        api, _ = demo
+        found = get(api, "/api/names", text="a").body["names"]
+        kinds = {named["name"]: named["kind"] for named in found}
+        assert (kinds["AxisA"], kinds["CurveA"], kinds["MapA"], kinds["ParameterA"]) == (
+            "axis",
+            "curve",
+            "map",
+            "parameter",
+        )
+        assert kinds["SoftwareLabel"] == "value_block"
+
+    def test_the_name_the_text_spells_exactly_comes_first(self, tmp_path: Path) -> None:
+        api = opened(tmp_path, NAMED_FILES)
+        exact = get(api, "/api/names", text="Speed").body["names"]
+        assert [named["name"] for named in exact] == ["Speed", "EngineSpeed", "speed_raw"]
+        # Spelled in no name's own case, the text spells no name exactly: every one by name.
+        folded = get(api, "/api/names", text="speed").body["names"]
+        assert [named["name"] for named in folded] == ["EngineSpeed", "Speed", "speed_raw"]
+
+    def test_a_name_opens_on_its_producer_and_where_none_produces_it_on_the_first_declaring_it(
+        self, tmp_path: Path
+    ) -> None:
+        api = opened(tmp_path, NAMED_FILES)
+        found = {
+            named["name"]: (named["component"], Path(named["file"]).name)
+            for named in get(api, "/api/names", text="e").body["names"]
+        }
+        assert found == {
+            "EngineSpeed": ("A", "a.ddd.json"),
+            # A reads it, listed first; B produces it.
+            "Speed": ("B", "b.ddd.json"),
+            # B keeps it, a local.
+            "speed_raw": ("B", "b.ddd.json"),
+            # Nothing produces it: the one declaring it.
+            "Torque": ("C", "c.ddd.json"),
+        }
+
+    def test_at_most_fifty_are_answered_and_the_total_counts_every_one(
+        self, tmp_path: Path
+    ) -> None:
+        many = [declare("output", f"Signal{number:02}") for number in range(60)]
+        api = opened(
+            tmp_path,
+            {"p.ddd.json": project("P", "a.ddd.json"), "a.ddd.json": component("A", *many)},
+        )
+        assert NAMES_ANSWERED == 50
+        body = get(api, "/api/names", text="signal").body
+        assert body["total"] == 60
+        assert [named["name"] for named in body["names"]] == [
+            f"Signal{number:02}" for number in range(50)
+        ]
+        # The exact name first, past the cap where the order would leave it.
+        exact = get(api, "/api/names", text="Signal59").body
+        assert (exact["total"], [named["name"] for named in exact["names"]]) == (1, ["Signal59"])
+        narrowed = get(api, "/api/names", text="Signal5").body
+        assert narrowed["total"] == 10
+        assert [named["name"] for named in narrowed["names"]] == [
+            f"Signal{number}" for number in range(50, 60)
+        ]
+
+    def test_a_text_no_name_holds_answers_none(self, api: Api) -> None:
+        assert get(api, "/api/names", text="Torque").body == {
+            "revision": 1,
+            "total": 0,
+            "names": [],
+        }
+
+    def test_with_no_index_it_is_refused_naming_what_did_not_load(self, tmp_path: Path) -> None:
+        assert get(unloaded(tmp_path), "/api/names", text="Speed") == Reply(
+            409,
+            {
+                "error": "unreadable",
+                "message": "p.ddd.json did not load, so no variable of the project can be found",
+            },
+        )
+
+    def test_with_no_index_though_every_file_read_loaded_it_names_the_description(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        api = unloaded(tmp_path)
+        revision = api.session.revision
+        assert revision is not None
+        loaded = tuple(dataclasses.replace(file, loaded=True) for file in revision.files)
+        monkeypatch.setattr(api.session, "_revision", dataclasses.replace(revision, files=loaded))
+        assert get(api, "/api/names", text="Speed").body == {
+            "error": "unreadable",
+            "message": "p.ddd.json did not load, so no variable of the project can be found",
+        }
+
+    def test_it_needs_an_open_project(self, root: Path) -> None:
+        reply = get(Api(Session(root), wait_seconds=0.01), "/api/names", text="Speed")
+        assert (reply.status, reply.body["error"]) == (409, "no-project")
 
 
 class TestFiles:
@@ -4565,6 +4714,7 @@ class TestBeforeTheFirstAnalysis:
             ("GET", "/api/undo", {}),
             ("POST", "/api/undo", {}),
             ("GET", "/api/variable", {"name": "Speed"}),
+            ("GET", "/api/names", {"text": "Speed"}),
             ("GET", "/api/units", {}),
             ("GET", "/api/settle", {"name": "Speed", "key": "unit", "raw": '"Hz"'}),
             ("GET", "/api/fix", {"file": "a.ddd.json", "pointer": "", "check": "missing-id"}),

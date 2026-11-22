@@ -203,6 +203,7 @@ def _well_formed(
         "/api/findings": {},
         "/api/file": {"path": demo_json},
         "/api/variable": {"name": "ValueA"},
+        "/api/names": {"text": "Value"},
         "/api/unit": {"name": "rpm"},
         "/api/settle": {"name": "ValueA", "key": "unit"},
         "/api/fix": {
@@ -330,7 +331,7 @@ def test_every_key_of_every_route_s_query_is_never_answered_500(
                 cases += 1
                 reply = api.handle(route.method, route.path, {"zzz": [value]}, body)
                 assert reply.status != 500, (route.path, "zzz", value[:20], reply.body)
-    assert cases == 1331, "every route's query, every key, every hostile value: once each"
+    assert cases == 1342, "every route's query, every key, every hostile value: once each"
 
 
 def test_every_string_field_of_a_post_body_is_never_answered_500(

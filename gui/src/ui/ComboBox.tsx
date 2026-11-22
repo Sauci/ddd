@@ -60,6 +60,13 @@ interface Props {
    * instead, React Aria would close the list.
    */
   footnote?: string | undefined;
+  /**
+   * What the open list says while it holds no entry, for a list whose entries come after what is
+   * typed - the masthead's go-to's, asked of the server (`goToList`, lib/goTo.ts): React Aria opens
+   * a list on a text only where the list holds entries then, and this one then opens with none
+   * yet. `undefined`, as for every other list: an empty list closes.
+   */
+  empty?: string | undefined;
   isDisabled?: boolean;
   /**
    * Take the focus when this changes to a new value: a unit cell hands the reader over, even on
@@ -94,6 +101,7 @@ export function ComboBox({
   onClose,
   note,
   footnote,
+  empty,
   isDisabled = false,
   autoFocus = null,
   menuTrigger = "input",
@@ -125,6 +133,7 @@ export function ComboBox({
         setPuttingBack(true);
       }}
       allowsCustomValue
+      allowsEmptyCollection={empty !== undefined}
       menuTrigger={puttingBack ? "manual" : menuTrigger}
       isDisabled={isDisabled}
     >
@@ -176,7 +185,12 @@ export function ComboBox({
         className={footnote === undefined ? "combo-popover" : "combo-popover footed"}
         offset={0}
       >
-        <ListBox<ComboSection> className="combo-list">
+        <ListBox<ComboSection>
+          className="combo-list"
+          {...(empty === undefined
+            ? {}
+            : { renderEmptyState: () => <p className="combo-empty">{empty}</p> })}
+        >
           {(section) => (
             <ListBoxSection id={section.id}>
               <Header>{section.title}</Header>

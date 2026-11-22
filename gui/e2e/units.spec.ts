@@ -231,8 +231,10 @@ test("the picker lists the variable's units, then the project's, narrowed by wha
   await page.getByRole("button", { name: /^Show the choices for Unit of ValueA/ }).click();
   await expect(page.getByRole("option", { name: "%", exact: true })).toBeVisible();
   await expect(page.getByRole("option", { name: "Hz", exact: true })).toBeVisible();
-  // The list spans the field it belongs to, edge to edge.
-  const field = await page.locator(".combo-field").boundingBox();
+  // The list spans the field it belongs to, edge to edge: the panel's, the masthead holding the
+  // go-to's field too.
+  const panel = page.getByRole("complementary", { name: "ValueA" });
+  const field = await panel.locator(".combo-field").boundingBox();
   const list = await page.locator(".combo-popover").boundingBox();
   expect([list?.x, list?.width]).toEqual([field?.x, field?.width]);
   await picker.fill("h");

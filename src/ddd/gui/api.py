@@ -94,6 +94,7 @@ from ddd.gui.queries import (
     FilesPlanQuery,
     FindingsQuery,
     FixQuery,
+    NamesQuery,
     NoQuery,
     QueryModel,
     RasterPlanQuery,
@@ -247,6 +248,12 @@ _CLIENT_GONE: ContextVar[Callable[[], bool]] = ContextVar("ddd_gui_client_gone",
 its slices (:meth:`Api._snapshot_after`): set by :meth:`Api.handle` for the length of one
 request, from what the server hands it. A context variable rather than a parameter of every
 route's answer, since only the long poll waits."""
+
+NAMES_ANSWERED: Final = 50
+"""How many variables ``GET /api/names`` answers at most: what the masthead's go-to lists, saying
+under them how many more hold the text, and to type to narrow them. React Aria draws every entry
+of a list it is handed, and a project's names can be tens of thousands; fifty is what the declare
+form's Name list draws (``NAMES_SHOWN``, ``gui/src/lib/declarations.ts``)."""
 
 MEMO: Final = 256
 """How many answers the api keeps for the newest revision: the graph, the Types and Shared files
@@ -853,6 +860,42 @@ class Api:
                         ],
                         cache,
                     ),
+                )
+            ),
+        )
+
+    def _names(self, query: NamesQuery, body: None) -> Reply:
+        """The variables of the newest revision whose names hold ``?text=``, whatever its case, as
+        the masthead's go-to asks for them (16:I14): the one the text spells exactly first, then
+        the others by name, at most :data:`NAMES_ANSWERED` of them, each with its kind and the
+        component the page opens its panel on (:func:`_named`), and how many hold the text in all.
+
+        Answered from the index the analysis built, as ``GET /api/declarable`` answers the names a
+        component may read: nothing is read from disk, and nothing said that ``GET /api/variable``
+        and ``GET /api/declarable`` do not say already - a name, its kind, a component declaring
+        it. Refused ``unreadable`` where there is no index, naming the files that did not load, or
+        the description where every file read loaded, as :func:`_nothing_loaded` names them."""
+        revision = self._opened()
+        built = revision.index
+        if built is None:
+            named = _unread(revision) or [revision.project.name]
+            return _did_not_load(named, "no variable of the project can be found")
+        derived = self._derive(revision)
+        wanted = query.text.lower()
+        exact = [query.text] if query.text in built.declarations else []
+        holding = [
+            *exact,
+            *sorted(
+                name for name in built.declarations if name != query.text and wanted in name.lower()
+            ),
+        ]
+        return Reply(
+            200,
+            written(
+                contract.NamesReply(
+                    revision=revision.number,
+                    total=len(holding),
+                    names=[_named(built, derived, name) for name in holding[:NAMES_ANSWERED]],
                 )
             ),
         )
@@ -1965,6 +2008,7 @@ ROUTES: Final[tuple[Route, ...]] = (
         Policy(writes=True, runs_plugins=True),
     ),
     Route("/api/variable", "GET", VariableQuery, None, Api._variable),
+    Route("/api/names", "GET", NamesQuery, None, Api._names),
     Route("/api/units", "GET", NoQuery, None, Api._units),
     Route("/api/settle", "GET", SettleQuery, None, Api._settle),
     Route("/api/fix", "GET", FixQuery, None, Api._fix),
@@ -2055,6 +2099,20 @@ def _finding(
             ),
         )
     )
+
+
+def _named(built: Index, derived: Derived, name: str) -> dict[str, str]:
+    """A variable as ``GET /api/names`` answers it: its name, its kind, and the component the page
+    opens its panel on - the first producing it, a local's own among them, as
+    :func:`ddd.declaration_plans.declarable` names a producer, or where none does the first
+    declaring it, in the order the project lists its components - by its file and its name."""
+    site = (built.producers.get(name) or built.declarations[name])[0]
+    return {
+        "name": name,
+        "kind": built.kinds.get(name, ""),
+        "file": derived.resolve(site.path).as_posix(),
+        "component": built.components[site.path],
+    }
 
 
 def _holds(filed: Filed, wanted: str) -> bool:

@@ -408,6 +408,14 @@ tr.changing td {
   min-height: 0;
   overflow-y: auto;
 }
+/* What a list says while it holds no entry, where it may open with none (ComboBox.tsx's
+   `empty`). */
+.combo-empty {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  color: var(--ink-quiet);
+  font-size: var(--text-small);
+}
 .combo-footnote {
   flex: none;
   margin: 0;

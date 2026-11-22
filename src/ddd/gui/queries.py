@@ -464,6 +464,15 @@ class VariableQuery(QueryModel):
     """The variable whose declarations to answer."""
 
 
+class NamesQuery(QueryModel):
+    """What ``GET /api/names`` takes."""
+
+    missing: ClassVar[str] = "names takes ?text="
+
+    text: Annotated[str, named("names takes ?text= as a part of a variable's name")]
+    """What the names answered hold, whatever its case."""
+
+
 class UnitQuery(QueryModel):
     """What ``GET /api/unit`` takes."""
 

@@ -14,10 +14,24 @@ body {
 }
 .masthead {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   gap: var(--space-3);
   padding-block: var(--space-2);
   border-bottom: 1px solid var(--rule);
+}
+/* The go-to (16:I14), last in the masthead: its label beside its field rather than above it, so
+   that the masthead keeps its one line, and a refusal under the field. As wide as its content
+   wherever it is drawn, and its field wide enough for its list - which is as wide - to hold a name
+   and its kind and component on one line. */
+.goto .combo {
+  display: inline-grid;
+  grid-template-columns: auto 24em;
+  align-items: center;
+  column-gap: var(--space-2);
+}
+.goto .combo-note {
+  grid-column: 2;
 }
 .masthead nav {
   margin-left: auto;

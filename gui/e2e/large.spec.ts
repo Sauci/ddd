@@ -414,3 +414,40 @@ test("the Findings tab's filter asks the server for the findings its text finds"
   await expect(rows.first().locator(".chip")).toBeVisible();
   await expect(rows.filter({ hasText: "c00500.ddd.json" })).toHaveCount(0);
 });
+
+/**
+ * The masthead's go-to (16:I14): of the generated project's 20,000 declarations, typed key by key,
+ * `C005` holds more names than the go-to lists - fifty, its foot saying how many more and to type
+ * to narrow them - and `C00530_O0000` one, which Enter opens on the page of C00530, producing it,
+ * its panel open, the field emptied for the next. A name picked from the list opens the same way.
+ */
+test("the masthead's go-to opens a variable on the page of the component producing it", async ({
+  page,
+  generatedGui,
+}) => {
+  await page.goto(generatedGui.address);
+  const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+  const options = page.getByRole("listbox").getByRole("option");
+  await goTo.pressSequentially("C005");
+  await expect(options).toHaveCount(50);
+  await expect(options.first()).toHaveAccessibleName("C00500_O0000");
+  await expect(
+    page.getByText("2,200 more names match: type to narrow the list.", { exact: true }),
+  ).toBeVisible();
+
+  await goTo.pressSequentially("30_O0000");
+  await expect(options).toHaveCount(1);
+  await expect(options.first()).toHaveAccessibleName("C00530_O0000");
+  await goTo.press("Enter");
+  await expect(page).toHaveURL(/\/component\?file=[^&]*c00530\.ddd\.json&variable=C00530_O0000$/);
+  await expect(page.getByRole("heading", { name: "C00530", level: 1 })).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "C00530_O0000" })).toBeVisible();
+  await expect(goTo).toHaveValue("");
+
+  await goTo.pressSequentially("C00500_X00");
+  await expect(options).toHaveCount(7);
+  await options.filter({ hasText: "C00500_X0013" }).click();
+  await expect(page).toHaveURL(/\/component\?file=[^&]*c00500\.ddd\.json&variable=C00500_X0013$/);
+  await expect(page.getByRole("heading", { name: "C00500", level: 1 })).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "C00500_X0013" })).toBeVisible();
+});

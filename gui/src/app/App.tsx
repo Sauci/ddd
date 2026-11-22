@@ -12,6 +12,7 @@ import { ComparePage } from "../screens/ComparePage";
 import { ComponentPage } from "../screens/ComponentPage";
 import { FilesPage } from "../screens/FilesPage";
 import { FindingsPage } from "../screens/FindingsPage";
+import { GoTo } from "../screens/GoTo";
 import { GraphPage } from "../screens/GraphPage";
 import { ProjectPage } from "../screens/ProjectPage";
 import { SharedPage } from "../screens/SharedPage";
@@ -310,6 +311,11 @@ export function App() {
             </Button>
           )}
         </nav>
+        {/* Once the open project's first analysis has landed, whose index the names are asked of:
+            every page of the project, a component's among them, reaches a variable from here. */}
+        {opened !== null && state !== null && (
+          <GoTo revision={state.revision} stopped={stopped} onGo={navigate} />
+        )}
       </header>
       {stopped && (
         <Banner tone="error">

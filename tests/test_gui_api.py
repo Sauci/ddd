@@ -9,6 +9,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import threading
 from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path, PurePosixPath
@@ -2918,6 +2919,35 @@ class TestEdit:
         (root / "b.ddd.json").write_text("{}", encoding="utf-8")
         reply = post(api, "/api/edit", edit)
         assert (reply.status, reply.body["error"]) == (409, "stale")
+
+    def test_a_stale_edit_stays_a_refusal_where_its_analysis_fails_and_cannot_be_printed(
+        self, root: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A stale refusal asks for an analysis, and one that raises is printed where the
+        terminal can be written: where it cannot, the line is lost and the answer is still the
+        refusal's ``409``, never the failing print's server error."""
+
+        class Failing(Session):
+            analyses = 0
+
+            def _analysed(self, project: Path) -> Revision:
+                self.analyses += 1
+                if self.analyses == 2:
+                    raise RuntimeError("boom")
+                return super()._analysed(project)
+
+        class Unwritable(io.StringIO):
+            def write(self, text: str) -> int:
+                raise OSError("standard error is closed")
+
+        session = Failing(root)
+        session.open(root / "p.ddd.json")
+        api = Api(session, root / "p.ddd.json", wait_seconds=0.05)
+        edit = unit_edit(api, root, "Hz")
+        (root / "b.ddd.json").write_text("{}", encoding="utf-8")
+        monkeypatch.setattr(sys, "stderr", Unwritable())
+        reply = post(api, "/api/edit", edit)
+        assert (reply.status, reply.body["error"], session.analyses) == (409, "stale", 2)
 
     def test_an_edit_the_disk_refused_is_a_refusal_the_page_can_act_on(
         self, api: Api, root: Path, monkeypatch

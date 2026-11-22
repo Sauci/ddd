@@ -2792,6 +2792,36 @@ class TestReadingAndEditing:
         assert session.revision is first
         assert session.poll() is True
 
+    def test_a_failure_after_a_stale_refusal_that_cannot_be_printed_leaves_the_refusal(
+        self, shared: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Where standard error cannot be written - closed, or a pipe nobody reads any more - the
+        line is lost, as the analyser loses its own, and the caller still gets the ``stale``
+        refusal: what the page acts on, never the failing print in its place."""
+
+        class Failing(Session):
+            analyses = 0
+
+            def _analysed(self, project: Path) -> Revision:
+                self.analyses += 1
+                if self.analyses == 2:
+                    raise RuntimeError("boom")
+                return super()._analysed(project)
+
+        class Unwritable(io.StringIO):
+            def write(self, text: str) -> int:
+                raise OSError("standard error is closed")
+
+        session = Failing(shared.parent)
+        session.open(shared)
+        old = unit_of_b(shared, "Hz")
+        (shared.parent / "b.ddd.json").write_text("{}", encoding="utf-8")
+        monkeypatch.setattr(sys, "stderr", Unwritable())
+        with pytest.raises(EditError) as refused:
+            session.edit([old], "the unit of Torque")
+        assert refused.value.code == STALE
+        assert session.analyses == 2
+
     def test_a_refusal_that_is_not_stale_asks_for_no_analysis(self, shared: Path) -> None:
         session = Session(shared.parent)
         session.open(shared)

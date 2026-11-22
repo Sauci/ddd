@@ -902,8 +902,9 @@ class Session:
         Called without the lock.
 
         The refusal is the answer whatever the analysis does: one that raises - the change may
-        have left the project unanalysable - is printed as the analyser prints its own, and its
-        files stay stamped unknown (:meth:`_finished`), so that the next poll asks again.
+        have left the project unanalysable - is printed as the analyser prints its own, and lost
+        as the analyser loses its own where standard error cannot be written (:func:`_printed`),
+        and its files stay stamped unknown (:meth:`_finished`), so that the next poll asks again.
         """
         if refused.code == STALE:
             with self._lock:
@@ -911,7 +912,7 @@ class Session:
             try:
                 self._analyse_here()
             except Exception as error:
-                print(f"ddd gui: analysing the project failed: {error}", file=sys.stderr)
+                _printed(f"ddd gui: analysing the project failed: {error}")
 
     def _analyse_here(self) -> None:
         """Make the analyses asked for on this thread, where no analyser was started."""
@@ -1041,6 +1042,16 @@ class Session:
                     self._request()
         self._version += 1
         self._changed.notify_all()
+
+
+def _printed(line: str) -> None:
+    """Print ``line`` on standard error, the terminal ``ddd gui`` runs in, where it can be
+    written. Where it cannot - the stream closed, a pipe nobody reads any more, a console that
+    cannot encode it - the line is lost and nothing is raised, as the analyser's own thread loses
+    its line (:meth:`Session._analyse_until_stopped`): raised, it replaced the answer of whatever
+    was telling it, a request's refusal among them, with a server error."""
+    with contextlib.suppress(Exception):
+        print(line, file=sys.stderr)
 
 
 def findings_with(revision: Revision, includes: Sequence[str]) -> tuple[Filed, ...]:

@@ -3,9 +3,11 @@ import { type ReactNode, useCallback, useEffect, useSyncExternalStore } from "re
 import { getSession } from "../api/client";
 import { signedOut } from "../api/token";
 import { SignedOutView } from "../components/SignedOutView";
+import { UndrawnView } from "../components/UndrawnView";
 import { hrefOf, type ProjectView, type Route } from "../lib/route";
 import { projectName, sessionAskedFor } from "../lib/session";
 import type { SharedKind } from "../lib/shared";
+import { undrawnSentence } from "../lib/undrawn";
 import { ComparePage } from "../screens/ComparePage";
 import { ComponentPage } from "../screens/ComponentPage";
 import { FilesPage } from "../screens/FilesPage";
@@ -22,6 +24,7 @@ import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
 import { LinkTabs } from "../ui/LinkTabs";
 import { UpdatingStatus } from "../ui/UpdatingNote";
+import { ErrorBoundary } from "./ErrorBoundary";
 import { UpdatingContext } from "./updating";
 import { useProjectState } from "./useProjectState";
 import { useRoute } from "./useRoute";
@@ -315,9 +318,21 @@ export function App() {
       )}
       {failure !== null && <Banner tone="error">{failure}</Banner>}
       {/* Every screen reads whether the findings may be about to change from here, and says so
-          where its findings are (spec 6). */}
+          where its findings are (spec 6). A page that throws while it is drawn is caught by the
+          one boundary under the masthead and the banners (15:I5), which stay drawn. */}
       <UpdatingContext value={updating}>
-        <main>{page}</main>
+        <ErrorBoundary
+          route={route}
+          fallback={(thrown) => (
+            <UndrawnView
+              failure={undrawnSentence(thrown)}
+              stopped={stopped}
+              onReload={() => window.location.reload()}
+            />
+          )}
+        >
+          <main>{page}</main>
+        </ErrorBoundary>
       </UpdatingContext>
     </div>
   );

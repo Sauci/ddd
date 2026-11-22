@@ -1,6 +1,6 @@
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Locator } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import {
   CONTROLLER,
   drift,
@@ -18,10 +18,37 @@ import { expect, test } from "./fixtures";
 // the app around every page: signed in by a launch's code, connecting, the session failing,
 // signed out, analysing the project, a project another page opened, the banners of a long poll
 // that fails and of a server that stopped, what is written while it has, a panel just after the
-// edit that made it, and the changes a plan makes (spec 2026-10-08 §5; part 19c).
+// edit that made it, and the changes a plan makes (spec 2026-10-08 §5; part 19c); and a page that
+// cannot be drawn (15:I5).
 
 /** What the page says while its long poll goes unanswered: `App.tsx`'s `stopped` banner. */
 const STOPPED = "ddd gui has stopped. Start it again and open the address it prints.";
+
+/** What a component's page says in its own place once its findings come in a reply it cannot draw
+ * (`routesLeftOut`): `undrawnSentence`'s line (lib/undrawn.ts), ending in the words of what was
+ * thrown - V8's, for `kind` read off a route the reply left out, which every leg's browser says
+ * alike, Chromium and Edge both being V8's (ci.yml). */
+const UNDRAWN =
+  "This page could not be drawn: Cannot read properties of undefined (reading 'kind')";
+
+/** Answers the page's asks for the findings of the file whose path ends in `/${name}` - a
+ * component's page asks for its own file's - with the server's own answer, every finding's `route`
+ * taken out of it: a reply the page cannot draw, since it reads where each finding leads off its
+ * route (`routeOf`, lib/findings.ts) as it lists it. Every other ask goes through untouched. */
+async function routesLeftOut(page: Page, name: string): Promise<void> {
+  await page.route(
+    (url) =>
+      url.pathname === "/api/findings" && (url.searchParams.get("file") ?? "").endsWith(`/${name}`),
+    async (route) => {
+      const response = await route.fetch();
+      const reply = await response.json();
+      const findings = reply.findings.map((finding: Record<string, unknown>) =>
+        Object.fromEntries(Object.entries(finding).filter(([key]) => key !== "route")),
+      );
+      await route.fulfill({ response, json: { ...reply, findings } });
+    },
+  );
+}
 
 /** The copy's own contents taken away, its directory left standing: no project description, no
  * build record, nothing - what the start page meets where `ddd gui` was started somewhere
@@ -726,6 +753,70 @@ test("a stopped server disables every control that writes, the component table's
   await expect(page.getByRole("alert").filter({ hasText: "has stopped" })).toHaveText(STOPPED);
   for (const control of controls) await expect(control).toBeDisabled();
   expect(readFileSync(join(gui.directory, CONTROLLER)).equals(written)).toBe(true);
+});
+
+test("a page that cannot be drawn says why in its own place, under the masthead, at its own address, until the reader goes elsewhere", async ({
+  page,
+  gui,
+}) => {
+  // ValueA's unit drifted, so that Controller's page has a finding to list, in a reply it cannot
+  // draw.
+  drift(gui.directory);
+  await routesLeftOut(page, "controller.ddd.json");
+  await page.goto(gui.address);
+  await expect(page.getByLabel("SensorHub to Controller: 2 variables, error")).toBeVisible();
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  const undrawn = page.getByRole("alert").filter({ hasText: "could not be drawn" });
+  await expect(undrawn).toHaveText(UNDRAWN);
+  // What is gone is what the page's main region held, and nothing above it: the masthead is drawn,
+  // and the address is the component's still.
+  const project = page.getByRole("banner").getByRole("button", { name: "DemoDevice", exact: true });
+  await expect(project).toBeVisible();
+  await expect(page).toHaveURL(/\/component\?file=[^&]*controller\.ddd\.json$/);
+  await expect(page.getByRole("heading", { name: "Controller" })).toHaveCount(0);
+
+  // Let go once the reader goes elsewhere: the project's canvas is drawn in its place.
+  await project.click();
+  await expect(page.getByRole("region", { name: "Modules" })).toBeVisible();
+  await expect(undrawn).toHaveCount(0);
+  // And back on the component's page, whose reply still cannot be drawn, it is caught again.
+  await page.goBack();
+  await expect(undrawn).toHaveText(UNDRAWN);
+  await page.unrouteAll({ behavior: "wait" });
+});
+
+test("a page that cannot be drawn offers a reload while the server answers, none once it has stopped, and is drawn once reloaded", async ({
+  page,
+  gui,
+}) => {
+  drift(gui.directory);
+  await routesLeftOut(page, "controller.ddd.json");
+  await page.goto(gui.address);
+  await expect(page.getByLabel("SensorHub to Controller: 2 variables, error")).toBeVisible();
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  const undrawn = page.getByRole("alert").filter({ hasText: "could not be drawn" });
+  await expect(undrawn).toHaveText(UNDRAWN);
+  const reload = page.getByRole("button", { name: "Reload the page", exact: true });
+  await expect(reload).toBeVisible();
+
+  // The server stopping, its long poll dropped as the journeys above drop it: the banner says so
+  // above what failed, and no reload is offered, which would lose the page.
+  await failing(page, "/api/state", "network");
+  restamp(gui.directory, CONTROLLER);
+  const stopped = page.getByRole("alert").filter({ hasText: "has stopped" });
+  await expect(stopped).toHaveText(STOPPED);
+  await expect(undrawn).toHaveText(UNDRAWN);
+  await expect(reload).toHaveCount(0);
+
+  // The server answering again, and the findings with their routes: the banner lifts, the reload
+  // is offered again, and the page it loads again is drawn.
+  await page.unrouteAll({ behavior: "wait" });
+  await expect(stopped).toHaveCount(0);
+  await expect(reload).toBeVisible();
+  await reload.click();
+  await expect(page.getByRole("heading", { name: "Controller", level: 1 })).toBeVisible();
+  await expect(page.getByRole("grid", { name: "Declarations of Controller" })).toBeVisible();
+  await expect(undrawn).toHaveCount(0);
 });
 
 test("a variable just declared shows its panel saying the findings are updating, until the analysis lands", async ({

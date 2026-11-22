@@ -77,7 +77,6 @@ from ddd.gui.session import Filed, Revision, Session
 from ddd.loading import included_files, load_workspace, resolve_path
 from ddd.lsp.navigation import Index, Site
 from ddd.lsp.ranges import Document
-from ddd.object_values import grid_of
 from ddd.project_shared import CONSTANTS, RASTERS, SECTIONS, Vocabulary
 from ddd.project_shared import located_on as located_on_entry
 from ddd.project_types import located_in_type

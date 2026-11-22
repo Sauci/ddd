@@ -610,6 +610,69 @@ describe("why a finding leads nowhere", () => {
     expect(unreadable(null, ["types"])).toEqual({ own: [], untold: [] });
   });
 
+  describe("two files of one name that did not load", () => {
+    // By their names alone, both read `types.ddd.json`, and a reader sent to repair one opened
+    // whichever came first. Named as the server's refusals name them (`ddd.gui.api._unread`):
+    // by as much of their paths as tells them apart, among every file that did not load.
+
+    test("in different folders, both of the tab's own kind, are named apart", () => {
+      const one = finding({});
+      const withFiles = state([one]);
+      withFiles.files = [
+        ...withFiles.files,
+        fileRow("C:/work/demo/x/types.ddd.json", "types", false),
+        fileRow("C:/work/demo/y/types.ddd.json", "types", false),
+      ];
+      expect(unreadable(withFiles, ["types"])).toEqual({
+        own: ["x/types.ddd.json", "y/types.ddd.json"],
+        untold: [],
+      });
+    });
+
+    test("are named apart across the two lists, one of the tab's kind and one of none", () => {
+      const one = finding({});
+      const withFiles = state([one]);
+      withFiles.files = [
+        ...withFiles.files,
+        fileRow("C:/work/demo/x/constants.ddd.json", "constants", false),
+        fileRow("C:/work/demo/y/constants.ddd.json", "unknown", false),
+      ];
+      expect(unreadable(withFiles, SHARED_KINDS)).toEqual({
+        own: ["x/constants.ddd.json"],
+        untold: ["y/constants.ddd.json"],
+      });
+    });
+
+    test("are named apart where the tab lists only one of them", () => {
+      // A component of the same name that did not load is named in neither list here, and is
+      // named `x/b.ddd.json` wherever the server names it: the file the tab names is named as
+      // the server names it too, the same file one name across the page.
+      const one = finding({});
+      const withFiles = state([one]);
+      withFiles.files = [
+        ...withFiles.files,
+        fileRow("C:/work/demo/x/b.ddd.json", "component", false),
+        fileRow("C:/work/demo/y/b.ddd.json", "types", false),
+      ];
+      expect(unreadable(withFiles, ["types"])).toEqual({ own: ["y/b.ddd.json"], untold: [] });
+    });
+
+    test("a file of a name no other has is named by its name alone beside them", () => {
+      const one = finding({});
+      const withFiles = state([one]);
+      withFiles.files = [
+        ...withFiles.files,
+        fileRow("C:/work/demo/x/types.ddd.json", "types", false),
+        fileRow("C:/work/demo/y/types.ddd.json", "types", false),
+        fileRow("C:/work/demo/y/limits.ddd.json", "types", false),
+      ];
+      expect(unreadable(withFiles, ["types"])).toEqual({
+        own: ["x/types.ddd.json", "y/types.ddd.json", "limits.ddd.json"],
+        untold: [],
+      });
+    });
+  });
+
   describe("a tab whose table holds more than one vocabulary", () => {
     // The Shared files tab asks for both its file kinds in one call, so a failed sections file
     // must be named beside a failed constants file rather than dropped because it was not the

@@ -13,7 +13,12 @@ const root = document.getElementById("root");
 if (root === null) throw new Error("index.html has no #root element");
 
 const client = new QueryClient({
-  defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
+  // The server is on loopback: a browser's `offline` event says nothing of it, so neither a read
+  // nor a write waits for the network to be said back.
+  defaultOptions: {
+    queries: { retry: false, refetchOnWindowFocus: false, networkMode: "always" },
+    mutations: { networkMode: "always" },
+  },
 });
 
 // Signed in, and every stylesheet the network failed asked for once more, before anything is

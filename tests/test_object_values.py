@@ -10,6 +10,7 @@ import pytest
 from conftest import component, declare, first_revision, project, write_tree
 from ddd.diagnostics import DiagnosticBag
 from ddd.editing import edit_text
+from ddd.findings_by_file import FindingsByFile
 from ddd.gui.session import Revision, Session
 from ddd.loading import load_workspace
 from ddd.lsp.navigation import Index, index
@@ -17,6 +18,7 @@ from ddd.object_values import (
     AXIS_REFERENCES,
     grid_of,
     limits_refusal,
+    no_grid_because,
     set_cell,
     set_cells,
     set_values,
@@ -1635,3 +1637,26 @@ def _definition_of(text: str, name: str) -> dict[str, object]:
     """One declaration's definition out of a component's json text."""
     interface = json.loads(text)["component"]["interface"]
     return next(e["definition"] for e in interface if e["definition"]["name"] == name)
+
+
+class TestWhyAnObjectHasNoGrid:
+    def test_a_name_left_out_with_no_finding_to_say_so_is_told_as_that(self, tmp_path) -> None:
+        """Two curves each naming the other as its axis: with no finding filed anywhere, the
+        references are followed once each and the answer is the plain one, not a loop."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("output", "One", kind="curve", datatype="uint8", axis="Two"),
+                    declare("output", "Two", kind="curve", datatype="uint8", axis="One"),
+                    declare("output", "Three", kind="curve", datatype="uint8", axis="Gone"),
+                ),
+            },
+        )
+        built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
+        for name in ("One", "Three"):
+            assert no_grid_because(built, name, FindingsByFile(()), {}) == (
+                f"'{name}' is left out of the project's objects, and no finding says why"
+            )

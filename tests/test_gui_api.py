@@ -11341,6 +11341,80 @@ class TestTheValuesGrid:
         reply = get(api, "/api/values", name="Nope")
         assert (reply.status, reply.body["error"]) == (404, "not-found")
 
+    def test_a_structured_variable_says_its_values_are_its_members(self, tmp_path: Path) -> None:
+        """``/api/variable`` answers ``Inlet``, so the project does declare it: a structure has no
+        grid of its own, and the sentence says so rather than that nothing declares it."""
+        api, _ = copied(tmp_path, "structures", "project.ddd.json")
+        assert get(api, "/api/variable", name="Inlet").status == 200
+        assert get(api, "/api/values", name="Inlet") == Reply(
+            409,
+            {
+                "error": "invalid",
+                "message": "'Inlet' is a structure of type 'Sensor_t', so its values are its "
+                "members' and it has no grid of its own",
+            },
+        )
+
+    def test_an_object_dropped_for_its_own_finding_names_that_finding(self, tmp_path: Path) -> None:
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "output", "Curve", kind="curve", datatype="uint8", axis="Nope", init=[1, 2]
+                    ),
+                ),
+            },
+        )
+        assert get(api, "/api/variable", name="Curve").status == 200
+        assert get(api, "/api/values", name="Curve") == Reply(
+            409,
+            {
+                "error": "invalid",
+                "message": "'Curve' is left out of the project's objects by a finding: curve "
+                "'Curve' refers to 'Nope' as its axis, but no component declares 'Nope' "
+                "(unknown-reference)",
+            },
+        )
+
+    def test_a_curve_over_a_dropped_axis_names_the_finding_that_dropped_the_axis(
+        self, tmp_path: Path
+    ) -> None:
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "output",
+                        "BadAxis",
+                        kind="axis",
+                        datatype="uint8",
+                        size=2,
+                        typename="Nope_t",
+                    ),
+                    declare(
+                        "output",
+                        "Map",
+                        kind="curve",
+                        datatype="uint8",
+                        axis="BadAxis",
+                        init=[1, 2],
+                    ),
+                ),
+            },
+        )
+        reply = get(api, "/api/values", name="Map")
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert reply.body["message"] == (
+            "'Map' is left out of the project's objects with 'BadAxis', which it refers to: "
+            "'BadAxis' is declared as 'Nope_t', which is neither a base datatype nor a type any "
+            "file of this project declares (unknown-type)"
+        )
+
     def test_a_shape_of_more_than_two_dimensions_is_refused_rather_than_drawn(
         self, tmp_path: Path
     ) -> None:

@@ -168,7 +168,15 @@ from ddd.lsp.units import (
     rename_unit,
     vocabulary_project,
 )
-from ddd.object_values import Grid, grid_of, limits_refusal, set_cell, set_cells, set_values
+from ddd.object_values import (
+    Grid,
+    grid_of,
+    limits_refusal,
+    no_grid_because,
+    set_cell,
+    set_cells,
+    set_values,
+)
 from ddd.plans import Plan, PlannedEdit, PlanRefusalError
 from ddd.project_shared import (
     CONSTANTS,
@@ -1567,6 +1575,15 @@ class Api:
         except PlanRefusalError as refused:
             # Both codes are reachable - a name the project has not, and a shape of more
             # dimensions than a grid draws - each answered as a plan's refusal is: 404 and 409.
+            if refused.code == "not-found" and name in built.declarations:
+                # Declared, and in no grid: a structure, whose values are its members', or an
+                # object the analysis dropped - so no such name is said not to be declared.
+                return _refusal(
+                    revision,
+                    "invalid",
+                    no_grid_because(built, name, self._derive(revision).findings, {}),
+                    None,
+                )
             return _refusal(revision, refused.code, refused.message, None)
         derived = self._derive(revision)
         cache: dict[Path, Document] = {}

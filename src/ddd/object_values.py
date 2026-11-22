@@ -30,7 +30,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Literal, cast
 
+from ddd.diagnostics import Diagnostic, Severity
 from ddd.editing import Operation
+from ddd.findings_by_file import FindingsByFile
 from ddd.ir import DataDictionary
 from ddd.lsp.navigation import Index, Site, changed_since, drift
 from ddd.lsp.ranges import Document, read
@@ -38,6 +40,8 @@ from ddd.models.common import Datatype
 from ddd.models.conversion import Conversion
 from ddd.models.objects import InitElement, InitValue, check_shape
 from ddd.plans import Plan, PlannedEdit, PlanRefusalError
+from ddd.project_types import kind_of
+from ddd.variables import declarations_of, located_on
 
 _ELEMENT: Final = re.compile(r"(?:\[[0-9]+\])+")
 """An element's indices as the pointer writes them: each in brackets, ``[2]`` or ``[1][3]``."""
@@ -218,6 +222,64 @@ def grid_of(dictionary: DataDictionary, built: Index, name: str) -> Grid:
         file=file,
         pointer=pointer,
     )
+
+
+def no_grid_because(
+    built: Index, name: str, findings: FindingsByFile, cache: dict[Path, Document]
+) -> str:
+    """Why a name some declaration states has no grid, as a sentence: it is not in the resolved
+    dictionary, which ``grid_of`` answers as no such name, and the project does declare it.
+
+    A structured variable has no values of its own - they are its members' - and every other
+    name left out is one the analysis dropped, which the finding that dropped it says: its own,
+    or the one of a name it refers to, an axis dropped taking the curve over it along. A name
+    left out with no finding to say so is told as that. Trusts ``name`` is one of
+    ``built.declarations``, as the route checks before it asks.
+    """
+    declared = declarations_of(built, name, cache)
+    for entry in declared:
+        if entry.type_name is not None and kind_of(built, entry.type_name, cache) == "struct":
+            return (
+                f"'{name}' is a structure of type '{entry.type_name}', so its values are its "
+                "members' and it has no grid of its own"
+            )
+    cause = _dropped_by(built, name, findings, cache, {name})
+    if cause is None:
+        return f"'{name}' is left out of the project's objects, and no finding says why"
+    filed_on, finding = cause
+    said = f"{finding.message} ({finding.check})"
+    if filed_on == name:
+        return f"'{name}' is left out of the project's objects by a finding: {said}"
+    return (
+        f"'{name}' is left out of the project's objects with '{filed_on}', which it refers to: "
+        f"{said}"
+    )
+
+
+def _dropped_by(
+    built: Index, name: str, findings: FindingsByFile, cache: dict[Path, Document], seen: set[str]
+) -> tuple[str, Diagnostic] | None:
+    """The first error filed on one of ``name``'s declarations, with the name it is filed on;
+    failing that, the same asked of each axis the declarations refer to. ``seen`` keeps a
+    reference that leads back to a name from being followed round."""
+    declared = declarations_of(built, name, cache)
+    for file in dict.fromkeys(entry.site.path for entry in declared):
+        for shown, found in findings.on(file):
+            if found.severity is Severity.ERROR and located_on(
+                declared, shown, found, findings.resolve
+            ):
+                return name, found
+    for entry in declared:
+        document = read(entry.site.path, cache)
+        for position in AXIS_REFERENCES:
+            referred = document.value_at(f"{entry.site.pointer}.{position}")
+            if not isinstance(referred, str) or referred in seen:
+                continue
+            seen.add(referred)
+            cause = _dropped_by(built, referred, findings, cache, seen)
+            if cause is not None:
+                return cause
+    return None
 
 
 def _unshown(

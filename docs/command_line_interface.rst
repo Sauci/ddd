@@ -386,7 +386,11 @@ The commands
        axis are offered whatever type they name; anything else needs numeric storage - a
        datatype of its own or a scalar type - so a dimensioned declaration naming a structured
        type is shown there and not offered, and so is a deeper shape, and a scalar a file
-       initialises with a list. Cells typed into are held together, each showing what was typed
+       initialises with a list. Asked for the values of a name the project does declare and
+       holds no grid of - a structured variable, whose values are its members', or an object
+       the analysis dropped, or a curve over an axis it dropped - ``GET /api/values`` is
+       refused ``invalid`` and says why, naming the finding that dropped it, and never that
+       the project declares no such name, which it says only of a name nothing declares. Cells typed into are held together, each showing what was typed
        into it, and previewed as one change - in a sentence naming how many elements it sets,
        the first five of them and what each is set to, then how many more, and the producing
        file it lands in - that one Apply writes, like every other change here, and one undo

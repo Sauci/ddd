@@ -390,9 +390,10 @@ The commands
        holds no grid of - a structured variable, whose values are its members', or an object
        the analysis dropped, or a curve over an axis it dropped - ``GET /api/values`` is
        refused ``invalid`` and says why, naming the finding that dropped it, and never that
-       the project declares no such name, which it says only of a name nothing declares. Cells typed into are held together, each showing what was typed
-       into it, and previewed as one change - in a sentence naming how many elements it sets,
-       the first five of them and what each is set to, then how many more, and the producing
+       the project declares no such name, which it says only of a name nothing declares.
+       Cells typed into are held together, each showing what was typed into it, and
+       previewed as one change - in a sentence naming how many elements it sets, the first
+       five of them and what each is set to, then how many more, and the producing
        file it lands in - that one Apply writes, like every other change here, and one undo
        puts back. Each cell typed is written where it stands, the rest of the file staying as
        it was, its spellings and its layout too, where the file writes its ``init`` out far

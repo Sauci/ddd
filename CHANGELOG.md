@@ -226,6 +226,28 @@ A script or a client reading what the tool prints:
   - "A constant's rename rewrites a condition that spells it, and its uses count conditions": a
     client of `GET /api/constant` reads a condition among a constant's `uses`, after the shapes, as
     a use of the variable whose declaration it guards.
+  - "A plugin saved while `ddd gui` runs is told, by `plugin-changed`": a script that counts what
+    `ddd checks` lists finds one more; a project that edits a plugin while `ddd gui` is open
+    restarts the server, or relaxes `plugin-changed` with `-W`, `SEVERITY` in cmake or a build
+    record; and a DDD from before declines a build record naming it, so a team on mixed versions
+    that relaxes it upgrades its editors first.
+  - "A plugin whose file cannot be read is `plugin-invalid` in every command": a project carrying a
+    plugin that its build's account cannot read, with a valid bytecode cache beside it, makes the
+    file readable.
+  - "A refusal a page can mend is a refusal, and it names the file": a client that scripted `POST
+    /api/edit` and answered the `500` of a read-only file answers the `409` `unwritable`, and one
+    that read `stale` for a plan asked while the page's own edit waited meets `analysing` first and
+    asks again once that analysis has landed.
+  - "A finding leads to a panel that lists it, shows its place where it leads nowhere, and is
+    counted once": a client typed from the page's contract adds `statements` to `State` and to `GET
+    /api/compare`'s reply, and `line` and `column`, `null` where the loader gave none, to a finding,
+    each required; one that reads the json ignores them.
+  - "A read says why a declared name has no grid, and reads a type saved since the analysis": a
+    client that matched the `404` of `GET /api/values` for a declared name, a structured variable or
+    a dropped object, matches the `409` `invalid`.
+  - "The state says why the last analysis failed, and which build record cannot be used": a client
+    typed from the page's contract adds `failed` and `refused` to `State`, each required; one that
+    reads the json ignores them.
 
 An editor, or a client of `ddd lsp`:
 
@@ -361,6 +383,17 @@ A user of `ddd tool from-elf`:
   - "A constant's rename rewrites a condition that spells it, and its uses count conditions": a
     constant that only a condition spells, which the Shared files tab let go, is refused removal
     until the condition is changed.
+  - "A type's change that the loader would refuse is refused, and a range is written as typed": a
+    type changed to a datatype that is none, a maximum below its minimum or a conversion of factor 0
+    is corrected before it is written, and a client that scripted one meets the `409` `invalid`.
+  - "A description beside a build record that does not read is refused, and a description added to a
+    generated project is offered its line": a description refused beside a record cut short waits
+    for a configure of the build, which writes the record, and a description added to a generated
+    project has the `ddd_add_component()` line the offer gives put in the `CMakeLists.txt` beside
+    it.
+  - "An edit may be as large as a large project's rename, and a plan too long for its address says
+    so": a values table past about 10,000 counts is set cell by cell, or in its file in an editor;
+    `POST /api/edit` takes a body of up to 8 MiB, and every other request keeps its 1 MiB.
 
 An install and the tool's python:
 
@@ -1467,9 +1500,10 @@ A build of DDD from its sources, and a release of it:
   last time and no run reports on now: a component taken out of its project's `includes` leaves the
   screen, as it leaves what `ddd check` reports.  Any other file keeps its findings.  A description
   the editor reports changed is checked again where its findings are on screen or a check ran from
-  it, whatever is open, so a pull that mends a project nobody has open mends what is shown of it.  A file that was deleted
-  has its findings emptied once and is not refreshed from its path, and an open document that is not
-  on disk, a new file not yet saved, keeps its findings.  Nothing to migrate.
+  it, whatever is open, so a pull that mends a project nobody has open mends what is shown of it.  A
+  file that was deleted has its findings emptied once and is not refreshed from its path, and an
+  open document that is not on disk, a new file not yet saved, keeps its findings.  Nothing to
+  migrate.
 
 * **A file reached through a junction or a link has its findings under one spelling.**  A file has
   two spellings, the one the client opens it under and the resolved one the loader reads it by, and
@@ -1792,6 +1826,204 @@ A build of DDD from its sources, and a release of it:
   extension's page and the editor page now say that a change takes effect once the server is
   restarted, with **DDD: Restart Language Server**, the command for it.  Migrating costs that
   command after a change of either, as it always did.
+
+* **A type's change that the loader would refuse is refused, and a range is written as typed.**  The
+  Types tab planned whatever a key was set to: a datatype that names none, limits whose maximum is
+  below their minimum and a linear conversion of factor 0 were each previewed, and Apply wrote them
+  into a types file that then failed to load, with every type the file declares.  Each is now
+  refused as `invalid` before it is planned, in the words `ddd check` files it in, naming the type
+  and its file, and the route answers it 409.  A type that `ddd check` refuses already, derived
+  limits past the largest float among them, is not refused again for it: a change that leaves that
+  refusal as it was is planned, the value a row holds among them, and so is one that mends it, while
+  one that brings another is refused; a key taken out is asked of the entry without it.  A range
+  typed into a type's Min or Max, or a variable's, reaches the file in the digits it was typed in,
+  `1e3` as `1e3` and `12.50` as `12.50`, a float's given a point where it was typed whole, where the
+  file took the shortest spelling of the double the page had weighed it as.  Migrating costs nothing
+  but the correction of a type that was to be written in a state the loader refuses, and a client
+  that scripted such a change meets the 409.
+
+* **Limits that no declaration states are written on the producer.**  A reader may leave its limits
+  to whoever states them, which `ddd check` counts as agreement, and the settlement of a variable's
+  panel applied that to every declaration that states none: a range typed into the panel's two
+  fields reached none of them, the panel said there was nothing to change, and a declaration made in
+  `ddd gui` could never be given limits.  The producers take them now, every declaration of a
+  producing scope, on each of two where two produce the variable, and the readers go on leaving them
+  to them; a variable no declaration produces is refused `invalid`, saying that no declaration
+  produces it, since none is the one to state them.  A reader naming a scalar type that fixes no
+  limits is no longer refused in a sentence untrue of that type.  The two bounds of a range are
+  compared as the exact numbers `ddd check` compares, so two maxima past 2^53 that it files as a
+  `definition-mismatch` are two values on the panel, and the finding carries its fix, in the page
+  and in the editor, where a rounding made them one.  Nothing to migrate.
+
+* **A variable's panel reads a type and what it fixes as `ddd check` does.**  The `typename` row
+  said the declarations disagreed wherever one named a type and another stated nothing there, though
+  `ddd check` files nothing when the other spells what the type fixes: a tinted row that no
+  settlement could clear, on a project the tool calls consistent.  The row now disagrees only where
+  two declarations name different types, and a unit of no text beside none is no disagreement
+  either.  Two types of one meaning are still told apart by name, and an external type beside a
+  scalar is still `type-kind`.  The graph draws a structured variable's arrow, where a structure
+  whose modules it joins showed them joined by nothing and a mismatch over it coloured no arrow, and
+  names the object of a disagreement by the declaration its finding points into, where a declaration
+  the analysis dropped moved the name to the next one.  The key chooser of a variable's panel, and
+  the choosers of the add form, offer no local another component keeps, which only its owner may use
+  and which wrote a `local-conflict`; a form for a declaration no file holds yet has no component to
+  compare, and still lists them all.  Nothing to migrate.
+
+* **`ddd gui` notices a change it missed, and analyses again.**  The poll stamped the files an
+  analysis had read and nothing else, so some changes made no new revision until another file moved,
+  and the page went on showing findings `ddd check` no longer reports: a component saved where a
+  pattern of `includes` matches, a plugin a description names by its path where another plugin's
+  model had ended the read, and a build record written or mended, its severities being the
+  analysis's own.  A revision now names what it watches beside its files: the directory each
+  wildcard of the project's descriptions expands in, and those a `**` walks, though no directory a
+  pattern only passes through; every file a `plugins` list names by its path, loaded or not, and not
+  a plugin named as a module; and every build record the search finds, one that is refused among
+  them.  A record beside a description that cannot be read as one is refused, and watched, so that
+  mending it makes a revision.  Each file's fingerprint is the one of the run the revision's index
+  came from, as that run read it, so that a description saved between the runs of two builds and put
+  back no longer lets a plan pass the `stale` check against bytes it does not describe.  The records
+  that feed an open project are read under the project's own directory too, as the record beside its
+  description is, and the start page's listing keeps the directory `ddd gui` was started in.
+  Nothing to migrate.
+
+* **A description beside a build record that does not read is refused, and a description added to a
+  generated project is offered its line.**  A record beside a project description that did not read
+  as one - a write of it cut short, an empty file, a document that is no object - was read as no
+  record, so the description that the build writes again at every configure was open to edits that
+  configure undoes.  `ddd gui` now takes that description for the build's: every change under its
+  build tree is refused `generated`, in one sentence naming the record and the tree, until the
+  record reads.  An empty `CMAKE_HOME_DIRECTORY` in the cache above a record names no source tree,
+  as no entry does, where it was read as the directory `ddd gui` was started in, which decided how
+  much of the build tree around the description was refused.  Add a file, for an existing
+  description in a project a build generates, was refused `generated` with the build's membership
+  alone, where New file offers the `ddd_add_component()` line that registers the file it creates: it
+  now offers that line too, to add to the `CMakeLists.txt` beside the description, and passes over a
+  description lying under the build tree, which goes with the tree.  Migrating costs, for a
+  description refused beside a record cut short, a configure of the build, which writes the record,
+  and for one added, the line the offer gives in the `CMakeLists.txt`.
+
+* **A plugin saved while `ddd gui` runs is told, by `plugin-changed`.**  A module is imported once
+  per process, and a plugin named by its path is one module for every later load, so a plugin saved
+  while `ddd gui` runs went on running its old code, with every finding after the edit its, and
+  nothing said so.  `ddd gui` now files `plugin-changed` on the plugin's file when it holds other
+  bytes than the module was run from: an error by default, since every finding after the edit is the
+  old code's, and relaxable, since nothing of the project went unread.  Only `ddd gui` files it,
+  `ddd check` and `ddd compare` import afresh and the language server does not file it; a restart of
+  the server, or the file holding the bytes it was imported from again, ends it, and the same bytes
+  saved again are no change.  A module a plugin imports is not watched and a plugin named as a
+  module is not compared, so an edit of either takes the restart unsaid, as it did.  No plan or edit
+  is refused for it.  The Compare tab counts it among the project's own errors, as it counts any, so
+  its verdict is a refusal while the error stands, where `ddd compare` never files it.  A check
+  identifier is only ever added to, and this is one: `ddd checks` and the check reference list one
+  more, which a script that counts them finds, and `-W plugin-changed=...`, `SEVERITY` in cmake or a
+  build record's `severities` relax it; a DDD from before this one declines a build record that
+  names it, as it declines any check it has not got, so a team on mixed versions that relaxes it
+  upgrades its editors first.  Migrating costs a restart of `ddd gui` after a plugin is edited, or
+  that relaxation.
+
+* **A plugin whose file cannot be read is `plugin-invalid` in every command.**  A `.py` plugin whose
+  file the process could not read, but whose bytecode cache was valid, was loaded from the cache by
+  every command, as though nothing were wrong.  The loader now reads the file's bytes before it runs
+  the module, so that it is imported from the bytes it can say it was run from, and a file it cannot
+  read fails to import as `plugin-invalid`, naming the file, in every command that loads plugins,
+  and not only in `ddd gui`.  Migrating costs, for a project carrying such a plugin - a checkout
+  whose permissions the build's account lacks, with a `__pycache__` beside it - the permission to
+  read it.
+
+* **A plan in a large file answers at once, and a large project opens quickly.**  A plan's preview
+  found the lines its edit changed by comparing the whole file before and after it, which cost more
+  the larger the file.  A plan's lines are now read off the spans its operations replace, however
+  long the file, and one span of several lines whose middle line is unchanged is one hunk where the
+  page drew two; the preview of an undo, which holds two texts and no operation, compares them as
+  before.  The panel that offers a name to declare names the component producing each from the
+  index, as the analysis loaded it, and reads no producer's file, so a producer renamed in its file
+  since the analysis is named as it was until the next one reads it.  A project held already is
+  opened without walking for every project first: the one named on the command line, the open
+  project, and one the last listing found, each where the walk would still find it, where it walked
+  the start directory for every project first; a path that is none of those, or that the walk would
+  not find now, is walked for as before.  A change to a shared file's entry, a constant's value
+  among them, no longer looks for the vocabulary's files, which only adding one needs.  Nothing to
+  migrate.
+
+* **A refusal a page can mend is a refusal, and it names the file.**  A file this process may not
+  write was refused before anything was staged, as `unwritable`, and answered with the status of the
+  server failing on the request: it is a `409` now, as every refusal the page can act on is, from an
+  edit, an undo and the undo's preview, and the page shows the server's sentence while nothing is
+  written.  A plan asked while an edit of the page's own that moved its place has not been analysed
+  is answered `analysing`, and not `stale`, a sentence saying a file was saved from elsewhere: a
+  plan that reads a file such an edit wrote, whichever file its place is in, asks once that analysis
+  has landed, where a place moved by a save from elsewhere is `stale` still.  The sentence saying a
+  file did not load names it - a change of a component's interface refused for a project that did
+  not load named no file - and tells two of one name in different folders apart, by as much of their
+  paths as tells them, on the server and on the Types and Shared files tabs' line.  Declaring a name
+  that a component keeps `local` as a new object is refused, naming that component, where it was
+  told the name is already declared.  Migrating costs a client that scripted `POST /api/edit` and
+  answered a read-only file's `500` the `409`, and one that read `stale` for a plan asked while the
+  page's own edit waited meets `analysing` first, and asks again once that analysis has landed.
+
+* **An edit may be as large as a large project's rename, and a plan too long for its address says
+  so.**  An Apply posts every change of its plan, each file's path, fingerprint and operations, and
+  the rename of a unit stated in many files of a large project outgrew the 1 MiB every request was
+  read up to: it was refused `413`, and the browser, meeting the close while it was still sending,
+  said `ddd gui` was not answering.  `POST /api/edit` takes a body of up to 8 MiB now, read only
+  once the request has shown the token and this server's own origin, and every other request keeps
+  the 1 MiB it had, the drain of a refused body among them.  A plan the page asks by `GET` carries
+  what it plans in its address, and the server reads a request line of a limit: any ask whose
+  address is longer than that is refused before it is sent, in a sentence naming its route, where
+  only the values plan was and the others showed the standard library's own `414`.  A values table
+  past about 10,000 counts is not one `ddd gui` takes: one whose counts outgrow the address is
+  refused as it is pasted, in a sentence saying to set its values cell by cell, or in its file in an
+  editor.  The answers the standard library's server gives a request it cannot read, `400`, `414`,
+  `431`, `501` and `505`, are drained before the close as `ddd gui`'s own are.  Migrating costs a
+  table past that size its cell by cell, or its editor.
+
+* **A finding leads to a panel that lists it, shows its place where it leads nowhere, and is counted
+  once.**  A finding with no route to offer shows where it is, `file:line:column` or its pointer,
+  and a file that did not parse shows the line and column the loader stopped at.  Each finding leads
+  to a panel that lists it, and the row counts it: a finding at a producing declaration's init opens
+  the values grid, which lists what is filed at the init of every declaration producing the object,
+  a reader's finding falls through to the variable's panel, a constant, a section or a raster
+  declared twice and a type declared twice are listed and counted at both places, and a missing
+  include leads where the description holding it does.  The lines above the Findings, Table and
+  Compare tables count each finding once, as `ddd check` and `ddd compare` print it, where a
+  disagreement, filed on each file it concerns, was counted at each and a baseline's disagreement
+  was too: a finding a run files twice is counted twice, as `ddd check` prints it, and builds alike
+  count as one.  Migrating costs a client typed from the page's contract the fields it gains:
+  `State` and `GET /api/compare`'s reply say `statements`, the findings counted once, beside the
+  `counts` that stay the rows, and a finding says `line` and `column`, `null` where the loader gave
+  none, which are required; one that reads the json ignores them.
+
+* **A read says why a declared name has no grid, and reads a type saved since the analysis.**  `GET
+  /api/values` told a variable of a structure type, a dropped object and a curve over a dropped axis
+  that the project declares no such name, though `GET /api/variable` answers every one of them.  It
+  now refuses them `409` as `invalid` and says why: a structured variable's values are its members',
+  and a dropped object is told by the finding that dropped it, or by the one of the axis it follows;
+  a name nothing declares keeps its `404`.  `GET /api/type` answered a type saved since the
+  analysis, and still json, with a server error where a member lacked its `name` or its `bits` was
+  no integer: it is read as it is saved, the keys that read listed and the others empty, until the
+  next analysis files what is wrong with it.  A file an `includes` entry names by a plain path that
+  no file answers is the file that did not load, and the description holding the entry, which
+  parsed, loads, so that every refusal naming the files that did not load sends the reader to the
+  missing file; the finding stays filed at the entry, and an entry that is a pattern keeps its error
+  on the description.  Migrating costs a client that matched the `404` of `GET /api/values` for a
+  declared name the `409`.
+
+* **The state says why the last analysis failed, and which build record cannot be used.**  An
+  analysis that raises, a plugin failing while the project is read, published nothing, and the
+  reason went to the terminal alone: before the first revision the page read a project that was
+  analysing for as long as every analysis failed, and later the last revision as current.  The state
+  now says why, as `failed`, in the words the terminal prints or the exception's class where it has
+  none, until an analysis succeeds; the revision before it stands meanwhile, and opening another
+  project lets it go.  A build record this DDD cannot use, written by a newer DDD or naming a check
+  this one has not got, is refused and its project analysed without its severities, which the start
+  page listed but a project opened on the command line did not: the state says it, as `refused`,
+  beside the open project's revision, and the terminal is told once, and again whenever its reason
+  changes, as the language server logs one.  An undo of an edit no longer on top is refused `stale`
+  without asking for an analysis, since no file is in doubt, where it moved every page's version for
+  nothing; a write refused `stale` whose analysis fails and cannot be printed stays that refusal,
+  where the print's error was answered.  Migrating costs a client typed from the page's contract the
+  two fields `State` gains, `failed` and `refused`, which are required; one that reads the json
+  ignores them.
 
 * **A file that cannot be written is refused before anything is, on every system, and what is
   written is synced.**  On Windows a read-only file was staged, refused at the rename after

@@ -37,7 +37,7 @@ from conftest import (
     write_tree,
 )
 from ddd.build_info import BuildInfo, build_info_text
-from ddd.diagnostics import Severity, SeverityPolicy, UnknownCheckError
+from ddd.diagnostics import Diagnostic, Severity, SeverityPolicy, UnknownCheckError
 from ddd.editing import (
     INVALID,
     STALE,
@@ -519,6 +519,16 @@ class TestOpening:
             "a.ddd.json": True,
             "bad.ddd.json": True,
         }
+
+    def test_a_load_error_that_names_no_place_is_the_file_it_is_filed_on(
+        self, tmp_path: Path
+    ) -> None:
+        """A finding with no place goes on the project description, and is about it."""
+        project_file = tmp_path / "p.ddd.json"
+        refusal = Diagnostic("schema", Severity.ERROR, "refused")
+        warning = Diagnostic("schema", Severity.WARNING, "only a warning")
+        assert module._unloaded({project_file: [refusal]}) == {project_file}
+        assert module._unloaded({project_file: [warning]}) == set()
 
     def test_a_file_that_cannot_be_read_is_described_as_empty(self, tmp_path: Path) -> None:
         described = module._described(tmp_path / "gone.ddd.json", [], None)

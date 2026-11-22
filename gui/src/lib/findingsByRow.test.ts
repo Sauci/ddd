@@ -12,6 +12,8 @@ function finding(pointer: string, tag: string): ListedFinding {
     severity: "warning",
     message: `finding ${tag}`,
     pointer,
+    line: null,
+    column: null,
     notes: [],
     route: null,
     key: `key-${tag}`,

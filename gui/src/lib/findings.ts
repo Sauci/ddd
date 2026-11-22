@@ -319,6 +319,19 @@ export function noRouteReason(finding: Finding, state: State): string {
   return "there is nothing at that place any more";
 }
 
+/** Where a finding is, for a panel with no route to offer: `file:line:column` as `ddd check`
+ * prints it where the loader found a line (a file that did not parse), and otherwise the
+ * pointer, which says where inside the file. `null` where the finding names neither: it is
+ * about the project, not a place. `fileName` is how the caller names a file, so a comparison
+ * says a baseline's file as the baseline's. */
+export function placeOf(finding: Finding, fileName: (path: string) => string): string | null {
+  if (finding.line !== null) {
+    const column = finding.column === null ? "" : `:${finding.column}`;
+    return `${fileName(finding.file)}:${finding.line}${column}`;
+  }
+  return finding.pointer === "" ? null : finding.pointer;
+}
+
 /** The edit the fix of that title comes to, exactly as `POST /api/edit` takes it, under the
  * label an undo of it would offer. */
 export function fixEdit(reply: FixReply, title: string, label: string): Changes | null {

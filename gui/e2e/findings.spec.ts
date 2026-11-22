@@ -171,6 +171,32 @@ test("a finding that leads nowhere says why", async ({ page, gui }) => {
   await expect(panel.locator(".chip")).toHaveText("error");
   await expect(panel.getByText("controller.ddd.json did not load")).toBeVisible();
   await expect(panel.getByRole("link", { name: /^Open/ })).toHaveCount(0);
+  // Where the parser stopped, as `ddd check` prints it, so the reader need not go to a terminal
+  // to find it: the file, then a line inside it and a column on that line.
+  const place = await panel.locator(".path").innerText();
+  const [, line, column] = /^controller\.ddd\.json:(\d+):(\d+)$/.exec(place) ?? [];
+  expect(Number(line)).toBeGreaterThan(0);
+  expect(Number(line)).toBeLessThanOrEqual(before.toString("utf8").split("\n").length);
+  expect(Number(column)).toBeGreaterThan(0);
+});
+
+test("a finding that leads nowhere says its pointer where the file has no line to give", async ({
+  page,
+  gui,
+}) => {
+  // A boolean that is not one: the file parses, fails `schema`, and so did not load - nowhere
+  // for a route to lead, and the loader gave a place inside the document, not a line.
+  const file = join(gui.directory, USER_INTERFACE);
+  writeFileSync(
+    file,
+    readFileSync(file, "utf8").replace('"volatile": true', '"volatile": "maybe"'),
+  );
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Findings" }).click();
+  await page.getByRole("row", { name: "schema" }).click();
+  const panel = page.getByRole("complementary", { name: "schema" });
+  await expect(panel.locator(".path")).toHaveText("component.interface[0].definition.volatile");
+  await expect(panel.getByRole("link", { name: /^Open/ })).toHaveCount(0);
 });
 
 test("the tab says when there is nothing to report", async ({ page, vocabularyGui }) => {

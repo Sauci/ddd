@@ -1998,6 +1998,8 @@ def _finding(
             severity=finding.severity,
             message=finding.message,
             pointer="" if finding.location is None else finding.location.pointer,
+            line=None if finding.location is None else finding.location.line,
+            column=None if finding.location is None else finding.location.column,
             notes=[
                 {
                     "message": text,

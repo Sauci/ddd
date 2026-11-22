@@ -54,6 +54,8 @@ const MISMATCH: Finding = {
   severity: "error",
   message: "Controller states rpm and ×1, SensorHub states % and ×0.5",
   pointer: "component.interface[0].definition.unit",
+  line: null,
+  column: null,
   notes: [],
   route: { kind: "variable", name: "ValueA" },
 };
@@ -756,6 +758,8 @@ const UNKNOWN: Finding = {
   severity: "error",
   message: "'RPM' is not a unit this project declares - did you mean 'rpm'?",
   pointer: "component.interface[3].definition.unit",
+  line: null,
+  column: null,
   notes: [],
   route: { kind: "unit", name: "RPM" },
 };
@@ -1005,6 +1009,8 @@ export const MISSING_ID: Finding = {
     "'ValueA' has no 'id', so a later delivery that renames it reports a removal and an " +
     "unrelated addition; 'ddd id --assign' writes one",
   pointer: "component.interface[2].definition.name",
+  line: null,
+  column: null,
   notes: [],
   route: { kind: "variable", name: "ValueA" },
 };
@@ -1020,6 +1026,8 @@ export const UNKNOWN_RPM_FINDING: Finding = {
   severity: "error",
   message: "'RPM' is not a unit this project declares - did you mean 'rpm'?",
   pointer: "component.interface[3].definition.unit",
+  line: null,
+  column: null,
   notes: [],
   route: { kind: "unit", name: "RPM" },
 };
@@ -1046,6 +1054,8 @@ export const UNKNOWN_RASTER: Finding = {
     "component 'UserInterface' measures in '20ms', which is not a raster any file of this " +
     "project declares - did you mean '10ms'?",
   pointer: "component.raster",
+  line: null,
+  column: null,
   notes: [],
   route: { kind: "raster", name: "20ms" },
 };
@@ -1062,6 +1072,8 @@ export const STORAGE_MISMATCH: Finding = {
     "'ValueB': component 'Controller' specifies a different a2l format than 'SensorHub' " +
     "(a2l format: '%6.2' != '%6.3'); the value of 'SensorHub' is used",
   pointer: "component.interface[1].definition",
+  line: null,
+  column: null,
   notes: [
     {
       message: "reference declaration",
@@ -1083,6 +1095,23 @@ export const DID_NOT_LOAD: Finding = {
   severity: "error",
   message: "Field required",
   pointer: "component.name",
+  line: null,
+  column: null,
+  notes: [],
+  route: null,
+};
+
+/** The same file saved half-written, as an editor saves it while it is typed into: the loader
+ * files `json-syntax` on it at the line and column the parser stopped, and no pointer, there
+ * being no document to point into. */
+export const HALF_WRITTEN: Finding = {
+  file: PUMP,
+  check: "json-syntax",
+  severity: "error",
+  message: "Expecting ',' delimiter",
+  pointer: "",
+  line: 15,
+  column: 56,
   notes: [],
   route: null,
 };
@@ -1172,6 +1201,8 @@ export const EMPTY_RASTERS: Finding = {
   severity: "info",
   message: "rasters file 'bench.ddd.json' declares no raster",
   pointer: "rasters",
+  line: null,
+  column: null,
   notes: [],
   route: { kind: "file", name: BENCH },
 };
@@ -1241,6 +1272,8 @@ export const DEFINITION_MISMATCH: Finding = {
     "'ValueE' is declared differently by component 'UserInterface' than by 'Controller' " +
     "(datatype: uint8 != uint16, unit: 'kHz' != 'Hz')",
   pointer: "component.interface[0].definition",
+  line: null,
+  column: null,
   notes: [
     {
       message: "reference declaration",
@@ -1347,6 +1380,8 @@ export const KIND_MISMATCH: Finding = {
     "'ValueF' is declared differently by component 'UserInterface' than by 'Controller' " +
     "(kind: parameter != measurement)",
   pointer: "component.interface[1].definition",
+  line: null,
+  column: null,
   notes: [
     {
       message: "reference declaration",
@@ -1423,6 +1458,8 @@ function longFindings(count: number): ListedFinding[] {
           severity: "warning",
           message: `'${output}' is written by component '${name}' but read by nobody`,
           pointer: `component.interface[${at}]`,
+          line: null,
+          column: null,
           notes: [],
           route: { kind: "variable", name: output },
         }),
@@ -1682,6 +1719,8 @@ const DUPLICATE_SENSOR: Finding = {
   severity: "error",
   message: "type 'Sensor_t' is already declared",
   pointer: "types[4]",
+  line: null,
+  column: null,
   notes: [{ message: "first declared here", file: SENSING, pointer: "component.types[0]" }],
   route: { kind: "type", name: "Sensor_t" },
 };
@@ -2359,6 +2398,8 @@ const CHANGED_INTERFACE: Finding = {
     "'ValueC' is not the same object any more (datatype: float32 != uint16), read by " +
     "UserInterface",
   pointer: "",
+  line: null,
+  column: null,
   notes: [],
   route: null,
 };
@@ -2372,6 +2413,8 @@ const REMOVED_OBJECT: Finding = {
   severity: "error",
   message: "'OldSensorFault' is gone, but was read by Controller",
   pointer: "",
+  line: null,
+  column: null,
   notes: [],
   route: null,
 };
@@ -2388,6 +2431,8 @@ const RENAMED_OBJECT: Finding = {
     "'RawValueB' is now called 'ValueB', read by Controller, UserInterface; every dataset, " +
     "recording and script keyed by the old spelling needs migrating",
   pointer: "",
+  line: null,
+  column: null,
   notes: [],
   route: null,
 };
@@ -2413,6 +2458,8 @@ const BASELINE_DUPLICATE_ID: Finding = {
     "an id is one object's alone, and two objects sharing one make a later comparison pair the " +
     "wrong pair",
   pointer: "component.interface[2].definition.id",
+  line: null,
+  column: null,
   notes: [
     {
       message: "first carries the id here",
@@ -2719,6 +2766,8 @@ const DIMENSION_VALUE: Finding = {
     "'PressureTrend' is dimensioned by 'TREND_SAMPLES', whose value is 2.5; a dimension is a " +
     "whole number of at least 1",
   pointer: "component.interface[2].definition.dimensions[0]",
+  line: null,
+  column: null,
   notes: [],
   route: { kind: "constant", name: "TREND_SAMPLES" },
 };

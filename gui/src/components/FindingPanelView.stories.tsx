@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Finding, FixReply, State } from "../api/types";
-import { noRouteReason, routeHref, routeLabel } from "../lib/findings";
+import { noRouteReason, placeOf, routeHref, routeLabel } from "../lib/findings";
 import { baseName } from "../lib/units";
 import {
   DEFINITION_MISMATCH,
@@ -8,6 +8,7 @@ import {
   DID_NOT_LOAD,
   EMPTIED_FINDINGS,
   EMPTY_RASTERS,
+  HALF_WRITTEN,
   ID_FIX,
   KIND_MISMATCH,
   MISSING_ID,
@@ -49,6 +50,7 @@ function View({
       label={routeLabel(finding, state)}
       href={routeHref(finding)}
       reason={noRouteReason(finding, state)}
+      place={placeOf(finding, baseName)}
       fileName={baseName}
       onOpen={() => undefined}
       fixes={fixes}
@@ -83,6 +85,10 @@ export const LeadsToAUnit = () => <View finding={UNKNOWN_RPM_FINDING} state={PRO
 export const LeadsToARaster = () => <View finding={UNKNOWN_RASTER} state={PROJECT_FINDINGS} />;
 
 export const LeadsNowhere = () => <View finding={DID_NOT_LOAD} state={PROJECT_FINDINGS} />;
+
+/** A file saved half-written: the panel says where the parser stopped, as `ddd check` does, in
+ * the place of a link there is none to draw. */
+export const LeadsNowhereAtALine = () => <View finding={HALF_WRITTEN} state={PROJECT_FINDINGS} />;
 
 /** The other way a finding leads nowhere, and the one its place does not explain: an
  * `empty-vocabulary` is filed at the file's own list - still there, empty - so it is about the

@@ -1679,6 +1679,10 @@ class TestState:
         )
         assert _finding(filed, None, {})["notes"] == [{"message": "n", "file": None, "pointer": ""}]
         assert _finding(filed, None, {})["pointer"] == ""
+        assert (_finding(filed, None, {})["line"], _finding(filed, None, {})["column"]) == (
+            None,
+            None,
+        )
         # A file the analysis did not list has no kind to route by, so the finding leads nowhere.
         assert _finding(filed, None, {})["route"] is None
 
@@ -1718,6 +1722,19 @@ class TestState:
         findings = every_finding(opened(tmp_path, HALF_SAVED))
         half = next(finding for finding in findings if finding["file"].endswith("b.ddd.json"))
         assert half["route"] is None
+
+    def test_a_finding_carries_the_line_and_column_the_loader_found(self, tmp_path: Path) -> None:
+        findings = every_finding(opened(tmp_path, HALF_SAVED))
+        half = next(finding for finding in findings if finding["check"] == "json-syntax")
+        # The place `ddd check` prints for it, `b.ddd.json:L:C`, as numbers.
+        text = (tmp_path / "b.ddd.json").read_text(encoding="utf-8")
+        assert (half["line"], half["column"]) == (
+            text.count("\n") + 1,
+            len(text.split("\n")[-1]) + 1,
+        )
+        # A finding the loader gave no line to says so, with both keys present.
+        loaded = next(finding for finding in every_finding(opened(tmp_path, TEXT_READER)))
+        assert (loaded["line"], loaded["column"]) == (None, None)
 
     def test_an_unknown_unit_leads_to_its_unit(self, tmp_path: Path) -> None:
         api = opened_example(tmp_path, "vocabulary", "project.ddd.json")

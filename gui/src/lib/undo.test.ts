@@ -27,6 +27,8 @@ const MISSING_ID: Finding = {
   severity: "info",
   message: "SensorHub produces ValueA without an id",
   pointer: "component.interface[0].definition",
+  line: null,
+  column: null,
   notes: [],
   route: { kind: "variable", name: "ValueA" },
 };

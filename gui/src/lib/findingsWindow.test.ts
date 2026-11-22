@@ -31,6 +31,8 @@ function listed(index: number): ListedFinding {
     severity: "warning",
     message,
     pointer,
+    line: null,
+    column: null,
     notes: [],
     route: { kind: "variable", name: `Value${index}` },
     key: JSON.stringify([HUB, "warning", "unused-output", pointer, message, 0]),

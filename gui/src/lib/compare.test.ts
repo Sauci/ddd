@@ -9,6 +9,8 @@ function finding(fields: Partial<Finding> = {}): Finding {
     severity: "error",
     message: "'ValueA' changed datatype from uint16 to uint32",
     pointer: "",
+    line: null,
+    column: null,
     notes: [],
     route: null,
     ...fields,

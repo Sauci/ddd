@@ -10,6 +10,7 @@ import {
   leadsElsewhere,
   namesThisVariable,
   noRouteReason,
+  placeOf,
   routeHref,
   routeLabel,
   routeOf,
@@ -18,6 +19,7 @@ import {
   unreadable,
 } from "./findings";
 import { SHARED_KINDS } from "./shared";
+import { baseName } from "./units";
 
 const SENSOR_HUB = "C:/work/demo/components/sensor_hub.ddd.json";
 const TYPES = "C:/work/demo/types.ddd.json";
@@ -34,6 +36,8 @@ function finding(fields: Partial<Finding> = {}): Finding {
     severity: "error",
     message: "'ValueA' is declared differently by component 'Controller'",
     pointer: "component.interface[2].definition",
+    line: null,
+    column: null,
     notes: [],
     route: { kind: "variable", name: "ValueA" },
     ...fields,
@@ -861,5 +865,36 @@ describe("the edit a chosen fix comes to", () => {
         "t",
       ),
     ).toBeNull();
+  });
+});
+
+describe("where a finding is, said for a finding that leads nowhere", () => {
+  const name = (path: string) => baseName(path);
+
+  test("a line and a column are said as `ddd check` says them", () => {
+    const one = finding({ route: null, pointer: "", line: 15, column: 56 });
+    expect(placeOf(one, name)).toBe("sensor_hub.ddd.json:15:56");
+  });
+
+  test("a line alone is said without a column", () => {
+    expect(placeOf(finding({ route: null, pointer: "", line: 15 }), name)).toBe(
+      "sensor_hub.ddd.json:15",
+    );
+  });
+
+  test("the file is named as the caller names it", () => {
+    const one = finding({ route: null, pointer: "", line: 1, column: 2 });
+    expect(placeOf(one, () => "baseline sensor_hub.ddd.json")).toBe(
+      "baseline sensor_hub.ddd.json:1:2",
+    );
+  });
+
+  test("without a line, it is the pointer", () => {
+    const one = finding({ route: null, pointer: "component.interface[0].definition.volatile" });
+    expect(placeOf(one, name)).toBe("component.interface[0].definition.volatile");
+  });
+
+  test("a finding with neither a line nor a pointer names no place", () => {
+    expect(placeOf(finding({ route: null, pointer: "" }), name)).toBeNull();
   });
 });

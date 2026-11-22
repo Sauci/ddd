@@ -309,6 +309,13 @@ class Finding(_Frozen):
     pointer: str
     """Dotted path inside the file's json document, or ``""`` when the finding names no place."""
 
+    line: int | None
+    """The line in the file, counted from 1, where the loader found the finding, or ``None``
+    where it gave none - only a file that did not parse has one."""
+
+    column: int | None
+    """The column on that line, counted from 1, or ``None`` where the loader gave none."""
+
     notes: tuple[Note, ...]
     """Additional hints, e.g. the site a definition disagrees with."""
 

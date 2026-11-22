@@ -211,6 +211,13 @@ class TestFindingsComeAPageAtATime:
             "info": "How many are informational.",
         }
 
+    def test_a_finding_always_says_its_line_and_column_even_as_null(self) -> None:
+        finding = contract.api_schema()["$defs"]["Finding"]
+        assert {"line", "column"} <= set(finding["required"])
+        assert finding["required"] == list(finding["properties"])
+        assert finding["properties"]["line"]["anyOf"] == [{"type": "integer"}, {"type": "null"}]
+        assert finding["properties"]["column"]["anyOf"] == [{"type": "integer"}, {"type": "null"}]
+
     def test_a_listed_finding_is_a_finding_with_a_key(self) -> None:
         defs = contract.api_schema()["$defs"]
         assert list(defs["ListedFinding"]["properties"]) == [*defs["Finding"]["properties"], "key"]

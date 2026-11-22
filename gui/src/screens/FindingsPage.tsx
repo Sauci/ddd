@@ -16,6 +16,7 @@ import {
   findingsTotal,
   fixEdit,
   noRouteReason,
+  placeOf,
   routeHref,
   routeLabel,
   routeOf,
@@ -233,6 +234,7 @@ export function FindingsPage({ state, stopped, onOpen }: Props) {
               label={routeLabel(finding, state)}
               href={routeHref(finding)}
               reason={noRouteReason(finding, state)}
+              place={placeOf(finding, baseName)}
               fileName={baseName}
               onOpen={() => {
                 const route = routeOf(finding);

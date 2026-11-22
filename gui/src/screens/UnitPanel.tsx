@@ -98,6 +98,8 @@ export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }:
   // file changed on disk included, and never let go by a revision landing (`Refused`,
   // lib/refusals.ts).
   const [failed, setFailed] = useState<Refused<UnitAction> | null>(null);
+  // What the filter of the places holds: this unit's, the panel being drawn anew for another.
+  const [places, setPlaces] = useState("");
 
   const row = units.data?.units.find((entry) => entry.unit === name);
   const offered =
@@ -217,6 +219,8 @@ export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }:
       reply={shownReply}
       units={units.data}
       updating={updating}
+      placesFilter={places}
+      onPlacesFilter={setPlaces}
       description={description ?? row.description ?? ""}
       onDescription={(text) => {
         setDescription(text);

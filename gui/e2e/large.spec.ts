@@ -293,3 +293,81 @@ test("a rename reaching every file says it is planning, then names three files a
   ).toBeVisible();
   await expect(renaming.getByRole("button", { name: "Apply to 667 files" })).toBeEnabled();
 });
+
+/**
+ * The Table tab's filter (16:I14): of the generated project's 666 components the table draws the
+ * rows in view, so `C00500` is not in the document and no find of the browser's reaches it. Typed
+ * into the filter, the table holds that one row, the line beside the field says so, and the line
+ * above the table still counts the project's statements. A filter nothing matches says so, and no
+ * table is drawn under it.
+ */
+test("the Table tab's filter finds a component the table does not draw", async ({
+  page,
+  generatedGui,
+}) => {
+  await page.goto(generatedGui.address);
+  await page.getByRole("link", { name: "Table" }).click();
+  const table = page.getByRole("grid", { name: "Components" });
+  await expect(table.getByRole("button", { name: "C00000", exact: true })).toBeVisible();
+  await expect(table.getByRole("button", { name: "C00500", exact: true })).toHaveCount(0);
+
+  const filter = page.getByRole("textbox", { name: "Filter components" });
+  await filter.fill("nothing like it");
+  await expect(filter).toHaveAccessibleDescription("no component matches");
+  await expect(table).toHaveCount(0);
+
+  await filter.fill("c00500");
+  await expect(filter).toHaveAccessibleDescription("1 of 666 components");
+  await expect(table.getByRole("row")).toHaveCount(2);
+  await expect(page.locator("p.summary")).toHaveText("0 errors, 10000 warnings");
+  await table.getByRole("button", { name: "C00500", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "C00500", level: 1 })).toBeVisible();
+});
+
+/**
+ * A component page's filter (16:I14): C00000's 32 declarations are more than its table draws, so
+ * its last, `C00000_X0015`, is not in the document until the filter leaves it, whose row then
+ * opens its panel as any row does.
+ */
+test("a component page's filter finds a declaration its table does not draw", async ({
+  page,
+  generatedGui,
+}) => {
+  await page.goto(generatedGui.address);
+  await page.getByRole("link", { name: "Table" }).click();
+  await page.getByRole("button", { name: "C00000", exact: true }).click();
+  const table = page.getByRole("grid", { name: "Declarations of C00000" });
+  await expect(table.getByRole("row", { name: /C00000_O0000/ })).toBeVisible();
+  await expect(table.getByRole("row", { name: /C00000_X0015/ })).toHaveCount(0);
+
+  const filter = page.getByRole("textbox", { name: "Filter declarations" });
+  await filter.fill("x00");
+  await expect(filter).toHaveAccessibleDescription("8 of 32 declarations");
+  await expect(table.getByRole("row")).toHaveCount(9);
+  await filter.fill("X0015");
+  await expect(filter).toHaveAccessibleDescription("1 of 32 declarations");
+  await table.getByRole("row", { name: /C00000_X0015/ }).click();
+  await expect(page.getByRole("complementary", { name: "C00000_X0015" })).toBeVisible();
+});
+
+/**
+ * A unit's filter (16:I14): rpm is stated 2,500 times over the generated project, and its panel's
+ * table draws the places in view. Filtered by a file's name, it holds the four that file states.
+ */
+test("a unit's filter finds the places one file states it", async ({ page, generatedGui }) => {
+  await page.goto(generatedGui.address);
+  await page.getByRole("link", { name: "Units" }).click();
+  await page.getByRole("row", { name: "rpm", exact: true }).click();
+  const panel = page.getByRole("complementary", { name: "rpm" });
+  const places = panel.getByRole("grid", { name: "Where rpm is stated" });
+  await expect(places.getByRole("row", { name: /C00000_O0000/ })).toBeVisible();
+  await expect(places.getByRole("row", { name: /C00530_O0008/ })).toHaveCount(0);
+
+  const filter = panel.getByRole("textbox", { name: "Filter places" });
+  await filter.fill("c00500.ddd.json");
+  await expect(filter).toHaveAccessibleDescription("4 of 2,500 places");
+  await expect(places.getByRole("row")).toHaveCount(5);
+  for (const name of ["C00500_O0002", "C00500_O0010", "C00530_O0000", "C00530_O0008"]) {
+    await expect(places.getByRole("row", { name: new RegExp(name) })).toBeVisible();
+  }
+});

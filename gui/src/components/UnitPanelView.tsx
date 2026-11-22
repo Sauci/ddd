@@ -1,4 +1,5 @@
 import type { PlanReply, ProjectUnit, UnitReply, UnitsReply } from "../api/types";
+import { filterLine, PLACES, placesShown, tableDrawn } from "../lib/filter";
 import { distinctFindings, keyedFindings } from "../lib/findings";
 import {
   offers,
@@ -10,6 +11,7 @@ import {
 import { baseName, consequence, PLANNING, planning, shownChanges } from "../lib/units";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
+import { FilterField } from "../ui/FilterField";
 import { Panel } from "../ui/Panel";
 import { also, Cell, Column, LongTable, Row, TableBody, TableHeader } from "../ui/Table";
 import { UpdatingNote } from "../ui/UpdatingNote";
@@ -38,6 +40,10 @@ export interface UnitPanelViewProps {
   unit: ProjectUnit;
   reply: UnitReply;
   units: UnitsReply;
+  /** What the filter of the places reads: those whose name or file holds it are drawn
+   * (`placesShown`), and the line beside it says how many of how many. */
+  placesFilter: string;
+  onPlacesFilter: (text: string) => void;
   /** What the Description field reads: what is being typed, else the vocabulary's description. */
   description: string;
   onDescription: (text: string) => void;
@@ -99,6 +105,7 @@ export function UnitPanelView(props: UnitPanelViewProps) {
     />
   );
   const files = (plan: PlanReply) => consequence(plan.changes);
+  const places = placesShown(reply.sites, props.placesFilter);
   return (
     <Panel title={unit.unit} meta={unitMeta(unit, reply, hasVocabulary)} onClose={props.onClose}>
       <UpdatingNote updating={props.updating === true} />
@@ -116,48 +123,59 @@ export function UnitPanelView(props: UnitPanelViewProps) {
       {reply.sites.length === 0 ? (
         <p className="quiet">Nothing in the project states {unit.unit}.</p>
       ) : (
-        // Ruling T9-1: a unit stated 12,500 times over (100,000 declarations, one unit) makes
-        // this table as long as the brief's own seven, so it is virtualised the same way.
-        // `.panel-declarations` beside `.long`, for this table alone: it draws in a panel
-        // already, the one place a plain `<table>` of the same class once stood, and keeps that
-        // look - its header's own size, the margin above the table - rather than `.long`'s own,
-        // smaller, unmargined one (fix round 1, Minor 5).
-        //
-        // Widths measured in Chrome (fix round 3) on scratch copies of examples/demo, of a
-        // generated project of 10,000 declarations and of examples/vocabulary. The table draws only
-        // inside this panel, whose box is 472px in a 1280px window and 456px when the table beside
-        // the panel measures 535px. What is fixed at 140px: its words are `placeRole`'s, "structure
-        // member" the widest at 136px. File and Where share the rest, 1fr each, and a column never
-        // goes below its `minWidth`: File keeps 180px, which holds the demo's widest file name
-        // (user_interface.ddd.json, 169px), and Where, whose names are short - the demo's widest is
-        // ParameterA at 96px, the generated project's C00000_O0005 at 115px, examples/vocabulary's
-        // ManifoldPressure at 132px - takes what is left, 152px in the 472px box and 136px in the
-        // 456px one, above a floor of 125px. A name longer than its column - ManifoldPressure is
-        // about 4px short of the 136px - is cut with an ellipsis, never wrapped; Windows' own font
-        // was not measured. The floors sum to 445px: the panel's box holds them down to a window
-        // about 1043px wide - 1089px where a browser draws the box's own vertical scrollbar and the
-        // page's, 15px each - and narrower, until the panel moves under the table it stands beside
-        // at 900px and takes the window's whole width, the box scrolls sideways.
-        <LongTable aria-label={`Where ${unit.unit} is stated`} className="panel-declarations">
-          <TableHeader>
-            <Column isRowHeader width="1fr" minWidth={125}>
-              Where
-            </Column>
-            <Column width="1fr" minWidth={180}>
-              File
-            </Column>
-            <Column width={140}>What</Column>
-          </TableHeader>
-          <TableBody items={reply.sites}>
-            {(site) => (
-              <Row id={`${site.path} ${site.pointer}`}>
-                <Cell>{site.name}</Cell>
-                <Cell className={also("quiet")}>{baseName(site.path)}</Cell>
-                <Cell>{placeRole(site)}</Cell>
-              </Row>
-            )}
-          </TableBody>
-        </LongTable>
+        <>
+          <FilterField
+            label="Filter places"
+            value={props.placesFilter}
+            onChange={props.onPlacesFilter}
+            line={filterLine(props.placesFilter, places.length, reply.sites.length, PLACES)}
+          />
+          {tableDrawn(props.placesFilter, places.length) && (
+            // Ruling T9-1: a unit stated 12,500 times over (100,000 declarations, one unit) makes
+            // this table as long as the brief's own seven, so it is virtualised the same way.
+            // `.panel-declarations` beside `.long`, for this table alone: it draws in a panel
+            // already, the one place a plain `<table>` of the same class once stood, and keeps that
+            // look - its header's own size, the margin above the table - rather than `.long`'s own,
+            // smaller, unmargined one (fix round 1, Minor 5).
+            //
+            // Widths measured in Chrome (fix round 3) on scratch copies of examples/demo, of a
+            // generated project of 10,000 declarations and of examples/vocabulary. The table draws
+            // only inside this panel, whose box is 472px in a 1280px window and 456px when the
+            // table beside the panel measures 535px. What is fixed at 140px: its words are
+            // `placeRole`'s, "structure member" the widest at 136px. File and Where share the rest,
+            // 1fr each, and a column never goes below its `minWidth`: File keeps 180px, which holds
+            // the demo's widest file name (user_interface.ddd.json, 169px), and Where, whose names
+            // are short - the demo's widest is ParameterA at 96px, the generated project's
+            // C00000_O0005 at 115px, examples/vocabulary's ManifoldPressure at 132px - takes what
+            // is left, 152px in the 472px box and 136px in the 456px one, above a floor of 125px. A
+            // name longer than its column - ManifoldPressure is about 4px short of the 136px - is
+            // cut with an ellipsis, never wrapped; Windows' own font was not measured. The floors
+            // sum to 445px: the panel's box holds them down to a window about 1043px wide - 1089px
+            // where a browser draws the box's own vertical scrollbar and the page's, 15px each -
+            // and narrower, until the panel moves under the table it stands beside at 900px and
+            // takes the window's whole width, the box scrolls sideways.
+            <LongTable aria-label={`Where ${unit.unit} is stated`} className="panel-declarations">
+              <TableHeader>
+                <Column isRowHeader width="1fr" minWidth={125}>
+                  Where
+                </Column>
+                <Column width="1fr" minWidth={180}>
+                  File
+                </Column>
+                <Column width={140}>What</Column>
+              </TableHeader>
+              <TableBody items={places}>
+                {(site) => (
+                  <Row id={`${site.path} ${site.pointer}`}>
+                    <Cell>{site.name}</Cell>
+                    <Cell className={also("quiet")}>{baseName(site.path)}</Cell>
+                    <Cell>{placeRole(site)}</Cell>
+                  </Row>
+                )}
+              </TableBody>
+            </LongTable>
+          )}
+        </>
       )}
       {offered.describe && (
         <section className="panel-offer" aria-label="Description">

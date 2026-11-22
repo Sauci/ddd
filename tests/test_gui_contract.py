@@ -303,6 +303,16 @@ class TestFindingsComeAPageAtATime:
             "How many findings the filters leave, in all."
         )
 
+    def test_a_page_is_asked_for_under_four_filters_a_text_among_them(self) -> None:
+        """16:I14: the Findings tab's filter is the server's, its rows being the server's pages."""
+        query = contract.api_schema()["$defs"]["FindingsQuery"]
+        assert list(query["properties"]) == ["offset", "limit", "severity", "file", "check", "text"]
+        assert "required" not in query
+        assert " ".join(query["properties"]["text"]["description"].split()) == (
+            "Only the findings whose check, words or file's own name hold this text, whatever its "
+            "case; blank, every one."
+        )
+
     def test_both_are_published_beside_every_other_model(self) -> None:
         assert {"FindingsReply", "ListedFinding"} <= set(contract.__all__)
 

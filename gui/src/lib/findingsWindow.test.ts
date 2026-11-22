@@ -7,6 +7,7 @@ import {
   drawnWindow,
   keeps,
   keptAfter,
+  listingTotal,
   MARGIN,
   PAGE_SIZE,
   pageQuery,
@@ -16,6 +17,7 @@ import {
   ROW_HEIGHT,
   spacersOf,
   spanOf,
+  windowLine,
   windowRows,
 } from "./findingsWindow";
 
@@ -152,6 +154,12 @@ describe("the pages a span covers", () => {
     expect(pageQuery(3)).toEqual({ offset: 300, limit: 100 });
   });
 
+  test("a filtered listing's page is asked for under its text, an unfiltered one's under none", () => {
+    expect(pageQuery(0, "C00500")).toEqual({ offset: 0, limit: 100, text: "C00500" });
+    expect(pageQuery(2, "valuee")).toEqual({ offset: 200, limit: 100, text: "valuee" });
+    expect(pageQuery(2, "")).toEqual({ offset: 200, limit: 100 });
+  });
+
   test("the pages that have arrived, by page, and none that has not", () => {
     const third = page(3);
     expect(arrivedPages([3, 4], [third, undefined], 7)).toEqual(new Map([[3, third]]));
@@ -221,21 +229,43 @@ describe("whether a scroll keeps the row the keyboard is on", () => {
   });
 });
 
+describe("how many rows a listing has in all", () => {
+  test("unfiltered, every finding its revision files, known at once", () => {
+    expect(listingTotal("", 25000, undefined, 7)).toBe(25000);
+    expect(listingTotal("", 25000, page(0, 30), 7)).toBe(25000);
+  });
+
+  test("filtered, what its first page says, once that page has come of its revision", () => {
+    expect(listingTotal("C00500", 25000, page(0, 30), 7)).toBe(30);
+    expect(listingTotal("nothing", 25000, page(0, 0), 7)).toBe(0);
+  });
+
+  test("filtered, unknown before its first page has come, or while that is another revision's", () => {
+    expect(listingTotal("C00500", 25000, undefined, 7)).toBeNull();
+    expect(listingTotal("C00500", 25000, { ...page(0, 30), revision: 8 }, 7)).toBeNull();
+  });
+});
+
 describe("which revision's rows the window draws", () => {
   /** A revision's window at the top of the box, of `total` rows, with these pages arrived: every
    * finding a warning, and each a statement of its own unless `statements` says how many fewer
-   * the revision makes - a disagreement is filed on each of its files. */
+   * the revision makes - a disagreement is filed on each of its files. Unfiltered, unless `text`
+   * is given, where its revision files `all` rows. */
   function windowOf(
     revision: number,
     total: number,
     arrived: number[],
     statements = total,
+    text = "",
+    all = total,
   ): RevisionWindow {
     const span = spanOf(0, BOX_HEIGHT, total);
     const pages = new Map(arrived.map((number) => [number, { ...page(number, total), revision }]));
     return {
       revision,
+      text,
       total,
+      all,
       statements: { error: 0, warning: statements, info: 0 },
       span,
       pages,
@@ -307,29 +337,92 @@ describe("which revision's rows the window draws", () => {
     });
     expect(keptAfter(newest, null)).toEqual({
       revision: 8,
+      text: "",
       total: 990,
+      all: 990,
       statements: { error: 0, warning: 600, info: 0 },
     });
   });
 
   test("the one to keep drawing through the next landing: the window drawn, once it is whole", () => {
     const statements = { error: 0, warning: 990, info: 0 };
-    expect(keptAfter(windowOf(8, 990, [0]), null)).toEqual({ revision: 8, total: 990, statements });
+    const eight = { revision: 8, text: "", total: 990, all: 990, statements };
+    expect(keptAfter(windowOf(8, 990, [0]), null)).toEqual(eight);
     expect(
       keptAfter(windowOf(8, 990, [0]), {
         revision: 7,
+        text: "",
         total: 1000,
+        all: 1000,
         statements: { error: 0, warning: 1000, info: 0 },
       }),
-    ).toEqual({ revision: 8, total: 990, statements });
+    ).toEqual(eight);
   });
 
   test("the one kept before, while the window drawn is not whole, or is that very revision", () => {
-    const kept = { revision: 7, total: 1000, statements: { error: 0, warning: 1000, info: 0 } };
+    const kept = {
+      revision: 7,
+      text: "",
+      total: 1000,
+      all: 1000,
+      statements: { error: 0, warning: 1000, info: 0 },
+    };
     expect(keptAfter(windowOf(8, 990, []), kept)).toBe(kept);
     expect(keptAfter(windowOf(8, 990, []), null)).toBeNull();
     // The very same answer, so that the page can tell nothing changed.
     expect(keptAfter(last, kept)).toBe(kept);
+  });
+
+  test("a filter typed is a listing of its own, drawn once whole, the last kept till then", () => {
+    // 16:I14: the newest listing, of revision 7 filtered by `C00500`, 30 of its 1000 rows: until
+    // its first page has come, its total is not known, and the unfiltered listing stays drawn.
+    const asked: RevisionWindow = { ...windowOf(7, 30, [], 30, "C00500", 1000), total: null };
+    expect(drawnWindow(asked, last)).toBe(last);
+    const come = windowOf(7, 30, [0], 30, "C00500", 1000);
+    expect(drawnWindow(come, last)).toBe(come);
+    const kept = keptAfter(last, null);
+    expect(keptAfter(come, kept)).toEqual({
+      revision: 7,
+      text: "C00500",
+      total: 30,
+      all: 1000,
+      statements: { error: 0, warning: 30, info: 0 },
+    });
+    // Back to no filter: the unfiltered listing is another again.
+    expect(keptAfter(last, keptAfter(come, kept))).toEqual(kept);
+  });
+
+  test("a listing whose total is not known is never whole, even with no page to ask", () => {
+    const unknown: RevisionWindow = {
+      ...windowOf(7, 0, [], 0, "C00500", 1000),
+      total: null,
+    };
+    expect(drawnWindow(unknown, last)).toBe(last);
+    expect(keptAfter(unknown, null)).toBeNull();
+  });
+});
+
+describe("the line beside the Findings tab's filter", () => {
+  function listing(text: string, total: number | null): RevisionWindow {
+    return {
+      revision: 7,
+      text,
+      total,
+      all: 25000,
+      statements: { error: 0, warning: 25000, info: 0 },
+      span: { first: 0, last: 0 },
+      pages: new Map(),
+    };
+  }
+
+  test("how many rows the listing drawn leaves of its revision's", () => {
+    expect(windowLine(listing("C00500", 45))).toBe("45 of 25,000 findings");
+    expect(windowLine(listing("C00500", 0))).toBe("no finding matches");
+  });
+
+  test("nothing for the unfiltered listing, or one whose count is not known yet", () => {
+    expect(windowLine(listing("", 25000))).toBeNull();
+    expect(windowLine(listing("C00500", null))).toBeNull();
   });
 });
 

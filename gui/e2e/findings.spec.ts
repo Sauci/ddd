@@ -93,6 +93,49 @@ test("a disagreement is counted once above both tables, as ddd check counts it, 
   await expect(page.getByRole("row", { name: /definition-mismatch/ })).toHaveCount(2);
 });
 
+test("a row the Findings tab's filter leaves stays selected once the filter is emptied", async ({
+  page,
+  gui,
+}) => {
+  // 16:I14: the filter asks the server for the findings a file's name holds, and the row it leaves
+  // keeps its key - selected there, it is the one selected once every finding is back.
+  drift(gui.directory);
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Findings" }).click();
+  const mismatches = page.getByRole("row", { name: "definition-mismatch" });
+  await expect(mismatches).toHaveCount(2);
+
+  const filter = page.getByRole("textbox", { name: "Filter findings" });
+  await filter.fill("sensor_hub");
+  await expect(filter).toHaveAccessibleDescription("1 of 2 findings");
+  await expect(mismatches).toHaveCount(1);
+  await expect(mismatches).toContainText("sensor_hub.ddd.json");
+  await mismatches.click();
+  await expect(page.getByRole("complementary", { name: "definition-mismatch" })).toBeVisible();
+
+  await filter.fill("");
+  await expect(mismatches).toHaveCount(2);
+  const selected = page.getByRole("row", { selected: true });
+  await expect(selected).toHaveCount(1);
+  await expect(selected).toContainText("sensor_hub.ddd.json");
+  // The line above the table counts the one statement the two rows make, filtered or not.
+  await expect(page.getByText("1 finding · 1 error", { exact: true })).toBeVisible();
+});
+
+test("a filter the server fails on says so above the table", async ({ page, gui }) => {
+  drift(gui.directory);
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Findings" }).click();
+  await expect(page.getByRole("row", { name: "definition-mismatch" })).toHaveCount(2);
+  await failing(
+    page,
+    (url) => url.pathname === "/api/findings" && url.searchParams.has("text"),
+    "http",
+  );
+  await page.getByRole("textbox", { name: "Filter findings" }).fill("sensor_hub");
+  await expect(page.getByText(SERVER_FAILED, { exact: true })).toBeVisible();
+});
+
 test("a disagreement is settled from the finding that reports it", async ({ page, gui }) => {
   // ValueE is written by Controller and read by UserInterface and EventLogger, all three in
   // Hz - the only demo variable with one producer and two consumers, so drifting one reader's

@@ -371,3 +371,46 @@ test("a unit's filter finds the places one file states it", async ({ page, gener
     await expect(places.getByRole("row", { name: new RegExp(name) })).toBeVisible();
   }
 });
+
+/**
+ * The Findings tab's filter (16:I14): its rows are the server's pages, so the filter asks the
+ * server for the findings whose check, words or file's name hold its text. Of the generated
+ * project's 25,000, `c00500` leaves the 36 filed on c00500.ddd.json, none of which stood in the
+ * document before. Typed with the box scrolled to its last row, the filtered table starts at its
+ * top, its first row in view; the line beside the field says how many it leaves, and the line above
+ * the table goes on counting the revision's statements. A text no finding holds is said, and the
+ * filter emptied brings every finding back.
+ */
+test("the Findings tab's filter asks the server for the findings its text finds", async ({
+  page,
+  generatedGui,
+}) => {
+  await page.goto(generatedGui.address);
+  await page.getByRole("link", { name: "Findings" }).click();
+  const rows = page.locator(".findings-window [data-index]");
+  await expect(rows.first().locator(".chip")).toBeVisible();
+  await expect(rows.filter({ hasText: "c00500.ddd.json" })).toHaveCount(0);
+  const bounds = await page.locator(".findings-window").boundingBox();
+  if (bounds === null) throw new Error("no .findings-window to scroll");
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  await page.mouse.wheel(0, 2_000_000);
+  await expect(page.locator('[data-index="24999"]')).toBeVisible();
+
+  const filter = page.getByRole("textbox", { name: "Filter findings" });
+  await filter.fill("c00500");
+  await expect(filter).toHaveAccessibleDescription("36 of 25,000 findings");
+  const first = page.locator('[data-index="0"]');
+  await expect(first).toContainText("c00500.ddd.json");
+  await expect.poll(() => withinFindingsWindow(page, first)).toBe(true);
+  await expect(rows.filter({ hasNotText: "c00500.ddd.json" })).toHaveCount(0);
+  await expect(page.locator(".summary")).toHaveText("25000 findings · 10000 warnings, 15000 notes");
+
+  await filter.fill("nothing like it");
+  await expect(filter).toHaveAccessibleDescription("no finding matches");
+  await expect(rows).toHaveCount(0);
+
+  await filter.fill("");
+  await expect(filter).toHaveAccessibleDescription("");
+  await expect(rows.first().locator(".chip")).toBeVisible();
+  await expect(rows.filter({ hasText: "c00500.ddd.json" })).toHaveCount(0);
+});

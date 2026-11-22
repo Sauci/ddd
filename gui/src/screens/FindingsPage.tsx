@@ -9,8 +9,10 @@ import { useCallback, useState } from "react";
 import { getFindings, getFix, postEdit } from "../api/client";
 import type { ListedFinding, State } from "../api/types";
 import { useUpdating } from "../app/updating";
+import { useDebounced } from "../app/useDebounced";
 import { FindingPanelView } from "../components/FindingPanelView";
 import { FindingsTableView } from "../components/FindingsTableView";
+import { filterText } from "../lib/filter";
 import {
   findingCounts,
   findingsTotal,
@@ -28,10 +30,12 @@ import {
   drawnWindow,
   type KeptWindow,
   keptAfter,
+  listingTotal,
   pageQuery,
   pagesOf,
   spacersOf,
   spanOf,
+  windowLine,
   windowRows,
 } from "../lib/findingsWindow";
 import { refusalSentence } from "../lib/refusals";
@@ -39,6 +43,7 @@ import type { Route } from "../lib/route";
 import { fixLabel } from "../lib/undo";
 import { baseName } from "../lib/units";
 import { Banner } from "../ui/Banner";
+import { FilterField } from "../ui/FilterField";
 
 interface Props {
   state: State;
@@ -57,45 +62,72 @@ const STALE =
  * as the box scrolls to it (spec 6), how many there are in all being the state's own count - a
  * disagreement on each of its files - where the line above it counts the statements, each once as
  * `ddd check` counts them (decision 14.3). When an analysis lands, the window keeps drawing the
- * revision it drew whole until the new one's pages for its rows have all come (`drawnWindow`). */
+ * revision it drew whole until the new one's pages for its rows have all come (`drawnWindow`).
+ *
+ * The filter above the table (16:I14) asks the server for the findings whose check, words or
+ * file's name hold its text, once typing pauses: the rows are the server's pages, which the page
+ * cannot filter itself. A filtered listing's first page says how many rows it has (`listingTotal`),
+ * and the listing drawn before stays until its own rows have come, as through a landing. Its table
+ * starts at its top, and the line beside the filter counts it (`windowLine`), where the line above
+ * the table goes on counting the revision's statements. */
 export function FindingsPage({ state, stopped, onOpen }: Props) {
   const queries = useQueryClient();
   const updating = useUpdating();
   const revision = state.revision;
-  const total = findingsTotal(state.counts);
-  // Where the box is scrolled to and how tall it is: at the top and one box high, until the box
-  // says otherwise.
-  const [view, setView] = useState({ top: 0, height: BOX_HEIGHT });
-  const onScroll = useCallback((top: number, height: number) => setView({ top, height }), []);
-  const span = spanOf(view.top, view.height, total);
+  const all = findingsTotal(state.counts);
+  // What the filter holds, and what it asks the server for once typing pauses: its text, without
+  // the white space around it, `""` for none.
+  const [typed, setTyped] = useState("");
+  const asking = useDebounced(filterText(typed));
+  // Where the box is scrolled to and how tall it is, and the filter it was scrolled under: at the
+  // top and one box high, until the box says otherwise - and at the top again for a filter newly
+  // asked, whose table is drawn anew (`key`, below).
+  const [view, setView] = useState({ text: "", top: 0, height: BOX_HEIGHT });
+  const onScroll = useCallback(
+    (top: number, height: number) => setView({ text: asking, top, height }),
+    [asking],
+  );
+  const top = view.text === asking ? view.top : 0;
+  // A filtered listing's first page, which says how many rows the listing has: asked as soon as the
+  // filter is, whatever the box covers - the same query as the window's own first page.
+  const head = useQuery({
+    queryKey: ["findings", revision, "page", asking, 0],
+    queryFn: () => getFindings(pageQuery(0, asking)),
+    enabled: asking !== "",
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+  const total = listingTotal(asking, all, head.data, revision);
+  const span = spanOf(top, view.height, total ?? 0);
   const pages = pagesOf(span);
   const asked = useQueries({
     queries: pages.map((page) => ({
-      queryKey: ["findings", revision, page],
-      queryFn: () => getFindings(pageQuery(page)),
+      queryKey: ["findings", revision, "page", asking, page],
+      queryFn: () => getFindings(pageQuery(page, asking)),
       // A page of one revision is the same page however often it is asked: one scrolled back
       // to is drawn from what came, not asked again.
       staleTime: Number.POSITIVE_INFINITY,
     })),
   });
-  // The revision last drawn whole, and its own pages of the rows in the box, as they came: read
+  // The listing last drawn whole, and its own pages of the rows in the box, as they came: read
   // where they are, never asked for again - the server answers the newest revision alone. While it
   // is the newest, these are the very queries above, so they carry the same function: each
   // observer's options become its query's, and a refetch - after an undo - runs the last set.
   const [kept, setKept] = useState<KeptWindow | null>(null);
-  const keptSpan = spanOf(view.top, view.height, kept?.total ?? 0);
+  const keptSpan = spanOf(top, view.height, kept?.total ?? 0);
   const keptPages = kept === null ? [] : pagesOf(keptSpan);
   const held = useQueries({
     queries: keptPages.map((page) => ({
-      queryKey: ["findings", kept?.revision, page],
-      queryFn: () => getFindings(pageQuery(page)),
+      queryKey: ["findings", kept?.revision, "page", kept?.text, page],
+      queryFn: () => getFindings(pageQuery(page, kept?.text)),
       enabled: false,
     })),
   });
   const drawn = drawnWindow(
     {
       revision,
+      text: asking,
       total,
+      all,
       statements: state.statements,
       span,
       pages: arrivedPages(
@@ -119,7 +151,7 @@ export function FindingsPage({ state, stopped, onOpen }: Props) {
   const keeping = keptAfter(drawn, kept);
   if (keeping !== kept) setKept(keeping);
   const rows = windowRows(drawn.span, drawn.pages);
-  const unasked = asked.find((page) => page.isError)?.error ?? null;
+  const unasked = head.error ?? asked.find((page) => page.isError)?.error ?? null;
   // The finding whose panel is open, kept whole - as it was selected, then as the newest reply
   // about it reported it: the window may have scrolled its row away.
   const [selected, setSelected] = useState<ListedFinding | undefined>(undefined);
@@ -214,11 +246,19 @@ export function FindingsPage({ state, stopped, onOpen }: Props) {
       <p className="summary">{findingCounts(drawn.statements, updating)}</p>
       {gone && <Banner tone="warning">This finding is no longer reported.</Banner>}
       {unasked !== null && <Banner tone="error">{unasked.message}</Banner>}
+      <FilterField
+        label="Filter findings"
+        value={typed}
+        onChange={setTyped}
+        line={windowLine(drawn)}
+      />
       <div className={finding !== undefined ? "with-panel" : undefined}>
         <div>
           <FindingsTableView
+            // Drawn anew for each filter asked, its box at the top, as `top` is.
+            key={asking}
             rows={rows}
-            {...spacersOf(drawn.span, drawn.total)}
+            {...spacersOf(drawn.span, drawn.total ?? 0)}
             selected={finding?.key}
             onSelect={select}
             onScroll={onScroll}

@@ -2286,6 +2286,71 @@ class TestFindingsAPageAtATime:
             ("info", "missing-id"),
         ]
 
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            # A check's name, whatever its case: no finding's words or file's name hold it.
+            ("STORAGE", [("warning", "storage-mismatch")] * 2),
+            # Words, whatever their case: the four disagreements about ValueE.
+            ("valuee", [("error", "definition-mismatch")] * 4),
+            # A file's own name: the one finding filed on event_logger.ddd.json - its words name
+            # the component EventLogger, spelled without the underscore.
+            ("event_logger", [("error", "definition-mismatch")]),
+            ("EventLogger", [("error", "definition-mismatch")] * 2),
+            # A folder of a file's path is not its name: nothing says logging.
+            ("logging", []),
+            ("ddd id --assign", [("info", "missing-id")]),
+            ("nothing says this", []),
+        ],
+    )
+    def test_a_text_filter_leaves_the_findings_whose_check_words_or_file_s_name_hold_it(
+        self, demo: Api, text: str, expected: list[tuple[str, str]]
+    ) -> None:
+        """What the Findings tab's filter asks (16:I14): each finding whose check, words or file's
+        own name - as its File column names it - holds the text, whatever its case, in the tab's
+        order, keys and all."""
+        wanted = text.lower()
+
+        def holds(found: dict[str, Any]) -> bool:
+            texts = (found["check"], found["message"], Path(found["file"]).name)
+            return any(wanted in each.lower() for each in texts)
+
+        whole = get(demo, "/api/findings").body["findings"]
+        body = get(demo, "/api/findings", text=text).body
+        assert body["findings"] == [found for found in whole if holds(found)]
+        assert [(found["severity"], found["check"]) for found in body["findings"]] == expected
+        assert (body["total"], body["offset"]) == (len(expected), 0)
+
+    def test_a_text_filter_joins_the_others_and_is_answered_a_page_at_a_time(
+        self, demo: Api, tmp_path: Path
+    ) -> None:
+        controller = (tmp_path / "real" / "demo" / DEMO_FILES["controller"]).as_posix()
+        mismatched = get(demo, "/api/findings", text="ValueE", file=controller).body
+        assert [found["check"] for found in mismatched["findings"]] == ["definition-mismatch"] * 2
+        # Controller by its file's name on one side, and by the words on the other.
+        warned = get(demo, "/api/findings", text="controller", severity="warning").body
+        assert [Path(found["file"]).name for found in warned["findings"]] == [
+            "controller.ddd.json",
+            "sensor_hub.ddd.json",
+        ]
+        assert get(demo, "/api/findings", text="controller", check="missing-id").body["total"] == 1
+        whole = get(demo, "/api/findings", text="mismatch").body
+        assert whole["total"] == 6
+        page = get(demo, "/api/findings", text="mismatch", offset="2", limit="3").body
+        assert page["findings"] == whole["findings"][2:5]
+        assert (page["total"], page["offset"]) == (6, 2)
+
+    def test_a_blank_text_leaves_every_finding(self, demo: Api) -> None:
+        """Every finding's words hold the empty text: the page sends none, and a blank asks for
+        nothing narrower than none."""
+        assert get(demo, "/api/findings", text="").body == get(demo, "/api/findings").body
+
+    def test_a_text_filter_asked_twice_is_the_reply_made_first(self, demo: Api) -> None:
+        first = get(demo, "/api/findings", text="ValueE", offset="0", limit="1")
+        assert first.status == 200
+        assert get(demo, "/api/findings", text="ValueE", offset="0", limit="1") is first
+        assert get(demo, "/api/findings", text="ValueB", offset="0", limit="1") is not first
+
     def test_a_file_s_findings_come_worst_first_where_two_builds_file_them_otherwise(
         self, tmp_path: Path
     ) -> None:

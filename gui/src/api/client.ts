@@ -210,7 +210,8 @@ export const getState = (after: number | null, signal?: AbortSignal, fetchImpl: 
 
 /** Which of the newest revision's findings `GET /api/findings` answers - `FindingsQuery`, the
  * server's own model of the query: from `offset` - the first when left out - at most `limit` of
- * them, or every one from it when left out, of those `severity`, `file` and `check` leave. */
+ * them, or every one from it when left out, of those `severity`, `file`, `check` and `text`
+ * leave. */
 export const getFindings = (query: FindingsQuery, fetchImpl: Fetch = fetch) =>
   request<FindingsReply>(`/api/findings${findingsQuery(query)}`, {}, fetchImpl);
 
@@ -222,6 +223,7 @@ function findingsQuery(query: FindingsQuery): string {
   if (query.severity !== undefined) parts.push(["severity", query.severity]);
   if (query.file !== undefined) parts.push(["file", query.file]);
   if (query.check !== undefined) parts.push(["check", query.check]);
+  if (query.text !== undefined) parts.push(["text", query.text]);
   if (parts.length === 0) return "";
   return `?${parts.map(([key, value]) => `${key}=${encoded(value)}`).join("&")}`;
 }

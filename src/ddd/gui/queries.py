@@ -439,6 +439,12 @@ class FindingsQuery(QueryModel):
     ] = None
     """Only the findings this check reported; blank, none."""
 
+    text: Annotated[
+        str | SkipJsonSchema[None], named("findings takes ?text= as the text to find", blank="")
+    ] = None
+    """Only the findings whose check, words or file's own name hold this text, whatever its case;
+    blank, every one."""
+
 
 class FileQuery(QueryModel):
     """What ``GET /api/file`` takes."""

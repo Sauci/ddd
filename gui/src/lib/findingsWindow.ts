@@ -1,4 +1,5 @@
 import type { FindingCounts, FindingsQuery, FindingsReply, ListedFinding } from "../api/types";
+import { FINDINGS, filterLine } from "./filter";
 import { baseName } from "./units";
 
 /** Every row of the Findings table is this tall, in pixels - `ui.css` draws it so - which is what
@@ -44,9 +45,25 @@ export function pagesOf(span: Span): number[] {
   return pages;
 }
 
-/** What one page is asked for as: its `PAGE_SIZE` findings, from the first of them. */
-export function pageQuery(page: number): FindingsQuery {
-  return { offset: page * PAGE_SIZE, limit: PAGE_SIZE };
+/** What one page is asked for as: its `PAGE_SIZE` findings, from the first of them - of those whose
+ * check, words or file's name hold `text`, the filter's (16:I14), where one is typed. */
+export function pageQuery(page: number, text = ""): FindingsQuery {
+  const query = { offset: page * PAGE_SIZE, limit: PAGE_SIZE };
+  return text === "" ? query : { ...query, text };
+}
+
+/** How many rows a listing - a revision's findings, filtered by `text` or not - has in all:
+ * unfiltered, `all`, every finding the revision files, which the state counts and so is known at
+ * once; filtered, what its first page says (`head`, as every page of it says it), once that page
+ * has come of the listing's own revision, and `null` until then. */
+export function listingTotal(
+  text: string,
+  all: number,
+  head: FindingsReply | undefined,
+  revision: number,
+): number | null {
+  if (text === "") return all;
+  return head !== undefined && head.revision === revision ? head.total : null;
 }
 
 /** The pages of `revision` that have arrived, by page: `replies` answers `pages`, place for place,
@@ -107,27 +124,33 @@ export function keeps(index: number, scrollTop: number, height: number): boolean
   return span.first <= index && index < span.last;
 }
 
-/** One revision's window: which revision it is, how many rows its table has in all - every
- * finding it files, a disagreement once on each file it concerns - how many statements it makes of
- * each severity, each once as `ddd check` counts them, which the line above the table counts
+/** One listing's window: which revision it is of, and the filter's text it was asked under - `""`
+ * where none is typed (16:I14) - how many rows its table has in all (`listingTotal`, `null` while
+ * a filtered listing's first page has not come), how many its revision files unfiltered - every
+ * finding, a disagreement once on each file it concerns - how many statements the revision makes
+ * of each severity, each once as `ddd check` counts them, which the line above the table counts
  * (decision 14.3), the rows the box covers, and the pages of those rows that have arrived. */
 export interface RevisionWindow {
   revision: number;
-  total: number;
+  text: string;
+  total: number | null;
+  all: number;
   statements: FindingCounts;
   span: Span;
   pages: ReadonlyMap<number, FindingsReply>;
 }
 
-/** Whether every page a window's rows fall in has arrived. */
-function whole(window: RevisionWindow): boolean {
-  return pagesOf(window.span).every((page) => window.pages.has(page));
+/** Whether a window's total is known, and every page its rows fall in has arrived. */
+function whole(window: RevisionWindow): window is RevisionWindow & { total: number } {
+  return window.total !== null && pagesOf(window.span).every((page) => window.pages.has(page));
 }
 
 /**
  * Which revision's rows the window draws: the newest's, once every page of its rows has arrived;
  * until then the last one drawn whole, while every page of its rows is still there; and the
- * newest's, placeholders and all, when neither is whole.
+ * newest's, placeholders and all, when neither is whole. A filter typed asks for a listing of its
+ * own (16:I14), its total unknown until its first page has come, and is drawn by the same rule:
+ * the rows drawn before stay until its own have come.
  *
  * A revision's pages are asked for under it, and none of another revision is drawn among them
  * (`arrivedPages`): drawing the newest at once, an analysis landing turned every row into a
@@ -142,20 +165,34 @@ export function drawnWindow(newest: RevisionWindow, last: RevisionWindow | null)
   return last;
 }
 
-/** Which revision the window draws through the next analysis landing, how many rows its table has
- * in all, and how many statements it makes of each severity. */
+/** Which listing the window draws through the next analysis landing or filter typed - its
+ * revision and its filter's text - how many rows its table has in all, how many its revision files
+ * unfiltered, and how many statements the revision makes of each severity. */
 export interface KeptWindow {
   revision: number;
+  text: string;
   total: number;
+  all: number;
   statements: FindingCounts;
 }
 
-/** The revision to keep drawing through the next analysis landing: the one `drawn` now, once its
- * rows' pages have all arrived; else `kept`, the one kept before - the very same answer where
- * nothing changed, so that the page can tell. */
+/** The listing to keep drawing through the next analysis landing or filter typed: the one `drawn`
+ * now, once its rows' pages have all arrived; else `kept`, the one kept before - the very same
+ * answer where nothing changed, so that the page can tell. */
 export function keptAfter(drawn: RevisionWindow, kept: KeptWindow | null): KeptWindow | null {
-  if (!whole(drawn) || drawn.revision === kept?.revision) return kept;
-  return { revision: drawn.revision, total: drawn.total, statements: drawn.statements };
+  if (!whole(drawn) || (drawn.revision === kept?.revision && drawn.text === kept.text)) {
+    return kept;
+  }
+  const { revision, text, total, all, statements } = drawn;
+  return { revision, text, total, all, statements };
+}
+
+/** The line beside the Findings tab's filter (`filterLine`), of the listing the table draws: how
+ * many rows it leaves of its revision's, or that none matches; nothing for the unfiltered
+ * listing, or while a filtered one's count is not known. */
+export function windowLine(window: RevisionWindow): string | null {
+  if (window.total === null) return null;
+  return filterLine(window.text, window.total, window.all, FINDINGS);
 }
 
 /** How tall, in pixels, the space above the rows drawn and the space below them stand: each row

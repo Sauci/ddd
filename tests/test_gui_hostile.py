@@ -330,7 +330,7 @@ def test_every_key_of_every_route_s_query_is_never_answered_500(
                 cases += 1
                 reply = api.handle(route.method, route.path, {"zzz": [value]}, body)
                 assert reply.status != 500, (route.path, "zzz", value[:20], reply.body)
-    assert cases == 1320, "every route's query, every key, every hostile value: once each"
+    assert cases == 1331, "every route's query, every key, every hostile value: once each"
 
 
 def test_every_string_field_of_a_post_body_is_never_answered_500(

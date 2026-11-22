@@ -602,8 +602,9 @@ class TestTheModels:
         self,
     ) -> None:
         query = FindingsQuery.model_validate({})
-        assert (query.offset, query.limit, query.severity, query.file, query.check) == (
+        assert (query.offset, query.limit, query.severity, query.file, query.check, query.text) == (
             0,
+            None,
             None,
             None,
             None,
@@ -623,6 +624,12 @@ class TestTheModels:
         """What a blank has always meant here: a filter, by a file or a check nothing has."""
         query = FindingsQuery.model_validate({"file": "", "check": ""})
         assert (query.file, query.check) == ("", "")
+
+    def test_a_text_is_read_as_typed_and_a_blank_one_as_the_empty_text(self) -> None:
+        """A text filter (16:I14) holds what the reader typed, its case and its spaces; a blank one
+        is the empty text, which every finding holds."""
+        assert FindingsQuery.model_validate({"text": " ValueE "}).text == " ValueE "
+        assert FindingsQuery.model_validate({"text": ""}).text == ""
 
     def test_a_blank_raw_takes_the_key_away_as_leaving_it_out_does(self) -> None:
         for given in (
@@ -1165,6 +1172,8 @@ REFUSED = [
     ("/api/findings", {"check": "missing\x00id"}, "findings takes ?check= as a check's name"),
     ("/api/findings", {"check": "x" * (MAX_NAME + 1)}, "findings takes ?check= as a check's name"),
     ("/api/findings", {"limit": "1", "page": "2"}, "findings takes no ?page="),
+    ("/api/findings", {"text": "Value\x00E"}, "findings takes ?text= as the text to find"),
+    ("/api/findings", {"text": "x" * (MAX_NAME + 1)}, "findings takes ?text= as the text to find"),
     ("/api/file", {}, "file takes ?path="),
     ("/api/file", {"path": ""}, "file takes ?path="),
     ("/api/file", {"path": "/p/a\x00.ddd.json"}, "file takes ?path= as a file's path"),

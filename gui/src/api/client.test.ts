@@ -424,6 +424,8 @@ describe("requests to the server", () => {
       { offset: 100, limit: 100, severity: "error", file: "/p/a&b.ddd.json", check: "a/b" },
       calls.fetch,
     );
+    await getFindings({ offset: 0, limit: 100, text: "C00500 & 'x'" }, calls.fetch);
+    await getFindings({ check: "missing-id", text: "ValueE" }, calls.fetch);
     expect(calls.urls).toEqual([
       ["/api/findings", { credentials: "omit" }],
       ["/api/findings?offset=0&limit=100", { credentials: "omit" }],
@@ -434,6 +436,8 @@ describe("requests to the server", () => {
         "/api/findings?offset=100&limit=100&severity=error&file=%2Fp%2Fa%26b.ddd.json&check=a%2Fb",
         { credentials: "omit" },
       ],
+      ["/api/findings?offset=0&limit=100&text=C00500%20%26%20%27x%27", { credentials: "omit" }],
+      ["/api/findings?check=missing-id&text=ValueE", { credentials: "omit" }],
     ]);
   });
 

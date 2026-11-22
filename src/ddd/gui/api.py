@@ -583,18 +583,18 @@ class Api:
     def _findings(self, query: FindingsQuery, body: None) -> Reply:
         """A page of the newest revision's findings: from ``?offset=`` - ``0`` when none is given -
         at most ``?limit=`` of them, or every one from the offset on when no limit is given, of
-        those ``?severity=``, ``?file=`` (a file's path, however spelled) and ``?check=`` leave,
-        in the Findings tab's order, each with its key.
+        those ``?severity=``, ``?file=`` (a file's path, however spelled), ``?check=`` and
+        ``?text=`` (:func:`_holds`) leave, in the Findings tab's order, each with its key.
 
         Kept for the revision (:meth:`_memoised`), one answer per page and filters: a reader
         scrolling back to a page finds it made already."""
         revision = self._opened()
         offset, limit, severity = query.offset, query.limit, query.severity
-        file, check = query.file, query.check
+        file, check, text = query.file, query.check, query.text
         return self._memoised(
             revision,
-            ("findings", offset, limit, severity, file, check),
-            lambda: self._findings_of(revision, offset, limit, severity, file, check),
+            ("findings", offset, limit, severity, file, check, text),
+            lambda: self._findings_of(revision, offset, limit, severity, file, check, text),
         )
 
     def _findings_of(
@@ -605,6 +605,7 @@ class Api:
         severity: str | None,
         file: str | None,
         check: str | None,
+        text: str | None,
     ) -> Reply:
         """:meth:`_findings`' answer: the positions the filters leave, in the tab's order - a
         file's read from where its own findings stand, sorted by severity as stably as the whole
@@ -622,6 +623,9 @@ class Api:
             order = [at for at in order if findings[at].diagnostic.severity == severity]
         if check is not None:
             order = [at for at in order if findings[at].diagnostic.check == check]
+        if text is not None:
+            wanted = text.lower()
+            order = [at for at in order if _holds(findings[at], wanted)]
         page = order[offset:]
         if limit is not None:
             page = page[:limit]
@@ -2051,6 +2055,16 @@ def _finding(
             ),
         )
     )
+
+
+def _holds(filed: Filed, wanted: str) -> bool:
+    """Whether a text filter of ``GET /api/findings`` leaves ``filed`` (16:I14): its check, its
+    words or its file's own name - as the Findings tab's File column names it - holds ``wanted``,
+    the text the reader typed, in lower case as they are compared. A folder of the file's path is
+    not its name: every finding's path holds the folders the project lies in."""
+    finding = filed.diagnostic
+    texts = (finding.check, finding.message, filed.file.name)
+    return any(wanted in each.lower() for each in texts)
 
 
 def _route(route: FindingRoute | None) -> dict[str, Any] | None:

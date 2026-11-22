@@ -21,8 +21,8 @@ export interface SharedTableViewProps {
   /** Names of files that did not load without saying what kind they are, so this tab
    * cannot claim their entries were its own. */
   untold: readonly string[];
-  /** Pressed only where the table is absent, because the project declares nothing. `SharedPage`
-   * opens the add form beside the table on it, with its chooser unset - which is why the button
+  /** Pressed from the button above the table, whether or not the project declares anything.
+   * `SharedPage` opens the add form beside the table on it, with its chooser unset - which is why the button
    * names no vocabulary: the reader picks one there, out of every vocabulary the tab holds, where
    * part 13's button could only ever have meant the one. */
   onDeclare: () => void;
@@ -66,11 +66,10 @@ export function SharedTableView({
         </Banner>
       )}
       <p className="summary">{tabTitle(rows)}</p>
-      {rows.length === 0 ? (
-        <Button variant="primary" onPress={onDeclare}>
-          Declare an entry
-        </Button>
-      ) : (
+      <Button variant="primary" onPress={onDeclare}>
+        Declare an entry
+      </Button>
+      {rows.length > 0 && (
         <LongTable
           aria-label="Shared files"
           selectionMode="single"

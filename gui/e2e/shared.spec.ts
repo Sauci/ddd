@@ -265,6 +265,16 @@ async function openForm(
   return form;
 }
 
+test("the Shared files tab offers a declaration once it lists entries", async ({
+  page,
+  vocabularyGui,
+}) => {
+  await page.goto(vocabularyGui.address);
+  await page.getByRole("link", { name: "Shared files", exact: true }).click();
+  await expect(page.getByRole("row").nth(1)).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Declare/ })).toBeVisible();
+});
+
 test("a project declaring nothing offers a blank form, whose vocabulary brings its fields, and a constant declared from it is listed", async ({
   page,
   gui,

@@ -170,6 +170,16 @@ input:focus-visible {
   opacity: 0.2;
 }
 /* React Flow draws into whatever room it is given, so the canvas states its own. */
+/* The search's line under its box (GraphPage.tsx): a line high whether or not a search is typed -
+   a zero-width space holds it when empty - so that its words coming never move the canvas. */
+.canvas-search-line {
+  margin: 0 0 var(--space-2);
+  color: var(--ink-quiet);
+  font-size: var(--text-small);
+}
+.canvas-search-line::before {
+  content: "\200b";
+}
 .canvas {
   height: 70vh;
   min-height: 420px;

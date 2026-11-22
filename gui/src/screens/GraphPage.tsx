@@ -10,7 +10,7 @@ import {
   ReactFlowProvider,
   useReactFlow,
 } from "@xyflow/react";
-import { type KeyboardEvent, useCallback, useMemo, useRef, useState } from "react";
+import { type KeyboardEvent, useCallback, useId, useMemo, useRef, useState } from "react";
 import { getGraph } from "../api/client";
 import type { GraphReply, State } from "../api/types";
 import { useKept } from "../app/useKept";
@@ -28,6 +28,7 @@ import {
   nodesOf,
   objectsInDisagreement,
   openingViewport,
+  searchLine,
   shownEdges,
   withSavedPositions,
 } from "../lib/canvas";
@@ -312,6 +313,9 @@ function Canvas({
     [graph, hovered, search],
   );
   const shownNodes = useMemo(() => fadedNodes(nodes, bright), [nodes, bright]);
+  // What the search found, said under its box (`searchLine`), which describes the box.
+  const found = useMemo(() => searchLine(graph.modules, search), [graph, search]);
+  const foundId = useId();
   const shownArrows = useMemo(() => shownEdges(edges, bright, reached), [edges, bright, reached]);
 
   // `layoutScreen` (`gui/src/lib/layoutAnswers.ts`) is the whole decision (review fix round 1,
@@ -337,10 +341,16 @@ function Canvas({
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             onKeyDown={onSearchKey}
+            aria-describedby={foundId}
           />
           <Button onPress={onTidy}>Tidy</Button>
           <Button onPress={onFit}>Fit</Button>
         </div>
+        {/* Held whether or not a search is typed, empty while none is (app.css): its words coming
+            never move the canvas, and a screen reader hears each count as it changes. */}
+        <p id={foundId} className="canvas-search-line" role="status">
+          {found ?? ""}
+        </p>
         <section className="canvas" aria-label="Modules" ref={canvasRef}>
           {containerSize !== null && (
             <ReactFlow

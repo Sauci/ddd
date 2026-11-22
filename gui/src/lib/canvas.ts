@@ -22,6 +22,7 @@ import type { GraphDisagreement, GraphFlow, GraphModule, GraphReply } from "../a
 import type { Placed } from "./layout";
 import { neighboursOf } from "./neighbours";
 import { NODE_HEIGHT, NODE_WIDTH } from "./nodeSize";
+import { countText } from "./numbers";
 
 /** React Flow's own default, given explicitly to `<ReactFlow>` so `openingViewport` always
  * agrees with what it is deciding against (review fix round 1, Ruling T10-2). Pinned by the
@@ -396,6 +397,21 @@ export function brightOf(
 /** The module a search centres on: the first whose name contains the text, or none. */
 export function firstMatch(modules: readonly GraphModule[], search: string): string | null {
   return matchesOf(modules, search)?.[0]?.path ?? null;
+}
+
+/**
+ * The line under the search box: how many modules a search found, of how many the project has -
+ * `3 of 1,166 modules` - or `no module matches`; nothing while nothing is typed. A search dims
+ * every module it does not find and flies to none before Enter, so what it found may be out of
+ * view: without the line, a search finding nothing and one finding only modules out of view looked
+ * alike. It counts what `brightOf` keeps bright.
+ */
+export function searchLine(modules: readonly GraphModule[], search: string): string | null {
+  const matching = matchesOf(modules, search);
+  if (matching === null) return null;
+  if (matching.length === 0) return "no module matches";
+  const all = modules.length;
+  return `${countText(matching.length)} of ${countText(all)} module${all === 1 ? "" : "s"}`;
 }
 
 /** Every module whose name contains the text, ignoring case, or `null` when none was typed. */

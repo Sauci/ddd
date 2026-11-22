@@ -128,6 +128,33 @@ test("a search typed dims every module whose name does not contain it", async ({
   await expect(moduleOf(page, "SensorHub")).toHaveCSS("opacity", "1");
 });
 
+/**
+ * A search says what it found (16:M10), on a line under the box that is the box's description:
+ * the modules holding the text of the four the demo has, or that none does - where everything
+ * fades and the module found may be out of view, the line is what says whether anything was
+ * found. Nothing is said while the box is empty.
+ */
+test("a search says how many modules it found, or that none matches", async ({ page, gui }) => {
+  await page.goto(gui.address);
+  await expect(moduleOf(page, "SensorHub")).toBeVisible();
+  const search = page.getByRole("textbox", { name: "Search modules" });
+
+  await search.fill("Sensor");
+  // A status, so that a screen reader hears each count as the text changes.
+  await expect(page.getByRole("status").filter({ hasText: "1 of 4 modules" })).toBeVisible();
+  await expect(search).toHaveAccessibleDescription("1 of 4 modules");
+  // Controller, UserInterface and EventLogger hold "er"; SensorHub does not.
+  await search.fill("er");
+  await expect(search).toHaveAccessibleDescription("3 of 4 modules");
+  await search.fill("Pump");
+  await expect(page.getByText("no module matches", { exact: true })).toBeVisible();
+  await expect(search).toHaveAccessibleDescription("no module matches");
+
+  await search.fill("");
+  await expect(search).toHaveAccessibleDescription("");
+  await expect(page.getByText(/ of 4 modules|no module matches/)).toHaveCount(0);
+});
+
 test("a search's Enter centres the first module it finds", async ({ page, gui }) => {
   await page.goto(gui.address);
   await expect(moduleOf(page, "SensorHub")).toBeVisible();

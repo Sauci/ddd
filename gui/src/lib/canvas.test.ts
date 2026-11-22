@@ -11,6 +11,7 @@ import {
   objectsInDisagreement,
   openingViewport,
   STROKE,
+  searchLine,
   shownEdges,
   stateOf,
   withSavedPositions,
@@ -286,6 +287,34 @@ test("the first match is the first module whose name contains the text", () => {
   expect(firstMatch([A, B, C], "BET")).toBe(B.path);
   expect(firstMatch([A, B, C], "nothing")).toBeNull();
   expect(firstMatch([A, B, C], " ")).toBeNull();
+});
+
+test("the line under the search box says how many modules a search found of how many there are", () => {
+  // A project of 1,166 modules, three of them holding the text searched for.
+  const modules = [
+    ...Array.from({ length: 1163 }, (_, index) =>
+      graphModule(`/c${index}.ddd.json`, `C${String(index).padStart(5, "0")}`),
+    ),
+    graphModule("/sensor_hub.ddd.json", "SensorHub"),
+    graphModule("/pressure.ddd.json", "PressureSensor"),
+    graphModule("/sensor_bus.ddd.json", "SensorBus"),
+  ];
+  expect(searchLine(modules, "sensor")).toBe("3 of 1,166 modules");
+  expect(searchLine(modules, "C0050")).toBe("10 of 1,166 modules");
+  expect(searchLine([...modules.slice(0, 3)], "c0000")).toBe("3 of 3 modules");
+  expect(searchLine([A], "alp")).toBe("1 of 1 module");
+});
+
+test("a search that finds no module says so, and nothing typed says nothing", () => {
+  expect(searchLine([A, B, C], "nothing")).toBe("no module matches");
+  expect(searchLine([A, B, C], "")).toBeNull();
+  expect(searchLine([A, B, C], "  ")).toBeNull();
+});
+
+test("the line counts exactly what a search dims the rest for, ignoring case", () => {
+  expect(searchLine([A, B, C], "A")).toBe("3 of 3 modules");
+  expect(searchLine([A, B, C], "BET")).toBe("1 of 3 modules");
+  expect(searchLine([A, B, C], " gam ")).toBe("1 of 3 modules");
 });
 
 test("a node outside the bright set is faded, and one whose state did not change is left alone", () => {

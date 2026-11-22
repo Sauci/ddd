@@ -231,10 +231,16 @@ def test_the_page_says_to_open_ddd_gui_from_its_own_address_alone() -> None:
 
 
 def test_the_page_says_how_much_an_edit_may_post_once_it_has_shown_the_token() -> None:
-    """The edit's own limit, as the server holds it (15:I4), and read only past the gate."""
+    """The edit's own limit, as the server holds it (15:I4), what it holds, and read only past
+    the gate."""
     assert (
         f"``POST /api/edit`` alone may promise more, up to {EDIT_BODY:,} bytes, since an Apply "
         "posts every change of its plan"
+    ) in _prose()
+    assert (
+        "up to 4,213,186 bytes to rename a unit across a generated project of 100,000 "
+        "declarations, measured over each of the generator's four shapes, the chain shape's the "
+        "most"
     ) in _prose()
     assert (
         "but only once it has shown the token and this server's own origin: refused before "

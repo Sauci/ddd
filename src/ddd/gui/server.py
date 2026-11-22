@@ -29,7 +29,7 @@ this one trusts nothing it did not hand out itself:
   answered as it is. So ``localhost`` is this server itself, whichever of the two addresses a
   browser tries, signed out until the address it printed is opened there, and no other program
   can listen on ``[::1]`` at that port;
-* a ``POST``'s body is read up to 1,048,576 bytes, an edit's up to 4,194,304 once it has shown
+* a ``POST``'s body is read up to 1,048,576 bytes, an edit's up to 8,388,608 once it has shown
   the token and this server's own origin, since an Apply posts every change of its plan
   (:data:`EDIT_BODY`);
 * a ``POST`` refused before its body is read has that body read and thrown away, at most
@@ -94,17 +94,18 @@ behind a refusal - of a body refused before it is read, or of what follows a req
 library refused (:meth:`_Handler._send`, :func:`_linger`): a sign-in, an open or an undo posts a
 few dozen bytes."""
 
-EDIT_BODY: Final = 4 * 1024 * 1024
-"""The largest body ``POST /api/edit`` accepts, four times :data:`MAX_BODY`: an Apply posts every
-change of its plan, each file's path, fingerprint and operations (15:I4). The benchmark's applied
-rename (``tools/bench_gui.py``), of the unit stated in the most files, posts up to 1,948,716
-bytes over generated projects of 100,000 declarations in the ``mixed``, ``large`` and ``many``
-shapes: the most from the ``mixed`` one, findings-heavy, its 1,682 paths 138 to 150 bytes long.
-The ``many`` shape's changes the most files of the three, 3,334, in 1,852,844 bytes, and within
-this limit each of its paths could be 851 bytes long: past the 777 bytes a stock Windows' longest
-path takes in UTF-8, 259 characters of three bytes each. The generator's ``chain`` shape, 50,000
-components of two declarations each, which no budget names, posts more at 100,000 declarations,
-4,213,186 bytes over 12,502 files, and is refused.
+EDIT_BODY: Final = 8 * 1024 * 1024
+"""The largest body ``POST /api/edit`` accepts, eight times :data:`MAX_BODY`: an Apply posts every
+change of its plan, each file's path, fingerprint and operations (15:I4). Every shape the
+project's own generator makes (``tools/generate_project.py``) fits under it at 100,000
+declarations, measured over all four renaming the unit stated in the most files, as the
+benchmark's applied rename does (``tools/bench_gui.py``): up to 1,948,716 bytes from the
+``mixed``, ``large`` and ``many`` shapes, and the most from the ``chain`` one, 50,000 components of
+two declarations each, 4,213,186 bytes over 12,502 files whose paths take 1,875,288 of them, 138
+to 150 bytes each. Within this limit each of those paths could be 483 bytes long, (8,388,608 -
+4,213,186 + 1,875,288) / 12,502: past the 259 bytes a stock Windows' longest path, 259
+characters, takes in ASCII, though not the 777 of one of three-byte characters, which each of
+the ``many`` shape's 3,334 paths could take, 2,109 bytes long.
 
 Read only once a request has shown this server's token and its own origin (:meth:`_Handler._route`):
 every other body is read up to :data:`MAX_BODY`, ``POST /open``'s among them, and every body

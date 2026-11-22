@@ -53,6 +53,7 @@ from ddd.diagnostics import CHECKS, Severity
 from ddd.gui import session as gui_session
 from ddd.gui.compare import Compared, _own_errors
 from ddd.gui.contract import CompareReply
+from ddd.gui.server import EDIT_BODY
 from ddd.loading import FILE_KINDS
 from ddd.models import MAX_ELEMENTS, Component, DataObject, Datatype, ObjectKind, ScalarType
 from ddd.toolbox.findings import FINDINGS
@@ -1072,6 +1073,21 @@ def generate_options(artefact: str) -> set[str]:
         for option in action.option_strings
         if option.startswith("--")
     }
+
+
+class TestWhatAnEditMayPost:
+    """``POST /api/edit``'s own limit, said on the developer page beside the benchmark's bodies it
+    is sized above, as the server holds it (15:I4)."""
+
+    def test_the_developer_page_says_the_chain_shapes_body_and_the_limit_holding_it(self) -> None:
+        text = flattened(PAGES["docs/developer_documentation.rst"])
+        assert (
+            "The ``chain`` shape's, which these runs leave out, is 4,213,186 bytes at 100,000 "
+            "declarations"
+        ) in text
+        assert (
+            f"held, as each of theirs is, by the {EDIT_BODY:,} bytes ``POST /api/edit`` takes"
+        ) in text
 
 
 class TestTheA2lOptions:

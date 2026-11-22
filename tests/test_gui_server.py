@@ -1062,7 +1062,8 @@ class TestWhoMayAsk:
 class TestTheBodyAnEditPosts:
     """An Apply posts every change of its plan as ``POST /api/edit``'s body, each file's path,
     fingerprint and operations: renaming the unit stated in the most files of a generated project
-    of 100,000 declarations, of the mixed, large or many shape, posts up to 1,948,716 bytes, the
+    of 100,000 declarations posts up to 4,213,186 bytes, the chain shape's, the largest of the
+    generator's four shapes, and up to 1,948,716 from the mixed, large and many shapes, the
     benchmark's largest applied rename (15:I4). Over the socket, as the page posts it: the
     benchmark applies through ``Api.handle``, which no limit on a body reaches."""
 
@@ -1109,6 +1110,14 @@ class TestTheBodyAnEditPosts:
         declarations: read and applied, where a body past ``MAX_BODY`` was refused ``413``."""
         self.applied(server, project_file, 1_948_716)
 
+    def test_an_edit_as_large_as_the_chain_shapes_rename_is_applied(
+        self, server, project_file
+    ) -> None:
+        """4,213,186 bytes, the applied rename of the generator's ``chain`` shape at 100,000
+        declarations, 50,000 components of two declarations each, its rename changing 12,502
+        files: the largest body of the generator's four shapes, read whole and applied."""
+        self.applied(server, project_file, 4_213_186)
+
     def test_an_edit_of_its_own_limit_is_applied(self, server, project_file) -> None:
         """``EDIT_BODY`` bytes exactly: the limit is the boundary, not below it."""
         self.applied(server, project_file, EDIT_BODY)
@@ -1127,7 +1136,7 @@ class TestTheBodyAnEditPosts:
         )
         assert (response.status, json.loads(data)) == (
             413,
-            {"error": "too-large", "message": "a request body is at most 4194304 bytes"},
+            {"error": "too-large", "message": "a request body is at most 8388608 bytes"},
         )
         assert response.getheader("Connection") == "close"
 

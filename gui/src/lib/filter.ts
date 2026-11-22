@@ -70,6 +70,66 @@ export function placesShown(sites: readonly UnitPlace[], typed: string): readonl
   return filtered(sites, typed, (site) => [site.name, baseName(site.path)]);
 }
 
+/** The key a table knows a component by: its Row's id, its file. */
+export function componentKey(file: SourceFile): string {
+  return file.path;
+}
+
+/** The key a component page's table knows a declaration by: its Row's id, the pointer to it. */
+export function declarationKey(row: { id: string }): string {
+  return row.id;
+}
+
+/** The key a unit's table knows a place by: its Row's id, its file and the pointer to its unit. */
+export function placeKey(site: UnitPlace): string {
+  return `${site.path} ${site.pointer}`;
+}
+
+/**
+ * How many rows a filtered table puts back at a time, where its filter widened leaves more rows
+ * than it draws (16:I14, fix round 1). React Aria builds the rows put back into the table's
+ * collection in one commit, which no key typed meanwhile can interrupt: put back at once, a
+ * unit's 12,500 places held the key emptying their filter past the 100 ms a key may take. A
+ * thousand at a time, each in a commit of its own, the next once the last is drawn.
+ */
+export const ROWS_PUT_BACK = 1000;
+
+/**
+ * The rows a filtered table draws next, on its way to `shown`, the rows its filter leaves: those
+ * of `drawn`, the rows it drew last, that the filter still leaves, in their places, and at most
+ * `ROWS_PUT_BACK` of those it leaves that `drawn` lacks, the first in `shown`'s order; `shown`
+ * itself once it lacks none, the table then drawn whole. Rows the filter no longer leaves are
+ * dropped at once: taking rows out of a collection costs little. A row is known by its `key`, the
+ * table's id for it, so that the same rows answered anew - a revision landing - put none back.
+ */
+export function rowsDrawnNext<T>(
+  shown: readonly T[],
+  drawn: readonly T[],
+  key: (row: T) => string,
+): readonly T[] {
+  if (drawn === shown) return shown;
+  const had = new Set(drawn.map(key));
+  const next: T[] = [];
+  let putBack = 0;
+  for (const row of shown) {
+    if (had.has(key(row))) {
+      next.push(row);
+    } else if (putBack < ROWS_PUT_BACK) {
+      next.push(row);
+      putBack += 1;
+    }
+  }
+  return next.length === shown.length ? shown : next;
+}
+
+/** Whether a table's next rows are the very rows it drew, in the same order: a table drawing
+ * them again draws nothing new. Rows answered anew are other rows, however alike. */
+export function sameRows<T>(drawn: readonly T[], next: readonly T[]): boolean {
+  return (
+    drawn === next || (drawn.length === next.length && drawn.every((row, at) => row === next[at]))
+  );
+}
+
 /** Whether a filtered table is drawn: not where the filter leaves none of its rows, which the line
  * beside the filter says - an empty `LongTable` draws a box nothing high, its header cut away. A
  * table with no row of its own, nothing typed, is drawn as it was. */

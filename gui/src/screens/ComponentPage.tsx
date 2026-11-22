@@ -4,8 +4,15 @@ import { useMemo, useState } from "react";
 import { getFile, getFindings, getTypes } from "../api/client";
 import type { ListedFinding, State } from "../api/types";
 import { useUpdating } from "../app/updating";
+import { useDrawnRows } from "../app/useDrawnRows";
 import { useKept } from "../app/useKept";
-import { DECLARATIONS, declarationsShown, filterLine, tableDrawn } from "../lib/filter";
+import {
+  DECLARATIONS,
+  declarationKey,
+  declarationsShown,
+  filterLine,
+  tableDrawn,
+} from "../lib/filter";
 import { leadsElsewhere, routeHref, routeOf } from "../lib/findings";
 import { findingsByRow } from "../lib/findingsByRow";
 import type { ComponentFile } from "../lib/formats";
@@ -167,6 +174,9 @@ export function ComponentPage({
     });
   }, [data, byRow, kinds]);
   const shown = useMemo(() => declarationsShown(rows, filter), [rows, filter]);
+  // The rows the table draws: those the filter leaves, put back a thousand at a time where it is
+  // widened past the rows drawn (`useDrawnRows`).
+  const drawn = useDrawnRows(shown, declarationKey);
 
   if (answer === undefined) {
     if (content.isError) return <Banner tone="error">{content.error.message}</Banner>;
@@ -292,7 +302,7 @@ export function ComponentPage({
               </Column>
             </TableHeader>
             <TableBody
-              items={shown}
+              items={drawn}
               // The cells' buttons are disabled with `stopped`, which `rows` does not hold: React
               // Aria keeps each row it has rendered for its item, and draws it again only when the
               // item changes or a value named here does.
@@ -300,7 +310,7 @@ export function ComponentPage({
             >
               {(row) => (
                 <Row
-                  id={row.id}
+                  id={declarationKey(row)}
                   className={({ defaultClassName }) =>
                     row.own.some((finding) => finding.severity === "error")
                       ? `${defaultClassName} has-error`

@@ -393,6 +393,8 @@ test("a component page's filter finds a declaration its table does not draw", as
 /**
  * A unit's filter (16:I14): rpm is stated 2,500 times over the generated project, and its panel's
  * table draws the places in view. Filtered by a file's name, it holds the four that file states.
+ * Emptied, every place comes back to the table, put back a thousand at a time (`ROWS_PUT_BACK`,
+ * lib/filter.ts) until its count reaches all 2,500.
  */
 test("a unit's filter finds the places one file states it", async ({ page, generatedGui }) => {
   await page.goto(generatedGui.address);
@@ -410,6 +412,11 @@ test("a unit's filter finds the places one file states it", async ({ page, gener
   for (const name of ["C00500_O0002", "C00500_O0010", "C00530_O0000", "C00530_O0008"]) {
     await expect(places.getByRole("row", { name: new RegExp(name) })).toBeVisible();
   }
+
+  await filter.fill("");
+  await expect(filter).toHaveAccessibleDescription("");
+  // The places and the header's row.
+  await expect(places).toHaveAttribute("aria-rowcount", "2501");
 });
 
 /**

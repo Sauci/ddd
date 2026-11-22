@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { State } from "../api/types";
 import { useUpdating } from "../app/updating";
-import { COMPONENTS, componentsShown, filterLine, tableDrawn } from "../lib/filter";
+import { useDrawnRows } from "../app/useDrawnRows";
+import { COMPONENTS, componentKey, componentsShown, filterLine, tableDrawn } from "../lib/filter";
 import { tableLine } from "../lib/findings";
 import { shownPath } from "../lib/paths";
 import { Button } from "../ui/Button";
@@ -26,8 +27,17 @@ interface Props {
 export function ProjectPage({ state, onComponent }: Props) {
   const updating = useUpdating();
   const [filter, setFilter] = useState("");
-  const components = state.files.filter((file) => file.kind === "component");
-  const shown = componentsShown(components, state.project, filter);
+  const components = useMemo(
+    () => state.files.filter((file) => file.kind === "component"),
+    [state.files],
+  );
+  const shown = useMemo(
+    () => componentsShown(components, state.project, filter),
+    [components, state.project, filter],
+  );
+  // The rows the table draws: those the filter leaves, put back a thousand at a time where it is
+  // widened past the rows drawn (`useDrawnRows`).
+  const drawn = useDrawnRows(shown, componentKey);
   return (
     <>
       <p className="summary">{tableLine(state.statements, updating)}</p>
@@ -80,9 +90,12 @@ export function ProjectPage({ state, onComponent }: Props) {
               File
             </Column>
           </TableHeader>
-          <TableBody items={shown}>
+          <TableBody items={drawn}>
             {(file) => (
-              <Row id={file.path} className={also(file.findings.error > 0 ? "has-error" : "")}>
+              <Row
+                id={componentKey(file)}
+                className={also(file.findings.error > 0 ? "has-error" : "")}
+              >
                 <Cell>
                   <Button variant="link" onPress={() => onComponent(file.path)}>
                     {file.name ?? file.path}

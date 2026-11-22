@@ -1,5 +1,7 @@
+import { useMemo } from "react";
 import type { PlanReply, ProjectUnit, UnitReply, UnitsReply } from "../api/types";
-import { filterLine, PLACES, placesShown, tableDrawn } from "../lib/filter";
+import { useDrawnRows } from "../app/useDrawnRows";
+import { filterLine, PLACES, placeKey, placesShown, tableDrawn } from "../lib/filter";
 import { distinctFindings, keyedFindings } from "../lib/findings";
 import {
   offers,
@@ -105,7 +107,13 @@ export function UnitPanelView(props: UnitPanelViewProps) {
     />
   );
   const files = (plan: PlanReply) => consequence(plan.changes);
-  const places = placesShown(reply.sites, props.placesFilter);
+  const places = useMemo(
+    () => placesShown(reply.sites, props.placesFilter),
+    [reply.sites, props.placesFilter],
+  );
+  // The places the table draws: those the filter leaves, put back a thousand at a time where it
+  // is widened past the rows drawn (`useDrawnRows`).
+  const drawn = useDrawnRows(places, placeKey);
   return (
     <Panel title={unit.unit} meta={unitMeta(unit, reply, hasVocabulary)} onClose={props.onClose}>
       <UpdatingNote updating={props.updating === true} />
@@ -164,9 +172,9 @@ export function UnitPanelView(props: UnitPanelViewProps) {
                 </Column>
                 <Column width={140}>What</Column>
               </TableHeader>
-              <TableBody items={places}>
+              <TableBody items={drawn}>
                 {(site) => (
-                  <Row id={`${site.path} ${site.pointer}`}>
+                  <Row id={placeKey(site)}>
                     <Cell>{site.name}</Cell>
                     <Cell className={also("quiet")}>{baseName(site.path)}</Cell>
                     <Cell>{placeRole(site)}</Cell>

@@ -13,6 +13,7 @@ import {
 import { TableStateContext } from "react-aria-components";
 import type { PlanReply, ValuesReply } from "../api/types";
 import { focusCameByTab } from "../app/focus";
+import type { WrittenLine } from "../lib/announcing";
 import { keptByCell } from "../lib/cellKeys";
 import { distinctFindings, keyedFindings } from "../lib/findings";
 import { cellId, takesFocusedCell } from "../lib/gridCells";
@@ -61,7 +62,7 @@ export interface ValuesGridViewProps {
   undoStrip?: ReactNode;
   /** What the heading says the page last wrote (`useWritten`, 16:I13): the cells or the table
    * applied, or an undo putting them back - omitted where nothing was, every story's. */
-  written?: string | null;
+  written?: WrittenLine | null;
   /** Drawn under the heading, over the grid: the screen's banner saying its read of the next
    * revision failed, the grid drawn being the last one read (`useKept`) - omitted where nothing
    * failed, which is every story. */

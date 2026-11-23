@@ -165,9 +165,10 @@ describe("what the heading says the page last wrote", () => {
       label: "the unit of ValueA",
       files: [at("a.ddd.json")],
     } as const;
-    expect(writtenSince({ edit: 4, write }, 3)).toBe(
-      "Wrote 1 file for the unit of ValueA: a.ddd.json.",
-    );
+    expect(writtenSince({ edit: 4, write }, 3)).toEqual({
+      edit: 4,
+      sentence: "Wrote 1 file for the unit of ValueA: a.ddd.json.",
+    });
     expect(writtenSince({ edit: 4, write }, 4)).toBeNull();
     expect(writtenSince(null, 0)).toBeNull();
   });

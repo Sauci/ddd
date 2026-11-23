@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore } from "react";
-import { writtenSince } from "../lib/announcing";
+import { type WrittenLine, writtenSince } from "../lib/announcing";
 import { ownEdits } from "../state/edits";
 
 /**
@@ -9,7 +9,7 @@ import { ownEdits } from "../state/edits";
  *
  * Glue only: the sentence is `lib/announcing.ts`'s, the writes `ownEdits`'.
  */
-export function useWritten(page: string): string | null {
+export function useWritten(page: string): WrittenLine | null {
   const last = useSyncExternalStore(ownEdits.subscribe, ownEdits.last);
   const [since, setSince] = useState({ page, edit: last?.edit ?? 0 });
   if (since.page !== page) setSince({ page, edit: last?.edit ?? 0 });

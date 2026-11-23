@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { writtenSentence } from "../lib/announcing";
+import { type WrittenLine, writtenSentence } from "../lib/announcing";
 import { UNDO_ADOPTION } from "../stories/fixtures";
 import { LinkTabs } from "../ui/LinkTabs";
 import { UpdatingStatus } from "../ui/UpdatingNote";
@@ -36,7 +36,7 @@ function Heading({
   /** The findings may be about to change: an edit waits for its analysis, or one runs. */
   updating?: boolean;
   /** What the heading says the page last wrote. */
-  written?: string | null;
+  written?: WrittenLine | null;
 }) {
   const [open, setOpen] = useState(opened);
   const [changesShown, setChangesShown] = useState(shown);
@@ -92,10 +92,13 @@ export const OpenUpdating = () => <Heading opened updating />;
  * wrote, beside the control, in what room its row has left (16:I13). */
 export const Written = () => (
   <Heading
-    written={writtenSentence({
-      kind: "wrote",
-      label: UNDO_ADOPTION.label,
-      files: UNDO_ADOPTION.changes.map((change) => change.file),
-    })}
+    written={{
+      edit: 1,
+      sentence: writtenSentence({
+        kind: "wrote",
+        label: UNDO_ADOPTION.label,
+        files: UNDO_ADOPTION.changes.map((change) => change.file),
+      }),
+    }}
   />
 );

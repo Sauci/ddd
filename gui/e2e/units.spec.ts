@@ -415,6 +415,42 @@ test("the heading says what an Apply wrote, until another page is drawn", async 
   await expect(said).toHaveText("");
 });
 
+/**
+ * A second write saying what the first said (16:I13): ValueA's unit set to rpm, then to mV, each
+ * Apply writing both files - the heading's line says the same sentence of both, and a screen reader
+ * is told of the second as it was of the first, the region given the sentence anew, not left as it
+ * stood while only "Updating the findings…" came and went beside it.
+ */
+test("a second write saying what the first said is told again", async ({ page, gui }) => {
+  const panel = await openPanel(page, gui.address, "ValueA");
+  const said = page.locator(".heading").getByRole("status");
+  const sentence =
+    "Wrote 2 files for the unit of ValueA: controller.ddd.json, sensor_hub.ddd.json.";
+  await chooseUnit(page, "rpm");
+  await panel.getByRole("button", { name: "Apply to 2 files" }).click();
+  await expect(said).toHaveText(sentence);
+
+  // What the region is given from here on, each node it gains by its words.
+  await said.evaluate((region) => {
+    const given: string[] = [];
+    (window as unknown as { given: string[] }).given = given;
+    new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) given.push((node.textContent ?? "").trim());
+      }
+    }).observe(region, { childList: true, subtree: true });
+  });
+  await chooseUnit(page, "mV");
+  await panel.getByRole("button", { name: "Apply to 2 files" }).click();
+  await expect
+    .poll(() => readFileSync(join(gui.directory, CONTROLLER), "utf8"))
+    .toContain('"unit": "mV"');
+  await expect(said).toHaveText(sentence);
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { given: string[] }).given))
+    .toContain(sentence);
+});
+
 test("a panel the page closes while the focus is in it gives the focus back to where it was opened from", async ({
   page,
   gui,

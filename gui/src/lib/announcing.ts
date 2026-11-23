@@ -65,11 +65,21 @@ export function writtenSentence({ kind, label, files }: Write): string {
     : `Undid ${label}, putting back ${count}${named}.`;
 }
 
+/** What the heading's line says of a write of the page's own: its sentence, and the number the
+ * server answered the write with - by which a screen reader is told of a second write that says
+ * what the first said, as of the first (`UpdatingStatus`). */
+export interface WrittenLine {
+  edit: number;
+  sentence: string;
+}
+
 /** What the heading's line says of the page's last write (`last`): its sentence where it was
  * written after `since`, the number of the last write before the page was drawn - a change of page
  * lets it go, no longer the news of the page drawn; nothing before. */
-export function writtenSince(last: NumberedWrite | null, since: number): string | null {
-  return last !== null && last.edit > since ? writtenSentence(last.write) : null;
+export function writtenSince(last: NumberedWrite | null, since: number): WrittenLine | null {
+  return last !== null && last.edit > since
+    ? { edit: last.edit, sentence: writtenSentence(last.write) }
+    : null;
 }
 
 /** The project screen's tabs, in the order they are shown. */

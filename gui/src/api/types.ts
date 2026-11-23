@@ -57,6 +57,7 @@ export type {
   RasterQuery,
   RasterReply,
   RasterUse,
+  RefusedBuild,
   Renamed,
   SectionPlanQuery,
   SectionQuery,

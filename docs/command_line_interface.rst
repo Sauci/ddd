@@ -827,10 +827,11 @@ The commands
        once with its name, read from its description as it stands and kept in the heading
        until another project is opened, in that page or another: the server has one project
        open at a time, and every page names the new one from then on, by its description's
-       file until the server has said its name; ``Analysing the project…`` stands where the
-       tab's own content goes, until the first analysis lands, and every answer needing a
-       revision is refused until then, in the same words - ``the open project has not been
-       analysed yet``. An analysis
+       file until the server has said its name; until the first analysis lands, ``Analysing
+       the project…`` stands where the tab's own content goes, and nothing does once one has
+       failed, which the banner under the masthead says, and every answer needing a revision
+       is refused, in the same words - ``the open project has not been analysed yet``. An
+       analysis
        that raises - a plugin failing while the project is read, say - is printed in the
        terminal ``ddd gui`` runs in, ``ddd gui: analysing the project failed:`` and its reason,
        and the state the page reads carries the same reason until an analysis succeeds: the
@@ -858,6 +859,14 @@ The commands
        reason changes - ``ddd gui: /home/you/project/build/ddd/fw/ddd-build.json: written in
        format 3 by a newer DDD, and this one understands up to format 2; this record is
        ignored, so its severities apply to no analysis``.
+       Every page of the open project, a component's among them, says under its masthead why
+       the last analysis failed, and that the next change of a file it reads asks for another;
+       the files that did not load, each named as a refusal names it and leading to the
+       Findings tab filtered by its name, where the finding saying why is listed - past four,
+       three of them and a count of the rest, which leads to the Files tab; and each build
+       record this DDD cannot use, by its path from the project's directory, with its reason.
+       While a file did not load, the Graph's line on a project with no dictionary names it as
+       the cause.
        ``-b DIR`` names a build directory as for ``ddd lsp``, ``--host 0.0.0.0``
        listens beyond this computer for a container, ``--port N`` fixes the port and
        ``--no-browser`` only prints the address. ``--host`` takes that address, the

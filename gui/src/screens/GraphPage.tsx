@@ -25,6 +25,7 @@ import {
   flowTitle,
   MIN_ZOOM,
   type ModuleNodeType,
+  noDictionary,
   nodesOf,
   objectsInDisagreement,
   openingViewport,
@@ -34,6 +35,7 @@ import {
 } from "../lib/canvas";
 import { layoutScreen } from "../lib/layoutAnswers";
 import { visibleOnly } from "../lib/shape";
+import { unloadedNames } from "../lib/unloaded";
 import { forgetPositions, rememberPosition, savedPositions } from "../state/positions";
 import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
@@ -98,10 +100,9 @@ export function GraphPage({
       {/* Spec 5.6: a server that stopped answering leaves the canvas as it was, and says so
           beside it - what is drawn is still the truth of the last revision that was read. */}
       {graph.isError && <Banner tone="error">{graph.error.message}</Banner>}
+      {/* Naming the files that did not load, where that is why (`noDictionary`, 16:I9). */}
       {!answer.dictionary && (
-        <Banner tone="warning">
-          This project has no dictionary, so its modules are drawn without arrows.
-        </Banner>
+        <Banner tone="warning">{noDictionary(unloadedNames(state?.files ?? []))}</Banner>
       )}
       <ReactFlowProvider>
         <Canvas

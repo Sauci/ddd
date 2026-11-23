@@ -23,7 +23,10 @@ export type Route =
   // and the one a reader's click writes select the very same row. Optional, as `units`' and
   // `types`' own selection is: the bare tab is a route of its own, not an absent one.
   | { page: "project"; view: "files"; path?: string }
-  | { page: "project"; view: "findings" }
+  // `text` is what the tab's filter holds as it opens (16:I9): a file the banner under the masthead
+  // names as not loaded leads here, asking for the findings that hold its name. Optional, as a
+  // Files row's `path` is: the bare tab filters nothing.
+  | { page: "project"; view: "findings"; text?: string }
   | { page: "project"; view: "compare" }
   | { page: "component"; file: string; variable?: string }
   | { page: "component"; file: string; variable: string; view: "values" };
@@ -71,7 +74,12 @@ export function parseRoute(pathname: string, search: string): Route {
         ? { page: "project", view: "files" }
         : { page: "project", view: "files", path };
     }
-    if (view === "findings") return { page: "project", view: "findings" };
+    if (view === "findings") {
+      const text = query.get("text") || undefined;
+      return text === undefined
+        ? { page: "project", view: "findings" }
+        : { page: "project", view: "findings", text };
+    }
     if (view === "compare") return { page: "project", view: "compare" };
     return variable === undefined
       ? { page: "project", view: "graph" }
@@ -140,7 +148,11 @@ function addressOf(route: Route): string {
           ? "/project?view=files"
           : `/project?view=files&path=${encodeURIComponent(route.path)}`;
       }
-      if (route.view === "findings") return "/project?view=findings";
+      if (route.view === "findings") {
+        return route.text === undefined
+          ? "/project?view=findings"
+          : `/project?view=findings&text=${encodeURIComponent(route.text)}`;
+      }
       if (route.view === "compare") return "/project?view=compare";
       return variable === "" ? "/project" : `/project?${variable}`;
     case "component": {

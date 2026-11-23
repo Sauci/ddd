@@ -23,6 +23,7 @@ import type { Placed } from "./layout";
 import { neighboursOf } from "./neighbours";
 import { NODE_HEIGHT, NODE_WIDTH } from "./nodeSize";
 import { countText } from "./numbers";
+import { namedFiles } from "./unloaded";
 
 /** React Flow's own default, given explicitly to `<ReactFlow>` so `openingViewport` always
  * agrees with what it is deciding against (review fix round 1, Ruling T10-2). Pinned by the
@@ -412,6 +413,21 @@ export function searchLine(modules: readonly GraphModule[], search: string): str
   if (matching.length === 0) return "no module matches";
   const all = modules.length;
   return `${countText(matching.length)} of ${countText(all)} module${all === 1 ? "" : "s"}`;
+}
+
+/**
+ * What the canvas says over a revision that resolved no dictionary (spec 5.6), whose modules it
+ * draws without arrows: why. Where files did not load - `unloaded`, as `unloadedNames` names them
+ * (lib/unloaded.ts) - that is why: such a file leaves every read of the project with an error, and
+ * said as "no dictionary" alone, it named neither file nor cause (16:I9). Otherwise only that there
+ * is none: a plugin that raised and a constant declared twice leave none too, which the graph does
+ * not tell apart.
+ */
+export function noDictionary(unloaded: readonly string[]): string {
+  if (unloaded.length === 0) {
+    return "This project has no dictionary, so its modules are drawn without arrows.";
+  }
+  return `${namedFiles(unloaded)} did not load, so this project has no dictionary, and its modules are drawn without arrows.`;
 }
 
 /** Every module whose name contains the text, ignoring case, or `null` when none was typed. */

@@ -48,6 +48,10 @@ import { FilterField } from "../ui/FilterField";
 
 interface Props {
   state: State;
+  /** What the filter holds as the tab opens, as its address asks (the route's own `text`): the
+   * name of a file the banner under the masthead says did not load, leading to its finding
+   * (16:I9). `undefined` for the bare tab, which filters nothing. */
+  text: string | undefined;
   stopped: boolean;
   /** Following a finding: the route it leads to, which the app navigates to. `routeOf` says
    * what that route is, and `routeHref` writes the address the link carries. */
@@ -71,14 +75,15 @@ const STALE =
  * and the listing drawn before stays until its own rows have come, as through a landing. Its table
  * starts at its top, and the line beside the filter counts it (`windowLine`), where the line above
  * the table goes on counting the revision's statements. */
-export function FindingsPage({ state, stopped, onOpen }: Props) {
+export function FindingsPage({ state, text, stopped, onOpen }: Props) {
   const queries = useQueryClient();
   const updating = useUpdating();
   const revision = state.revision;
   const all = findingsTotal(state.counts);
-  // What the filter holds, and what it asks the server for once typing pauses: its text, without
-  // the white space around it, `""` for none.
-  const [typed, setTyped] = useState("");
+  // What the filter holds, starting as the address asks, and what it asks the server for once
+  // typing pauses: its text, without the white space around it, `""` for none. Asked at once as
+  // the tab opens (`useDebounced` starts at its value).
+  const [typed, setTyped] = useState(text ?? "");
   const asking = useDebounced(filterText(typed));
   // Where the box is scrolled to and how tall it is, and the filter it was scrolled under: at the
   // top and one box high, until the box says otherwise - and at the top again for a filter newly

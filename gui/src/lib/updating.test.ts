@@ -1,10 +1,21 @@
 import { expect, test } from "vitest";
-import { analysed, updatingOf } from "./updating";
+import { ANALYSING, analysed, beforeAnalysis, updatingOf } from "./updating";
 
 test("a state holds an analysed revision from the first on, and none at 0", () => {
   expect(analysed({ revision: 0 })).toBe(false);
   expect(analysed({ revision: 1 })).toBe(true);
   expect(analysed({ revision: 12 })).toBe(true);
+});
+
+test("before the first analysis the page says the project is being analysed", () => {
+  expect(ANALYSING).toBe("Analysing the project…");
+  expect(beforeAnalysis(null)).toBe(ANALYSING);
+});
+
+test("but says nothing in a tab's place once that analysis failed: the banner says why", () => {
+  // The next poll asks for another analysis, which may run as this is drawn: said to be under way,
+  // a failure asked again at every poll read as an analysis that never ends.
+  expect(beforeAnalysis("boom")).toBeNull();
 });
 
 test("the findings are updating while an analysis is asked for or running", () => {

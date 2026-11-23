@@ -116,6 +116,37 @@ test.each([
 });
 
 test.each([
+  [
+    "/project",
+    "?view=findings&text=controller.ddd.json",
+    { page: "project", view: "findings", text: "controller.ddd.json" },
+  ],
+  [
+    "/project",
+    "?view=findings&text=a%2Fpump.ddd.json%20",
+    { page: "project", view: "findings", text: "a/pump.ddd.json " },
+  ],
+  // An empty `text`, like an empty `path`, is as bare an address as leaving it out.
+  ["/project", "?view=findings&text=", { page: "project", view: "findings" }],
+  ["/project", "?view=table&text=controller.ddd.json", { page: "project", view: "table" }],
+] as const)("%s%s carries the findings filter's text %o", (pathname, search, route) => {
+  expect(parseRoute(pathname, search)).toEqual(route);
+});
+
+test.each([
+  [
+    { page: "project", view: "findings", text: "controller.ddd.json" },
+    "/project?view=findings&text=controller.ddd.json",
+  ],
+  [
+    { page: "project", view: "findings", text: "a/pump.ddd.json & co" },
+    "/project?view=findings&text=a%2Fpump.ddd.json%20%26%20co",
+  ],
+] as const)("%o is at %s", (route, href) => {
+  expect(hrefOf(route)).toBe(href);
+});
+
+test.each([
   [{ page: "project", view: "files" }, "/project?view=files"],
   [
     // A path holding characters an address must escape: `:`, `/` and the space, the same fixture
@@ -229,6 +260,7 @@ test.each([
   ["/project", "?view=files"],
   ["/project", "?view=files&path=C%3A%2Fp%2Fa%20b.ddd.json"],
   ["/project", "?view=findings"],
+  ["/project", "?view=findings&text=controller.ddd.json"],
   ["/project", "?view=compare"],
   ["/component", "?file=C%3A%2Fp%2Fa.ddd.json"],
   ["/component", "?file=C%3A%2Fp%2Fa.ddd.json&variable=CurveA"],
@@ -256,6 +288,7 @@ test.each([
   ["a type", { page: "project", view: "types", type: `x${LOW}` }],
   ["a shared entry", { page: "project", view: "shared", kind: "constant", name: `${HIGH}x` }],
   ["a Files row", { page: "project", view: "files", path: `C:/p/${LOW}.ddd.json` }],
+  ["the findings filter's text", { page: "project", view: "findings", text: `${HIGH}.ddd.json` }],
   ["a component's file", { page: "component", file: `C:/p/${HIGH}.ddd.json` }],
   ["a component's variable", { page: "component", file: "C:/p/a.ddd.json", variable: `${HIGH}x` }],
   [

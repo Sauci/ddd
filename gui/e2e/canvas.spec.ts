@@ -77,8 +77,10 @@ test("a project with a file that does not load is drawn without arrows, and says
   const bytes = readFileSync(path);
   writeFileSync(path, bytes.subarray(0, Math.floor(bytes.length / 2)));
   await page.goto(gui.address);
+  // Named as the cause, where the file's own module is gone from the canvas (16:I9).
   await expect(page.getByRole("status").filter({ hasText: "no dictionary" })).toHaveText(
-    "This project has no dictionary, so its modules are drawn without arrows.",
+    "controller.ddd.json did not load, so this project has no dictionary, and its modules are " +
+      "drawn without arrows.",
   );
   await expect(page.getByRole("button", { name: "SensorHub", exact: true })).toBeVisible();
   await expect(page.locator(".react-flow__edge")).toHaveCount(0);
@@ -402,9 +404,10 @@ test("a module whose file does not load is drawn as not loaded, named by its fil
     await expect(moduleOf(page, name)).toHaveCSS("border-top-style", "solid");
   }
   await expect(page.getByRole("button", { name: "Controller", exact: true })).toHaveCount(0);
-  // A project with a file that did not load has no dictionary, so no arrows, and says so.
+  // A project with a file that did not load has no dictionary, so no arrows, and says why.
   await expect(page.getByRole("status").filter({ hasText: "no dictionary" })).toHaveText(
-    "This project has no dictionary, so its modules are drawn without arrows.",
+    "controller.ddd.json did not load, so this project has no dictionary, and its modules are " +
+      "drawn without arrows.",
   );
 });
 

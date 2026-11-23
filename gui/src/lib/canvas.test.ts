@@ -7,6 +7,7 @@ import {
   firstMatch,
   flowTitle,
   MIN_ZOOM,
+  noDictionary,
   nodesOf,
   objectsInDisagreement,
   openingViewport,
@@ -315,6 +316,23 @@ test("the line counts exactly what a search dims the rest for, ignoring case", (
   expect(searchLine([A, B, C], "A")).toBe("3 of 3 modules");
   expect(searchLine([A, B, C], "BET")).toBe("1 of 3 modules");
   expect(searchLine([A, B, C], " gam ")).toBe("1 of 3 modules");
+});
+
+test("a canvas with no dictionary says so, naming the files that did not load where that is why", () => {
+  // A plugin that raised or a constant declared twice leaves no dictionary too, with every file
+  // loaded: the graph cannot tell those apart, and names no cause.
+  expect(noDictionary([])).toBe(
+    "This project has no dictionary, so its modules are drawn without arrows.",
+  );
+  // A file that did not load leaves every read of the project with an error, and so no dictionary.
+  expect(noDictionary(["controller.ddd.json"])).toBe(
+    "controller.ddd.json did not load, so this project has no dictionary, and its modules are " +
+      "drawn without arrows.",
+  );
+  expect(noDictionary(["a.ddd.json", "b.ddd.json", "c.ddd.json", "d.ddd.json", "e.ddd.json"])).toBe(
+    "a.ddd.json, b.ddd.json, c.ddd.json and 2 more did not load, so this project has no " +
+      "dictionary, and its modules are drawn without arrows.",
+  );
 });
 
 test("a node outside the bright set is faded, and one whose state did not change is left alone", () => {

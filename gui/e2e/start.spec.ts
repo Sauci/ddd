@@ -473,6 +473,191 @@ test("a project opened is analysed before its tabs show anything, and the page s
   await expect(page.getByText("Analysing the project…", { exact: true })).toHaveCount(0);
 });
 
+/** What the banner under the masthead says while the demo's Controller does not load (16:I9). */
+const UNLOADED = "controller.ddd.json did not load, so the project is analysed without it.";
+
+/** The project screen's tab of that name, as its row of tabs draws it: by its exact name, since a
+ * file the banner names, `units.ddd.json`, holds a tab's. */
+function tab(page: Page, name: string): Locator {
+  return page
+    .getByRole("navigation", { name: "Project views" })
+    .getByRole("link", { name, exact: true });
+}
+
+test("a file that does not load is named under the masthead of every page, a component's among them, leading to its finding", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await expect(page.getByRole("button", { name: "Controller", exact: true })).toBeVisible();
+  // Saved half-written, as an editor saves a file being typed into: it no longer parses, and every
+  // page is drawn from the files that did load.
+  const path = join(gui.directory, CONTROLLER);
+  const bytes = readFileSync(path);
+  writeFileSync(path, bytes.subarray(0, Math.floor(bytes.length / 2)));
+  const banner = page.getByRole("status").filter({ hasText: "analysed without" });
+  await expect(banner).toHaveText(UNLOADED);
+  for (const name of ["Table", "Units", "Types", "Shared files", "Files", "Findings", "Compare"]) {
+    await tab(page, name).click();
+    await expect(tab(page, name)).toHaveAttribute("aria-current", "page");
+    await expect(banner).toHaveText(UNLOADED);
+  }
+  // A component's page, which is no tab: SensorHub's, from the Table.
+  await tab(page, "Table").click();
+  await page.getByRole("button", { name: "SensorHub", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "SensorHub", level: 1 })).toBeVisible();
+  await expect(banner).toHaveText(UNLOADED);
+  // The file's name leads to its finding: the Findings tab, asking for the findings that hold it -
+  // the file's own, the one saying why it did not load first among its errors.
+  await banner.getByRole("link", { name: "controller.ddd.json", exact: true }).click();
+  await expect(page).toHaveURL(/\/project\?view=findings&text=controller\.ddd\.json$/);
+  await expect(page.getByRole("textbox", { name: "Filter findings" })).toHaveValue(
+    "controller.ddd.json",
+  );
+  await expect(page.getByRole("row", { name: "json-syntax" })).toBeVisible();
+  await expect(banner).toHaveText(UNLOADED);
+  // From the Findings tab itself, its filter holding another text, the link asks for the file's.
+  await tab(page, "Findings").click();
+  const filter = page.getByRole("textbox", { name: "Filter findings" });
+  await expect(filter).toHaveValue("");
+  await filter.fill("sensor");
+  await banner.getByRole("link", { name: "controller.ddd.json", exact: true }).click();
+  await expect(filter).toHaveValue("controller.ddd.json");
+  await expect(page.getByRole("row", { name: "json-syntax" })).toBeVisible();
+  // The start page is no page of the open project: it lists the projects to open, and no banner.
+  await page.getByRole("button", { name: "Projects", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Open a project" })).toBeVisible();
+  await expect(banner).toHaveCount(0);
+});
+
+test("a build record this DDD cannot use is named under the masthead of the open project, with its reason", async ({
+  page,
+  copiedGui,
+}) => {
+  // In a format past every one this DDD reads, which reads up to format 2 (`BUILD_INFO_FORMAT`,
+  // src/ddd/build_info.py), as `tests/test_gui_session.py`'s `build_record(..., format=99)` writes
+  // one: under `build/`, where the analysis looks for records (`build_files`, lsp/discovery.py).
+  const started = await copiedGui("demo", (directory) =>
+    writeRecord(directory, join("build", "ddd", "fw"), {
+      format: 99,
+      project: join(directory, "demo.ddd.json"),
+      image: "fw",
+    }),
+  );
+  await page.goto(started.address);
+  await expect(page.getByRole("button", { name: "Controller", exact: true })).toBeVisible();
+  // Named from the project's directory, as the Table tab's File column names a file, in the words
+  // the terminal tells it in.
+  await expect(page.getByRole("status").filter({ hasText: "ddd-build.json" })).toHaveText(
+    "build/ddd/fw/ddd-build.json: written in format 99 by a newer DDD, and this one understands " +
+      "up to format 2; this record is ignored, so its severities apply to no analysis.",
+  );
+});
+
+/** Answers every ask of the state with the server's own, said to be of an analysis that failed
+ * for `reason` (`State.failed`) - the project's first, with no revision to stand, where `first` -
+ * until the function it answers is called, from when every answer is the server's own again. The
+ * one real trigger, a plugin path holding a NUL, is one a later DDD may mend. A journey ends with
+ * `unrouteAll`: the page's long poll always has an ask on its way. */
+async function analysesFail(page: Page, reason: string, first: boolean): Promise<() => void> {
+  let failing = true;
+  await page.route(
+    (url) => url.pathname === "/api/state",
+    async (route) => {
+      // A page that goes elsewhere while its ask waits on the server leaves the ask nowhere to be
+      // answered: its fetch or its fulfilment fails then, and nothing is waiting for either.
+      try {
+        const response = await route.fetch();
+        if (!failing) {
+          await route.fulfill({ response });
+          return;
+        }
+        const state = await response.json();
+        const none = { error: 0, warning: 0, info: 0 };
+        const failed = first
+          ? {
+              ...state,
+              revision: 0,
+              files: [],
+              refused: [],
+              counts: none,
+              statements: none,
+              undoable: null,
+              analysing: false,
+              edits: 0,
+              failed: reason,
+            }
+          : { ...state, failed: reason };
+        await route.fulfill({ response, json: failed });
+      } catch {
+        // Gone with the page that asked.
+      }
+    },
+  );
+  return () => {
+    failing = false;
+  };
+}
+
+test("a first analysis that failed is said under the masthead, never as analysing, until one lands", async ({
+  page,
+  gui,
+}) => {
+  const mended = await analysesFail(page, "boom", true);
+  try {
+    await page.goto(gui.address);
+    await expect(page.getByRole("alert")).toHaveText(
+      "Analysing the project failed: boom. ddd gui analyses it again when a file it reads changes.",
+    );
+    await expect(page.getByRole("heading", { name: "DemoDevice", level: 1 })).toBeVisible();
+    // Said to be analysing, a failure asked again at every poll read as an analysis never ending.
+    await expect(page.getByText("Analysing the project…", { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "Modules" })).toHaveCount(0);
+    // A component's page before any revision says it too.
+    await page.goto(
+      `${new URL(gui.address).origin}/component?file=${encodeURIComponent(
+        join(gui.directory, CONTROLLER).replaceAll("\\", "/"),
+      )}`,
+    );
+    await expect(page.getByRole("alert")).toHaveText(
+      "Analysing the project failed: boom. ddd gui analyses it again when a file it reads changes.",
+    );
+    await expect(page.getByText("Analysing the project…", { exact: true })).toHaveCount(0);
+    // An analysis that lands lifts it, the next change of a file it reads having asked for one.
+    mended();
+    restamp(gui.directory, CONTROLLER);
+    await expect(page.getByRole("heading", { name: "Controller", level: 1 })).toBeVisible();
+    await expect(page.getByRole("alert")).toHaveCount(0);
+  } finally {
+    await page.unrouteAll({ behavior: "ignoreErrors" });
+  }
+});
+
+test("an analysis that failed after one landed is said under the masthead, over the pages of the last", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  const canvas = page.getByRole("region", { name: "Modules" });
+  await expect(canvas).toBeVisible();
+  const mended = await analysesFail(page, "boom", false);
+  try {
+    // The ask already on its way is past the route: a change on disk answers it, and the next.
+    restamp(gui.directory, CONTROLLER);
+    await expect(page.getByRole("alert")).toHaveText(
+      "Analysing the project failed: boom. The pages show the last analysis that finished, and " +
+        "ddd gui analyses the project again when a file it reads changes.",
+    );
+    await expect(canvas).toBeVisible();
+    mended();
+    restamp(gui.directory, CONTROLLER);
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect(canvas).toBeVisible();
+  } finally {
+    await page.unrouteAll({ behavior: "ignoreErrors" });
+  }
+});
+
 test("a project a second page opens is the one the first names over what it draws, by its file until the session answers, and the arrangement made there is its own", async ({
   page,
   copiedGui,

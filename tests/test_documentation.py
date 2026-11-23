@@ -11563,6 +11563,37 @@ class TestEveryPageNamesTheProjectOpen:
         assert "kept in the heading from then on" not in said
 
 
+class TestEveryPageSaysWhatItCannotShow:
+    """16:I9. While a file did not load, every page was drawn from the files that did, and only the
+    Findings tab said so: the Graph read "no dictionary" over modules with no arrow, naming neither
+    file nor cause. Why the last analysis failed and which build records this DDD cannot use were
+    in the state and on no page, a first analysis that failed reading as analysing for good. The
+    command page's gui row says that every page of the project says all three under its masthead,
+    and that nothing stands in a tab's place once the first analysis failed."""
+
+    def test_the_command_page_says_every_page_says_it_under_the_masthead(self) -> None:
+        assert (
+            "Every page of the open project, a component's among them, says under its masthead "
+            "why the last analysis failed, and that the next change of a file it reads asks for "
+            "another; the files that did not load, each named as a refusal names it and leading "
+            "to the Findings tab filtered by its name, where the finding saying why is listed - "
+            "past four, three of them and a count of the rest, which leads to the Files tab; and "
+            "each build record this DDD cannot use, by its path from the project's directory, "
+            "with its reason. While a file did not load, the Graph's line on a project with no "
+            "dictionary names it as the cause."
+        ) in flattened(COMMAND_LINE_INTERFACE)
+
+    def test_the_command_page_says_nothing_stands_in_a_tab_s_place_once_it_failed(self) -> None:
+        said = flattened(COMMAND_LINE_INTERFACE)
+        assert (
+            "until the first analysis lands, ``Analysing the project…`` stands where the tab's own "
+            "content goes, and nothing does once one has failed, which the banner under the "
+            "masthead says, and every answer needing a revision is refused, in the same words - "
+            "``the open project has not been analysed yet``."
+        ) in said
+        assert "stands where the tab's own content goes, until the first analysis lands" not in said
+
+
 class TestLimitsAreOneValueExactly:
     """3:M9. ``same_value`` read each bound of a range as the double nearest it, so that two
     maxima past 2^53 ``ddd check`` files apart were one value to the panel and to every fix. The

@@ -5,6 +5,19 @@ export function analysed(state: Pick<State, "revision">): boolean {
   return state.revision > 0;
 }
 
+/** What the page says where a tab's content goes while the project's first analysis is on its
+ * way. */
+export const ANALYSING = "Analysing the project…";
+
+/** What the page says where a tab's content goes before the project's first analysis has landed:
+ * that it is being analysed, or nothing once that analysis failed (`State.failed`) - the banner
+ * under the masthead says why, and when it is asked again (`loadBanner`, lib/unloaded.ts). Said to
+ * be under way, a first analysis that failed read as analysing for good, the next poll asking for
+ * another that fails again. */
+export function beforeAnalysis(failed: string | null): string | null {
+  return failed === null ? ANALYSING : null;
+}
+
 /** Whether the findings on screen may be about to change (spec §6): an analysis is asked for or
  * running, or the page's own last edit is newer than the revision it holds - which covers the
  * moment between an edit's answer and the state saying it is being analysed. Never before the

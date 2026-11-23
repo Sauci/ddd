@@ -821,7 +821,8 @@ test("a shared file saved half-written is named above the table, whatever it dec
   // entries missing are its own, only that whatever the file declares is not listed.
   const whole = readFileSync(path);
   writeFileSync(path, whole.subarray(0, Math.floor(whole.length / 2)));
-  await expect(page.getByRole("status").filter({ hasText: "did not load" })).toHaveText(
+  // The tab's own, beside the banner under the masthead, which names the file too (16:I9).
+  await expect(page.getByRole("status").filter({ hasText: "not listed" })).toHaveText(
     "rasters.ddd.json did not load, so whatever is declared there is not listed.",
   );
   await expect(page.getByText("2 constants · 2 sections", { exact: true })).toBeVisible();
@@ -848,7 +849,8 @@ test("a shared file that parses but breaks its model is named above the table, t
   );
   if (broken === before) throw new Error(`.calib states no alignment 4 in ${path}`);
   writeFileSync(path, broken);
-  await expect(page.getByRole("status").filter({ hasText: "did not load" })).toHaveText(
+  // The tab's own, beside the banner under the masthead, which names the file too (16:I9).
+  await expect(page.getByRole("status").filter({ hasText: "not listed" })).toHaveText(
     "sections.ddd.json did not load, so the entries declared there are not listed.",
   );
   await expect(page.getByText("2 constants · 3 rasters", { exact: true })).toBeVisible();

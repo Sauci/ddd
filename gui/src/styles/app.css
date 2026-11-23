@@ -158,6 +158,20 @@ input:focus-visible {
   background: var(--warning-ground);
   color: var(--warning);
 }
+/* The banner under the masthead (16:I9): a line each for a failed analysis, the files that did not
+   load and each record not used, as close as the banner's own padding. */
+.banner-line {
+  margin: 0;
+}
+.banner-line + .banner-line {
+  margin-top: var(--space-2);
+}
+/* A link within a sentence (`Sentence`, ui/Sentence.tsx) - a file the banner names, an empty
+   project's New file - is underlined, as a link in running text is, rather than told apart from
+   the words around it by its colour alone. */
+.sentence-link {
+  text-decoration: underline;
+}
 /* The canvas's own controls, above it: find a module by name, lay the modules out again, and
    return to the view the canvas opened on (`openingViewport`) - the whole project where it fits
    at the least zoom, its first rank where it does not. */

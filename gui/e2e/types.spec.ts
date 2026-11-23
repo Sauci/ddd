@@ -763,7 +763,8 @@ test("a types file saved half-written is named above the table, whatever it decl
   // only say that whatever was declared there is missing, not that its own types are.
   const whole = readFileSync(path);
   writeFileSync(path, whole.subarray(0, Math.floor(whole.length / 2)));
-  const banner = page.getByRole("status").filter({ hasText: "did not load" });
+  // The tab's own, beside the banner under the masthead, which names the file too (16:I9).
+  const banner = page.getByRole("status").filter({ hasText: "not listed" });
   await expect(banner).toHaveText(
     "types.ddd.json did not load, so whatever is declared there is not listed.",
   );
@@ -798,7 +799,8 @@ test("a types file that parses but breaks its model is named above the table, it
   );
   if (after === before) throw new Error(`${path} no longer gives Temperature_t a uint16 datatype`);
   writeFileSync(path, after, "utf8");
-  const banner = page.getByRole("status").filter({ hasText: "did not load" });
+  // The tab's own, beside the banner under the masthead, which names the file too (16:I9).
+  const banner = page.getByRole("status").filter({ hasText: "not listed" });
   await expect(banner).toHaveText(
     "types.ddd.json did not load, so the types declared there are not listed.",
   );

@@ -2,12 +2,15 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useCallback, useEffect, useSyncExternalStore } from "react";
 import { getSession } from "../api/client";
 import { signedOut } from "../api/token";
+import { LoadBannerView } from "../components/LoadBannerView";
 import { SignedOutView } from "../components/SignedOutView";
 import { UndrawnView } from "../components/UndrawnView";
 import { type ProjectView, type Route, tabHref } from "../lib/route";
 import { projectName, sessionAskedFor } from "../lib/session";
 import type { SharedKind } from "../lib/shared";
 import { undrawnSentence } from "../lib/undrawn";
+import { loadBanner } from "../lib/unloaded";
+import { beforeAnalysis } from "../lib/updating";
 import { ComparePage } from "../screens/ComparePage";
 import { ComponentPage } from "../screens/ComponentPage";
 import { FilesPage } from "../screens/FilesPage";
@@ -72,7 +75,9 @@ export function App() {
   const out = useSyncExternalStore(signedOut.subscribe, signedOut.current);
   const session = useQuery({ queryKey: ["session"], queryFn: () => getSession() });
   const opened = session.data?.project ?? null;
-  const { state, project, updating, stopped, failure } = useProjectState(opened !== null);
+  const { state, project, failed, refused, updating, stopped, failure } = useProjectState(
+    opened !== null,
+  );
   // Asked again for each project the state followed comes to be of while the session names
   // another: another page of the same server opened it (`sessionAskedFor`, lib/session.ts). Keyed
   // by that project, so that a state moving on while an ask is out asks once more, cancelling the
@@ -161,6 +166,15 @@ export function App() {
         <SignedOutView />
       </div>
     );
+  // What the tabs' place says before the first analysis has landed: that it is on its way, or
+  // nothing once it failed, which the banner under the masthead says.
+  const waiting = beforeAnalysis(failed);
+  // The banner is the open project's, under the masthead of each of its pages - its tabs, a
+  // component's and its values - and of no other: the start page lists the projects to open.
+  const banner =
+    session.isSuccess && opened !== null && route.page !== "start"
+      ? loadBanner(project, state, failed, refused)
+      : null;
   let page: ReactNode;
   if (session.isPending) {
     page = <p className="quiet">Connecting…</p>;
@@ -196,7 +210,7 @@ export function App() {
         {/* No tab asks the server anything before the project's first analysis has landed: each
             would be refused, and the graph would be asked for once more with no revision. */}
         {state === null ? (
-          <p className="quiet">Analysing the project…</p>
+          waiting !== null && <p className="quiet">{waiting}</p>
         ) : route.view === "graph" ? (
           <GraphPage
             project={state.project}
@@ -238,7 +252,15 @@ export function App() {
             stopped={stopped}
           />
         ) : route.view === "findings" ? (
-          <FindingsPage state={state} stopped={stopped} onOpen={navigate} />
+          // Drawn anew for each text an address asks the tab for, as a file the banner names
+          // leads to the findings holding its name: the filter opens holding it.
+          <FindingsPage
+            key={route.text ?? ""}
+            state={state}
+            text={route.text}
+            stopped={stopped}
+            onOpen={navigate}
+          />
         ) : route.view === "compare" ? (
           <ComparePage state={state} stopped={stopped} onOpen={navigate} />
         ) : (
@@ -254,7 +276,7 @@ export function App() {
         <div className="heading">
           <h1>{projectName(opened, project)}</h1>
         </div>
-        <p className="quiet">Analysing the project…</p>
+        {waiting !== null && <p className="quiet">{waiting}</p>}
       </section>
     );
   } else if ("view" in route) {
@@ -323,6 +345,11 @@ export function App() {
         </Banner>
       )}
       {failure !== null && <Banner tone="error">{failure}</Banner>}
+      {/* Every page of the open project, a component's among them, says what of it did not load,
+          why its last analysis failed and which build records cannot be used (16:I9): drawn from
+          the files that did load, a page alone said none of it. Outside the boundary, as the
+          banners above are, so that a page that cannot be drawn leaves it standing. */}
+      {banner !== null && <LoadBannerView banner={banner} onFollow={navigate} />}
       {/* Every screen reads whether the findings may be about to change from here, and says so
           where its findings are (spec 6). A page that throws while it is drawn is caught by the
           one boundary under the masthead and the banners (15:I5), which stay drawn. */}

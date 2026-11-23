@@ -79,9 +79,12 @@ describe("the banner under the masthead", () => {
     ).toBeNull();
   });
 
-  test("names a file that did not load, leading to its finding on the Findings tab", () => {
+  test("names a file that did not load, leading to its finding, and says the project's checks wait for it", () => {
     // Asked of the Findings tab by its file's own name, which a finding of that file holds, and
-    // the words of one filed at the entry naming a file that is not there hold too.
+    // the words of one filed at the entry naming a file that is not there hold too. A file that
+    // does not load stops every check of the project, as `ddd check` stops at the read (`_run`,
+    // lsp/diagnostics.py): the counts beside the banner are of no check, and the pages are drawn
+    // from what the files that loaded declare.
     expect(loadBanner(PROJECT, analysed(file(CONTROLLER, false)), null, [])).toEqual({
       tone: "warning",
       lines: [
@@ -90,7 +93,26 @@ describe("the banner under the masthead", () => {
             text: "controller.ddd.json",
             to: { page: "project", view: "findings", text: "controller.ddd.json" },
           },
-          " did not load, so the project is analysed without it.",
+          " did not load, so the project's checks wait until it does, and the pages show what " +
+            "the files that loaded declare.",
+        ],
+      ],
+    });
+  });
+
+  test("says of the project's own description that did not load that no file it includes is read", () => {
+    // Nothing past a description that does not load is read: the state lists it alone, and no
+    // page has a file that loaded to draw.
+    expect(loadBanner(PROJECT, analysed(file(PROJECT, false, "unknown")), null, [])).toEqual({
+      tone: "warning",
+      lines: [
+        [
+          {
+            text: "demo.ddd.json",
+            to: { page: "project", view: "findings", text: "demo.ddd.json" },
+          },
+          " did not load, so the project's checks wait until it does, and no file it includes " +
+            "is read.",
         ],
       ],
     });
@@ -118,7 +140,8 @@ describe("the banner under the masthead", () => {
           text: "b/pump.ddd.json",
           to: { page: "project", view: "findings", text: "pump.ddd.json" },
         },
-        " did not load, so the project is analysed without them.",
+        " did not load, so the project's checks wait until they do, and the pages show what the " +
+          "files that loaded declare.",
       ],
     ]);
   });
@@ -140,7 +163,8 @@ describe("the banner under the masthead", () => {
         finding("c.ddd.json"),
         " and ",
         { text: "2 more", to: { page: "project", view: "files" } },
-        " did not load, so the project is analysed without them.",
+        " did not load, so the project's checks wait until they do, and the pages show what the " +
+          "files that loaded declare.",
       ],
     ]);
     // Four are each named: a count standing for one file is no shorter than its name.
@@ -223,7 +247,8 @@ describe("the banner under the masthead", () => {
     ).toEqual([
       "Analysing the project failed: boom. The pages show the last analysis that finished, and " +
         "ddd gui analyses the project again when a file it reads changes.",
-      "controller.ddd.json did not load, so the project is analysed without it.",
+      "controller.ddd.json did not load, so the project's checks wait until it does, and the " +
+        "pages show what the files that loaded declare.",
       "build/ddd-build.json: unknown check 'nonesuch'; this record is ignored, so its severities " +
         "apply to no analysis.",
     ]);

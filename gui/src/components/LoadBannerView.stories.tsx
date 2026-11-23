@@ -27,6 +27,10 @@ const CONTROLLER_CUT: readonly SourceFile[] = [
   file("components/user_interface.ddd.json", "UserInterface"),
 ];
 
+/** The demo with its own description saved half-written: nothing it includes is read, so the state
+ * lists it alone. */
+const DESCRIPTION_CUT: readonly SourceFile[] = [file("demo.ddd.json", "DemoDevice", false)];
+
 /** Six files that did not load, two of them of one name in two folders. */
 const SIX_CUT: readonly SourceFile[] = [
   { ...file("demo.ddd.json", "DemoDevice"), kind: "project" },
@@ -52,6 +56,11 @@ function View({ banner }: { banner: LoadBanner | null }) {
 /** controller.ddd.json saved half-written: named, and leading to the finding saying why. */
 export const AFileThatDidNotLoad = () => (
   <View banner={loadBanner(DEMO, { files: CONTROLLER_CUT }, null, [])} />
+);
+
+/** The project's own description saved half-written: named, and no file it includes read. */
+export const ADescriptionThatDidNotLoad = () => (
+  <View banner={loadBanner(DEMO, { files: DESCRIPTION_CUT }, null, [])} />
 );
 
 /** Six files that did not load: three named, two of one name told apart by their folders, and the

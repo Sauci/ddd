@@ -473,8 +473,11 @@ test("a project opened is analysed before its tabs show anything, and the page s
   await expect(page.getByText("Analysing the project…", { exact: true })).toHaveCount(0);
 });
 
-/** What the banner under the masthead says while the demo's Controller does not load (16:I9). */
-const UNLOADED = "controller.ddd.json did not load, so the project is analysed without it.";
+/** What the banner under the masthead says while the demo's Controller does not load (16:I9): a
+ * file that does not load stops every check of the project, and the pages show the rest. */
+const UNLOADED =
+  "controller.ddd.json did not load, so the project's checks wait until it does, and the pages " +
+  "show what the files that loaded declare.";
 
 /** The project screen's tab of that name, as its row of tabs draws it: by its exact name, since a
  * file the banner names, `units.ddd.json`, holds a tab's. */
@@ -495,7 +498,7 @@ test("a file that does not load is named under the masthead of every page, a com
   const path = join(gui.directory, CONTROLLER);
   const bytes = readFileSync(path);
   writeFileSync(path, bytes.subarray(0, Math.floor(bytes.length / 2)));
-  const banner = page.getByRole("status").filter({ hasText: "analysed without" });
+  const banner = page.getByRole("status").filter({ hasText: "project's checks" });
   await expect(banner).toHaveText(UNLOADED);
   for (const name of ["Table", "Units", "Types", "Shared files", "Files", "Findings", "Compare"]) {
     await tab(page, name).click();
@@ -535,6 +538,29 @@ test("a file that does not load is named under the masthead of every page, a com
   await page.getByRole("button", { name: "Projects", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Open a project" })).toBeVisible();
   await expect(banner).toHaveCount(0);
+});
+
+test("a project's own description that does not load is named under the masthead, no file it includes read, leading to its finding", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await expect(page.getByRole("button", { name: "Controller", exact: true })).toBeVisible();
+  // Saved half-written once the project is open: a description that does not parse is refused
+  // when it is opened, and read no further than itself while it is open.
+  const path = join(gui.directory, "demo.ddd.json");
+  const bytes = readFileSync(path);
+  writeFileSync(path, bytes.subarray(0, Math.floor(bytes.length / 2)));
+  const banner = page.getByRole("status").filter({ hasText: "project's checks" });
+  await expect(banner).toHaveText(
+    "demo.ddd.json did not load, so the project's checks wait until it does, and no file it " +
+      "includes is read.",
+  );
+  // Nothing it includes is drawn: no module is left on the canvas.
+  await expect(page.getByRole("button", { name: "Controller", exact: true })).toHaveCount(0);
+  await banner.getByRole("link", { name: "demo.ddd.json", exact: true }).click();
+  await expect(page).toHaveURL(/\/project\?view=findings&text=demo\.ddd\.json$/);
+  await expect(page.getByRole("row", { name: "json-syntax" })).toBeVisible();
 });
 
 test("a build record this DDD cannot use is named under the masthead of the open project, with its reason", async ({

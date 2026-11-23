@@ -386,8 +386,9 @@ test("the masthead's go-to says no variable of a file that loaded matches while 
   writeFileSync(path, bytes.subarray(0, Math.floor(bytes.length / 2)));
   await page.goto(gui.address);
   // The banner under the masthead says it once the revision reading the cut file has landed.
-  await expect(page.getByRole("status").filter({ hasText: "analysed without it" })).toHaveText(
-    "controller.ddd.json did not load, so the project is analysed without it.",
+  await expect(page.getByRole("status").filter({ hasText: "project's checks" })).toHaveText(
+    "controller.ddd.json did not load, so the project's checks wait until it does, and the pages " +
+      "show what the files that loaded declare.",
   );
   const goTo = page.getByRole("combobox", { name: "Go to a variable" });
   await goTo.pressSequentially("ParameterA");

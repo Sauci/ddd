@@ -82,8 +82,12 @@ export const RECORD_IGNORED = "this record is ignored, so its severities apply t
  * - why the last analysis failed, and that the next change of a file it reads asks again, as the
  *   poll does (B11-17): over the last analysis that finished, which every page then shows, or
  *   alone where none has;
- * - the files that did not load, each leading to its finding (`findingsOf`), past four the rest
- *   counted and led to the Files tab, whose rows say of each that it did not load;
+ * - the project's own description, where it did not load: nothing it includes is read, so no page
+ *   has a file of the project to draw;
+ * - the other files that did not load, each leading to its finding (`findingsOf`), past four the
+ *   rest counted and led to the Files tab, whose rows say of each that it did not load. A file that
+ *   does not load stops every check of the project (`checksWaiting`), and the pages show what the
+ *   files that loaded declare;
  * - each build record this DDD cannot use, by its path from the project's directory, as the Table
  *   tab's File column names a file (`shownPath`), with its reason, in the terminal's words.
  */
@@ -102,14 +106,25 @@ export function loadBanner(
         : `Analysing the project failed: ${failed}. The pages show the last analysis that finished, and ddd gui analyses the project again when a file it reads changes.`,
     ]);
   }
-  const unloaded = unloadedNames(state?.files ?? []);
-  if (unloaded.length > 0) {
+  // Named as `unloadedNames` names them, told apart among all of them; the project's own
+  // description, where it is one of them, in a line of its own.
+  const unloaded = (state?.files ?? []).filter((file) => !file.loaded);
+  const names = toldApartAll(unloaded.map((file) => file.path));
+  const described = unloaded.map((file) => file.path === project);
+  for (const name of names.filter((_, at) => described[at])) {
     lines.push([
-      ...listedParts(unloaded, findingsOf, (count) => ({
+      findingsOf(name),
+      ` did not load, so ${checksWaiting(1)}, and no file it includes is read.`,
+    ]);
+  }
+  const others = names.filter((_, at) => !described[at]);
+  if (others.length > 0) {
+    lines.push([
+      ...listedParts(others, findingsOf, (count) => ({
         text: `${countText(count)} more`,
         to: { page: "project", view: "files" },
       })),
-      ` did not load, so the project is analysed without ${unloaded.length === 1 ? "it" : "them"}.`,
+      ` did not load, so ${checksWaiting(others.length)}, and the pages show what the files that loaded declare.`,
     ]);
   }
   for (const entry of refused) {
@@ -117,6 +132,14 @@ export function loadBanner(
   }
   if (lines.length === 0) return null;
   return { tone: failed === null ? "warning" : "error", lines };
+}
+
+/** What `count` files that did not load leave of the project's checks: none runs until every file
+ * loads. An analysis whose read reported an error goes no further (`_run`, lsp/diagnostics.py), as
+ * `ddd check` stops at the read, so the counts every page draws beside the banner are the read's
+ * alone - no check said a file that loaded has nothing to fix. */
+function checksWaiting(count: number): string {
+  return `the project's checks wait until ${count === 1 ? "it does" : "they do"}`;
 }
 
 /** A file that did not load, by its name (`unloadedNames`), leading to its finding: the Findings

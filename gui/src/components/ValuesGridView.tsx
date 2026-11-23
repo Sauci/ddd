@@ -12,6 +12,7 @@ import {
 } from "react";
 import { TableStateContext } from "react-aria-components";
 import type { PlanReply, ValuesReply } from "../api/types";
+import { focusCameByTab } from "../app/focus";
 import { keptByCell } from "../lib/cellKeys";
 import { distinctFindings, keyedFindings } from "../lib/findings";
 import { cellId, takesFocusedCell } from "../lib/gridCells";
@@ -136,10 +137,12 @@ interface CellFieldProps {
  * thousands beside it (15:M8). A move of the focus draws every field, each reading the table's
  * state for the cell it focuses (`TableStateContext`), and so does a draw of the table. On a grid's
  * first entry the table holds no focused cell and moves the focus of a field
- * to its first row, where the keys that follow go; so a field taking the focus tells the table
- * that its own cell is the focused one, where the table holds none (`gridCells`'
- * `takesFocusedCell`). Where it holds one, its own handling stands: a click sets the clicked cell,
- * and Tab and Shift+Tab give the focus back to the cell it remembers. */
+ * to its first row, where the keys that follow go; and where it holds one, it gives the focus back
+ * to that cell as the focus enters it. So a field taking the focus tells the table that its own
+ * cell is the focused one (`gridCells`' `takesFocusedCell`) - unless Tab brought the focus
+ * (`focusCameByTab`), where the table's own handling stands: Tab and Shift+Tab give the focus back
+ * to the cell it remembers. A field a screen reader or voice control moves the focus to keeps it
+ * (16:C1). */
 function CellField(props: CellFieldProps) {
   const { reply, row, column, physical, store } = props;
   const key = cellId(row, column);
@@ -158,7 +161,9 @@ function CellField(props: CellFieldProps) {
       disabled={props.disabled}
       onFocus={(event) => {
         const manager = state?.selectionManager;
-        if (manager && takesFocusedCell(manager.focusedKey)) manager.setFocusedKey(key);
+        if (manager && takesFocusedCell(manager.focusedKey, focusCameByTab())) {
+          manager.setFocusedKey(key);
+        }
         props.onFocused(event.currentTarget);
       }}
       onChange={(event) => props.onTyped({ row, column, typed: event.target.value, physical })}

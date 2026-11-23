@@ -757,6 +757,35 @@ test("Tab out of a field of a big map does not scroll the page", async ({ page, 
   expect(await scrolled()).toEqual([0, 0]);
 });
 
+test("a field focused by no click and no Tab, while the grid holds another cell, keeps the focus and takes the keys", async ({
+  page,
+  gui,
+}) => {
+  // 16:C1: a screen reader or voice control moves the focus to the field it names, as a call does,
+  // and the keys the reader pressed last were its own. Tab enters the table at the cell it holds,
+  // the table being one stop for Tab; any other focus lands on the field it names.
+  await openValues(page, gui.address, "MapA");
+  const field = (row: number, column: number) =>
+    page.getByRole("textbox", { name: `element ${row}, ${column}` });
+  await field(1, 1).click();
+  await expect(field(1, 1)).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(field(1, 1)).not.toBeFocused();
+  await field(3, 3).focus();
+  await page.evaluate(
+    () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+  );
+  await expect(field(3, 3)).toBeFocused();
+  await typed(field(3, 3), "7");
+  await expect(field(3, 3)).toHaveValue("7");
+  await expect(page.getByText("Sets element 3, 3 of MapA to 7")).toBeVisible();
+  // Tab still leaves the table, and Shift+Tab comes back to the cell it holds: this one now.
+  await page.keyboard.press("Tab");
+  await expect(field(3, 3)).not.toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(field(3, 3)).toBeFocused();
+});
+
 test("a click into a field after the focus left the grid keeps the focus in that field", async ({
   page,
   gui,

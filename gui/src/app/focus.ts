@@ -39,6 +39,13 @@ function controlOf(target: EventTarget | null): Control | null {
 /** Whether a change of page waits for its heading to take the focus (`askPageHeading`). */
 let headingWanted = false;
 
+/** Whether the key last pressed is Tab, until the focus moves or the key's own task is over
+ * (`watchFocus`). */
+let tabbing = false;
+
+/** Whether the focus came by Tab or Shift+Tab, as it last moved (`focusCameByTab`). */
+let tabbed = false;
+
 /**
  * Watches the focus from the page's start (16:I13):
  * - keeps the control each press of the pointer went down on until the press is over - React Aria
@@ -48,7 +55,9 @@ let headingWanted = false;
  *   the reader presses a key or the pointer meanwhile;
  * - gives a place to the focus the page takes away with a control, never leaving it to the page's
  *   body (`landing`): the browser moves it there, its `focusout` naming nothing it moves to, as a
- *   control is removed, disabled - Apply, Put back, while their edit is written - or no longer drawn.
+ *   control is removed, disabled - Apply, Put back, while their edit is written - or no longer drawn;
+ * - notes whether each move of the focus came by Tab (`focusCameByTab`), which a grid's field asks
+ *   as it takes the focus (16:C1).
  *
  * Answers what stops the watching.
  */
@@ -63,8 +72,20 @@ export function watchFocus(): () => void {
       pressed = null;
     }, 0);
   };
-  const key = () => {
+  const key = (event: KeyboardEvent) => {
     headingWanted = false;
+    tabbing = event.key === "Tab";
+    // Tab moves the focus as the key's own default, in the key's own task: a Tab that moves it
+    // nowhere on the page - past its last control, to the browser's - is let go with that task.
+    if (tabbing) {
+      setTimeout(() => {
+        tabbing = false;
+      }, 0);
+    }
+  };
+  const into = () => {
+    tabbed = tabbing;
+    tabbing = false;
   };
   const out = (event: FocusEvent) => {
     const from = event.target;
@@ -80,14 +101,24 @@ export function watchFocus(): () => void {
   document.addEventListener("pointerup", over, true);
   document.addEventListener("pointercancel", over, true);
   document.addEventListener("keydown", key, true);
+  document.addEventListener("focusin", into, true);
   document.addEventListener("focusout", out, true);
   return () => {
     document.removeEventListener("pointerdown", down, true);
     document.removeEventListener("pointerup", over, true);
     document.removeEventListener("pointercancel", over, true);
     document.removeEventListener("keydown", key, true);
+    document.removeEventListener("focusin", into, true);
     document.removeEventListener("focusout", out, true);
   };
+}
+
+/** Whether the focus, as it last moved, came by Tab or Shift+Tab: the first move a press of Tab
+ * makes in its own task - the browser's, or React Aria's taking the focus to a grid's last field so
+ * that the browser's own move then leaves the grid, a table being one stop for Tab. Asked by a
+ * grid's field taking the focus (`takesFocusedCell`, 16:C1). */
+export function focusCameByTab(): boolean {
+  return tabbed;
 }
 
 /** Puts the focus on the page's heading after a change of page (`pageChanged`, 16:I13): at once

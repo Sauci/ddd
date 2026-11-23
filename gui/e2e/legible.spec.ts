@@ -139,6 +139,29 @@ test("an info is toned as the Findings tab tones it, and said in a word, whereve
   await expect(page.getByRole("row", { name: /ValueH/ })).toContainText("missing-id info");
 });
 
+test("a cell of several findings reads as words, each severity apart from the next chip", async ({
+  page,
+  gui,
+}) => {
+  // ValueE without its id and drifted: Controller's row for it holds several findings, `missing-id`
+  // among them, side by side, which read "missing-id infodefinition-mismatch error"
+  // where the word ran into the next chip.
+  unstamp(gui.directory, CONTROLLER, "ValueE");
+  drift(gui.directory, "ValueE", "kHz");
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  const cell = page
+    .getByRole("row", { name: /ValueE/ })
+    .getByRole("gridcell")
+    .filter({ hasText: "missing-id" });
+  await expect.poll(() => cell.locator(".chip").count()).toBeGreaterThanOrEqual(2);
+  // Each chip's check, a space, its severity word, then a space and the next: words, however many.
+  const words = /^\S+ (?:info|warning|error)(?: \S+ (?:info|warning|error))+$/;
+  await expect(cell).toHaveAccessibleName(words);
+  // And in the text a reader copies.
+  expect((await cell.innerText()).trim()).toMatch(words);
+});
+
 test("an error and a warning are said in their words beside their chips", async ({ page, gui }) => {
   drift(gui.directory);
   await page.goto(gui.address);

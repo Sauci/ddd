@@ -9,6 +9,7 @@ import type {
 import {
   asksComponentName,
   cellsOf,
+  emptyProjectLine,
   fileAdd,
   fileCreate,
   fileRemoval,
@@ -629,5 +630,50 @@ describe("previewOf", () => {
     // `kept_by` is always `None` for an add and a create (`FilesPlanReply.kept_by`'s own doc), and
     // the sentence needs the file a removal was asked with, which neither has.
     expect(previewOf(plan({ kept_by: "*.ddd.json" }), PROJECT, null).kept).toBeNull();
+  });
+});
+
+describe("emptyProjectLine", () => {
+  /** A file of the state, loaded unless said otherwise. */
+  const listed = (path: string, kind: string, loaded = true): SourceFile => ({
+    path,
+    kind,
+    name: null,
+    loaded,
+    fingerprint: "0".repeat(64),
+    findings: { error: loaded ? 0 : 1, warning: 0, info: 0 },
+  });
+  const NEW_FILE = [
+    "This project includes no component yet: ",
+    { text: "New file", to: { page: "project", view: "files" } },
+    ", on the Files tab, writes one and includes it.",
+  ];
+
+  test("points a project that includes no component at New file, on the Files tab", () => {
+    // 16:M13: its Graph an empty grid and its Table a header, with no word of what to do next.
+    expect(emptyProjectLine([listed(PROJECT, "project")])).toEqual(NEW_FILE);
+    // Its units, its types and its plugins draw nothing on the Graph or the Table either.
+    expect(
+      emptyProjectLine([
+        listed(PROJECT, "project"),
+        listed(A, "units"),
+        listed("C:/work/demo/p.py", "plugin"),
+      ]),
+    ).toEqual(NEW_FILE);
+  });
+
+  test("says nothing of a project that includes one, loaded or not", () => {
+    expect(emptyProjectLine([listed(PROJECT, "project"), listed(A, "component")])).toBeNull();
+    // A component that parses and fails its shape is still a component, drawn as not loaded.
+    expect(
+      emptyProjectLine([listed(PROJECT, "project"), listed(A, "component", false)]),
+    ).toBeNull();
+  });
+
+  test("says nothing while a file did not load: it may be the component, as the banner says", () => {
+    // A component saved half-written is of no kind (`unknown`), and the project description that
+    // did not load included who knows what.
+    expect(emptyProjectLine([listed(PROJECT, "project"), listed(A, "unknown", false)])).toBeNull();
+    expect(emptyProjectLine([listed(PROJECT, "project", false)])).toBeNull();
   });
 });

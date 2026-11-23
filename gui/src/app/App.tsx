@@ -223,6 +223,7 @@ export function App() {
             onOpenConstant={(name) =>
               navigate({ page: "project", view: "shared", kind: "constant", name })
             }
+            onOpen={navigate}
           />
         ) : route.view === "units" ? (
           <UnitsPage state={state} unit={route.unit} stopped={stopped} onUnit={openUnit} />
@@ -264,7 +265,7 @@ export function App() {
         ) : route.view === "compare" ? (
           <ComparePage state={state} stopped={stopped} onOpen={navigate} />
         ) : (
-          <ProjectPage state={state} onComponent={openComponent} />
+          <ProjectPage state={state} onComponent={openComponent} onOpen={navigate} />
         )}
       </section>
     );

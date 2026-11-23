@@ -33,13 +33,16 @@ import {
   shownEdges,
   withSavedPositions,
 } from "../lib/canvas";
+import { emptyProjectLine } from "../lib/files";
 import { layoutScreen } from "../lib/layoutAnswers";
+import type { Route } from "../lib/route";
 import { visibleOnly } from "../lib/shape";
 import { unloadedNames } from "../lib/unloaded";
 import { forgetPositions, rememberPosition, savedPositions } from "../state/positions";
 import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
 import { Panel } from "../ui/Panel";
+import { Sentence } from "../ui/Sentence";
 import { VariablePanel } from "./VariablePanel";
 
 // Outside the component on purpose: a fresh object here makes React Flow rebuild every node and
@@ -65,6 +68,8 @@ interface Props {
   onOpenType: (name: string) => void;
   /** Following a `dimensions` entry of the open variable's panel to the constant it names. */
   onOpenConstant: (name: string) => void;
+  /** Following a line's link to the page it leads to: an empty project's to New file. */
+  onOpen: (route: Route) => void;
 }
 
 /** The open project as a canvas: one node per module, one arrow per producing-consuming pair. */
@@ -77,6 +82,7 @@ export function GraphPage({
   onVariable,
   onOpenType,
   onOpenConstant,
+  onOpen,
 }: Props) {
   const graph = useQuery({
     // The project is in the key beside the revision: until the first state answer arrives the
@@ -93,6 +99,7 @@ export function GraphPage({
   // The files that did not load, as the banner under the masthead names them: the cause the
   // dictionary's sentence names, and what the panel's sentences say they were not told of.
   const unread = useMemo(() => unloadedNames(state?.files ?? []), [state?.files]);
+  const empty = state === null ? null : emptyProjectLine(state.files);
 
   if (answer === undefined) {
     if (graph.isError) return <Banner tone="error">{graph.error.message}</Banner>;
@@ -105,6 +112,13 @@ export function GraphPage({
       {graph.isError && <Banner tone="error">{graph.error.message}</Banner>}
       {/* Naming the files that did not load, where that is why (`noDictionary`, 16:I9). */}
       {!answer.dictionary && <Banner tone="warning">{noDictionary(unread)}</Banner>}
+      {/* A project that includes no component draws no module: the line says how to write one
+          (`emptyProjectLine`, 16:M13). */}
+      {empty !== null && (
+        <p className="quiet">
+          <Sentence parts={empty} onFollow={onOpen} />
+        </p>
+      )}
       <ReactFlowProvider>
         <Canvas
           graph={answer}

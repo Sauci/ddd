@@ -2,6 +2,24 @@ import type { FilesPlanRequest } from "../api/client";
 import type { FilesPlanReply, FilesReply, IncludedEntryReply, SourceFile } from "../api/types";
 import { relativeToProject } from "./findings";
 import { consequence } from "./units";
+import type { Part } from "./unloaded";
+
+/**
+ * The line the Graph and the Table say over a project that includes no component (16:M13),
+ * pointing at New file, on the Files tab, which writes one and adds it to the includes; `null`
+ * where the project includes one, loaded or not, or while a file did not load - a component saved
+ * half-written is of no kind, and a description that did not load included who knows what: the
+ * banner under the masthead says which (`loadBanner`, lib/unloaded.ts). Left empty, the Graph drew
+ * an empty grid and the Table a header, with no word of what to do next.
+ */
+export function emptyProjectLine(files: readonly SourceFile[]): Part[] | null {
+  if (files.some((file) => file.kind === "component" || !file.loaded)) return null;
+  return [
+    "This project includes no component yet: ",
+    { text: "New file", to: { page: "project", view: "files" } },
+    ", on the Files tab, writes one and includes it.",
+  ];
+}
 
 /**
  * One row of the Files tab: an entry's own row, or one of a pattern's matched files, indented

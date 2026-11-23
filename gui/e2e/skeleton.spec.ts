@@ -6,6 +6,7 @@ import {
   chooseUnit,
   drift,
   held,
+  includesNothing,
   SENSOR_HUB,
   withUnitOfValueA,
   writeUnseen,
@@ -262,6 +263,28 @@ test("the table is one tab away", async ({ page, gui }) => {
   await page.reload();
   await expect(componentRow(page, "Controller").getByRole("gridcell").nth(0)).toHaveText("0");
   await expect(page).toHaveURL(/\?view=table$/);
+});
+
+/** What the Graph and the Table say of a project that includes no component (16:M13). */
+const NEW_FILE =
+  "This project includes no component yet: New file, on the Files tab, writes one and includes it.";
+
+test("a project that includes no component points at New file from its table", async ({
+  page,
+  copiedGui,
+}) => {
+  const gui = await copiedGui("demo", includesNothing);
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Table", exact: true }).click();
+  await expect(page.getByText("0 errors, 0 warnings", { exact: true })).toBeVisible();
+  const line = page.getByText("This project includes no component yet:");
+  await expect(line).toHaveText(NEW_FILE);
+  // The table stays in the page as it was while nothing is typed in its filter (`tableDrawn`): a
+  // table with no row, whose box stands nothing high.
+  await expect(page.getByRole("grid", { name: "Components" })).toHaveCount(1);
+  await line.getByRole("link", { name: "New file", exact: true }).click();
+  await expect(page).toHaveURL(/\/project\?view=files$/);
+  await expect(page.getByRole("button", { name: "New file", exact: true })).toBeVisible();
 });
 
 test("a dragged module stays where it was put after a revision, and Tidy puts it back", async ({

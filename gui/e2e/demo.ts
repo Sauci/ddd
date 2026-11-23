@@ -358,6 +358,16 @@ const UNSEEN = [
   "os.utime(directory, ns=(kept.st_atime_ns, kept.st_mtime_ns))",
 ].join("\n");
 
+/** The demo's description in a copy made to include nothing, before `ddd gui` starts on it: a
+ * project that loads with no finding and no component, its other files left on disk unread - the
+ * empty project 16:M13 points at New file. */
+export function includesNothing(directory: string): void {
+  const path = join(directory, "demo.ddd.json");
+  const data = JSON.parse(readFileSync(path, "utf8"));
+  data.project.includes = [];
+  writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+}
+
 /** A producing declaration's id taken away from outside, the way a description written before
  * `ddd id` adopted ids states it - which is what `missing-id` reports; answers the file as it
  * was before. */

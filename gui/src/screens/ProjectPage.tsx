@@ -2,16 +2,21 @@ import { useMemo, useState } from "react";
 import type { State } from "../api/types";
 import { useUpdating } from "../app/updating";
 import { useDrawnRows } from "../app/useDrawnRows";
+import { emptyProjectLine } from "../lib/files";
 import { COMPONENTS, componentKey, componentsShown, filterLine, tableDrawn } from "../lib/filter";
 import { tableLine } from "../lib/findings";
 import { shownPath } from "../lib/paths";
+import type { Route } from "../lib/route";
 import { Button } from "../ui/Button";
 import { FilterField } from "../ui/FilterField";
+import { Sentence } from "../ui/Sentence";
 import { also, Cell, Column, LongTable, Row, TableBody, TableHeader } from "../ui/Table";
 
 interface Props {
   state: State;
   onComponent: (file: string) => void;
+  /** Following a line's link to the page it leads to: an empty project's to New file. */
+  onOpen: (route: Route) => void;
 }
 
 /**
@@ -24,7 +29,7 @@ interface Props {
  * says how many of how many; the line above it goes on counting the whole project's statements.
  * Where it leaves no component, the table is not drawn (`tableDrawn`).
  */
-export function ProjectPage({ state, onComponent }: Props) {
+export function ProjectPage({ state, onComponent, onOpen }: Props) {
   const updating = useUpdating();
   const [filter, setFilter] = useState("");
   const components = useMemo(
@@ -38,9 +43,17 @@ export function ProjectPage({ state, onComponent }: Props) {
   // The rows the table draws: those the filter leaves, put back a thousand at a time where it is
   // widened past the rows drawn (`useDrawnRows`).
   const drawn = useDrawnRows(shown, componentKey);
+  const empty = emptyProjectLine(state.files);
   return (
     <>
       <p className="summary">{tableLine(state.statements, updating)}</p>
+      {/* A project that includes no component lists none: the line says how to write one
+          (`emptyProjectLine`, 16:M13), above the table's header, drawn as before. */}
+      {empty !== null && (
+        <p className="quiet">
+          <Sentence parts={empty} onFollow={onOpen} />
+        </p>
+      )}
       <FilterField
         label="Filter components"
         value={filter}

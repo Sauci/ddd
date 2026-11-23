@@ -1,7 +1,15 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
-import { CONTROLLER, drift, driftMax, EVENT_LOGGER, held, renameValueA } from "./demo";
+import {
+  CONTROLLER,
+  drift,
+  driftMax,
+  EVENT_LOGGER,
+  held,
+  includesNothing,
+  renameValueA,
+} from "./demo";
 import { expect, test } from "./fixtures";
 
 // The canvas's own actions and states - no dictionary, Fit, the module search and its Enter,
@@ -66,6 +74,25 @@ async function wheelOverCanvas(page: Page, deltaY: number): Promise<void> {
   await page.mouse.move(canvas.x, canvas.y);
   await page.mouse.wheel(0, deltaY);
 }
+
+/** What the Graph and the Table say of a project that includes no component (16:M13). */
+const NEW_FILE =
+  "This project includes no component yet: New file, on the Files tab, writes one and includes it.";
+
+test("a project that includes no component points at New file from its canvas", async ({
+  page,
+  copiedGui,
+}) => {
+  const gui = await copiedGui("demo", includesNothing);
+  await page.goto(gui.address);
+  await expect(page.getByRole("region", { name: "Modules" })).toBeVisible();
+  const line = page.getByText("This project includes no component yet:");
+  await expect(line).toHaveText(NEW_FILE);
+  // To the tab whose New file writes one, as the line says.
+  await line.getByRole("link", { name: "New file", exact: true }).click();
+  await expect(page).toHaveURL(/\/project\?view=files$/);
+  await expect(page.getByRole("button", { name: "New file", exact: true })).toBeVisible();
+});
 
 test("a project with a file that does not load is drawn without arrows, and says why", async ({
   page,

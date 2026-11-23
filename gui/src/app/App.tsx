@@ -9,7 +9,7 @@ import { type ProjectView, type Route, tabHref } from "../lib/route";
 import { projectName, sessionAskedFor } from "../lib/session";
 import type { SharedKind } from "../lib/shared";
 import { undrawnSentence } from "../lib/undrawn";
-import { loadBanner } from "../lib/unloaded";
+import { loadBanner, unloadedNames } from "../lib/unloaded";
 import { beforeAnalysis } from "../lib/updating";
 import { ComparePage } from "../screens/ComparePage";
 import { ComponentPage } from "../screens/ComponentPage";
@@ -336,7 +336,12 @@ export function App() {
         {/* Once the open project's first analysis has landed, whose index the names are asked of:
             every page of the project, a component's among them, reaches a variable from here. */}
         {opened !== null && state !== null && (
-          <GoTo revision={state.revision} stopped={stopped} onGo={navigate} />
+          <GoTo
+            revision={state.revision}
+            unread={unloadedNames(state.files)}
+            stopped={stopped}
+            onGo={navigate}
+          />
         )}
       </header>
       {stopped && (

@@ -15,6 +15,9 @@ export interface GoToViewProps {
   onClose: () => void;
   /** Why no name can be listed: the server's refusal, said under the field. */
   note?: string | undefined;
+  /** The files of the project that did not load, as the banner under the masthead names them: the
+   * list says no variable of a file that loaded matches, rather than that none does (`noName`). */
+  unread?: readonly string[];
   isDisabled: boolean;
   /** Opens the list when this changes to a new value: Enter took nothing, and the answer of what
    * it was pressed on has come (`entered`, lib/goTo.ts). */
@@ -27,7 +30,7 @@ export interface GoToViewProps {
 /** The masthead's go-to (16:I14): a field taking a part of a variable's name, listing the names
  * the server finds holding it (`goToList`, lib/goTo.ts). A picture of its props. */
 export function GoToView(props: GoToViewProps) {
-  const list = goToList(props.reply, props.typed, props.note !== undefined);
+  const list = goToList(props.reply, props.typed, props.note !== undefined, props.unread);
   return (
     <div className="goto">
       <ComboBox

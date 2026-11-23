@@ -350,6 +350,30 @@ test("the masthead's go-to opens a variable on the page of the component produci
 });
 
 /**
+ * A name only a file that did not load declares is in no index (B11-28): the go-to's list says no
+ * variable of a file that loaded matches, and names the file, rather than that no variable does -
+ * as a removal's sentence says it (16:I10). ParameterA is Controller's own calibration.
+ */
+test("the masthead's go-to says no variable of a file that loaded matches while a file did not load", async ({
+  page,
+  gui,
+}) => {
+  const path = join(gui.directory, CONTROLLER);
+  const bytes = readFileSync(path);
+  writeFileSync(path, bytes.subarray(0, Math.floor(bytes.length / 2)));
+  await page.goto(gui.address);
+  // The banner under the masthead says it once the revision reading the cut file has landed.
+  await expect(page.getByRole("status").filter({ hasText: "analysed without it" })).toHaveText(
+    "controller.ddd.json did not load, so the project is analysed without it.",
+  );
+  const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+  await goTo.pressSequentially("ParameterA");
+  await expect(page.getByRole("listbox").getByRole("option")).toHaveText([
+    "no variable of a file that loaded matches, and controller.ddd.json did not load",
+  ]);
+});
+
+/**
  * A project the analysis could not index (16:I14): the go-to says why under its field, in the
  * server's words, rather than listing nothing as though no name held the text.
  */

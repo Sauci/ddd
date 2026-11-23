@@ -2,6 +2,7 @@ import type { NamesReply } from "../api/types";
 import { moreNames, type NameList } from "./declarations";
 import { filterText } from "./filter";
 import type { Route } from "./route";
+import { namedFiles } from "./unloaded";
 
 /**
  * The masthead's go-to (16:I14): a variable found by a part of its name, over every component of
@@ -20,6 +21,17 @@ export const FINDING_NAMES = "Finding names…";
 /** What the go-to's list says where no name holds what is typed. */
 export const NO_NAME = "no variable matches";
 
+/** What the go-to's list says where no name holds what is typed: `NO_NAME`, or, while files did
+ * not load - `unread`, as the banner under the masthead names them (`unloadedNames`,
+ * lib/unloaded.ts) - that no variable of a file that loaded matches, and which did not load. A name
+ * only such a file declares is in no index (B11-28), and "no variable matches" was false of it, as
+ * a removal's "no other component declares" was (16:I10): said in that sentence's words. */
+export function noName(unread: readonly string[]): string {
+  return unread.length === 0
+    ? NO_NAME
+    : `no variable of a file that loaded matches, and ${namedFiles(unread)} did not load`;
+}
+
 /** The go-to's list: its entries and the line at its foot, as the declare form's Name list has
  * them, and what it says while it holds no entry - `undefined` where it stays closed. */
 export interface GoToList extends NameList {
@@ -32,15 +44,21 @@ export interface GoToList extends NameList {
  *
  * The names come after the text: React Aria opens a list on what is typed only where the list
  * holds entries then, so the go-to's opens empty, saying it is finding names until some have come,
- * and that none matches where none does. Closed while nothing is typed - an answer kept from an
- * earlier text is no list of this one - or where the server `refused`, which is said under the
- * field instead. */
-export function goToList(reply: NamesReply | undefined, typed: string, refused: boolean): GoToList {
+ * and that none matches where none does (`noName`, naming the files that did not load, `unread`).
+ * Closed while nothing is typed - an answer kept from an earlier text is no list of this one - or
+ * where the server `refused`, which is said under the field instead. */
+export function goToList(
+  reply: NamesReply | undefined,
+  typed: string,
+  refused: boolean,
+  unread: readonly string[] = [],
+): GoToList {
   if (filterText(typed) === "" || refused) {
     return { sections: [], footnote: undefined, empty: undefined };
   }
   if (reply === undefined) return { sections: [], footnote: undefined, empty: FINDING_NAMES };
-  if (reply.names.length === 0) return { sections: [], footnote: undefined, empty: NO_NAME };
+  const none = noName(unread);
+  if (reply.names.length === 0) return { sections: [], footnote: undefined, empty: none };
   return {
     sections: [
       {
@@ -54,7 +72,7 @@ export function goToList(reply: NamesReply | undefined, typed: string, refused: 
       },
     ],
     footnote: moreNames(reply.total - reply.names.length),
-    empty: NO_NAME,
+    empty: none,
   };
 }
 

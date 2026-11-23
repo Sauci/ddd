@@ -500,6 +500,34 @@ test("a component file that stops parsing is shown by its path and the parser's 
   await expect(page.getByRole("grid")).toHaveCount(0);
 });
 
+test("a removal while a file did not load says no other file that loaded declares the variable, and is refused", async ({
+  page,
+  gui,
+}) => {
+  // Controller saved half-written, as an editor saves a file being typed into (16:I10): it still
+  // reads ValueA, which SensorHub alone declares among the files that loaded.
+  const file = join(gui.directory, CONTROLLER);
+  const before = readFileSync(file);
+  writeFileSync(file, before.subarray(0, Math.floor(before.length / 2)));
+  const panel = await openPanel(page, gui.address, "ValueA", "SensorHub");
+  const removing = panel.getByRole("region", { name: "Remove the declaration" });
+  await expect(
+    removing.getByText(
+      "Removes ValueA, which no other file that loaded declares, and controller.ddd.json did " +
+        "not load.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  // The server refuses the removal while a file is unread (`_UNSEEN`, gui/api.py): nothing tells
+  // it whether anything still names ValueA there.
+  await expect(removing.getByRole("status")).toHaveText(
+    "controller.ddd.json did not load, so taking out 'ValueA' could not tell whether anything " +
+      "still names it",
+  );
+  await expect(removing.getByRole("button", { name: "Remove from SensorHub" })).toHaveCount(0);
+  await expect(panel.getByText("which no other component declares")).toHaveCount(0);
+});
+
 test("a component file failing to load leaves the server's own error, and nothing else", async ({
   page,
   gui,

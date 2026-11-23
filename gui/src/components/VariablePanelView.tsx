@@ -49,6 +49,10 @@ export interface VariablePanelViewProps
         offer: Offer;
         /** Which component the removal would take it from, for the sentence and the label. */
         from: string;
+        /** The files of the project that did not load, as the banner under the masthead names
+         * them: the sentence says no other file that loaded declares the variable, rather than
+         * that no other component does (`removalSentence`, 16:I10). */
+        unread: readonly string[];
         shown: boolean;
         onShown: (shown: boolean) => void;
         onRemove: () => void;
@@ -225,7 +229,7 @@ export function VariablePanelView(props: VariablePanelViewProps) {
       )}
       {removal !== undefined && (
         <section className="panel-offer" aria-label="Remove the declaration">
-          <p className="consequence">{removalSentence(variable, removal.from)}</p>
+          <p className="consequence">{removalSentence(variable, removal.from, removal.unread)}</p>
           {removal.offer.refusal !== null && (
             <p className="panel-refusal" role="status">
               {removal.offer.refusal}

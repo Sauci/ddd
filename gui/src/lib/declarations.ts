@@ -1,6 +1,7 @@
 import type { DeclarableName, DeclarableReply, VariableKeyOffer } from "../api/types";
 import { countText, decimalText, readNumber } from "./numbers";
 import { unsettled } from "./typing";
+import { namedFiles } from "./unloaded";
 import { shortValue } from "./variableKeys";
 
 /** Which of the two verbs the name field has landed on. */
@@ -141,15 +142,25 @@ export function declareSentence(
 }
 
 /** What removing one declaration leaves behind, from what the panel already holds: the other
- * components declaring the variable, and what they do with it. */
+ * components declaring the variable, and what they do with it.
+ *
+ * The panel holds the declarations of the files that loaded alone. While a file did not load -
+ * `unread`, as the banner under the masthead names them (`unloadedNames`, lib/unloaded.ts) - one
+ * left alone says no other file that loaded declares it, and which did not load (16:I10), as the
+ * server says of a name no file that loaded declares: "no other component declares" it was false
+ * of a name the file that did not load still read, which then failed the project once it loaded.
+ * The components named as still holding it do, and are named as they are. */
 export function removalSentence(
   variable: { name: string; declarations: { component: string; role: string }[] },
   from: string,
+  unread: readonly string[] = [],
 ): string {
   const others = variable.declarations.filter((entry) => entry.component !== from);
   const readers = others.filter((entry) => entry.role === "reads").map((entry) => entry.component);
   if (others.length === 0) {
-    return `Removes ${variable.name}, which no other component declares.`;
+    return unread.length === 0
+      ? `Removes ${variable.name}, which no other component declares.`
+      : `Removes ${variable.name}, which no other file that loaded declares, and ${namedFiles(unread)} did not load.`;
   }
   if (readers.length === 0) {
     const names = others.map((e) => e.component);

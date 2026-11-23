@@ -390,6 +390,38 @@ describe("what removing a declaration leaves behind", () => {
       "Removes ValueA from SensorHub; Pump and Controller still declare it.",
     );
   });
+
+  test("while a file did not load, nothing left is said of the files that loaded alone", () => {
+    // 16:I10: Controller saved half-written, SensorHub's ValueA declared nowhere else that loaded.
+    // Controller still read it, in no index: "no other component declares" it was false, and the
+    // removal broke the project once Controller loaded again.
+    expect(
+      removalSentence(declaredBy(["SensorHub", "produces"]), "SensorHub", ["controller.ddd.json"]),
+    ).toBe(
+      "Removes ValueA, which no other file that loaded declares, and controller.ddd.json did " +
+        "not load.",
+    );
+    // Named as the banner under the masthead names them: past four, three and how many more.
+    expect(
+      removalSentence(declaredBy(["SensorHub", "produces"]), "SensorHub", [
+        "a.ddd.json",
+        "b.ddd.json",
+        "c.ddd.json",
+        "d.ddd.json",
+        "e.ddd.json",
+      ]),
+    ).toBe(
+      "Removes ValueA, which no other file that loaded declares, and a.ddd.json, b.ddd.json, " +
+        "c.ddd.json and 2 more did not load.",
+    );
+  });
+
+  test("while a file did not load, those left are named as they are: each still holds it", () => {
+    const variable = declaredBy(["SensorHub", "produces"], ["Controller", "reads"]);
+    expect(removalSentence(variable, "SensorHub", ["user_interface.ddd.json"])).toBe(
+      "Removes ValueA from SensorHub; Controller still reads it.",
+    );
+  });
 });
 
 describe("text left in a key's field", () => {

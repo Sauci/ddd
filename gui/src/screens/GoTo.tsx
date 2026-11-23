@@ -10,6 +10,9 @@ import type { Route } from "../lib/route";
 interface Props {
   /** The open project's newest revision, whose index the names are asked of. */
   revision: number;
+  /** The files of that revision that did not load, as the banner under the masthead names them:
+   * in no index, a name only they declare is found by no text (B11-28). */
+  unread: readonly string[];
   stopped: boolean;
   /** Going to the page a name opens on, which the app navigates to. */
   onGo: (route: Route) => void;
@@ -21,7 +24,7 @@ interface Props {
  * field for the next. The answer for the text before stays listed while the next is asked. Enter
  * is a commit: a text the answer in hand does not hold is asked for at once, and gone to - or the
  * list opened on its answer - once that answer has come (`entered`). */
-export function GoTo({ revision, stopped, onGo }: Props) {
+export function GoTo({ revision, unread, stopped, onGo }: Props) {
   // What the field holds, and whether Enter was pressed on it and waits for its answer: any change
   // of the text lets that Enter go.
   const [field, setField] = useState({ typed: "", entered: false });
@@ -61,6 +64,7 @@ export function GoTo({ revision, stopped, onGo }: Props) {
       onGo={(name) => settle(entered(name, names.data, own), field.typed)}
       onClose={() => setField({ typed: "", entered: false })}
       note={names.error?.message}
+      unread={unread}
       isDisabled={stopped}
       listing={listing}
     />

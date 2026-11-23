@@ -19,6 +19,7 @@ import { findingsByRow } from "../lib/findingsByRow";
 import type { ComponentFile } from "../lib/formats";
 import { pointerOf, valueAt } from "../lib/pointer";
 import { shapeColumn, typeKinds } from "../lib/shapeColumn";
+import { unloadedNames } from "../lib/unloaded";
 import { asList, asText } from "../lib/values";
 import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
@@ -178,6 +179,9 @@ export function ComponentPage({
   // The rows the table draws: those the filter leaves, put back a thousand at a time where it is
   // widened past the rows drawn (`useDrawnRows`).
   const drawn = useDrawnRows(shown, declarationKey);
+  // The files that did not load, as the banner under the masthead names them: what a removal's
+  // sentence says it was not told of (16:I10).
+  const unread = useMemo(() => unloadedNames(state.files), [state.files]);
 
   if (answer === undefined) {
     if (content.isError) return <Banner tone="error">{content.error.message}</Banner>;
@@ -414,6 +418,7 @@ export function ComponentPage({
           name={variable}
           file={file}
           revision={state.revision}
+          unread={unread}
           stopped={stopped}
           focusPicker={focusPicker}
           onClose={() => onVariable(undefined)}

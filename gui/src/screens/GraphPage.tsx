@@ -90,6 +90,9 @@ export function GraphPage({
     placeholderData: (previous) => previous,
   });
   const answer = useKept(graph, JSON.stringify(["graph", project]));
+  // The files that did not load, as the banner under the masthead names them: the cause the
+  // dictionary's sentence names, and what the panel's sentences say they were not told of.
+  const unread = useMemo(() => unloadedNames(state?.files ?? []), [state?.files]);
 
   if (answer === undefined) {
     if (graph.isError) return <Banner tone="error">{graph.error.message}</Banner>;
@@ -101,15 +104,14 @@ export function GraphPage({
           beside it - what is drawn is still the truth of the last revision that was read. */}
       {graph.isError && <Banner tone="error">{graph.error.message}</Banner>}
       {/* Naming the files that did not load, where that is why (`noDictionary`, 16:I9). */}
-      {!answer.dictionary && (
-        <Banner tone="warning">{noDictionary(unloadedNames(state?.files ?? []))}</Banner>
-      )}
+      {!answer.dictionary && <Banner tone="warning">{noDictionary(unread)}</Banner>}
       <ReactFlowProvider>
         <Canvas
           graph={answer}
           project={project}
           variable={variable}
           revision={state?.revision}
+          unread={unread}
           stopped={stopped}
           onComponent={onComponent}
           onVariable={onVariable}
@@ -134,6 +136,7 @@ function Canvas({
   project,
   variable,
   revision,
+  unread,
   stopped,
   onComponent,
   onVariable,
@@ -144,6 +147,7 @@ function Canvas({
   project: string;
   variable: string | undefined;
   revision: number | undefined;
+  unread: readonly string[];
   stopped: boolean;
   onComponent: (file: string) => void;
   onVariable: (variable: string | undefined) => void;
@@ -408,6 +412,7 @@ function Canvas({
           // from - Task 7's optional prop on `VariablePanelView` then draws no offer at all.
           file={undefined}
           revision={revision}
+          unread={unread}
           stopped={stopped}
           focusPicker={null}
           onClose={() => onVariable(undefined)}

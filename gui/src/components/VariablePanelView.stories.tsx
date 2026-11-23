@@ -106,7 +106,7 @@ interface Props {
   /** What removing the variable from a component would take, and which component that is; left
    * out for a story that shows no removal offer at all - the way a screen with no component in
    * view never offers one either. */
-  removal?: { from: string; offer: Offer };
+  removal?: { from: string; offer: Offer; unread?: readonly string[] };
   /** The description of the declaration in a component, which the field holds until the reader
    * types: what it states, and what writing a typed one would take; left out for a story that
    * shows none - the way the project screen's panel, with no component in view, never does. */
@@ -213,6 +213,7 @@ function View({
           : {
               offer: removal.offer,
               from: removal.from,
+              unread: removal.unread ?? [],
               shown: removalShown,
               onShown: setRemovalShown,
               onRemove: () => undefined,
@@ -365,6 +366,28 @@ export const WithARemovalAndNothingLeft = () => (
     removal={{
       from: "SensorHub",
       offer: { plan: REMOVAL_WITH_NOTHING_LEFT, refusal: null, pending: false },
+    }}
+  />
+);
+
+/** Controller saved half-written (16:I10): SensorHub's removal says no other file that loaded
+ * declares ValueA, naming the file that did not, and the server's refusal stands in Remove's place
+ * - nothing tells it whether that file still names the variable. */
+export const WithARemovalWhileAFileDidNotLoad = () => (
+  <View
+    variable={FIXED_BY_TYPE}
+    units={FREE_UNITS}
+    preview={null}
+    removal={{
+      from: "SensorHub",
+      unread: ["controller.ddd.json"],
+      offer: {
+        plan: null,
+        refusal:
+          "controller.ddd.json did not load, so taking out 'ValueA' could not tell whether " +
+          "anything still names it",
+        pending: false,
+      },
     }}
   />
 );

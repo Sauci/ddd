@@ -62,6 +62,9 @@ interface Props {
    * offered. */
   file: string | undefined;
   revision: number | undefined;
+  /** The files of the open project that did not load, as the banner under the masthead names
+   * them (`unloadedNames`, lib/unloaded.ts): what the removal's sentence says it was not told of. */
+  unread: readonly string[];
   stopped: boolean;
   /** A new value on every request to focus the picker; `null` asks for no focus. */
   focusPicker: number | null;
@@ -84,6 +87,7 @@ export function VariablePanel({
   name,
   file,
   revision,
+  unread,
   stopped,
   focusPicker,
   onClose,
@@ -521,6 +525,7 @@ export function VariablePanel({
           : {
               offer: removalOffer,
               from,
+              unread,
               shown: removalShown,
               onShown: setRemovalShown,
               onRemove: () => remove.mutate(),

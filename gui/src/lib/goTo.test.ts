@@ -1,6 +1,15 @@
 import { describe, expect, test } from "vitest";
 import type { NamedVariable, NamesReply } from "../api/types";
-import { entered, FINDING_NAMES, GO_TO, goToList, goToRoute, NO_NAME, ownAnswer } from "./goTo";
+import {
+  entered,
+  FINDING_NAMES,
+  GO_TO,
+  goToList,
+  goToRoute,
+  NO_NAME,
+  noName,
+  ownAnswer,
+} from "./goTo";
 
 const named = (name: string, component: string, kind = "measurement"): NamedVariable => ({
   name,
@@ -68,6 +77,26 @@ describe("the masthead's go-to", () => {
       footnote: undefined,
       empty: NO_NAME,
     });
+    expect(noName([])).toBe(NO_NAME);
+  });
+
+  test("says no variable of a file that loaded matches while a file did not, naming it", () => {
+    // A name only that file declares is in no index (B11-28): "no variable matches" was false of
+    // it, as a removal's "no other component declares" was (16:I10). Named as the banner under the
+    // masthead names them.
+    const unread = ["controller.ddd.json"];
+    expect(noName(unread)).toBe(
+      "no variable of a file that loaded matches, and controller.ddd.json did not load",
+    );
+    expect(goToList({ revision: 3, total: 0, names: [] }, "ParameterA", false, unread)).toEqual({
+      sections: [],
+      footnote: undefined,
+      empty: noName(unread),
+    });
+    expect(goToList(REPLY, "C00530", false, unread).empty).toBe(noName(unread));
+    expect(noName(["a.ddd.json", "b.ddd.json"])).toBe(
+      "no variable of a file that loaded matches, and a.ddd.json and b.ddd.json did not load",
+    );
   });
 
   test("lists nothing, and stays closed, while nothing is typed or the server refused", () => {

@@ -25,7 +25,7 @@ export function slotOf(panel: HTMLElement): HTMLElement | null {
   return panel.closest<HTMLElement>(".with-panel") ?? panel.parentElement;
 }
 
-/** The control a press of the pointer went down on, while that press lasts (`watchPresses`). */
+/** The control a press of the pointer went down on, while that press lasts (`watchFocus`). */
 let pressed: Control | null = null;
 
 /** The control an event's target stands for: itself, or the element it is a part of that can take

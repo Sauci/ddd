@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { drift } from "./demo";
+import { drift, held } from "./demo";
 import { expect, test } from "./fixtures";
 
 // The page in a narrow window (16:M9), whether the window shares its screen, is a phone's, or is
@@ -110,8 +110,9 @@ test("a panel opened under its table, out of view in a window 800 by 600, is scr
 /**
  * A change of page that opens a panel (16:M9, 16:I13): the masthead's go-to opens ParameterA on
  * Controller's page, its panel standing under the declarations in a window 800 by 600. The panel
- * is what the reader asked for: it is scrolled into view, its keys and all, and its heading takes
- * the focus, where the page's heading takes it on a change of page that opens none.
+ * is what the reader asked for: it is scrolled into view as soon as it is drawn, while it reads
+ * its variable, and its heading takes the focus, where the page's heading takes it on a change of
+ * page that opens none; read, the panel shows itself, its keys and all.
  */
 test("a variable the masthead's go-to opens in a window 800 by 600 has its panel in view, the focus on its heading", async ({
   page,
@@ -122,11 +123,18 @@ test("a variable the masthead's go-to opens in a window 800 by 600 has its panel
   const goTo = page.getByRole("combobox", { name: "Go to a variable" });
   await goTo.pressSequentially("ParameterA");
   await expect(page.getByRole("option", { name: "ParameterA" })).toBeVisible();
-  await goTo.press("Enter");
-  await expect(page.getByRole("heading", { name: "Controller", level: 1 })).toBeVisible();
   const panel = page.getByRole("complementary", { name: "ParameterA" });
   const heading = panel.getByRole("heading", { name: "ParameterA", level: 2 });
-  await expect(heading).toBeInViewport();
+  const release = await held(page, "/api/variable");
+  try {
+    await goTo.press("Enter");
+    await expect(page.getByRole("heading", { name: "Controller", level: 1 })).toBeVisible();
+    await expect(panel.getByText("Reading ParameterA…")).toBeVisible();
+    await expect(heading).toBeInViewport();
+    await expect(heading).toBeFocused();
+  } finally {
+    release();
+  }
   await expect(panel.getByRole("grid", { name: "Keys of ParameterA" })).toBeInViewport({
     ratio: 0.5,
   });

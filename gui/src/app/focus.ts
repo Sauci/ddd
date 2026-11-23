@@ -53,6 +53,9 @@ let headingWanted: HeadingWanted | null = null;
  * left, while the panel is still to be shown from its top (`showsAgain`). */
 let showing: { slot: HTMLElement; left: number } | null = null;
 
+/** What stops the watch on the panel a change of page opened (`showWhenSettled`), while it runs. */
+let settling: (() => void) | null = null;
+
 /** Whether the key last pressed is Tab, until the focus moves or the key's own task is over
  * (`watchFocus`). */
 let tabbing = false;
@@ -66,7 +69,8 @@ let tabbed = false;
  *   selects a row as the pointer goes down, and the page draws the row's panel before the browser
  *   gives the focus to the cell pressed;
  * - lets a page's heading go that has not yet taken the focus a change of page asked it to, once
- *   the reader presses a key or the pointer meanwhile;
+ *   the reader presses a key or the pointer meanwhile, and the panel the change opened that is not
+ *   yet scrolled into view (`showWhenSettled`), once the reader scrolls by a wheel or a touch too;
  * - gives a place to the focus the page takes away with a control, never leaving it to the page's
  *   body (`landing`): the browser moves it there, its `focusout` naming nothing it moves to, as a
  *   control is removed, disabled - Apply, Put back, while their edit is written - or no longer drawn;
@@ -79,6 +83,7 @@ export function watchFocus(): () => void {
   const down = (event: PointerEvent) => {
     pressed = controlOf(event.target);
     headingWanted = null;
+    settling?.();
   };
   // After the press's own click, which may open a panel too.
   const over = () => {
@@ -88,6 +93,7 @@ export function watchFocus(): () => void {
   };
   const key = (event: KeyboardEvent) => {
     headingWanted = null;
+    settling?.();
     tabbing = event.key === "Tab";
     // Tab moves the focus as the key's own default, in the key's own task: a Tab that moves it
     // nowhere on the page - past its last control, to the browser's - is let go with that task.
@@ -101,6 +107,9 @@ export function watchFocus(): () => void {
     tabbed = tabbing;
     tabbing = false;
   };
+  // A wheel or a touch scrolls the page as the reader would have it: the panel a change of page
+  // opened is no longer to be scrolled to.
+  const scrolled = () => settling?.();
   const out = (event: FocusEvent) => {
     const from = event.target;
     if (event.relatedTarget !== null) return;
@@ -117,6 +126,8 @@ export function watchFocus(): () => void {
   document.addEventListener("keydown", key, true);
   document.addEventListener("focusin", into, true);
   document.addEventListener("focusout", out, true);
+  document.addEventListener("wheel", scrolled, { capture: true, passive: true });
+  document.addEventListener("touchstart", scrolled, { capture: true, passive: true });
   return () => {
     document.removeEventListener("pointerdown", down, true);
     document.removeEventListener("pointerup", over, true);
@@ -124,6 +135,8 @@ export function watchFocus(): () => void {
     document.removeEventListener("keydown", key, true);
     document.removeEventListener("focusin", into, true);
     document.removeEventListener("focusout", out, true);
+    document.removeEventListener("wheel", scrolled, true);
+    document.removeEventListener("touchstart", scrolled, true);
   };
 }
 
@@ -152,7 +165,7 @@ export function takePageHeading(heading: HTMLElement): void {
 
 /** Gives the focus a change of page asked for, where it waits, to the heading `headingTaking`
  * names of those drawn: the page's (`page`), or the panel's (`panel`), the panel then scrolled into
- * view where it stands out of it (`scrollShown`). */
+ * view once the page it stands in has settled (`showWhenSettled`). */
 function giveHeading(page: HTMLElement | null, panel: HTMLElement | null): void {
   if (headingWanted === null) return;
   const { takes, waits } = headingTaking(headingWanted, {
@@ -164,7 +177,35 @@ function giveHeading(page: HTMLElement | null, panel: HTMLElement | null): void 
   if (takes !== "panel" || panel === null) return;
   panel.focus({ preventScroll: true });
   const shown = panel.closest<HTMLElement>(".panel");
-  if (shown !== null) scrollShown(shown, panel);
+  const slot = shown === null ? null : slotOf(shown);
+  if (slot !== null) showWhenSettled(slot);
+}
+
+/**
+ * Scrolls the panel a change of page opened into view once the page it opened has settled (16:M9):
+ * what stands above it - a long table, which sizes its box to its rows only once it has measured
+ * itself - is laid out after the panel is first drawn, and pushes it out of view then. Watched by
+ * the size of the slot it stands in (`slot`), the panel drawn there is scrolled into view as soon as
+ * it stands out of it (`scrollShown`); the watch ends then, once no panel is drawn there, or once
+ * the reader presses a key or the pointer, or scrolls the page by a wheel or a touch.
+ */
+function showWhenSettled(slot: HTMLElement): void {
+  settling?.();
+  const watch = new ResizeObserver(() => {
+    const panel = slot.querySelector<HTMLElement>(".panel");
+    const heading = panel?.querySelector<HTMLElement>('[data-heading="panel"]') ?? null;
+    if (panel === null || heading === null) stop();
+    else if (outOfView(heading.getBoundingClientRect(), window.innerHeight)) {
+      stop();
+      scrollShown(panel, heading);
+    }
+  });
+  const stop = () => {
+    watch.disconnect();
+    if (settling === stop) settling = null;
+  };
+  settling = stop;
+  watch.observe(slot);
 }
 
 /** Scrolls `panel`, opened anew, into view where its heading stands out of it (`outOfView`,

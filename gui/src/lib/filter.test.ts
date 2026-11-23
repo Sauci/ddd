@@ -16,6 +16,7 @@ import {
   placesShown,
   ROWS_PUT_BACK,
   rowsDrawnNext,
+  rowsToCome,
   sameRows,
   tableDrawn,
 } from "./filter";
@@ -226,6 +227,27 @@ describe("the rows a filtered table draws next", () => {
   test("knows a row by its key: the same rows answered anew are no rows put back", () => {
     const anew = rows(2500);
     expect(rowsDrawnNext(anew, all, declarationKey)).toBe(anew);
+  });
+});
+
+describe("whether a filtered table has rows still to put back", () => {
+  const rows = Array.from({ length: 2500 }, (_, at) => ({ id: `row ${at}` }));
+
+  test("while the rows it draws are not yet the very rows its filter leaves", () => {
+    const first = rowsDrawnNext(rows, [], declarationKey);
+    expect(rowsToCome(rows, first)).toBe(true);
+    // The same rows, as a list of their own, are still not the list the filter hands over.
+    expect(rowsToCome(rows, [...rows])).toBe(true);
+  });
+
+  test("none once it draws them, handed over as they are", () => {
+    const whole = rowsDrawnNext(
+      rows,
+      rowsDrawnNext(rows, rows.slice(0, 2000), declarationKey),
+      declarationKey,
+    );
+    expect(whole).toBe(rows);
+    expect(rowsToCome(rows, whole)).toBe(false);
   });
 });
 

@@ -130,6 +130,14 @@ export function rowsDrawnNext<T>(
   return next.length === shown.length ? shown : next;
 }
 
+/** Whether a filtered table has rows still to put back (16:I13): the rows it draws, as
+ * `rowsDrawnNext` hands them, are not yet the very rows its filter leaves, which it hands once the
+ * table lacks none. A table whose rows come back before the one holding the focus moves that row's
+ * place under it, so that a panel closing gives the focus back to its row once they are all back. */
+export function rowsToCome<T>(shown: readonly T[], drawn: readonly T[]): boolean {
+  return drawn !== shown;
+}
+
 /** Whether a table's next rows are the very rows it drew, in the same order: a table drawing
  * them again draws nothing new. Rows answered anew are other rows, however alike. */
 export function sameRows<T>(drawn: readonly T[], next: readonly T[]): boolean {

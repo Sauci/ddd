@@ -368,6 +368,36 @@ export function includesNothing(directory: string): void {
   writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`, "utf8");
 }
 
+/** The letters a DDD id is spelled in (`OBJECT_ID_ALPHABET`, src/ddd/models/common.py). */
+const ID_LETTERS = "abcdefghjkmnpqrstvwxyz0123456789";
+
+/** `count` locals added to Controller's interface in a copy, before `ddd gui` starts on it, named
+ * `Crowd00000` on and each with an id of its own, so that they add no finding: a component of
+ * thousands of declarations, whose table puts a widened filter's rows back a thousand at a time. */
+export function crowd(directory: string, count: number): void {
+  const path = join(directory, CONTROLLER);
+  const data = JSON.parse(readFileSync(path, "utf8"));
+  for (let at = 0; at < count; at += 1) {
+    let id = "";
+    for (let left = at, letter = 0; letter < 10; letter += 1, left = Math.floor(left / 32)) {
+      id = `${ID_LETTERS[left % 32]}${id}`;
+    }
+    data.component.interface.push({
+      scope: "local",
+      definition: {
+        name: `Crowd${String(at).padStart(5, "0")}`,
+        id: `zz${id}`,
+        kind: "measurement",
+        datatype: "uint8",
+        unit: "%",
+        conversion: { kind: "identity" },
+        volatile: false,
+      },
+    });
+  }
+  writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+}
+
 /** A producing declaration's id taken away from outside, the way a description written before
  * `ddd id` adopted ids states it - which is what `missing-id` reports; answers the file as it
  * was before. */

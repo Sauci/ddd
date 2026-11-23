@@ -2,6 +2,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { getProjects, openProject } from "../api/client";
 import { listHeld, noProjectSentence, UNREAD_HEADING, unreadLine, unreadShown } from "../lib/start";
 import { Banner } from "../ui/Banner";
+import { PageHeading } from "../ui/PageHeading";
 
 /** The projects found where `ddd gui` was started, to open one of them. */
 export function StartPage({ onOpened }: { onOpened: () => void }) {
@@ -15,7 +16,7 @@ export function StartPage({ onOpened }: { onOpened: () => void }) {
   if (found.isError) return <Banner tone="error">{found.error.message}</Banner>;
   return (
     <section>
-      <h1>Open a project</h1>
+      <PageHeading>Open a project</PageHeading>
       <p className="quiet">Found under {found.data.root}</p>
       {found.data.projects.length === 0 ? (
         <p>{noProjectSentence(found.data.unreadable.length)}</p>

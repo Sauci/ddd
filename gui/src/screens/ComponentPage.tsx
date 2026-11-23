@@ -13,6 +13,7 @@ import {
   declarationsShown,
   filterLine,
   filterOn,
+  rowsToCome,
   tableDrawn,
 } from "../lib/filter";
 import { leadsElsewhere, routeHref, routeOf } from "../lib/findings";
@@ -25,6 +26,7 @@ import { asList, asText } from "../lib/values";
 import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
 import { FilterField } from "../ui/FilterField";
+import { PageHeading } from "../ui/PageHeading";
 import { Cell, Column, LongTable, Row, TableBody, TableHeader } from "../ui/Table";
 import { UpdatingNote, UpdatingStatus } from "../ui/UpdatingNote";
 import { DeclarePanel } from "./DeclarePanel";
@@ -224,7 +226,7 @@ export function ComponentPage({
     <section className={variable === undefined && !adding ? undefined : "with-panel"}>
       <div>
         <div className="heading">
-          <h1>{name}</h1>
+          <PageHeading>{name}</PageHeading>
           <UndoStrip state={state} stopped={stopped} />
           <Button
             variant="secondary"
@@ -255,6 +257,7 @@ export function ComponentPage({
         {tableDrawn(filter, shown.length) && (
           <LongTable
             aria-label={`Declarations of ${name}`}
+            rowsToCome={rowsToCome(shown, drawn)}
             selectionMode="single"
             selectedKeys={selected}
             onSelectionChange={(keys) => {

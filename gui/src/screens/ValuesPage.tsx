@@ -24,6 +24,7 @@ import {
 import { ownEdits } from "../state/edits";
 import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
+import { PageHeading } from "../ui/PageHeading";
 import { UpdatingStatus } from "../ui/UpdatingNote";
 import { UndoStrip } from "./UndoStrip";
 import { refusalOf } from "./UnitPanel";
@@ -251,7 +252,7 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
       return (
         <section>
           <div className="heading">
-            <h1>{name}</h1>
+            <PageHeading>{name}</PageHeading>
             <Button variant="link" onPress={onBack}>
               Back to {backTo}
             </Button>
@@ -274,7 +275,7 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
     return (
       <section>
         <div className="heading">
-          <h1>{reply.name}</h1>
+          <PageHeading>{reply.name}</PageHeading>
           <Button variant="link" onPress={onBack}>
             Back to {backTo}
           </Button>

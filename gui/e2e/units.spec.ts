@@ -1,6 +1,15 @@
 import { chmodSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { CONTROLLER, chooseUnit, drift, renameValueA, SENSOR_HUB, scrolledIntoView } from "./demo";
+import type { Locator } from "@playwright/test";
+import {
+  CONTROLLER,
+  chooseUnit,
+  drift,
+  openPanel,
+  renameValueA,
+  SENSOR_HUB,
+  scrolledIntoView,
+} from "./demo";
 import { expect, test } from "./fixtures";
 
 test("a disagreement written from outside is resolved from the component page", async ({
@@ -258,6 +267,101 @@ test("a unit cell pressed again, once focus has moved elsewhere, moves it back t
   await expect(picker).toBeFocused();
 });
 
+test("Close pressed from the keyboard puts the focus back on the unit cell the panel was opened from", async ({
+  page,
+  gui,
+}) => {
+  await openPanel(page, gui.address, "ValueA");
+  await page.getByRole("button", { name: "Close ValueA" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("complementary", { name: "ValueA" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Set the unit of ValueA" })).toBeFocused();
+});
+
+/** Presses Close in a panel from the keyboard, and waits for the panel to go. */
+async function closedByKeyboard(panel: Locator, title: string): Promise<void> {
+  await panel.getByRole("button", { name: `Close ${title}` }).focus();
+  await panel.page().keyboard.press("Enter");
+  await expect(panel).toHaveCount(0);
+}
+
+test("Close puts the focus back on the row the panel was opened from", async ({ page, gui }) => {
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  const row = page
+    .getByRole("grid", { name: "Declarations of Controller" })
+    .getByRole("row", { name: /ValueB/ });
+  await row.focus();
+  await page.keyboard.press("Enter");
+  const panel = page.getByRole("complementary", { name: "ValueB" });
+  await expect(panel).toBeVisible();
+  await closedByKeyboard(panel, "ValueB");
+  await expect(row).toBeFocused();
+});
+
+test("Close puts the focus on the panel's row once the filter puts it back, in the table while the filter leaves it out, and on the heading where no row is left", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  const table = page.getByRole("grid", { name: "Declarations of Controller" });
+  const row = table.getByRole("row", { name: /ValueB/ });
+  const panel = page.getByRole("complementary", { name: "ValueB" });
+  const filter = page.getByRole("textbox", { name: "Filter declarations" });
+
+  // Left out and put back, the row the panel was opened from is drawn anew, as another element:
+  // the focus goes back to it all the same, though the table moved its own place off it meanwhile.
+  await row.click();
+  await expect(panel).toBeVisible();
+  await filter.fill("State");
+  await expect(row).toHaveCount(0);
+  await filter.fill("");
+  await expect(row).toBeVisible();
+  await closedByKeyboard(panel, "ValueB");
+  await expect(row).toBeFocused();
+
+  // Left out, the panel's row cannot take it: the table does, at the place it moved to as the row
+  // went, in the row standing nearest - its cell, where a cell of the row was clicked.
+  await row.click();
+  await expect(panel).toBeVisible();
+  await filter.fill("State");
+  await expect(row).toHaveCount(0);
+  await closedByKeyboard(panel, "ValueB");
+  const nearest = table.getByRole("row", { name: /StateA/ });
+  await expect
+    .poll(() => nearest.evaluate((element) => element.contains(document.activeElement)))
+    .toBe(true);
+
+  // No row left, no table is drawn, and the page's heading takes it.
+  await filter.fill("");
+  await row.click();
+  await expect(panel).toBeVisible();
+  await filter.fill("nothing has this name");
+  await expect(table).toHaveCount(0);
+  await closedByKeyboard(panel, "ValueB");
+  await expect(page.getByRole("heading", { name: "Controller", level: 1 })).toBeFocused();
+});
+
+test("Close puts the focus on the panel's row where its address opened it", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("row", { name: /ValueB/ }).click();
+  await expect(page).toHaveURL(/variable=ValueB/);
+  await page.reload();
+  const panel = page.getByRole("complementary", { name: "ValueB" });
+  await expect(panel).toBeVisible();
+  await closedByKeyboard(panel, "ValueB");
+  await expect(
+    page.getByRole("grid", { name: "Declarations of Controller" }).getByRole("row", {
+      name: /ValueB/,
+    }),
+  ).toBeFocused();
+});
+
 test("the address keeps the panel open across a reload", async ({ page, gui }) => {
   await page.goto(gui.address);
   await page.getByRole("button", { name: "Controller", exact: true }).click();
@@ -339,6 +443,29 @@ test("an arrow in disagreement about two variables asks which, from the keyboard
   await chooser.getByRole("button", { name: "ValueB", exact: true }).click();
   await expect(page.getByRole("complementary", { name: "ValueB" })).toBeVisible();
   await expect(page).toHaveURL(/\/project\?variable=ValueB$/);
+});
+
+test("Close puts the focus back on the arrow a panel was opened from, through the chooser", async ({
+  page,
+  gui,
+}) => {
+  drift(gui.directory, "ValueA", "rpm");
+  drift(gui.directory, "ValueB", "mV");
+  await page.goto(gui.address);
+  const arrow = page.getByRole("button", { name: "SensorHub to Controller: 2 variables, error" });
+  await arrow.focus();
+  await page.keyboard.press("Enter");
+  // The chooser's own Close, then the variable's panel the chooser opened in its place.
+  const chooser = page.getByRole("complementary", { name: "SensorHub to Controller" });
+  await closedByKeyboard(chooser, "SensorHub to Controller");
+  await expect(arrow).toBeFocused();
+  await page.keyboard.press("Enter");
+  await chooser.getByRole("button", { name: "ValueB", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  const panel = page.getByRole("complementary", { name: "ValueB" });
+  await expect(panel).toBeVisible();
+  await closedByKeyboard(panel, "ValueB");
+  await expect(arrow).toBeFocused();
 });
 
 test("no page reports a violation of its content security policy", async ({ page, gui }) => {

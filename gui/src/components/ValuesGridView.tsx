@@ -40,6 +40,7 @@ import { commaAsked, offerName, offerSentence, typedOffer } from "../lib/typedCe
 import { consequence, NO_UNIT, PLANNING, shownChanges } from "../lib/units";
 import { shortValue } from "../lib/variableKeys";
 import { Button } from "../ui/Button";
+import { PageHeading } from "../ui/PageHeading";
 import { Cell, Column, Row, Table, TableBody, TableHeader } from "../ui/Table";
 import { UpdatingNote, UpdatingStatus } from "../ui/UpdatingNote";
 import { Changes } from "./Changes";
@@ -352,7 +353,7 @@ export function ValuesGridView(props: ValuesGridViewProps) {
       }}
     >
       <div className="heading">
-        <h1>{reply.name}</h1>
+        <PageHeading>{reply.name}</PageHeading>
         {undoStrip}
         <Button variant="link" onPress={props.onBack}>
           Back to {backTo}

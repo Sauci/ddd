@@ -27,8 +27,10 @@ import { ValuesPage } from "../screens/ValuesPage";
 import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
 import { LinkTabs } from "../ui/LinkTabs";
+import { PageHeading } from "../ui/PageHeading";
 import { UpdatingStatus } from "../ui/UpdatingNote";
 import { ErrorBoundary } from "./ErrorBoundary";
+import { watchPresses } from "./focus";
 import { UpdatingContext } from "./updating";
 import { useProjectState } from "./useProjectState";
 import { useRoute } from "./useRoute";
@@ -72,6 +74,8 @@ const BARE_ROUTES: Record<ProjectView, Route> = {
 export function App() {
   const queries = useQueryClient();
   const [route, navigate, arrived, followings] = useRoute();
+  // Which control a press of the pointer is on, for the panel it opens to give the focus back to.
+  useEffect(() => watchPresses(), []);
   const out = useSyncExternalStore(signedOut.subscribe, signedOut.current);
   const session = useQuery({ queryKey: ["session"], queryFn: () => getSession() });
   const opened = session.data?.project ?? null;
@@ -207,7 +211,7 @@ export function App() {
     page = (
       <section>
         <div className="heading">
-          <h1>{projectName(opened, project)}</h1>
+          <PageHeading>{projectName(opened, project)}</PageHeading>
           <UndoStrip state={state} stopped={stopped} />
           {/* Last in the row, so that none of the controls before it ever moves. */}
           <UpdatingStatus updating={updating} />
@@ -292,7 +296,7 @@ export function App() {
     page = (
       <section>
         <div className="heading">
-          <h1>{projectName(opened, project)}</h1>
+          <PageHeading>{projectName(opened, project)}</PageHeading>
         </div>
         {waiting !== null && <p className="quiet">{waiting}</p>}
       </section>

@@ -93,6 +93,22 @@ test("a disagreement is counted once above both tables, as ddd check counts it, 
   await expect(page.getByRole("row", { name: /definition-mismatch/ })).toHaveCount(2);
 });
 
+test("Close puts the focus back on the finding's row", async ({ page, gui }) => {
+  drift(gui.directory);
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Findings" }).click();
+  const row = page
+    .getByRole("row", { name: "definition-mismatch" })
+    .filter({ hasText: "controller.ddd.json" });
+  await row.focus();
+  await page.keyboard.press("Enter");
+  const panel = page.getByRole("complementary", { name: "definition-mismatch" });
+  await panel.getByRole("button", { name: "Close definition-mismatch" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(panel).toHaveCount(0);
+  await expect(row).toBeFocused();
+});
+
 test("a row the Findings tab's filter leaves stays selected once the filter is emptied", async ({
   page,
   gui,

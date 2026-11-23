@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
-import { dump, held } from "./demo";
+import { crowd, dump, held } from "./demo";
 import { expect, test } from "./fixtures";
 
 /**
@@ -447,6 +447,54 @@ test("a unit's filter finds the places one file states it", async ({ page, gener
   await expect(filter).toHaveAccessibleDescription("");
   await expect(places).toHaveAttribute("aria-rowcount", "2501");
   expect(await rowCountsWatched(page, places)).toEqual(["5", "1005", "2005", "2501"]);
+});
+
+/**
+ * A panel closed while its table's rows come back (16:I13): Controller given 6,000 declarations
+ * more, a filter leaves out the last, whose panel is open, and emptied puts the rows back a
+ * thousand at a time. Rows put back before the one holding the focus move its place, and React Aria
+ * then draws another row where it stood, the focus on that one: Close pressed while they come back
+ * gives the focus to the table, and to the panel's row once every row is back - drawn where it
+ * stands, out of view, though the table moved its own place to ValueA meanwhile.
+ */
+test("Close gives the focus back to the panel's row while a widened filter puts the rows back", async ({
+  page,
+  copiedGui,
+}) => {
+  const gui = await copiedGui("demo", (directory) => crowd(directory, 6000));
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  const table = page.getByRole("grid", { name: "Declarations of Controller" });
+  const filter = page.getByRole("textbox", { name: "Filter declarations" });
+  const last = table.getByRole("row", { name: /Crowd05999/ });
+  await filter.fill("Crowd05999");
+  await last.click();
+  const panel = page.getByRole("complementary", { name: "Crowd05999" });
+  // Its keys drawn: the panel read, never drawn anew by its answer as Close's key goes down.
+  await expect(panel.getByRole("grid", { name: "Keys of Crowd05999" })).toBeVisible();
+  await filter.fill("ValueA");
+  await expect(last).toHaveCount(0);
+
+  // The count of rows the table says it holds as Close's key comes up, when the panel closes.
+  await page.evaluate(() => {
+    const grid = document.querySelector('[role="grid"][aria-label="Declarations of Controller"]');
+    const record = () => {
+      (window as unknown as { rowsAtClose: string | null }).rowsAtClose =
+        grid?.getAttribute("aria-rowcount") ?? null;
+    };
+    document.addEventListener("keyup", record, { capture: true, once: true });
+  });
+  await filter.fill("");
+  await panel.getByRole("button", { name: "Close Crowd05999" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(panel).toHaveCount(0);
+  await expect(table).toHaveAttribute("aria-rowcount", "6015");
+  await expect(last).toBeFocused();
+  // Pressed while the rows came back: the table held fewer than its 6,014 and its header's row.
+  const atClose = await page.evaluate(
+    () => (window as unknown as { rowsAtClose: string | null }).rowsAtClose,
+  );
+  expect(Number(atClose)).toBeLessThan(6015);
 });
 
 /**

@@ -90,6 +90,23 @@ a.button.link:hover {
   color: var(--ink-quiet);
   font-size: var(--text-small);
 }
+/* A finding's chip and word on a table's one line (FindingChip.tsx's `FindingLine`): where the two
+   run past the column, the chip gives up the room and cuts the check's name short, never the word
+   (16:M14). The word keeps the space before it, which parts it from the chip on the screen and in
+   what is read out. */
+.finding-line {
+  display: flex;
+  align-items: baseline;
+}
+.finding-line .chip {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.finding-line .severity-word {
+  flex: none;
+  white-space: pre;
+}
 
 /* Panel: a framed aside beside the page's main view, and the grid that puts the two side by
    side - one column once the viewport is too narrow for both. The grid's gap is spec 5.1's
@@ -722,8 +739,11 @@ tr.changing td {
 .findings-window .react-aria-TableHeader .react-aria-Column {
   background: var(--surface);
 }
+/* Check holds a check's chip and its severity's word side by side for all but the few longest of
+   ddd's checks, whose names are cut short in their chips instead (`.finding-line`, 16:M14); as wide
+   as Compare's (CompareTableView.tsx). */
 .findings-window .react-aria-Column.check {
-  width: 10.5rem;
+  width: 12.5rem;
 }
 .findings-window .react-aria-Column.file {
   width: 11rem;

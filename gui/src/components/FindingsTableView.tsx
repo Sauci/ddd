@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import type { ListedFinding } from "../api/types";
 import { keeps, pendingKeys, type WindowRow } from "../lib/findingsWindow";
 import { also, Cell, Column, Row, Table, TableBody, TableHeader } from "../ui/Table";
-import { FindingChip } from "./FindingChip";
+import { FindingLine } from "./FindingChip";
 
 export interface FindingsTableViewProps {
   /** The rows the window draws, in order: each a finding, or a placeholder for one whose page has
@@ -93,7 +93,7 @@ export function FindingsTableView(props: FindingsTableViewProps) {
                 className={also(row.finding.severity === "error" ? "has-error" : "")}
               >
                 <Cell>
-                  <FindingChip severity={row.finding.severity} check={row.finding.check} />
+                  <FindingLine severity={row.finding.severity} check={row.finding.check} />
                 </Cell>
                 <Cell>{row.finding.message}</Cell>
                 <Cell className={also("quiet")}>{row.file}</Cell>

@@ -1,5 +1,5 @@
-import type { Page } from "@playwright/test";
-import { CONTROLLER, drift, openPanel, unstamp } from "./demo";
+import type { Locator, Page } from "@playwright/test";
+import { CONTROLLER, drift, driftDatatypeIn, dump, openPanel, SENSOR_HUB, unstamp } from "./demo";
 import { expect, test } from "./fixtures";
 
 // What the page draws for keyboard use and a readable canvas (16:I11, 16:I12, 16:M14, 16:M19,
@@ -301,6 +301,84 @@ test("an error and a warning are said in their words beside their chips", async 
     /definition-mismatch error/,
   );
 });
+
+/** The widest finding a table's Check column is asked to hold: the longest name among the checks
+ * the server knows - ddd's own, then the open project's plugins' - filed under the longest word a
+ * severity is said in that it can carry, any of the three where a project may change its severity.
+ * Asked of the server as `analysed` (fixtures.ts) asks it, so that a check added with a longer name
+ * is the one measured. */
+async function widestFinding(address: string): Promise<{ check: string; severity: string }> {
+  const token = new URL(address).searchParams.get("token");
+  const response = await fetch(new URL("/api/checks", address), {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  const { checks } = (await response.json()) as {
+    checks: { check: string; default_severity: string; overridable: boolean }[];
+  };
+  const [widest] = [...checks].sort((a, b) => b.check.length - a.check.length);
+  if (widest === undefined) throw new Error("the server knows no check");
+  const words = widest.overridable ? ["error", "warning", "info"] : [widest.default_severity];
+  const [severity = widest.default_severity] = words.sort((a, b) => b.length - a.length);
+  return { check: widest.check, severity };
+}
+
+/** Every reply to `path` the page reads from now on, its first finding filed as `widest` says. */
+async function filedAs(page: Page, path: string, widest: { check: string; severity: string }) {
+  await page.route(
+    (url) => url.pathname === path,
+    async (route) => {
+      const response = await route.fetch();
+      const reply = (await response.json()) as { findings: { check: string; severity: string }[] };
+      const [first] = reply.findings;
+      if (first !== undefined) Object.assign(first, widest);
+      await route.fulfill({ response, json: reply });
+    },
+  );
+}
+
+/** How far a row's severity word reaches past what its cell shows, in px: the word's own box
+ * against its cell's, less the cell's padding. An ellipsis cuts what is drawn, not the box, which is
+ * what this measures. Zero or less is a word drawn whole. */
+function wordPast(row: Locator): Promise<number> {
+  return row.locator(".severity-word").evaluate((word) => {
+    const cell = word.closest('[role="rowheader"], [role="gridcell"]');
+    if (cell === null) throw new Error("the word stands in no cell");
+    const inside = cell.getBoundingClientRect().right;
+    const padding = Number.parseFloat(getComputedStyle(cell).paddingRight);
+    return word.getBoundingClientRect().right - (inside - padding);
+  });
+}
+
+for (const width of [1280, 375]) {
+  test(`the longest check's severity word is drawn whole in the Findings table and in Compare's, ${width}px wide`, async ({
+    page,
+    gui,
+  }) => {
+    const widest = await widestFinding(gui.address);
+    // A baseline of the copy as it is served, then two drifts: findings for the Findings tab, and
+    // a changed interface for Compare's table (compare.spec.ts).
+    dump(gui.directory, "demo.ddd.json", "baseline.json");
+    drift(gui.directory);
+    driftDatatypeIn(gui.directory, SENSOR_HUB, "ValueA", "uint16");
+    await filedAs(page, "/api/findings", widest);
+    await filedAs(page, "/api/compare", widest);
+    await page.setViewportSize({ width, height: 720 });
+    const named = new RegExp(`${widest.check} ${widest.severity}`);
+
+    await page.goto(gui.address);
+    await page.getByRole("link", { name: "Findings", exact: true }).click();
+    const finding = page.getByRole("row", { name: named });
+    await expect(finding).toBeVisible();
+    expect(await wordPast(finding)).toBeLessThanOrEqual(0);
+
+    await page.getByRole("link", { name: "Compare" }).click();
+    await page.getByRole("textbox", { name: "Baseline" }).fill("baseline.json");
+    await page.getByRole("button", { name: "Compare" }).click();
+    const compared = page.getByRole("grid", { name: "Findings" }).getByRole("row", { name: named });
+    await expect(compared).toBeVisible();
+    expect(await wordPast(compared)).toBeLessThanOrEqual(0);
+  });
+}
 
 test("a search's Enter moves the view at once under reduced motion", async ({ page, gui }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });

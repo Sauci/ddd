@@ -1,6 +1,6 @@
 import type { FindingRow } from "../lib/findings";
 import { also, Cell, Column, LongTable, Row, TableBody, TableHeader } from "../ui/Table";
-import { FindingChip } from "./FindingChip";
+import { FindingLine } from "./FindingChip";
 
 export interface CompareTableViewProps {
   rows: readonly FindingRow[];
@@ -27,15 +27,17 @@ export function CompareTableView({ rows, selected, onSelect }: CompareTableViewP
     >
       <TableHeader>
         {/* Widths measured in Chrome on this tab's stories, in a 1280 by 720 window. Check is the
-            Findings tab's 168px (`.findings-window`, ui.css), which holds the widest chip here,
-            changed-interface at 118px. File keeps 232px: the baseline's sensor_hub.ddd.json and
+            Findings tab's 200px (`.findings-window`, ui.css), which holds a check's chip and its
+            severity's word side by side - each of this tab's, with room to spare - for all but the
+            few longest of ddd's checks, whose names are then cut short in their chips, never the
+            word (`FindingLine`, 16:M14). File keeps 232px: the baseline's sensor_hub.ddd.json and
             its cell's padding, beside a panel, where the table's box is 552px. Message takes the
-            rest, 152px there and 600px in the 1068px box with no panel - a longer message cut
+            rest, 120px there and 579px in the 1068px box with no panel - a longer message cut
             with an ellipsis, never wrapped, and read whole in the panel its row opens. The floors
-            sum to 500px, which a box beside a panel holds down to a window about 1000px wide (at
-            996px the box is 498px), and narrower, until the panel moves under the table at 900px,
+            sum to 532px, which a box beside a panel holds down to a window about 1060px wide (at
+            1056px the box is 529px), and narrower, until the panel moves under the table at 900px,
             the box scrolls sideways. */}
-        <Column isRowHeader width={168}>
+        <Column isRowHeader width={200}>
           Check
         </Column>
         <Column width="2fr" minWidth={100}>
@@ -49,7 +51,7 @@ export function CompareTableView({ rows, selected, onSelect }: CompareTableViewP
         {(row) => (
           <Row id={row.key} className={also(row.finding.severity === "error" ? "has-error" : "")}>
             <Cell>
-              <FindingChip severity={row.finding.severity} check={row.finding.check} />
+              <FindingLine severity={row.finding.severity} check={row.finding.check} />
             </Cell>
             <Cell>{row.finding.message}</Cell>
             <Cell className={also("quiet")}>{row.file}</Cell>

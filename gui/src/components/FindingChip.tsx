@@ -13,3 +13,15 @@ export function FindingChip({ severity, check }: { severity: Finding["severity"]
     </>
   );
 }
+
+/** A finding's chip and its word on a table's one line - the Findings tab's, Compare's - where the
+ * word is drawn whole at any width, being what says the severity where the colour cannot (16:M14):
+ * a check's name too long to stand beside it in its column is cut short in its chip instead, which
+ * the panel its row opens names whole (`.finding-line`, ui.css). */
+export function FindingLine({ severity, check }: { severity: Finding["severity"]; check: string }) {
+  return (
+    <span className="finding-line">
+      <FindingChip severity={severity} check={check} />
+    </span>
+  );
+}

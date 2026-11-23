@@ -11569,19 +11569,23 @@ class TestEveryPageSaysWhatItCannotShow:
     file nor cause. Why the last analysis failed and which build records this DDD cannot use were
     in the state and on no page, a first analysis that failed reading as analysing for good. The
     command page's gui row says that every page of the project says all three under its masthead,
-    and that nothing stands in a tab's place once the first analysis failed."""
+    and that nothing stands in a tab's place once the first analysis failed. A failed analysis is
+    tried again at each poll, about a second apart, whether a file changed or not: the row says so,
+    while ``ddd gui`` runs, and not that the next change of a file asks for another."""
 
     def test_the_command_page_says_every_page_says_it_under_the_masthead(self) -> None:
+        said = flattened(COMMAND_LINE_INTERFACE)
         assert (
             "Every page of the open project, a component's among them, says under its masthead "
-            "why the last analysis failed, and that the next change of a file it reads asks for "
-            "another; the files that did not load, each named as a refusal names it and leading "
-            "to the Findings tab filtered by its name, where the finding saying why is listed - "
-            "past four, three of them and a count of the rest, which leads to the Files tab; and "
-            "each build record this DDD cannot use, by its path from the project's directory, "
-            "with its reason. While a file did not load, the Graph's line on a project with no "
-            "dictionary names it as the cause."
-        ) in flattened(COMMAND_LINE_INTERFACE)
+            "why the last analysis failed, and, while ``ddd gui`` runs, that it tries again about "
+            "every second until one succeeds; the files that did not load, each named as a "
+            "refusal names it and leading to the Findings tab filtered by its name, where the "
+            "finding saying why is listed - past four, three of them and a count of the rest, "
+            "which leads to the Files tab; and each build record this DDD cannot use, by its path "
+            "from the project's directory, with its reason. While a file did not load, the "
+            "Graph's line on a project with no dictionary names it as the cause."
+        ) in said
+        assert "that the next change of a file it reads asks for another" not in said
 
     def test_the_command_page_says_nothing_stands_in_a_tab_s_place_once_it_failed(self) -> None:
         said = flattened(COMMAND_LINE_INTERFACE)

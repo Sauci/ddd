@@ -76,17 +76,19 @@ export const RECORD_IGNORED = "this record is ignored, so its severities apply t
  * to say - every file loaded, no analysis failed, no record refused, and before the first state.
  * `project` is the project the state followed is of, and `state` its newest analysed revision,
  * `null` before the first; `failed` and `refused` are the newest state's, analysed or not
- * (`useProjectState`), so that a first analysis that failed is said too.
+ * (`useProjectState`), so that a first analysis that failed is said too. `stopped` is whether
+ * ddd gui has stopped answering: no line then says what ddd gui will do, only what the last state
+ * the page read holds, under the masthead's "ddd gui has stopped".
  *
  * Its lines, in order:
- * - why the last analysis failed, and that the next change of a file it reads asks again, as the
- *   poll does (B11-17): over the last analysis that finished, which every page then shows, or
- *   alone where none has;
+ * - why the last analysis failed, and, while ddd gui runs, that it tries again about every second
+ *   (`failureLine`): over the last analysis that finished, which every page then shows, or alone
+ *   where none has;
  * - the project's own description, where it did not load: nothing it includes is read, so no page
  *   has a file of the project to draw;
  * - the other files that did not load, each leading to its finding (`findingsOf`), past four the
  *   rest counted and led to the Files tab, whose rows say of each that it did not load. A file that
- *   does not load stops every check of the project (`checksWaiting`), and the pages show what the
+ *   does not load stops every check of the project (`checksLeft`), and the pages show what the
  *   files that loaded declare;
  * - each build record this DDD cannot use, by its path from the project's directory, as the Table
  *   tab's File column names a file (`shownPath`), with its reason, in the terminal's words.
@@ -96,16 +98,11 @@ export function loadBanner(
   state: { files: readonly SourceFile[] } | null,
   failed: string | null,
   refused: readonly RefusedBuild[],
+  stopped: boolean,
 ): LoadBanner | null {
   if (project === null) return null;
   const lines: Part[][] = [];
-  if (failed !== null) {
-    lines.push([
-      state === null
-        ? `Analysing the project failed: ${failed}. ddd gui analyses it again when a file it reads changes.`
-        : `Analysing the project failed: ${failed}. The pages show the last analysis that finished, and ddd gui analyses the project again when a file it reads changes.`,
-    ]);
-  }
+  if (failed !== null) lines.push([failureLine(failed, state !== null, stopped)]);
   // Named as `unloadedNames` names them, told apart among all of them; the project's own
   // description, where it is one of them, in a line of its own.
   const unloaded = (state?.files ?? []).filter((file) => !file.loaded);
@@ -114,7 +111,7 @@ export function loadBanner(
   for (const name of names.filter((_, at) => described[at])) {
     lines.push([
       findingsOf(name),
-      ` did not load, so ${checksWaiting(1)}, and no file it includes is read.`,
+      ` did not load, so ${checksLeft(1, stopped)}, and no file it includes is read.`,
     ]);
   }
   const others = names.filter((_, at) => !described[at]);
@@ -124,7 +121,7 @@ export function loadBanner(
         text: `${countText(count)} more`,
         to: { page: "project", view: "files" },
       })),
-      ` did not load, so ${checksWaiting(others.length)}, and the pages show what the files that loaded declare.`,
+      ` did not load, so ${checksLeft(others.length, stopped)}, and the pages show what the files that loaded declare.`,
     ]);
   }
   for (const entry of refused) {
@@ -134,11 +131,31 @@ export function loadBanner(
   return { tone: failed === null ? "warning" : "error", lines };
 }
 
+/** What the pages show while the last analysis failed and an earlier one stands. */
+const LAST_SHOWN = "The pages show the last analysis that finished";
+
+/** Why the last analysis failed, in the words the terminal prints it in, over the last analysis
+ * that finished (`standing`) or alone where none has; and, while ddd gui runs, that it tries again
+ * about every second until one succeeds (B11-32). A failure leaves every file it read stamped
+ * unknown (`Session._finished`, gui/session.py), so each poll, a second after the last
+ * (`poll_interval`), asks for another analysis, a file changed on disk or none - which the
+ * heading's "Updating the findings…" shows coming and going. Stopped, ddd gui tries nothing
+ * again. */
+function failureLine(failed: string, standing: boolean, stopped: boolean): string {
+  const said = `Analysing the project failed: ${failed}.`;
+  if (stopped) return standing ? `${said} ${LAST_SHOWN}.` : said;
+  return standing
+    ? `${said} ${LAST_SHOWN}, and ddd gui tries again about every second, until one succeeds.`
+    : `${said} ddd gui tries again about every second, until an analysis succeeds.`;
+}
+
 /** What `count` files that did not load leave of the project's checks: none runs until every file
  * loads. An analysis whose read reported an error goes no further (`_run`, lsp/diagnostics.py), as
  * `ddd check` stops at the read, so the counts every page draws beside the banner are the read's
- * alone - no check said a file that loaded has nothing to fix. */
-function checksWaiting(count: number): string {
+ * alone - no check said a file that loaded has nothing to fix. While ddd gui runs, they wait until
+ * the files load; stopped, nothing runs once they do, and the banner says only that none ran. */
+function checksLeft(count: number, stopped: boolean): string {
+  if (stopped) return "the project's checks did not run";
   return `the project's checks wait until ${count === 1 ? "it does" : "they do"}`;
 }
 

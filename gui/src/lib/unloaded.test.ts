@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { RefusedBuild, SourceFile } from "../api/types";
-import { loadBanner, namedFiles, RECORD_IGNORED, unloadedNames } from "./unloaded";
+import { loadBanner, namedFiles, type Part, RECORD_IGNORED, unloadedNames } from "./unloaded";
 
 const PROJECT = "C:/work/demo/demo.ddd.json";
 
@@ -20,6 +20,15 @@ const SENSOR_HUB = "C:/work/demo/components/sensor_hub.ddd.json";
 
 /** The state of a revision holding `files`. */
 const analysed = (...files: SourceFile[]) => ({ revision: 4, files });
+
+/** Whether ddd gui has stopped answering, as `useProjectState` says: running, in every test but
+ * those of a server stopped. */
+const RUNNING = false;
+const STOPPED = true;
+
+/** A line of the banner as a reader reads it: its words, a link's among them. */
+const wordsOf = (line: readonly Part[]) =>
+  line.map((part) => (typeof part === "string" ? part : part.text)).join("");
 
 describe("the files that did not load, as a sentence names them", () => {
   test("each by its own name, in the state's order, and none that loaded", () => {
@@ -67,15 +76,21 @@ describe("the files that did not load, as a sentence names them", () => {
 
 describe("the banner under the masthead", () => {
   test("is not drawn while every file loaded, no analysis failed and no record is refused", () => {
-    expect(loadBanner(PROJECT, analysed(file(PROJECT, true, "project")), null, [])).toBeNull();
+    expect(
+      loadBanner(PROJECT, analysed(file(PROJECT, true, "project")), null, [], RUNNING),
+    ).toBeNull();
     // Nothing is known before the first state, nor of a first analysis still running.
-    expect(loadBanner(null, null, null, [])).toBeNull();
-    expect(loadBanner(PROJECT, null, null, [])).toBeNull();
+    expect(loadBanner(null, null, null, [], RUNNING)).toBeNull();
+    expect(loadBanner(PROJECT, null, null, [], RUNNING)).toBeNull();
     // Before the first state there is no project to say anything of, whatever else is handed on.
     expect(
-      loadBanner(null, analysed(file(CONTROLLER, false)), "boom", [
-        { record: "C:/work/demo/build/ddd-build.json", reason: "unknown check 'nonesuch'" },
-      ]),
+      loadBanner(
+        null,
+        analysed(file(CONTROLLER, false)),
+        "boom",
+        [{ record: "C:/work/demo/build/ddd-build.json", reason: "unknown check 'nonesuch'" }],
+        STOPPED,
+      ),
     ).toBeNull();
   });
 
@@ -85,7 +100,7 @@ describe("the banner under the masthead", () => {
     // does not load stops every check of the project, as `ddd check` stops at the read (`_run`,
     // lsp/diagnostics.py): the counts beside the banner are of no check, and the pages are drawn
     // from what the files that loaded declare.
-    expect(loadBanner(PROJECT, analysed(file(CONTROLLER, false)), null, [])).toEqual({
+    expect(loadBanner(PROJECT, analysed(file(CONTROLLER, false)), null, [], RUNNING)).toEqual({
       tone: "warning",
       lines: [
         [
@@ -103,7 +118,9 @@ describe("the banner under the masthead", () => {
   test("says of the project's own description that did not load that no file it includes is read", () => {
     // Nothing past a description that does not load is read: the state lists it alone, and no
     // page has a file that loaded to draw.
-    expect(loadBanner(PROJECT, analysed(file(PROJECT, false, "unknown")), null, [])).toEqual({
+    expect(
+      loadBanner(PROJECT, analysed(file(PROJECT, false, "unknown")), null, [], RUNNING),
+    ).toEqual({
       tone: "warning",
       lines: [
         [
@@ -128,6 +145,7 @@ describe("the banner under the masthead", () => {
       ),
       null,
       [],
+      RUNNING,
     );
     expect(banner?.lines).toEqual([
       [
@@ -154,7 +172,7 @@ describe("the banner under the masthead", () => {
       text: name,
       to: { page: "project", view: "findings", text: name },
     });
-    expect(loadBanner(PROJECT, analysed(...five), null, [])?.lines).toEqual([
+    expect(loadBanner(PROJECT, analysed(...five), null, [], RUNNING)?.lines).toEqual([
       [
         finding("a.ddd.json"),
         ", ",
@@ -168,7 +186,7 @@ describe("the banner under the masthead", () => {
       ],
     ]);
     // Four are each named: a count standing for one file is no shorter than its name.
-    const four = loadBanner(PROJECT, analysed(...five.slice(0, 4)), null, []);
+    const four = loadBanner(PROJECT, analysed(...five.slice(0, 4)), null, [], RUNNING);
     expect(four?.lines[0]?.filter((part) => typeof part !== "string")).toHaveLength(4);
   });
 
@@ -177,35 +195,66 @@ describe("the banner under the masthead", () => {
     const many = Array.from({ length: 3334 }, (_, at) =>
       file(`C:/work/large/components/c${at}.ddd.json`, false),
     );
-    expect(loadBanner(PROJECT, analysed(...many), null, [])?.lines[0]?.[6]).toEqual({
+    expect(loadBanner(PROJECT, analysed(...many), null, [], RUNNING)?.lines[0]?.[6]).toEqual({
       text: "3,331 more",
       to: { page: "project", view: "files" },
     });
   });
 
-  test("says a first analysis failed, and when it is asked again, as an error", () => {
+  test("says a first analysis failed, and that ddd gui tries again about every second, as an error", () => {
     // Before any revision: no file is known, and the reason is the whole of what there is to say.
-    expect(loadBanner(PROJECT, null, "boom", [])).toEqual({
+    // A failure leaves every file it read stamped unknown (`Session._finished`, gui/session.py),
+    // so each poll, a second apart, asks for another, a file changed on disk or none.
+    expect(loadBanner(PROJECT, null, "boom", [], RUNNING)).toEqual({
       tone: "error",
       lines: [
         [
-          "Analysing the project failed: boom. ddd gui analyses it again when a file it reads " +
-            "changes.",
+          "Analysing the project failed: boom. ddd gui tries again about every second, until an " +
+            "analysis succeeds.",
         ],
       ],
     });
   });
 
   test("says a later analysis failed over the last one that finished, which every page shows", () => {
-    expect(loadBanner(PROJECT, analysed(file(PROJECT, true, "project")), "boom", [])).toEqual({
+    expect(
+      loadBanner(PROJECT, analysed(file(PROJECT, true, "project")), "boom", [], RUNNING),
+    ).toEqual({
       tone: "error",
       lines: [
         [
           "Analysing the project failed: boom. The pages show the last analysis that finished, " +
-            "and ddd gui analyses the project again when a file it reads changes.",
+            "and ddd gui tries again about every second, until one succeeds.",
         ],
       ],
     });
+  });
+
+  test("promises no analysis once ddd gui has stopped, and says what the last state holds", () => {
+    // Stopped, ddd gui tries nothing again, and a file that loads is checked by nothing: under the
+    // masthead's "ddd gui has stopped", the banner says only what the last state read holds.
+    expect(loadBanner(PROJECT, null, "boom", [], STOPPED)).toEqual({
+      tone: "error",
+      lines: [["Analysing the project failed: boom."]],
+    });
+    const cut = analysed(
+      file(PROJECT, true, "project"),
+      file(CONTROLLER, false),
+      file("C:/work/demo/units.ddd.json", false, "units"),
+    );
+    expect(loadBanner(PROJECT, cut, "boom", [], STOPPED)?.lines.map(wordsOf)).toEqual([
+      "Analysing the project failed: boom. The pages show the last analysis that finished.",
+      "controller.ddd.json and units.ddd.json did not load, so the project's checks did not run, " +
+        "and the pages show what the files that loaded declare.",
+    ]);
+    expect(
+      loadBanner(PROJECT, analysed(file(PROJECT, false, "unknown")), null, [], STOPPED)?.lines.map(
+        wordsOf,
+      ),
+    ).toEqual([
+      "demo.ddd.json did not load, so the project's checks did not run, and no file it includes " +
+        "is read.",
+    ]);
   });
 
   test("names each build record this DDD cannot use, with its reason, as the terminal does", () => {
@@ -219,7 +268,9 @@ describe("the banner under the masthead", () => {
     expect(RECORD_IGNORED).toBe("this record is ignored, so its severities apply to no analysis");
     // By its path from the project's directory, as the Table tab's File column names a file; one
     // on another drive by its own.
-    expect(loadBanner(PROJECT, analysed(file(PROJECT, true, "project")), null, refused)).toEqual({
+    expect(
+      loadBanner(PROJECT, analysed(file(PROJECT, true, "project")), null, refused, RUNNING),
+    ).toEqual({
       tone: "warning",
       lines: [
         [
@@ -236,17 +287,17 @@ describe("the banner under the masthead", () => {
   });
 
   test("says all three at once: the failure first, then the files, then the records", () => {
-    const banner = loadBanner(PROJECT, analysed(file(CONTROLLER, false)), "boom", [
-      { record: "C:/work/demo/build/ddd-build.json", reason: "unknown check 'nonesuch'" },
-    ]);
+    const banner = loadBanner(
+      PROJECT,
+      analysed(file(CONTROLLER, false)),
+      "boom",
+      [{ record: "C:/work/demo/build/ddd-build.json", reason: "unknown check 'nonesuch'" }],
+      RUNNING,
+    );
     expect(banner?.tone).toBe("error");
-    expect(
-      banner?.lines.map((line) =>
-        line.map((part) => (typeof part === "string" ? part : part.text)).join(""),
-      ),
-    ).toEqual([
+    expect(banner?.lines.map(wordsOf)).toEqual([
       "Analysing the project failed: boom. The pages show the last analysis that finished, and " +
-        "ddd gui analyses the project again when a file it reads changes.",
+        "ddd gui tries again about every second, until one succeeds.",
       "controller.ddd.json did not load, so the project's checks wait until it does, and the " +
         "pages show what the files that loaded declare.",
       "build/ddd-build.json: unknown check 'nonesuch'; this record is ignored, so its severities " +

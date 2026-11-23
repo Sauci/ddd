@@ -860,11 +860,12 @@ The commands
        format 3 by a newer DDD, and this one understands up to format 2; this record is
        ignored, so its severities apply to no analysis``.
        Every page of the open project, a component's among them, says under its masthead why
-       the last analysis failed, and that the next change of a file it reads asks for another;
-       the files that did not load, each named as a refusal names it and leading to the
-       Findings tab filtered by its name, where the finding saying why is listed - past four,
-       three of them and a count of the rest, which leads to the Files tab; and each build
-       record this DDD cannot use, by its path from the project's directory, with its reason.
+       the last analysis failed, and, while ``ddd gui`` runs, that it tries again about every
+       second until one succeeds; the files that did not load, each named as a refusal names it
+       and leading to the Findings tab filtered by its name, where the finding saying why is
+       listed - past four, three of them and a count of the rest, which leads to the Files tab;
+       and each build record this DDD cannot use, by its path from the project's directory, with
+       its reason.
        While a file did not load, the Graph's line on a project with no dictionary names it as
        the cause.
        ``-b DIR`` names a build directory as for ``ddd lsp``, ``--host 0.0.0.0``

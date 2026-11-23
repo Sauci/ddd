@@ -587,6 +587,13 @@ test("a build record this DDD cannot use is named under the masthead of the open
   );
 });
 
+/** What the banner under the masthead says of a first analysis that failed for `boom`, while the
+ * server runs: a failure leaves every file it read stamped unknown (`Session._finished`), so each
+ * poll asks for another, a second apart, a file changed on disk or none. */
+const FIRST_FAILED =
+  "Analysing the project failed: boom. ddd gui tries again about every second, until an analysis " +
+  "succeeds.";
+
 /** Answers every ask of the state with the server's own, said to be of an analysis that failed
  * for `reason` (`State.failed`) - the project's first, with no revision to stand, where `first` -
  * until the function it answers is called, from when every answer is the server's own again. The
@@ -639,9 +646,7 @@ test("a first analysis that failed is said under the masthead, never as analysin
   const mended = await analysesFail(page, "boom", true);
   try {
     await page.goto(gui.address);
-    await expect(page.getByRole("alert")).toHaveText(
-      "Analysing the project failed: boom. ddd gui analyses it again when a file it reads changes.",
-    );
+    await expect(page.getByRole("alert")).toHaveText(FIRST_FAILED);
     await expect(page.getByRole("heading", { name: "DemoDevice", level: 1 })).toBeVisible();
     // Said to be analysing, a failure asked again at every poll read as an analysis never ending.
     await expect(page.getByText("Analysing the project…", { exact: true })).toHaveCount(0);
@@ -652,11 +657,10 @@ test("a first analysis that failed is said under the masthead, never as analysin
         join(gui.directory, CONTROLLER).replaceAll("\\", "/"),
       )}`,
     );
-    await expect(page.getByRole("alert")).toHaveText(
-      "Analysing the project failed: boom. ddd gui analyses it again when a file it reads changes.",
-    );
+    await expect(page.getByRole("alert")).toHaveText(FIRST_FAILED);
     await expect(page.getByText("Analysing the project…", { exact: true })).toHaveCount(0);
-    // An analysis that lands lifts it, the next change of a file it reads having asked for one.
+    // An analysis that lands lifts it: here the server's own, every answer its own again, which a
+    // stamp moved has the long poll answer at once.
     mended();
     restamp(gui.directory, CONTROLLER);
     await expect(page.getByRole("heading", { name: "Controller", level: 1 })).toBeVisible();
@@ -679,12 +683,41 @@ test("an analysis that failed after one landed is said under the masthead, over 
     restamp(gui.directory, CONTROLLER);
     await expect(page.getByRole("alert")).toHaveText(
       "Analysing the project failed: boom. The pages show the last analysis that finished, and " +
-        "ddd gui analyses the project again when a file it reads changes.",
+        "ddd gui tries again about every second, until one succeeds.",
     );
     await expect(canvas).toBeVisible();
     mended();
     restamp(gui.directory, CONTROLLER);
     await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect(canvas).toBeVisible();
+  } finally {
+    await page.unrouteAll({ behavior: "ignoreErrors" });
+  }
+});
+
+test("an analysis that failed promises no other once the server has stopped", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  const canvas = page.getByRole("region", { name: "Modules" });
+  await expect(canvas).toBeVisible();
+  await analysesFail(page, "boom", false);
+  try {
+    // The ask already on its way is past the route: a change on disk answers it, and the next.
+    restamp(gui.directory, CONTROLLER);
+    const failure = page.getByRole("alert").filter({ hasText: "Analysing the project failed" });
+    await expect(failure).toBeVisible();
+    // Then every ask of the long poll dropped on the network, as a stopped server drops it, over
+    // the route above: the last registered answers first. A stamp moved answers the ask in flight,
+    // so that the ask after it is the first one dropped.
+    await failing(page, "/api/state", "network");
+    restamp(gui.directory, CONTROLLER);
+    await expect(page.getByRole("alert").filter({ hasText: "has stopped" })).toHaveText(STOPPED);
+    // A stopped ddd gui tries nothing again: the banner says what the last state read holds.
+    await expect(failure).toHaveText(
+      "Analysing the project failed: boom. The pages show the last analysis that finished.",
+    );
     await expect(canvas).toBeVisible();
   } finally {
     await page.unrouteAll({ behavior: "ignoreErrors" });

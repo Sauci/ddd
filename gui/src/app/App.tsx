@@ -171,9 +171,10 @@ export function App() {
   const waiting = beforeAnalysis(failed);
   // The banner is the open project's, under the masthead of each of its pages - its tabs, a
   // component's and its values - and of no other: the start page lists the projects to open.
+  // Once the server has stopped, it promises nothing ddd gui would do.
   const banner =
     session.isSuccess && opened !== null && route.page !== "start"
-      ? loadBanner(project, state, failed, refused)
+      ? loadBanner(project, state, failed, refused, stopped)
       : null;
   let page: ReactNode;
   if (session.isPending) {

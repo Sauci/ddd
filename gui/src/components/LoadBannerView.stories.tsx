@@ -53,30 +53,41 @@ function View({ banner }: { banner: LoadBanner | null }) {
   return banner === null ? null : <LoadBannerView banner={banner} onFollow={() => undefined} />;
 }
 
+/** Whether ddd gui has stopped answering: running, in every story but the last. */
+const RUNNING = false;
+
 /** controller.ddd.json saved half-written: named, and leading to the finding saying why. */
 export const AFileThatDidNotLoad = () => (
-  <View banner={loadBanner(DEMO, { files: CONTROLLER_CUT }, null, [])} />
+  <View banner={loadBanner(DEMO, { files: CONTROLLER_CUT }, null, [], RUNNING)} />
 );
 
 /** The project's own description saved half-written: named, and no file it includes read. */
 export const ADescriptionThatDidNotLoad = () => (
-  <View banner={loadBanner(DEMO, { files: DESCRIPTION_CUT }, null, [])} />
+  <View banner={loadBanner(DEMO, { files: DESCRIPTION_CUT }, null, [], RUNNING)} />
 );
 
 /** Six files that did not load: three named, two of one name told apart by their folders, and the
  * other three counted, leading to the Files tab. */
 export const ManyFilesThatDidNotLoad = () => (
-  <View banner={loadBanner(DEMO, { files: SIX_CUT }, null, [])} />
+  <View banner={loadBanner(DEMO, { files: SIX_CUT }, null, [], RUNNING)} />
 );
 
-/** The project's first analysis failed: no revision stands, and the next change of a file it reads
- * asks again. */
+/** The project's first analysis failed: no revision stands, and ddd gui tries again about every
+ * second. */
 export const AFirstAnalysisThatFailed = () => (
-  <View banner={loadBanner(DEMO, null, "embedded null byte", [])} />
+  <View banner={loadBanner(DEMO, null, "embedded null byte", [], RUNNING)} />
 );
 
 /** A later analysis failed while a file did not load and a build record cannot be used: one banner,
  * a line each, an error for the failure. */
 export const EverythingAtOnce = () => (
-  <View banner={loadBanner(DEMO, { files: CONTROLLER_CUT }, "embedded null byte", [NEWER])} />
+  <View
+    banner={loadBanner(DEMO, { files: CONTROLLER_CUT }, "embedded null byte", [NEWER], RUNNING)}
+  />
+);
+
+/** The same once ddd gui has stopped: no line promises an analysis, each saying what the last state
+ * the page read holds. */
+export const EverythingOnceStopped = () => (
+  <View banner={loadBanner(DEMO, { files: CONTROLLER_CUT }, "embedded null byte", [NEWER], true)} />
 );

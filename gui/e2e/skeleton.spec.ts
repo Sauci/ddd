@@ -7,6 +7,7 @@ import {
   drift,
   held,
   includesNothing,
+  namingAScalarType,
   openValues,
   SENSOR_HUB,
   withUnitOfValueA,
@@ -360,6 +361,42 @@ test("a page's heading drawn once its file is read takes the focus then, unless 
     () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
   );
   await expect(goTo).toBeFocused();
+});
+
+/**
+ * A change of page whose panel is drawn after the page (16:I13, ruling B11-41): GainA's panel on
+ * the Graph links to Gain_t, the scalar type giving it its unit, on the Types tab, which draws its
+ * table and the type's panel once the project's types are read. The page's heading holds the focus
+ * meanwhile, and the type's panel takes it as it is drawn.
+ */
+test("a type a panel links to takes the focus once its panel is drawn, the page's heading holding it meanwhile", async ({
+  page,
+  copiedGui,
+}) => {
+  const gui = await copiedGui("demo", namingAScalarType);
+  await page.goto(gui.address);
+  const graph = new URL(page.url());
+  graph.pathname = "/project";
+  graph.search = "?variable=GainA";
+  await page.goto(graph.href);
+  const link = page
+    .getByRole("complementary", { name: "GainA" })
+    .getByRole("link", { name: "Gain_t" })
+    .first();
+  await expect(link).toBeVisible();
+  const release = await held(page, "/api/types");
+  try {
+    await link.click();
+    await expect(page.getByText("Reading the project's types…")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "DemoDevice", level: 1 })).toBeFocused();
+  } finally {
+    release();
+  }
+  await expect(
+    page
+      .getByRole("complementary", { name: "Gain_t" })
+      .getByRole("heading", { name: "Gain_t", level: 2 }),
+  ).toBeFocused();
 });
 
 /** What the Graph and the Table say of a project that includes no component (16:M13). */

@@ -398,6 +398,50 @@ export function crowd(directory: string, count: number): void {
   writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`, "utf8");
 }
 
+/** Controller made to declare a scalar type, `Gain_t`, and two declarations naming it: `GainA`, a
+ * parameter of no dimensions stating 10, and `GainRow`, a value block of three. Neither states a
+ * datatype of its own: the type does. */
+export function namingAScalarType(directory: string): void {
+  const path = join(directory, CONTROLLER);
+  const data = JSON.parse(readFileSync(path, "utf8"));
+  data.component.types = [
+    {
+      type: "scalar",
+      name: "Gain_t",
+      description: "A gain in hertz",
+      datatype: "uint16",
+      unit: "Hz",
+      conversion: { factor: 0.25 },
+    },
+  ];
+  data.component.interface.push(
+    {
+      scope: "local",
+      definition: {
+        kind: "parameter",
+        name: "GainA",
+        id: "g41na0000001",
+        typename: "Gain_t",
+        init: 10,
+        volatile: false,
+      },
+    },
+    {
+      scope: "local",
+      definition: {
+        kind: "value_block",
+        name: "GainRow",
+        id: "g41na0000002",
+        typename: "Gain_t",
+        dimensions: [3],
+        init: [1, 2, 3],
+        volatile: false,
+      },
+    },
+  );
+  writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+}
+
 /** A producing declaration's id taken away from outside, the way a description written before
  * `ddd id` adopted ids states it - which is what `missing-id` reports; answers the file as it
  * was before. */

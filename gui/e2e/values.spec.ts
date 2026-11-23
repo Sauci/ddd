@@ -7,6 +7,7 @@ import {
   failing,
   framesWatched,
   held,
+  namingAScalarType,
   openValues,
   paste,
   SENSOR_HUB,
@@ -2085,50 +2086,6 @@ test("a values address naming a file the project does not include still draws th
     `${retired} is not a description file of the open project`,
   );
 });
-
-/** Controller made to declare a scalar type, `Gain_t`, and two declarations naming it: `GainA`, a
- * parameter of no dimensions stating 10, and `GainRow`, a value block of three. Neither states a
- * datatype of its own: the type does. */
-function namingAScalarType(directory: string): void {
-  const path = join(directory, CONTROLLER);
-  const data = JSON.parse(readFileSync(path, "utf8"));
-  data.component.types = [
-    {
-      type: "scalar",
-      name: "Gain_t",
-      description: "A gain in hertz",
-      datatype: "uint16",
-      unit: "Hz",
-      conversion: { factor: 0.25 },
-    },
-  ];
-  data.component.interface.push(
-    {
-      scope: "local",
-      definition: {
-        kind: "parameter",
-        name: "GainA",
-        id: "g41na0000001",
-        typename: "Gain_t",
-        init: 10,
-        volatile: false,
-      },
-    },
-    {
-      scope: "local",
-      definition: {
-        kind: "value_block",
-        name: "GainRow",
-        id: "g41na0000002",
-        typename: "Gain_t",
-        dimensions: [3],
-        init: [1, 2, 3],
-        volatile: false,
-      },
-    },
-  );
-  writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`, "utf8");
-}
 
 test("a scalar naming a scalar type reads scalar, and its value is typed, written and read back", async ({
   page,

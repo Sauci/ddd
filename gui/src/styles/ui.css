@@ -488,6 +488,19 @@ tr.changing td {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
+/* A long table's cells are each drawn in a box of their own, positioned over the row (the doc
+   further down): they covered that outline, so that a selected row showed its tint alone, and in
+   forced colours, which drop the tint, nothing at all (16:I12). The mark is drawn over the cells
+   instead: a border forced colours keep, on a box laid over the row - over the box React Aria
+   positions the row in, as it does each cell - which lets every press through to the cells. */
+.react-aria-Table.long .react-aria-Row[data-selected]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border: 2px solid var(--accent);
+  pointer-events: none;
+}
 /* Milestone 1's red inset on a row's first cell, kept exactly (app.css's tr.has-error). */
 .react-aria-Row.has-error .react-aria-Cell:first-child {
   box-shadow: inset 3px 0 var(--error);

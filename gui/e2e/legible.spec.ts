@@ -58,6 +58,95 @@ async function ringOf(page: Page, selector: string) {
   return ring;
 }
 
+/** What the four edges of `row`'s box paint, read off the screen's own pixels rather than computed
+ * styles, which report a mark whether or not anything covers it: for the top, bottom, left and
+ * right edge, two pixels deep, the share of its pixels standing at 3:1 or more from the ground - the
+ * colour most of the row's inside is painted in. A mark drawn around the row paints all four
+ * whole; a row with none paints its top edge in its ground. The box is read where the browser
+ * paints it, its edges rounded to whole pixels: a row standing at 245.5px is painted from 246. */
+async function edgesPainted(page: Page, row: Locator): Promise<number[]> {
+  await row.scrollIntoViewIfNeeded();
+  const box = await row.boundingBox();
+  if (box === null) throw new Error("the row is not drawn");
+  const [left, top] = [Math.round(box.x), Math.round(box.y)];
+  const clip = {
+    x: left,
+    y: top,
+    width: Math.round(box.x + box.width) - left,
+    height: Math.round(box.y + box.height) - top,
+  };
+  const shot = (await page.screenshot({ clip })).toString("base64");
+  return page.evaluate(async (png) => {
+    const image = new Image();
+    image.src = `data:image/png;base64,${png}`;
+    await image.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = image.width;
+    canvas.height = image.height;
+    const drawing = canvas.getContext("2d");
+    if (drawing === null) throw new Error("no canvas to read the pixels on");
+    drawing.drawImage(image, 0, 0);
+    const { data, width, height } = drawing.getImageData(0, 0, image.width, image.height);
+    const at = (x: number, y: number) => {
+      const from = (y * width + x) * 4;
+      return [...data.slice(from, from + 3)];
+    };
+    const counts = new Map<string, number>();
+    for (let y = 4; y < height - 4; y += 1) {
+      for (let x = 4; x < width - 4; x += 1) {
+        const colour = at(x, y).join(",");
+        counts.set(colour, (counts.get(colour) ?? 0) + 1);
+      }
+    }
+    const [ground] = [...counts.entries()].sort((one, other) => other[1] - one[1])[0] ?? [""];
+    const luminance = (rgb: number[]) => {
+      const linear = (channel: number) => {
+        const value = channel / 255;
+        return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+      };
+      const [r = 0, g = 0, b = 0] = rgb.map(linear);
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    const behind = luminance(ground.split(",").map(Number));
+    const apart = (rgb: number[]) => {
+      const [light, dark] = [luminance(rgb), behind].sort((one, other) => other - one);
+      return ((light ?? 0) + 0.05) / ((dark ?? 0) + 0.05) >= 3;
+    };
+    const share = (pixels: number[][]) => pixels.filter(apart).length / pixels.length;
+    const band = (xs: number[], ys: number[]) => xs.flatMap((x) => ys.map((y) => at(x, y)));
+    const across = Array.from({ length: width }, (_, x) => x);
+    const down = Array.from({ length: height }, (_, y) => y);
+    return [
+      share(band(across, [0, 1])),
+      share(band(across, [height - 2, height - 1])),
+      share(band([0, 1], down)),
+      share(band([width - 2, width - 1], down)),
+    ];
+  }, shot);
+}
+
+/** What a long table's selected row, `selected`, and a row it does not select, `other`, paint at
+ * their edges (`edgesPainted`): the selected row's four, and the other's top. */
+async function marksOf(page: Page, selected: Locator, other: Locator) {
+  await expect(selected).toHaveAttribute("aria-selected", "true");
+  // Away from the rows, so that the pointer stands on none of them.
+  await page.mouse.move(0, 0);
+  const [top, bottom, left, right] = await edgesPainted(page, selected);
+  const [above] = await edgesPainted(page, other);
+  return { selected: { top, bottom, left, right }, other: above };
+}
+
+/** A selected row marked all around, and the row beside it not at all (`marksOf`). */
+const MARKED = {
+  selected: {
+    top: expect.closeTo(1, 1),
+    bottom: expect.closeTo(1, 1),
+    left: expect.closeTo(1, 1),
+    right: expect.closeTo(1, 1),
+  },
+  other: expect.closeTo(0, 1),
+};
+
 /** How far the focused element's outline reaches past the box that clips it, in px: the outline's
  * own box (the element's, grown by its offset and width) against the padding box of every ancestor
  * that clips (an `overflow` other than visible). Zero or less is a ring drawn whole. */
@@ -201,6 +290,50 @@ for (const forced of [false, true]) {
     await expect(await rows.nth(1).evaluate((node) => getComputedStyle(node).outlineStyle)).toBe(
       "none",
     );
+  });
+
+  test(`the selected row of a long table is marked all around in the pixels it paints, in ${mode}`, async ({
+    page,
+    gui,
+  }) => {
+    drift(gui.directory);
+    await page.emulateMedia({ forcedColors: forced ? "active" : "none" });
+    await page.goto(gui.address);
+    // A component's declarations, and the keys of the variable a row of them opened.
+    await page.getByRole("button", { name: "Controller", exact: true }).click();
+    const declarations = page.getByRole("grid", { name: "Declarations of Controller" });
+    await declarations.getByRole("row", { name: /ValueB/ }).click();
+    // The unit cell of the row now selected, pressed through the row's mark: its key in the panel.
+    await declarations.getByRole("button", { name: "Set the unit of ValueB" }).click();
+    const keys = page
+      .getByRole("complementary", { name: "ValueB" })
+      .getByRole("grid", { name: "Keys of ValueB" });
+    const marks = {
+      declarations: await marksOf(
+        page,
+        declarations.getByRole("row", { name: /ValueB/ }),
+        declarations.getByRole("row", { name: /ValueE/ }),
+      ),
+      keys: await marksOf(
+        page,
+        keys.getByRole("row", { name: /unit/ }),
+        keys.getByRole("row", { name: /^kind/ }),
+      ),
+    };
+
+    // Compare's table of findings, the project against itself: its drift filed on both files.
+    await page.goto(gui.address);
+    await page.getByRole("link", { name: "Compare" }).click();
+    await page.getByRole("textbox", { name: "Baseline" }).fill("demo.ddd.json");
+    await page.getByRole("button", { name: "Compare", exact: true }).click();
+    const rows = page
+      .getByRole("grid", { name: "Findings" })
+      .getByRole("row", { name: /definition-mismatch/ });
+    await expect(rows).toHaveCount(2);
+    await rows.first().click();
+    await expect(page.getByRole("complementary", { name: "definition-mismatch" })).toBeVisible();
+    const compare = await marksOf(page, rows.first(), rows.nth(1));
+    expect({ ...marks, compare }).toEqual({ declarations: MARKED, keys: MARKED, compare: MARKED });
   });
 
   test(`a link-styled button focused after a key was pressed keeps its outline whole, in ${mode}`, async ({

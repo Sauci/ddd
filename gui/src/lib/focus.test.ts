@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { PROJECT_VIEWS } from "./announcing";
 import {
+  headingTaking,
   landing,
   opensAnew,
   outOfView,
@@ -85,6 +86,48 @@ describe("whether a change of page opens a panel, whose heading then takes the f
       expect(selectsPanel({ page: "project", view } as Route)).toBe(false);
     }
     expect(selectsPanel({ page: "project", view: "findings", text: "rpm" })).toBe(false);
+  });
+});
+
+describe("which heading takes the focus a change of page asked for", () => {
+  test("the heading of the panel the change opens, once that panel is drawn", () => {
+    expect(headingTaking("panel", { page: true, panel: true })).toEqual({
+      takes: "panel",
+      waits: false,
+    });
+    expect(headingTaking("panel", { page: false, panel: true })).toEqual({
+      takes: "panel",
+      waits: false,
+    });
+  });
+
+  test("the page's heading meanwhile, the change still waiting for its panel", () => {
+    expect(headingTaking("panel", { page: true, panel: false })).toEqual({
+      takes: "page",
+      waits: true,
+    });
+  });
+
+  test("the page's heading on a change opening no panel, whatever panel is drawn", () => {
+    expect(headingTaking("page", { page: true, panel: false })).toEqual({
+      takes: "page",
+      waits: false,
+    });
+    expect(headingTaking("page", { page: true, panel: true })).toEqual({
+      takes: "page",
+      waits: false,
+    });
+  });
+
+  test("none while the heading it waits for is not drawn", () => {
+    expect(headingTaking("page", { page: false, panel: true })).toEqual({
+      takes: null,
+      waits: true,
+    });
+    expect(headingTaking("panel", { page: false, panel: false })).toEqual({
+      takes: null,
+      waits: true,
+    });
   });
 });
 

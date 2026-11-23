@@ -1,4 +1,13 @@
-import { type Fallen, landing, opensAnew, outOfView, returnPlace, showsAgain } from "../lib/focus";
+import {
+  type Fallen,
+  type HeadingWanted,
+  headingTaking,
+  landing,
+  opensAnew,
+  outOfView,
+  returnPlace,
+  showsAgain,
+} from "../lib/focus";
 import { selectedRowFocus } from "../ui/Table";
 
 /**
@@ -36,10 +45,9 @@ function controlOf(target: EventTarget | null): Control | null {
   return control instanceof HTMLElement || control instanceof SVGElement ? control : null;
 }
 
-/** What a change of page waits to give the focus to (`askPageHeading`): the page's heading, or the
- * heading of the panel its address opens - the page's heading holding the focus until that panel
- * is drawn; nothing once given, or once the reader presses a key or the pointer. */
-let headingWanted: "page" | "panel" | null = null;
+/** What a change of page waits to give the focus to (`askPageHeading`, `headingTaking`): nothing
+ * once given, or once the reader presses a key or the pointer. */
+let headingWanted: HeadingWanted | null = null;
 
 /** The slot whose panel was scrolled into view as it opened, and the window's scroll that scroll
  * left, while the panel is still to be shown from its top (`showsAgain`). */
@@ -134,30 +142,29 @@ export function focusCameByTab(): boolean {
  * is drawn (`panelDrawn`), at once where it is drawn already. */
 export function askPageHeading(panel = false): void {
   headingWanted = panel ? "panel" : "page";
-  const opened = panel ? panelHeading() : null;
-  if (opened !== null) {
-    showPanel(opened);
-    return;
-  }
-  const heading = pageHeading();
-  if (heading !== null) takePageHeading(heading);
+  giveHeading(pageHeading(), panelHeading());
 }
 
-/** Gives `heading`, a page's heading drawn, the focus a change of page asked for, if it waits:
- * until the panel the change of page opens is drawn, where it waits for one. */
+/** Gives `heading`, a page's heading drawn, the focus a change of page asked for, if it waits. */
 export function takePageHeading(heading: HTMLElement): void {
-  if (headingWanted === null) return;
-  if (headingWanted === "page") headingWanted = null;
-  heading.focus();
+  giveHeading(heading, panelHeading());
 }
 
-/** Gives `heading`, that of the panel a change of page opened, the focus the change asked for, the
- * panel scrolled into view where it stands out of it (`scrollShown`). */
-function showPanel(heading: HTMLElement): void {
-  headingWanted = null;
-  heading.focus({ preventScroll: true });
-  const panel = heading.closest<HTMLElement>(".panel");
-  if (panel !== null) scrollShown(panel, heading);
+/** Gives the focus a change of page asked for, where it waits, to the heading `headingTaking`
+ * names of those drawn: the page's (`page`), or the panel's (`panel`), the panel then scrolled into
+ * view where it stands out of it (`scrollShown`). */
+function giveHeading(page: HTMLElement | null, panel: HTMLElement | null): void {
+  if (headingWanted === null) return;
+  const { takes, waits } = headingTaking(headingWanted, {
+    page: page !== null,
+    panel: panel !== null,
+  });
+  if (!waits) headingWanted = null;
+  if (takes === "page") page?.focus();
+  if (takes !== "panel" || panel === null) return;
+  panel.focus({ preventScroll: true });
+  const shown = panel.closest<HTMLElement>(".panel");
+  if (shown !== null) scrollShown(shown, panel);
 }
 
 /** Scrolls `panel`, opened anew, into view where its heading stands out of it (`outOfView`,
@@ -202,7 +209,7 @@ export function panelDrawn(
   openers.set(slot, { title, opener: anew ? opener : (before?.opener ?? null) });
   const heading = panel.querySelector<HTMLElement>('[data-heading="panel"]');
   if (heading === null) return slot;
-  if (headingWanted === "panel" && panel.closest("main") !== null) showPanel(heading);
+  if (headingWanted === "panel" && panel.closest("main") !== null) giveHeading(null, heading);
   else if (anew) scrollShown(panel, heading);
   else if (showing?.slot === slot) {
     if (showsAgain(showing.left, window.scrollY, panel.getBoundingClientRect().top)) {

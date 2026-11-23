@@ -54,6 +54,26 @@ export function showsAgain(left: number, now: number, top: number): boolean {
   return now === left && top > 0;
 }
 
+/** What a change of page waits to give the focus to: the page's heading, or the heading of the
+ * panel its address opens (`selectsPanel`). */
+export type HeadingWanted = "page" | "panel";
+
+/**
+ * Which heading takes the focus a change of page asked for (`wanted`), of the headings drawn, and
+ * whether the change still waits (16:I13, ruling B11-41): the heading of the panel it opens, once
+ * that panel is drawn; else the page's, where it is drawn - holding the focus, where the change
+ * opens a panel, until the panel is drawn, and keeping it where none ever is, as on a change of
+ * page opening none; else none yet, the change waiting for one to be drawn.
+ */
+export function headingTaking(
+  wanted: HeadingWanted,
+  drawn: { page: boolean; panel: boolean },
+): { takes: HeadingWanted | null; waits: boolean } {
+  if (wanted === "panel" && drawn.panel) return { takes: "panel", waits: false };
+  if (drawn.page) return { takes: "page", waits: wanted === "panel" };
+  return { takes: null, waits: true };
+}
+
 /**
  * Whether a panel drawn takes the control holding the focus as the one it was opened from (16:I13):
  * where it was drawn from a control of the page's (`fromControl`), and is not the panel drawn

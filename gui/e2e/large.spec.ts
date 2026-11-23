@@ -547,8 +547,8 @@ function rowFocused(page: Page): Promise<string | null> {
  * Controller given 6,000 declarations more, its filter leaves Crowd05999 alone, the last, and Tab
  * takes the focus to its row. Shift+Tab back to the filter, emptied, and Tab at once: the focus is
  * in the table as the rows come back a thousand at a time, every one of them before it. The row
- * the focus stands on is still Crowd05999's once they are all back - the row the table draws
- * focused, the one a screen reader names - and the arrow keys go on from it.
+ * the focus stands on is Crowd05999's in every frame drawn meanwhile, and once they are all back -
+ * the row the table draws focused, the one a screen reader names - and the arrow keys go on from it.
  */
 test("the focus stays on its row while a widened filter puts the rows back before it", async ({
   page,
@@ -567,12 +567,31 @@ test("the focus stays on its row while a widened filter puts the rows back befor
   await page.keyboard.press("Shift+Tab");
   await expect(filter).toBeFocused();
 
+  // The words of the row the focus is in, frame by frame, from the filter emptied on.
+  await page.evaluate(() => {
+    const watched = window as unknown as { rowsFocused: (string | null)[]; watching: boolean };
+    watched.rowsFocused = [];
+    watched.watching = true;
+    const each = () => {
+      const row = document.activeElement?.closest('[role="row"]');
+      watched.rowsFocused.push(row === null || row === undefined ? null : (row.textContent ?? ""));
+      if (watched.watching) requestAnimationFrame(each);
+    };
+    requestAnimationFrame(each);
+  });
   await filter.fill("");
   await page.keyboard.press("Tab");
   await expect(table).toHaveAttribute("aria-rowcount", "6015");
   await expect(table).not.toHaveAttribute("data-rows-to-come");
   await expect.poll(() => rowFocused(page)).toMatch(/Crowd05999/);
   await expect(last).toBeFocused();
+  const frames = await page.evaluate(() => {
+    const watched = window as unknown as { rowsFocused: (string | null)[]; watching: boolean };
+    watched.watching = false;
+    return watched.rowsFocused;
+  });
+  // No frame drew the focus on another row than Crowd05999's, the rows coming back or not.
+  expect(frames.filter((words) => words !== null && !words.includes("Crowd05999"))).toEqual([]);
   await page.keyboard.press("ArrowUp");
   await expect(table.getByRole("row", { name: /Crowd05998/ })).toBeFocused();
 });

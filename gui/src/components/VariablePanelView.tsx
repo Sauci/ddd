@@ -12,10 +12,10 @@ import {
 } from "../lib/units";
 import { describeVariable, offerOf } from "../lib/variableKeys";
 import { Button } from "../ui/Button";
-import { Chip } from "../ui/Chip";
 import { Panel } from "../ui/Panel";
 import { UpdatingNote } from "../ui/UpdatingNote";
 import { Changes } from "./Changes";
+import { FindingChip } from "./FindingChip";
 import { KeyChooser, type KeyChooserProps } from "./KeyChooser";
 import type { Offer } from "./UnitPanelView";
 import { VariableKeysTable } from "./VariableKeysTable";
@@ -102,9 +102,7 @@ export function VariablePanelView(props: VariablePanelViewProps) {
             const href = namesThisVariable(finding, variable.name) ? null : routeHref(finding);
             return (
               <li key={key}>
-                <Chip tone={finding.severity === "error" ? "error" : "warning"}>
-                  {finding.check}
-                </Chip>{" "}
+                <FindingChip severity={finding.severity} check={finding.check} />{" "}
                 {href === null ? (
                   <span className="quiet">{finding.message}</span>
                 ) : (

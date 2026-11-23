@@ -168,7 +168,7 @@ test("the line counts the statements of the reply, a baseline's disagreement onc
 
 test("the line says how many of each severity the comparison and the baseline make", () => {
   const counted = reply({ statements: { error: 2, warning: 1, info: 1 } });
-  expect(compareLine(counted)).toBe("4 findings · 2 errors, 1 warning, 1 note");
+  expect(compareLine(counted)).toBe("4 findings · 2 errors, 1 warning, 1 info");
   expect(compareLine(reply())).toBe("Nothing to report");
 });
 

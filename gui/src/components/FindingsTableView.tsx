@@ -1,8 +1,8 @@
 import { useEffect, useRef } from "react";
 import type { ListedFinding } from "../api/types";
 import { keeps, pendingKeys, type WindowRow } from "../lib/findingsWindow";
-import { Chip } from "../ui/Chip";
 import { also, Cell, Column, Row, Table, TableBody, TableHeader } from "../ui/Table";
+import { FindingChip } from "./FindingChip";
 
 export interface FindingsTableViewProps {
   /** The rows the window draws, in order: each a finding, or a placeholder for one whose page has
@@ -93,7 +93,7 @@ export function FindingsTableView(props: FindingsTableViewProps) {
                 className={also(row.finding.severity === "error" ? "has-error" : "")}
               >
                 <Cell>
-                  <Chip tone={toneOf(row.finding.severity)}>{row.finding.check}</Chip>
+                  <FindingChip severity={row.finding.severity} check={row.finding.check} />
                 </Cell>
                 <Cell>{row.finding.message}</Cell>
                 <Cell className={also("quiet")}>{row.file}</Cell>
@@ -105,9 +105,4 @@ export function FindingsTableView(props: FindingsTableViewProps) {
       <div style={{ height: props.below }} />
     </div>
   );
-}
-
-/** The chip's tone for a severity; `info` is the quiet one the design system calls neutral. */
-function toneOf(severity: ListedFinding["severity"]) {
-  return severity === "error" ? "error" : severity === "warning" ? "warning" : "neutral";
 }

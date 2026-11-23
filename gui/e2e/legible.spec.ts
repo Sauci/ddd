@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { drift } from "./demo";
+import { CONTROLLER, drift, openPanel, unstamp } from "./demo";
 import { expect, test } from "./fixtures";
 
 // What the page draws for keyboard use and a readable canvas (16:I11, 16:I12, 16:M14, 16:M19,
@@ -116,3 +116,35 @@ for (const forced of [false, true]) {
     );
   });
 }
+
+test("an info is toned as the Findings tab tones it, and said in a word, wherever it is shown", async ({
+  page,
+  gui,
+}) => {
+  // ValueH with no id reports `missing-id`, an info: neutral on the tab, so neutral on the
+  // component's page and in its panel, never a warning's amber, with the word beside it.
+  unstamp(gui.directory, CONTROLLER, "ValueH");
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Findings" }).click();
+  const row = page.getByRole("row", { name: /missing-id/ });
+  await expect(row.locator(".chip")).toHaveClass(/neutral/);
+  await expect(row).toHaveAccessibleName(/missing-id info/);
+
+  const panel = await openPanel(page, gui.address, "ValueH");
+  const finding = panel.getByRole("listitem").filter({ hasText: "missing-id" });
+  await expect(finding.locator(".chip")).toHaveClass(/neutral/);
+  await expect(finding).toContainText("missing-id info");
+  const cell = page.getByRole("row", { name: /ValueH/ }).locator(".chip");
+  await expect(cell).toHaveClass(/neutral/);
+  await expect(page.getByRole("row", { name: /ValueH/ })).toContainText("missing-id info");
+});
+
+test("an error and a warning are said in their words beside their chips", async ({ page, gui }) => {
+  drift(gui.directory);
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Findings" }).click();
+  await expect(page.getByRole("row", { name: /definition-mismatch/ }).first()).toHaveAccessibleName(
+    /definition-mismatch error/,
+  );
+});
+

@@ -4,10 +4,10 @@ import type { Route } from "../lib/route";
 import { rasterRemovable, rasterRemoveBlocked, rasterUseRoute, rasterUseWhat } from "../lib/shared";
 import { baseName, consequence, PLANNING, planning, shownChanges } from "../lib/units";
 import { Button } from "../ui/Button";
-import { Chip } from "../ui/Chip";
 import { Panel } from "../ui/Panel";
 import { UpdatingNote } from "../ui/UpdatingNote";
 import { Changes } from "./Changes";
+import { FindingChip } from "./FindingChip";
 
 /** A change this panel applies: one of the raster's three keys, a rename, or its removal - the
  * keys in the order `ddd.project_shared.RASTERS.keys` lists them, which is the order the panel
@@ -224,7 +224,7 @@ export function RasterPanelView(props: RasterPanelViewProps) {
         <ul className="panel-findings">
           {keyedFindings(distinctFindings(reply.findings)).map(([finding, key]) => (
             <li key={key}>
-              <Chip tone={finding.severity === "error" ? "error" : "warning"}>{finding.check}</Chip>{" "}
+              <FindingChip severity={finding.severity} check={finding.check} />{" "}
               <span className="quiet">{finding.message}</span>
             </li>
           ))}

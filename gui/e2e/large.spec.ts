@@ -480,7 +480,7 @@ test("the Findings tab's filter asks the server for the findings its text finds"
   await expect(first).toContainText("c00500.ddd.json");
   await expect.poll(() => withinFindingsWindow(page, first)).toBe(true);
   await expect(rows.filter({ hasNotText: "c00500.ddd.json" })).toHaveCount(0);
-  await expect(page.locator(".summary")).toHaveText("25000 findings · 10000 warnings, 15000 notes");
+  await expect(page.locator(".summary")).toHaveText("25000 findings · 10000 warnings, 15000 infos");
 
   // A listing of more pages than one: each is asked under the filter, the last row of 15,000 the
   // last of c00665.ddd.json's, as in the whole list's own order.

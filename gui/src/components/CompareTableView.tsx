@@ -1,6 +1,6 @@
 import type { FindingRow } from "../lib/findings";
-import { Chip } from "../ui/Chip";
 import { also, Cell, Column, LongTable, Row, TableBody, TableHeader } from "../ui/Table";
+import { FindingChip } from "./FindingChip";
 
 export interface CompareTableViewProps {
   rows: readonly FindingRow[];
@@ -49,7 +49,7 @@ export function CompareTableView({ rows, selected, onSelect }: CompareTableViewP
         {(row) => (
           <Row id={row.key} className={also(row.finding.severity === "error" ? "has-error" : "")}>
             <Cell>
-              <Chip tone={toneOf(row.finding.severity)}>{row.finding.check}</Chip>
+              <FindingChip severity={row.finding.severity} check={row.finding.check} />
             </Cell>
             <Cell>{row.finding.message}</Cell>
             <Cell className={also("quiet")}>{row.file}</Cell>
@@ -58,9 +58,4 @@ export function CompareTableView({ rows, selected, onSelect }: CompareTableViewP
       </TableBody>
     </LongTable>
   );
-}
-
-/** The chip's tone for a severity; `info` is the quiet one the design system calls neutral. */
-function toneOf(severity: FindingRow["finding"]["severity"]) {
-  return severity === "error" ? "error" : severity === "warning" ? "warning" : "neutral";
 }

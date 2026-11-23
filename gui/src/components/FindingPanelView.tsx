@@ -1,5 +1,6 @@
 import type { MouseEvent } from "react";
 import type { Finding, FixReply } from "../api/types";
+import { toneOf } from "../lib/findings";
 import { consequence, shownChanges } from "../lib/units";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
@@ -60,7 +61,7 @@ export function FindingPanelView(props: FindingPanelViewProps) {
   return (
     <Panel title={finding.check} meta={fileName(finding.file)} onClose={props.onClose}>
       <p>
-        <Chip tone={toneOf(finding.severity)}>{severityWord(finding.severity)}</Chip>
+        <Chip tone={toneOf(finding.severity)}>{finding.severity}</Chip>
       </p>
       <p>{finding.message}</p>
       {finding.notes.length > 0 && (
@@ -125,15 +126,4 @@ export function FindingPanelView(props: FindingPanelViewProps) {
         ))}
     </Panel>
   );
-}
-
-/** The chip's tone for a severity; `info` is the quiet one the design system calls neutral. */
-function toneOf(severity: Finding["severity"]) {
-  return severity === "error" ? "error" : severity === "warning" ? "warning" : "neutral";
-}
-
-/** The chip's own word for a severity - the title already says the check, so the chip is the one
- * place left to read which severity this is - the noun `findingCounts` already counts it under. */
-function severityWord(severity: Finding["severity"]) {
-  return severity === "error" ? "error" : severity === "warning" ? "warning" : "note";
 }

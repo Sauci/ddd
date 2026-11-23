@@ -12,12 +12,12 @@ import {
 } from "../lib/projectUnits";
 import { baseName, consequence, PLANNING, planning, shownChanges } from "../lib/units";
 import { Button } from "../ui/Button";
-import { Chip } from "../ui/Chip";
 import { FilterField } from "../ui/FilterField";
 import { Panel } from "../ui/Panel";
 import { also, Cell, Column, LongTable, Row, TableBody, TableHeader } from "../ui/Table";
 import { UpdatingNote } from "../ui/UpdatingNote";
 import { Changes } from "./Changes";
+import { FindingChip } from "./FindingChip";
 import { UnitPicker } from "./UnitPicker";
 
 /** A change a unit's panel applies. */
@@ -121,7 +121,7 @@ export function UnitPanelView(props: UnitPanelViewProps) {
         <ul className="panel-findings">
           {keyedFindings(distinctFindings(reply.findings)).map(([finding, key]) => (
             <li key={key}>
-              <Chip tone={finding.severity === "error" ? "error" : "warning"}>{finding.check}</Chip>{" "}
+              <FindingChip severity={finding.severity} check={finding.check} />{" "}
               <span className="quiet">{finding.message}</span>
             </li>
           ))}

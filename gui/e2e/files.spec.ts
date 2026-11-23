@@ -88,7 +88,7 @@ test("a component is created, an existing file is added, and one removal is refu
   // variable is `empty-component`, at info, and both of the bare ones this journey made carry
   // it - removing the units file leaves nothing behind, since no unit is checked without one.
   await page.getByRole("link", { name: "Findings" }).click();
-  await expect(page.getByText("2 findings · 2 notes")).toBeVisible();
+  await expect(page.getByText("2 findings · 2 infos")).toBeVisible();
   await expect(page.getByRole("row", { name: "empty-component" })).toHaveCount(2);
 });
 

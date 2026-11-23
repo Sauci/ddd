@@ -4,11 +4,11 @@ import { keyRowsOfType, memberRows } from "../lib/projectTypes";
 import type { Route } from "../lib/route";
 import { baseName, consequence, PLANNING, shownChanges, textOf } from "../lib/units";
 import { Button } from "../ui/Button";
-import { Chip } from "../ui/Chip";
 import { Panel } from "../ui/Panel";
 import { Cell, Column, Row, Table, TableBody, TableHeader } from "../ui/Table";
 import { UpdatingNote } from "../ui/UpdatingNote";
 import { Changes } from "./Changes";
+import { FindingChip } from "./FindingChip";
 import { KeyChooser } from "./KeyChooser";
 
 export interface TypePanelViewProps {
@@ -273,9 +273,7 @@ export function TypePanelView(props: TypePanelViewProps) {
             const route = routeOf(finding);
             return (
               <li key={key}>
-                <Chip tone={finding.severity === "error" ? "error" : "warning"}>
-                  {finding.check}
-                </Chip>{" "}
+                <FindingChip severity={finding.severity} check={finding.check} />{" "}
                 {route === null ? (
                   <span className="quiet">{finding.message}</span>
                 ) : (

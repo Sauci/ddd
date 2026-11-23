@@ -666,7 +666,7 @@ test("a unit listed twice is flagged by its chip, and its panel says it is alrea
   await row.click();
   const panel = page.getByRole("complementary", { name: "rpm", exact: true });
   await expect(panel.getByRole("listitem")).toHaveText([
-    "duplicate-unit unit 'rpm' is already declared",
+    "duplicate-unit error unit 'rpm' is already declared",
   ]);
 });
 

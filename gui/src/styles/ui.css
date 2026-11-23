@@ -85,6 +85,11 @@ a.button.link:hover {
   background: var(--canvas);
   color: var(--ink-quiet);
 }
+/* The word a chip's severity is said in, beside it: severity is not told by colour alone. */
+.severity-word {
+  color: var(--ink-quiet);
+  font-size: var(--text-small);
+}
 
 /* Panel: a framed aside beside the page's main view, and the grid that puts the two side by
    side - one column once the viewport is too narrow for both. The grid's gap is spec 5.1's

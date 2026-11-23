@@ -68,12 +68,19 @@ export interface FindingRow {
   file: string;
 }
 
-/** Each severity's word, singular then plural, and the noun `findingCounts` says it under. */
+/** Each severity's word, singular then plural - `ddd check`'s own ("1 info", "2 infos") - and the
+ * noun `findingCounts` says it under. */
 const COUNTED = [
   ["error", "error", "errors"],
   ["warning", "warning", "warnings"],
-  ["info", "note", "notes"],
+  ["info", "info", "infos"],
 ] as const satisfies readonly [keyof FindingCounts, string, string][];
+
+/** The tone of a chip for a severity (its word is the severity's own, `ddd check`'s), the one every chip of the page takes: an error and a warning
+ * are their own, an info is the quiet one the design system calls neutral - never a warning's. */
+export function toneOf(severity: Finding["severity"]): "error" | "warning" | "neutral" {
+  return severity === "error" ? "error" : severity === "warning" ? "warning" : "neutral";
+}
 
 /** How many findings the counts count, of every severity together. */
 export function findingsTotal(counts: FindingCounts): number {

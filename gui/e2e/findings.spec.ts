@@ -206,7 +206,7 @@ test("a missing id is fixed", async ({ page, gui }) => {
   await page.getByRole("row", { name: "missing-id" }).click();
 
   const panel = page.getByRole("complementary", { name: "missing-id" });
-  await expect(panel.locator(".chip")).toHaveText("note");
+  await expect(panel.locator(".chip")).toHaveText("info");
   await expect(panel.getByText("'ValueH' has no 'id'")).toBeVisible();
 
   await panel.getByRole("button", { name: "Give 'ValueH' an id" }).click();

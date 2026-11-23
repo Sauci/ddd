@@ -3,10 +3,10 @@ import { distinctFindings, keyedFindings } from "../lib/findings";
 import type { Route } from "../lib/route";
 import { baseName, consequence, PLANNING, planning, shownChanges } from "../lib/units";
 import { Button } from "../ui/Button";
-import { Chip } from "../ui/Chip";
 import { Panel } from "../ui/Panel";
 import { UpdatingNote } from "../ui/UpdatingNote";
 import { Changes } from "./Changes";
+import { FindingChip } from "./FindingChip";
 
 /** A change this panel applies: its own value, its description, a rename, or its removal. */
 export type ConstantAction = "value" | "describe" | "rename" | "remove";
@@ -166,7 +166,7 @@ export function ConstantPanelView(props: ConstantPanelViewProps) {
         <ul className="panel-findings">
           {keyedFindings(distinctFindings(reply.findings)).map(([finding, key]) => (
             <li key={key}>
-              <Chip tone={finding.severity === "error" ? "error" : "warning"}>{finding.check}</Chip>{" "}
+              <FindingChip severity={finding.severity} check={finding.check} />{" "}
               <span className="quiet">{finding.message}</span>
             </li>
           ))}

@@ -22,6 +22,7 @@ import {
   routeOf,
   selectionAfter,
   tableLine,
+  toneOf,
   unreadable,
 } from "./findings";
 import { SHARED_KINDS } from "./shared";
@@ -149,11 +150,11 @@ describe("what the tab says about how many there are", () => {
   test.each([
     [{ error: 0, warning: 0, info: 0 }, "Nothing to report"],
     [{ error: 1, warning: 0, info: 0 }, "1 finding · 1 error"],
-    [{ error: 1, warning: 1, info: 1 }, "3 findings · 1 error, 1 warning, 1 note"],
+    [{ error: 1, warning: 1, info: 1 }, "3 findings · 1 error, 1 warning, 1 info"],
     [{ error: 2, warning: 0, info: 0 }, "2 findings · 2 errors"],
-    [{ error: 0, warning: 0, info: 2 }, "2 findings · 2 notes"],
+    [{ error: 0, warning: 0, info: 2 }, "2 findings · 2 infos"],
     [{ error: 0, warning: 1, info: 0 }, "1 finding · 1 warning"],
-    [{ error: 3, warning: 0, info: 1 }, "4 findings · 3 errors, 1 note"],
+    [{ error: 3, warning: 0, info: 1 }, "4 findings · 3 errors, 1 info"],
   ])("%#: from the statements the state counts", (counts, says) => {
     expect(findingCounts(counts, false)).toBe(says);
   });
@@ -163,9 +164,9 @@ describe("what the tab says about how many there are", () => {
   test.each([
     [{ error: 0, warning: 0, info: 0 }, "Nothing to report · updating"],
     [{ error: 1, warning: 0, info: 0 }, "1 finding · 1 error · updating"],
-    [{ error: 0, warning: 0, info: 1 }, "1 finding · 1 note · updating"],
+    [{ error: 0, warning: 0, info: 1 }, "1 finding · 1 info · updating"],
     [{ error: 2, warning: 3, info: 0 }, "5 findings · 2 errors, 3 warnings · updating"],
-    [{ error: 1, warning: 1, info: 2 }, "4 findings · 1 error, 1 warning, 2 notes · updating"],
+    [{ error: 1, warning: 1, info: 2 }, "4 findings · 1 error, 1 warning, 2 infos · updating"],
   ])("%#: about to change, it says so at its end", (counts, says) => {
     expect(findingCounts(counts, true)).toBe(says);
   });
@@ -176,7 +177,7 @@ describe("what the tab says about how many there are", () => {
   });
 
   // The Table tab's line: errors and warnings, each counted even at none, as the table's own two
-  // columns count them - a note has no column, and the line says nothing of notes.
+  // columns count them - an info has no column, and the line says nothing of infos.
   test.each([
     [{ error: 0, warning: 0, info: 0 }, "0 errors, 0 warnings"],
     [{ error: 1, warning: 1, info: 0 }, "1 error, 1 warning"],
@@ -921,5 +922,17 @@ describe("where a finding is, said for a finding that leads nowhere", () => {
 
   test("a finding with neither a line nor a pointer names no place", () => {
     expect(placeOf(finding({ route: null, pointer: "" }), name)).toBeNull();
+  });
+});
+
+describe("how a severity is toned, wherever a chip or a row shows one", () => {
+  // One decision for every chip: an info is the quiet tone the Findings tab gives it, never a
+  // warning's amber (a missing-id read amber on a component, grey on the tab).
+  test.each([
+    ["error", "error"],
+    ["warning", "warning"],
+    ["info", "neutral"],
+  ] as const)("%s is toned %s", (severity, tone) => {
+    expect(toneOf(severity)).toBe(tone);
   });
 });

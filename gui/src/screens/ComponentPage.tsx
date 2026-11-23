@@ -6,6 +6,7 @@ import type { ListedFinding, State } from "../api/types";
 import { useUpdating } from "../app/updating";
 import { useDrawnRows } from "../app/useDrawnRows";
 import { useKept } from "../app/useKept";
+import { FindingChip } from "../components/FindingChip";
 import {
   DECLARATIONS,
   declarationKey,
@@ -23,7 +24,6 @@ import { unloadedNames } from "../lib/unloaded";
 import { asList, asText } from "../lib/values";
 import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
-import { Chip } from "../ui/Chip";
 import { FilterField } from "../ui/FilterField";
 import { Cell, Column, LongTable, Row, TableBody, TableHeader } from "../ui/Table";
 import { UpdatingNote, UpdatingStatus } from "../ui/UpdatingNote";
@@ -358,12 +358,11 @@ export function ComponentPage({
                   </Cell>
                   <Cell>
                     {row.own.map((finding) => (
-                      <Chip
+                      <FindingChip
                         key={finding.key}
-                        tone={finding.severity === "error" ? "error" : "warning"}
-                      >
-                        {finding.check}
-                      </Chip>
+                        severity={finding.severity}
+                        check={finding.check}
+                      />
                     ))}
                   </Cell>
                 </Row>

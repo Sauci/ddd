@@ -627,7 +627,7 @@ test("a component file that breaks its schema is drawn as any file is, its namel
   await expect(grid.getByRole("rowheader", { name: "declaration 1", exact: true })).toBeVisible();
   const row = grid.getByRole("row", { name: "declaration 1", exact: true });
   await expect(row.getByRole("gridcell", { name: "input", exact: true })).toBeVisible();
-  await expect(row.getByRole("gridcell", { name: "schema", exact: true })).toBeVisible();
+  await expect(row.getByRole("gridcell", { name: "schema error", exact: true })).toBeVisible();
 
   // Pydantic's own words for a missing key; the finding is text, not a link.
   await expect(

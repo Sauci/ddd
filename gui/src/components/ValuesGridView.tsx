@@ -40,10 +40,10 @@ import { commaAsked, offerName, offerSentence, typedOffer } from "../lib/typedCe
 import { consequence, NO_UNIT, PLANNING, shownChanges } from "../lib/units";
 import { shortValue } from "../lib/variableKeys";
 import { Button } from "../ui/Button";
-import { Chip } from "../ui/Chip";
 import { Cell, Column, Row, Table, TableBody, TableHeader } from "../ui/Table";
 import { UpdatingNote, UpdatingStatus } from "../ui/UpdatingNote";
 import { Changes } from "./Changes";
+import { FindingChip } from "./FindingChip";
 import { ValuesPlotView } from "./ValuesPlotView";
 
 export interface ValuesGridViewProps {
@@ -412,7 +412,7 @@ export function ValuesGridView(props: ValuesGridViewProps) {
         <ul className="panel-findings">
           {keyedFindings(distinctFindings(reply.findings)).map(([finding, key]) => (
             <li key={key}>
-              <Chip tone={finding.severity === "error" ? "error" : "warning"}>{finding.check}</Chip>{" "}
+              <FindingChip severity={finding.severity} check={finding.check} />{" "}
               <span className="quiet">{finding.message}</span>
             </li>
           ))}

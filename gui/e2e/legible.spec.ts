@@ -58,6 +58,41 @@ async function ringOf(page: Page, selector: string) {
   return ring;
 }
 
+/** How far the focused element's outline reaches past the box that clips it, in px: the outline's
+ * own box (the element's, grown by its offset and width) against the padding box of every ancestor
+ * that clips (an `overflow` other than visible). Zero or less is a ring drawn whole. */
+function clippedBy(page: Page): Promise<{ ring: number; clip: number; by: string }> {
+  return page.evaluate(() => {
+    const node = document.activeElement;
+    if (node === null) throw new Error("nothing is focused");
+    const style = getComputedStyle(node);
+    if (style.outlineStyle === "none") throw new Error("the focused element draws no outline");
+    const grown = Number.parseFloat(style.outlineWidth) + Number.parseFloat(style.outlineOffset);
+    const box = node.getBoundingClientRect();
+    let worst = { ring: grown, clip: Number.NEGATIVE_INFINITY, by: "" };
+    for (let at = node.parentElement; at !== null; at = at.parentElement) {
+      const around = getComputedStyle(at);
+      if (around.overflowX === "visible" && around.overflowY === "visible") continue;
+      const edge = at.getBoundingClientRect();
+      const inside = {
+        left: edge.left + at.clientLeft,
+        top: edge.top + at.clientTop,
+        right: edge.left + at.clientLeft + at.clientWidth,
+        bottom: edge.top + at.clientTop + at.clientHeight,
+      };
+      const past = Math.max(
+        inside.left - (box.left - grown),
+        inside.top - (box.top - grown),
+        box.right + grown - inside.right,
+        box.bottom + grown - inside.bottom,
+      );
+      if (past > worst.clip)
+        worst = { ring: grown, clip: past, by: `${at.tagName}.${at.className}` };
+    }
+    return worst;
+  });
+}
+
 for (const forced of [false, true]) {
   const mode = forced ? "forced colours" : "normal colours";
 
@@ -114,6 +149,50 @@ for (const forced of [false, true]) {
     await expect(await rows.nth(1).evaluate((node) => getComputedStyle(node).outlineStyle)).toBe(
       "none",
     );
+  });
+
+  test(`a link-styled button focused after a key was pressed keeps its outline whole, in ${mode}`, async ({
+    page,
+    gui,
+  }) => {
+    drift(gui.directory);
+    await page.emulateMedia({ forcedColors: forced ? "active" : "none" });
+    await page.goto(gui.address);
+    // Controller's name in the Table's own cell, a link-styled button in a clipping cell.
+    await page.getByRole("link", { name: "Table" }).click();
+    const component = page.getByRole("button", { name: "Controller", exact: true });
+    await page.keyboard.press("Shift");
+    await component.focus();
+    await expect(component).toBeFocused();
+    expect((await clippedBy(page)).clip).toBeLessThanOrEqual(0);
+    // The measure can see a cut: the same ring pushed 30 px out is past the cell's edge.
+    await component.evaluate((node) => {
+      node.style.outlineOffset = "30px";
+    });
+    expect((await clippedBy(page)).clip).toBeGreaterThan(0);
+    await component.evaluate((node) => {
+      node.style.outlineOffset = "";
+    });
+
+    // The unit of a declaration in a component's table, and the finding panel's Open link.
+    await component.click();
+    const unit = page.getByRole("button", { name: "Set the unit of ValueA" });
+    await page.keyboard.press("Shift");
+    await unit.focus();
+    await expect(unit).toBeFocused();
+    expect((await clippedBy(page)).clip).toBeLessThanOrEqual(0);
+
+    await page.goto(gui.address);
+    await page.getByRole("link", { name: "Findings" }).click();
+    await page
+      .getByRole("row", { name: /definition-mismatch/ })
+      .first()
+      .click();
+    const open = page.getByRole("complementary").getByRole("link", { name: /^Open / });
+    await page.keyboard.press("Shift");
+    await open.focus();
+    await expect(open).toBeFocused();
+    expect((await clippedBy(page)).clip).toBeLessThanOrEqual(0);
   });
 }
 

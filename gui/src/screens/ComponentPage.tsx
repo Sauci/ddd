@@ -6,6 +6,7 @@ import type { ListedFinding, State } from "../api/types";
 import { useUpdating } from "../app/updating";
 import { useDrawnRows } from "../app/useDrawnRows";
 import { useKept } from "../app/useKept";
+import { useWritten } from "../app/useWritten";
 import { FindingChip } from "../components/FindingChip";
 import {
   DECLARATIONS,
@@ -70,6 +71,8 @@ export function ComponentPage({
   onOpenConstant,
 }: Props) {
   const updating = useUpdating();
+  // What the heading says the page last wrote, on this component's page.
+  const written = useWritten(file);
   // A new number on every unit cell press, even a second press of the same cell, so the
   // picker's focus request always changes; null when a row selects its variable without one.
   const [focusPicker, setFocusPicker] = useState<number | null>(null);
@@ -239,7 +242,7 @@ export function ComponentPage({
             Add a declaration
           </Button>
           {/* Last in the row, so that none of the controls before it ever moves. */}
-          <UpdatingStatus updating={updating} />
+          <UpdatingStatus updating={updating} written={written} />
         </div>
         {/* A server that stopped answering leaves the table as it was, and says so above it. */}
         {content.isError && <Banner tone="error">{content.error.message}</Banner>}

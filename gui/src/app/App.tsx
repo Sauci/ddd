@@ -6,7 +6,7 @@ import { LoadBannerView } from "../components/LoadBannerView";
 import { SignedOutView } from "../components/SignedOutView";
 import { UndrawnView } from "../components/UndrawnView";
 import { PROJECT_VIEWS, pageTitle, VIEW_NAMES } from "../lib/announcing";
-import { pageChanged } from "../lib/focus";
+import { pageChanged, pageOf } from "../lib/focus";
 import { type ProjectView, type Route, tabHref } from "../lib/route";
 import { projectName, sessionAskedFor } from "../lib/session";
 import type { SharedKind } from "../lib/shared";
@@ -36,6 +36,7 @@ import { askPageHeading, watchFocus } from "./focus";
 import { UpdatingContext } from "./updating";
 import { useProjectState } from "./useProjectState";
 import { useRoute } from "./useRoute";
+import { useWritten } from "./useWritten";
 
 /** Each tab's own route, written out one view at a time rather than built from it: `PROJECT_
  * VIEWS.map()` below reads `view` widened to the union of all eight tab literals, and passing
@@ -101,6 +102,8 @@ export function App() {
   useEffect(() => {
     document.title = title;
   }, [title]);
+  // What the project screen's heading says the page last wrote, on the tab it was written on.
+  const written = useWritten(pageOf(route));
   // One identity for the whole life of the page: the canvas hands this to every module it draws,
   // and a new function each render would lay the canvas out again each render.
   const openComponent = useCallback(
@@ -225,7 +228,7 @@ export function App() {
           <PageHeading>{projectName(opened, project)}</PageHeading>
           <UndoStrip state={state} stopped={stopped} />
           {/* Last in the row, so that none of the controls before it ever moves. */}
-          <UpdatingStatus updating={updating} />
+          <UpdatingStatus updating={updating} written={written} />
         </div>
         <LinkTabs
           label="Project views"

@@ -359,6 +359,24 @@ test("Apply pressed from the keyboard leaves the focus on the panel's heading as
   await expect(panel.getByRole("button", { name: "Close ValueA" })).toBeFocused();
 });
 
+test("the heading says what an Apply wrote, until another page is drawn", async ({ page, gui }) => {
+  const panel = await openPanel(page, gui.address, "ValueA");
+  const said = page.locator(".heading").getByRole("status");
+  await chooseUnit(page, "rpm");
+  await panel.getByRole("button", { name: "Apply to 2 files" }).click();
+  await expect(said).toHaveText(
+    "Wrote 2 files for the unit of ValueA: controller.ddd.json, sensor_hub.ddd.json.",
+  );
+  // Another page has news of its own to say, and none of this one's; nor does this page, drawn
+  // again, say it twice.
+  await page.getByRole("button", { name: "DemoDevice" }).click();
+  await expect(page.getByRole("heading", { name: "DemoDevice", level: 1 })).toBeVisible();
+  await expect(said).toHaveText("");
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: "Controller", level: 1 })).toBeVisible();
+  await expect(said).toHaveText("");
+});
+
 test("a panel the page closes while the focus is in it gives the focus back to where it was opened from", async ({
   page,
   gui,

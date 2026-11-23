@@ -12,17 +12,26 @@ export function UpdatingNote({ updating }: { updating: boolean }) {
 }
 
 /**
- * The heading's "Updating the findings…" (spec 6): of a screen's status regions, the one that
- * says its findings are updating - in the project's heading, a component's and the values grid's.
- * It stays in the heading whether or not anything updates, empty while nothing does, and its words
- * arrive when an update starts - the change a screen reader announces. Last in the heading's row,
- * it needs no room of its own and takes what its line has left, cut short rather than wrapped:
- * where none is left - beside the open Undo strip's own line - it shows nothing, and is still
- * heard. Its words coming and going never change the heading's height (`ui.css`).
+ * The heading's status (spec 6, 16:I13): of a screen's status regions, the one that says what the
+ * page last wrote (`written`, `useWritten`), and that its findings are updating - in the project's
+ * heading, a component's and the values grid's. It stays in the heading whether or not it says
+ * anything, empty while it does not, and each of its two parts is announced as it comes, alone:
+ * the update starting, once; what was written, once, and not again as an update comes and goes
+ * beside it. Last in the heading's row, it needs no room of its own and takes what its line has
+ * left, cut short rather than wrapped: where none is left - beside the open Undo strip's own line
+ * - it shows nothing, and is still heard. Its words coming and going never change the heading's
+ * height (`ui.css`).
  */
-export function UpdatingStatus({ updating }: { updating: boolean }) {
+export function UpdatingStatus({
+  updating,
+  written = null,
+}: {
+  updating: boolean;
+  written?: string | null;
+}) {
   return (
-    <p className="updating-status" role="status">
+    <p className="updating-status" role="status" aria-atomic="false">
+      {written !== null && <span>{written} </span>}
       {updating ? "Updating the findings…" : ""}
     </p>
   );

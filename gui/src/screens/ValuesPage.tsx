@@ -5,6 +5,7 @@ import type { State, ValuesReply } from "../api/types";
 import { useUpdating } from "../app/updating";
 import { useDebounced } from "../app/useDebounced";
 import { useKept } from "../app/useKept";
+import { useWritten } from "../app/useWritten";
 import { ValuesGridView } from "../components/ValuesGridView";
 import { drawable, pasted, type TypedCell } from "../lib/objectValues";
 import { planEdit } from "../lib/projectUnits";
@@ -74,6 +75,8 @@ interface Props {
 export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   const queries = useQueryClient();
   const updating = useUpdating();
+  // What the heading says the page last wrote, on this variable's grid.
+  const writtenLine = useWritten(`${file} ${name}`);
   const revision = state.revision;
   // The component named by the file the route carries - "Back to" both says and returns to the
   // same place, which the object's own owner cannot always promise (spec 5.4). Resolved once,
@@ -293,6 +296,7 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
       backTo={backTo}
       banner={banner}
       undoStrip={<UndoStrip state={state} stopped={stopped} />}
+      written={writtenLine}
       physical={physical}
       typed={typed}
       plan={shownPlan}

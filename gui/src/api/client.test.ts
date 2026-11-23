@@ -170,7 +170,8 @@ describe("requests to the server", () => {
   });
 
   test("each call asks the path and method the api expects", async () => {
-    const fetchImpl = answering(200, "{}");
+    // An empty answer to each, but for the files an edit's reply always lists.
+    const fetchImpl = answering(200, '{"files": []}');
     const signal = new AbortController().signal;
     await getSession(fetchImpl);
     await getProjects(fetchImpl);
@@ -268,7 +269,7 @@ describe("requests to the server", () => {
       { file: "/tmp/c.ddd.json", name: "ParameterA", description: "" },
       fetchImpl,
     );
-    // Noted into an instance of their own: this fetch answers `{}`, which carries no number.
+    // Noted into an instance of their own: this fetch's answer carries no number.
     await postEdit(
       {
         changes: [{ file: "a", fingerprint: "x", operations: [{ op: "remove", pointer: "a" }] }],
@@ -730,11 +731,39 @@ describe("the page's own edits", () => {
     expect(edits.newest()).toBe(4);
   });
 
+  test("an edit answered notes its label and the files it wrote, for the heading to say", async () => {
+    const edits = new OwnEdits();
+    const reply =
+      '{"edit": 4, "files": [{"path": "/p/a.ddd.json", "fingerprint": "f"}, ' +
+      '{"path": "/p/b.ddd.json", "fingerprint": "g"}]}';
+    await postEdit(CHANGES, answering(200, reply), edits);
+    expect(edits.last()).toEqual({
+      edit: 4,
+      write: {
+        kind: "wrote",
+        label: "the unit of ValueA",
+        files: ["/p/a.ddd.json", "/p/b.ddd.json"],
+      },
+    });
+  });
+
   test("an undo answered notes the number the server gave it, and the edit it put back", async () => {
     const edits = new OwnEdits();
     await postUndo(3, answering(200, '{"edit": 5}'), edits);
     expect(edits.newest()).toBe(5);
     expect(edits.undone()).toEqual(new Map([[3, 5]]));
+    expect(edits.last()).toBeNull();
+  });
+
+  test("an undo answered notes what it put back, where told", async () => {
+    const edits = new OwnEdits();
+    const putBack = {
+      kind: "put back",
+      label: "the unit of ValueA",
+      files: ["/p/a.ddd.json"],
+    } as const;
+    await postUndo(3, answering(200, '{"edit": 5}'), edits, putBack);
+    expect(edits.last()).toEqual({ edit: 5, write: putBack });
   });
 
   test("an edit or an undo refused notes nothing", async () => {

@@ -1,3 +1,4 @@
+import type { Write } from "../lib/announcing";
 import { type OwnEdits, ownEdits } from "../state/edits";
 import { type Keeper, type SignedOut, signedOut, token } from "./token";
 import type {
@@ -374,14 +375,19 @@ export const getDescriptionPlan = (plan: DescriptionPlanRequest, fetchImpl: Fetc
   request<PlanReply>(`/api/description-plan${queryOf<DescriptionPlanQuery>(plan)}`, {}, fetchImpl);
 
 /** An edit, answered once written: its number is noted into `edits`, the page's own by default, as
- * soon as the answer arrives - a refused edit notes nothing. */
+ * soon as the answer arrives, with its label and the files it wrote, for the heading to say - a
+ * refused edit notes nothing. */
 export const postEdit = async (
   changes: Changes,
   fetchImpl: Fetch = fetch,
   edits: OwnEdits = ownEdits,
 ): Promise<EditReply> => {
   const reply = await request<EditReply>("/api/edit", post(changes), fetchImpl);
-  edits.wrote(reply.edit);
+  edits.wrote(reply.edit, {
+    kind: "wrote",
+    label: changes.label,
+    files: reply.files.map((file) => file.path),
+  });
   return reply;
 };
 
@@ -389,14 +395,16 @@ export const getUndo = (fetchImpl: Fetch = fetch) =>
   request<UndoPreview>("/api/undo", {}, fetchImpl);
 
 /** An undo of the edit numbered `at`, answered once the files are back: its number is noted into
- * `edits` as an edit's is, with the edit it put back. */
+ * `edits` as an edit's is, with the edit it put back and, where told, what that was
+ * (`putBack`: the preview's label and files), for the heading to say. */
 export const postUndo = async (
   at: number,
   fetchImpl: Fetch = fetch,
   edits: OwnEdits = ownEdits,
+  putBack?: Write,
 ): Promise<UndoReply> => {
   const reply = await request<UndoReply>("/api/undo", post({ at }), fetchImpl);
-  edits.undid(at, reply.edit);
+  edits.undid(at, reply.edit, putBack);
   return reply;
 };
 

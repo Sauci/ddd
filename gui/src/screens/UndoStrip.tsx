@@ -3,8 +3,10 @@ import { useState } from "react";
 import { ApiError, getUndo, postUndo } from "../api/client";
 import type { State } from "../api/types";
 import { UndoStripView } from "../components/UndoStripView";
+import { putBackOf, type Write } from "../lib/announcing";
 import { type Refused, refusalShown } from "../lib/refusals";
 import { askedAgainAfterUndo, undoButton } from "../lib/undo";
+import { ownEdits } from "../state/edits";
 
 interface Props {
   state: State | null;
@@ -49,14 +51,16 @@ export function UndoStrip({ state, stopped }: Props) {
     retry: false,
   });
   const undo = useMutation({
-    // The entry the reader pressed for, which the refusal, if any, is of.
-    mutationFn: (at: number) => postUndo(at),
+    // The entry the reader pressed for, which the refusal, if any, is of, and what its preview says
+    // it puts back, for the heading to say once it has (16:I13).
+    mutationFn: ({ at, putBack }: { at: number; putBack: Write | undefined }) =>
+      postUndo(at, fetch, ownEdits, putBack),
     onMutate: () => setRefused(null),
     onSuccess: () => {
       setOpen(false);
       setChangesShown(false);
     },
-    onError: (error, at) => setRefused({ about: at, text: refusalOf(error) }),
+    onError: (error, { at }) => setRefused({ about: at, text: refusalOf(error) }),
     // An undo is answered once its files are back, its analysis following: whatever on screen
     // draws what it put back asks again now, rather than when the revision moves.
     onSettled: () =>
@@ -84,7 +88,9 @@ export function UndoStrip({ state, stopped }: Props) {
       changesShown={changesShown}
       onChangesShown={setChangesShown}
       onUndo={() => {
-        if (undoable !== null) undo.mutate(undoable.at);
+        if (undoable === null) return;
+        const shown = preview.data?.at === undoable.at ? preview.data : undefined;
+        undo.mutate({ at: undoable.at, putBack: shown && putBackOf(shown) });
       }}
       refusal={refusalShown(
         refused,

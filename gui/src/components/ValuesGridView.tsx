@@ -58,6 +58,9 @@ export interface ValuesGridViewProps {
    * strip where it always is") rather than in a row of its own - omitted where nothing hosts one,
    * which is every story but the ones about undoing. */
   undoStrip?: ReactNode;
+  /** What the heading says the page last wrote (`useWritten`, 16:I13): the cells or the table
+   * applied, or an undo putting them back - omitted where nothing was, every story's. */
+  written?: string | null;
   /** Drawn under the heading, over the grid: the screen's banner saying its read of the next
    * revision failed, the grid drawn being the last one read (`useKept`) - omitted where nothing
    * failed, which is every story. */
@@ -358,7 +361,7 @@ export function ValuesGridView(props: ValuesGridViewProps) {
         <Button variant="link" onPress={props.onBack}>
           Back to {backTo}
         </Button>
-        <UpdatingStatus updating={props.updating === true} />
+        <UpdatingStatus updating={props.updating === true} written={props.written ?? null} />
       </div>
       {banner}
       <p className="values-meta">{meta}</p>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { writtenSentence } from "../lib/announcing";
 import { UNDO_ADOPTION } from "../stories/fixtures";
 import { LinkTabs } from "../ui/LinkTabs";
 import { UpdatingStatus } from "../ui/UpdatingNote";
@@ -25,6 +26,7 @@ function Heading({
   refusal = null,
   reading = false,
   updating = false,
+  written = null,
 }: {
   opened?: boolean;
   shown?: boolean;
@@ -33,6 +35,8 @@ function Heading({
   reading?: boolean;
   /** The findings may be about to change: an edit waits for its analysis, or one runs. */
   updating?: boolean;
+  /** What the heading says the page last wrote. */
+  written?: string | null;
 }) {
   const [open, setOpen] = useState(opened);
   const [changesShown, setChangesShown] = useState(shown);
@@ -51,7 +55,7 @@ function Heading({
           refusal={refusal}
           busy={false}
         />
-        <UpdatingStatus updating={updating} />
+        <UpdatingStatus updating={updating} written={written} />
       </div>
       <LinkTabs
         label="Project views"
@@ -83,3 +87,15 @@ export const Updating = () => <Heading updating />;
 /** The same with the strip open: the strip's own line leaves the heading's status no room, so the
  * note is not seen - it is still announced - and the tabs stay where `Open` has them. */
 export const OpenUpdating = () => <Heading opened updating />;
+
+/** The edit the control would undo, written, and its findings analysed: the heading says what it
+ * wrote, beside the control, in what room its row has left (16:I13). */
+export const Written = () => (
+  <Heading
+    written={writtenSentence({
+      kind: "wrote",
+      label: UNDO_ADOPTION.label,
+      files: UNDO_ADOPTION.changes.map((change) => change.file),
+    })}
+  />
+);

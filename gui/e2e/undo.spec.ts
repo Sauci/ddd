@@ -66,6 +66,10 @@ test("Put back pressed from the keyboard leaves the focus on the page's heading"
   await page.keyboard.press("Enter");
   await expect(undo).toBeHidden();
   await expect(page.getByRole("heading", { name: "Controller", level: 1 })).toBeFocused();
+  // And the heading says what was put back, as it said what Apply wrote.
+  await expect(page.locator(".heading").getByRole("status")).toHaveText(
+    "Undid the unit of ValueA, putting back 2 files: controller.ddd.json, sensor_hub.ddd.json.",
+  );
 });
 
 test("an adopted vocabulary is taken away again, file and include", async ({ page, gui }) => {

@@ -528,12 +528,39 @@ function namesOf(text: string): (url: URL) => boolean {
   return (url) => url.pathname === "/api/names" && url.searchParams.get("text") === text;
 }
 
+/** Every ask of the go-to's names, whatever its text. */
+function everyNames(url: URL): boolean {
+  return url.pathname === "/api/names";
+}
+
+/** Records the text of each ask of the go-to's names from the page's first script on, as the page
+ * makes it. */
+async function watchNamesAsked(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const watched = window as unknown as { namesAsked: string[] };
+    watched.namesAsked = [];
+    const fetching = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      const href =
+        typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      const url = new URL(href, window.location.href);
+      if (url.pathname === "/api/names")
+        watched.namesAsked.push(url.searchParams.get("text") ?? "");
+      return fetching(input, init);
+    };
+  });
+}
+
+/** The texts `watchNamesAsked` has seen asked so far, in order. */
+function namesAsked(page: Page): Promise<string[]> {
+  return page.evaluate(() => (window as unknown as { namesAsked: string[] }).namesAsked);
+}
+
 /**
  * Enter on a name typed faster than its names come (16:I14): the go-to asks for the names of what
- * is typed once typing pauses, so Enter pressed on `C00530_O0000` before then meets the names of
- * the first text asked, `C`'s fifty, which hold none of it. Enter is a commit: it asks for the text
- * at once, and goes once the answer holding the name has come - held here until the page has
- * asked for it, Enter pressed.
+ * is typed once typing pauses, so Enter pressed on `C00530_O0000` before then meets no answer
+ * holding it - every ask is held here until the page has asked for the name, Enter pressed. Enter
+ * is a commit: it asks for the text at once, and goes once the answer holding the name has come.
  */
 test("Enter on a name typed faster than its names come goes to it once they come", async ({
   page,
@@ -542,7 +569,7 @@ test("Enter on a name typed faster than its names come goes to it once they come
   await page.goto(generatedGui.address);
   const goTo = page.getByRole("combobox", { name: "Go to a variable" });
   const asked = page.waitForRequest((request) => namesOf("C00530_O0000")(new URL(request.url())));
-  const release = await held(page, namesOf("C00530_O0000"));
+  const release = await held(page, everyNames, { every: true });
   try {
     await goTo.pressSequentially("C00530_O0000");
     await goTo.press("Enter");
@@ -558,29 +585,38 @@ test("Enter on a name typed faster than its names come goes to it once they come
 });
 
 /**
- * Enter asks at once for the names of the text it is pressed on (16:I14), as a commit does,
- * where they once waited for typing to pause: Escape, pressed right after Enter, ends the text
- * before any pause, and they have been asked for all the same.
+ * Enter asks at once for the names of the text it is pressed on (16:I14), as a commit does, where a
+ * text typed is asked for once typing pauses. The page's clock is stopped here while the go-to is
+ * typed into, so that no pause ends, and nothing is asked but what Enter asks. A text typed on
+ * after Enter, while Enter still waits for its names, waits for a pause again, as every text typed
+ * does: it is asked for once the clock goes on, and Enter's names, not its own, go nowhere.
  */
-test("Enter asks at once for the names of the text it is pressed on", async ({
+test("Enter asks at once for the names of the text it is pressed on, and typing on waits again", async ({
   page,
   generatedGui,
 }) => {
+  await watchNamesAsked(page);
+  await page.clock.install();
   await page.goto(generatedGui.address);
   const goTo = page.getByRole("combobox", { name: "Go to a variable" });
-  const asked = page.waitForRequest((request) => namesOf("C00530_O0000")(new URL(request.url())), {
-    timeout: 5_000,
-  });
-  const release = await held(page, namesOf("C00530_O0000"));
-  try {
-    await goTo.pressSequentially("C00530_O0000");
-    await goTo.press("Enter");
-    await goTo.press("Escape");
-    await expect(goTo).toHaveValue("");
-    await asked;
-  } finally {
-    release();
-  }
+  await goTo.focus();
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+  await page.keyboard.type("C00530_O000");
+  await expect(goTo).toHaveValue("C00530_O000");
+  expect(await namesAsked(page)).toEqual([]);
+  await page.keyboard.press("Enter");
+  await expect.poll(() => namesAsked(page)).toEqual(["C00530_O000"]);
+  await page.keyboard.press("0");
+  await expect(goTo).toHaveValue("C00530_O0000");
+  expect(await namesAsked(page)).toEqual(["C00530_O000"]);
+
+  await page.clock.resume();
+  await expect.poll(() => namesAsked(page)).toEqual(["C00530_O000", "C00530_O0000"]);
+  await expect(
+    page.getByRole("listbox").getByRole("option", { name: "C00530_O0000", exact: true }),
+  ).toBeVisible();
+  await expect(goTo).toHaveValue("C00530_O0000");
+  await expect(page.getByRole("heading", { name: "C00530", level: 1 })).toHaveCount(0);
 });
 
 /**

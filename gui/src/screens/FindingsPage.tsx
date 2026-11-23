@@ -5,7 +5,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { getFindings, getFix, postEdit } from "../api/client";
 import type { ListedFinding, State } from "../api/types";
 import { useUpdating } from "../app/updating";
@@ -50,8 +50,13 @@ interface Props {
   state: State;
   /** What the filter holds as the tab opens, as its address asks (the route's own `text`): the
    * name of a file the banner under the masthead says did not load, leading to its finding
-   * (16:I9). `undefined` for the bare tab, which filters nothing. */
+   * (16:I9), or what the reader typed before a reload. `undefined` for the bare tab, which filters
+   * nothing. */
   text: string | undefined;
+  /** What the filter asks for once typing pauses, `""` for nothing, which the app writes into the
+   * address, replacing it (16:I9): the address follows the filter, so that a reload keeps it and a
+   * link to a file's findings, pressed after other text was typed, is a move to another address. */
+  onText: (text: string) => void;
   stopped: boolean;
   /** Following a finding: the route it leads to, which the app navigates to. `routeOf` says
    * what that route is, and `routeHref` writes the address the link carries. */
@@ -75,7 +80,7 @@ const STALE =
  * and the listing drawn before stays until its own rows have come, as through a landing. Its table
  * starts at its top, and the line beside the filter counts it (`windowLine`), where the line above
  * the table goes on counting the revision's statements. */
-export function FindingsPage({ state, text, stopped, onOpen }: Props) {
+export function FindingsPage({ state, text, onText, stopped, onOpen }: Props) {
   const queries = useQueryClient();
   const updating = useUpdating();
   const revision = state.revision;
@@ -85,6 +90,10 @@ export function FindingsPage({ state, text, stopped, onOpen }: Props) {
   // the tab opens (`useDebounced` starts at its value).
   const [typed, setTyped] = useState(text ?? "");
   const asking = useDebounced(filterText(typed));
+  // The address follows what the filter asks, written where it says otherwise.
+  useEffect(() => {
+    if (asking !== (text ?? "")) onText(asking);
+  }, [asking, text, onText]);
   // Where the box is scrolled to and how tall it is, and the filter it was scrolled under: at the
   // top and one box high, until the box says otherwise - and at the top again for a filter newly
   // asked, whose table is drawn anew (`scrolledTop`, and `key` below).

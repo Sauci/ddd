@@ -563,6 +563,68 @@ test("a project's own description that does not load is named under the masthead
   await expect(page.getByRole("row", { name: "json-syntax" })).toBeVisible();
 });
 
+/** Saves the demo's Controller half-written in `directory`, as an editor saves a file being typed
+ * into, and follows its link under the masthead, whatever the banner's sentence, to the Findings
+ * tab asking for the findings that hold its name; returns the link. */
+async function followedToControllerFindings(page: Page, directory: string): Promise<Locator> {
+  const path = join(directory, CONTROLLER);
+  const bytes = readFileSync(path);
+  writeFileSync(path, bytes.subarray(0, Math.floor(bytes.length / 2)));
+  const link = page
+    .getByRole("status")
+    .getByRole("link", { name: "controller.ddd.json", exact: true });
+  await link.click();
+  await expect(page).toHaveURL(/\/project\?view=findings&text=controller\.ddd\.json$/);
+  await expect(page.getByRole("row", { name: "json-syntax" })).toBeVisible();
+  return link;
+}
+
+test("a file's link under the masthead, pressed again once other text was typed, leads to its findings, the text typed a step of its own", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await expect(page.getByRole("button", { name: "Controller", exact: true })).toBeVisible();
+  const link = await followedToControllerFindings(page, gui.directory);
+  const filter = page.getByRole("textbox", { name: "Filter findings" });
+  const cut = page.getByRole("row", { name: "json-syntax" });
+  // Another text, which no finding holds, asked for once typing pauses.
+  await filter.fill("sensor");
+  await expect(cut).toHaveCount(0);
+  await link.click();
+  await expect(filter).toHaveValue("controller.ddd.json");
+  await expect(cut).toBeVisible();
+  // The text typed went into the address as typing paused, replacing it, as a selection does:
+  // Back leads to it, and not to the file's findings a second time.
+  await page.goBack();
+  await expect(page).toHaveURL(/\/project\?view=findings&text=sensor$/);
+  await expect(filter).toHaveValue("sensor");
+  await expect(cut).toHaveCount(0);
+});
+
+test("a file's link under the masthead, pressed again before typing paused, leads to its findings and adds no step to the history", async ({
+  page,
+  gui,
+}) => {
+  // The page's clock is stopped while the filter is typed into, so that typing never pauses: the
+  // address is still the one the link leads to when it is pressed again.
+  await page.clock.install();
+  await page.goto(gui.address);
+  await expect(page.getByRole("button", { name: "Controller", exact: true })).toBeVisible();
+  const link = await followedToControllerFindings(page, gui.directory);
+  const filter = page.getByRole("textbox", { name: "Filter findings" });
+  const steps = await page.evaluate(() => window.history.length);
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+  await filter.fill("sensor");
+  await link.click();
+  await expect(filter).toHaveValue("controller.ddd.json");
+  expect(await page.evaluate(() => window.history.length)).toBe(steps);
+  // The text typed went with the tab drawn anew: the clock going on asks for nothing of it.
+  await page.clock.resume();
+  await expect(page.getByRole("row", { name: "json-syntax" })).toBeVisible();
+  await expect(page).toHaveURL(/\/project\?view=findings&text=controller\.ddd\.json$/);
+});
+
 test("a build record this DDD cannot use is named under the masthead of the open project, with its reason", async ({
   page,
   copiedGui,

@@ -177,3 +177,49 @@ function addressOf(route: Route): string {
 export function arrivedAfter(arrived: boolean, held: Route, followed: Route): boolean {
   return arrived && hrefOf(followed) === hrefOf(held);
 }
+
+/** What the page holds of its address (`useRoute`): the route it shows; whether that is still the
+ * route the page was loaded with (`arrivedAfter`); and how many times the reader has followed a
+ * link, or moved through the page's history to another route, since it loaded. A tab drawn anew
+ * from its address at each following is keyed on that count (the Findings tab, `App`): a move the
+ * page makes itself - writing a selection, or a filter's text as typing pauses, into its own
+ * address - is no following, and leaves the tab drawn as it is (16:I9). */
+export interface Held {
+  route: Route;
+  arrived: boolean;
+  followings: number;
+}
+
+/** What the page holds once it goes to `next` (`useRoute`'s `navigate`): a route the reader chose,
+ * and a following more, unless the page replaces its own address (`replace`). A link pressed again
+ * to the very address the page is at is a following all the same: the reader asked for that page,
+ * drawn as its address asks - a file's findings, whatever the filter was typed to since. */
+export function heldGoingTo(held: Held, next: Route, replace: boolean): Held {
+  return {
+    route: next,
+    arrived: false,
+    followings: replace ? held.followings : held.followings + 1,
+  };
+}
+
+/** What the page holds once a move through its history (`popstate`) leads to `followed`: a
+ * following more where it leads to another route - the reader's own Back or Forward - and none
+ * where the route is as it was, which a fragment navigation another window can make
+ * (`arrivedAfter`, ruling P19a-19). Compared as the addresses `hrefOf` writes. */
+export function heldFollowing(held: Held, followed: Route): Held {
+  return {
+    route: followed,
+    arrived: arrivedAfter(held.arrived, held.route, followed),
+    followings: hrefOf(followed) === hrefOf(held.route) ? held.followings : held.followings + 1,
+  };
+}
+
+/** Whether going to `next` from `here`, the route the page's address is at, replaces the page's
+ * entry in its history rather than adding one: where the page asks to (`replace`) - a selection,
+ * a filter's text - and where `next` is at the very address the page is at, as a browser following
+ * a link to the address it shows replaces its entry. Pressed again, a link adds no step for Back to
+ * walk through (16:I9). Compared as the addresses `hrefOf` writes, as `arrivedAfter` compares
+ * them; a route no address can carry adds a step, the address left as it stands, as it did. */
+export function replacing(here: Route, next: Route, replace: boolean): boolean {
+  return replace || hrefOf(next) === hrefOf(here);
+}

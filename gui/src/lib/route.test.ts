@@ -1,5 +1,15 @@
 import { expect, test } from "vitest";
-import { arrivedAfter, hrefOf, parseRoute, tabHref } from "./route";
+import {
+  arrivedAfter,
+  type Held,
+  heldFollowing,
+  heldGoingTo,
+  hrefOf,
+  parseRoute,
+  type Route,
+  replacing,
+  tabHref,
+} from "./route";
 
 test.each([
   ["/", "", { page: "start" }],
@@ -345,4 +355,68 @@ test("a move through history to another route turns it false", () => {
 
 test("once false it stays false, on the route the page was loaded with too", () => {
   expect(arrivedAfter(false, ROW, ROW)).toBe(false);
+});
+
+/** The Findings tab's route asking for `text`, as a link of the banner under the masthead writes
+ * it, or the bare tab. */
+const findings = (text?: string): Route =>
+  text === undefined
+    ? { page: "project", view: "findings" }
+    : { page: "project", view: "findings", text };
+
+/** A page that has followed three links since it loaded, on the findings of controller.ddd.json. */
+const HELD: Held = { route: findings("controller.ddd.json"), arrived: false, followings: 3 };
+
+test("a link followed is a following, and a selection or a filter's text the page writes is none", () => {
+  // 16:I9: the Findings tab is drawn anew at each following, from the text its address asks for,
+  // and left as it is while the address follows what the reader types into its filter.
+  expect(heldGoingTo(HELD, findings("sensor"), true)).toEqual({
+    route: findings("sensor"),
+    arrived: false,
+    followings: 3,
+  });
+  expect(heldGoingTo({ ...HELD, arrived: true }, findings("sensor"), true).arrived).toBe(false);
+  // Pressed again where the page is, a link is followed all the same: the reader asked for it.
+  expect(heldGoingTo(HELD, findings("controller.ddd.json"), false)).toEqual({
+    route: findings("controller.ddd.json"),
+    arrived: false,
+    followings: 4,
+  });
+});
+
+test("a move through history to another route is a following, and one leaving the route as it was is none", () => {
+  expect(heldFollowing(HELD, parseRoute("/project", "?view=findings&text=sensor"))).toEqual({
+    route: findings("sensor"),
+    arrived: false,
+    followings: 4,
+  });
+  // A fragment navigation, which another window can make, however the address is spelled.
+  expect(
+    heldFollowing(HELD, parseRoute("/project", "?text=controller.ddd.json&view=findings")),
+  ).toEqual({ route: findings("controller.ddd.json"), arrived: false, followings: 3 });
+  // Whether the page still holds the route it was loaded with, as `arrivedAfter` says.
+  const loaded = { ...HELD, arrived: true };
+  expect(heldFollowing(loaded, findings("controller.ddd.json")).arrived).toBe(true);
+  expect(heldFollowing(loaded, findings("sensor")).arrived).toBe(false);
+});
+
+test("going to the address the page is at replaces its entry in the history, as the page's own writes do", () => {
+  // A link pressed again adds no step for Back to walk through, as a browser following a link to
+  // the address it shows adds none.
+  const here = parseRoute("/project", "?view=findings&text=controller.ddd.json");
+  expect(replacing(here, findings("controller.ddd.json"), false)).toBe(true);
+  expect(
+    replacing(
+      parseRoute("/project", "?text=controller.ddd.json&view=findings&from=x"),
+      findings("controller.ddd.json"),
+      false,
+    ),
+  ).toBe(true);
+  // What the page writes of its own replaces it wherever it leads; a link to another address
+  // adds a step.
+  expect(replacing(here, findings("sensor"), true)).toBe(true);
+  expect(replacing(here, findings("sensor"), false)).toBe(false);
+  expect(replacing(here, findings(), false)).toBe(false);
+  // A route no address can carry adds a step, the address left as it stands, as it did.
+  expect(replacing(here, { page: "project", view: "units", unit: HIGH }, false)).toBe(false);
 });

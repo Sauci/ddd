@@ -71,7 +71,7 @@ const BARE_ROUTES: Record<ProjectView, Route> = {
 
 export function App() {
   const queries = useQueryClient();
-  const [route, navigate, arrived] = useRoute();
+  const [route, navigate, arrived, followings] = useRoute();
   const out = useSyncExternalStore(signedOut.subscribe, signedOut.current);
   const session = useQuery({ queryKey: ["session"], queryFn: () => getSession() });
   const opened = session.data?.project ?? null;
@@ -144,6 +144,19 @@ export function App() {
         name === undefined || kind === undefined
           ? { page: "project", view: "shared" }
           : { page: "project", view: "shared", kind, name },
+        { replace: true },
+      ),
+    [navigate],
+  );
+  // The Findings tab's filter replaces the address once typing pauses, as a selection does (16:I9):
+  // a reload opens the tab on it, and a link to a file's findings, pressed after other text was
+  // typed, leads to another address than the one the page is at.
+  const filterFindings = useCallback(
+    (text: string) =>
+      navigate(
+        text === ""
+          ? { page: "project", view: "findings" }
+          : { page: "project", view: "findings", text },
         { replace: true },
       ),
     [navigate],
@@ -254,12 +267,15 @@ export function App() {
             stopped={stopped}
           />
         ) : route.view === "findings" ? (
-          // Drawn anew for each text an address asks the tab for, as a file the banner names
-          // leads to the findings holding its name: the filter opens holding it.
+          // Drawn anew at each following - a link pressed, the banner's to a file's findings and
+          // the tab's own among them, Back or Forward - its filter opening on the text the address
+          // asks for, whatever was typed since; and left as it is while the address follows what
+          // the filter asks, which is no following.
           <FindingsPage
-            key={route.text ?? ""}
+            key={followings}
             state={state}
             text={route.text}
+            onText={filterFindings}
             stopped={stopped}
             onOpen={navigate}
           />

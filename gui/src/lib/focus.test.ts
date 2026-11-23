@@ -1,5 +1,53 @@
 import { describe, expect, test } from "vitest";
-import { opensAnew, returnPlace } from "./focus";
+import { opensAnew, pageChanged, pageOf, returnPlace } from "./focus";
+import type { Route } from "./route";
+
+describe("whether a following changes the page", () => {
+  const graph: Route = { page: "project", view: "graph" };
+  const controller: Route = { page: "component", file: "/p/controller.ddd.json" };
+
+  test("from one page to another: the start page, a tab, a component's page, its values", () => {
+    expect(pageChanged({ page: "start" }, graph)).toBe(true);
+    expect(pageChanged(graph, { page: "project", view: "units" })).toBe(true);
+    expect(pageChanged({ page: "project", view: "table" }, controller)).toBe(true);
+    expect(pageChanged(controller, { page: "component", file: "/p/sensor_hub.ddd.json" })).toBe(
+      true,
+    );
+    const values: Route = { ...controller, variable: "MapA", view: "values" };
+    expect(pageChanged({ ...controller, variable: "MapA" }, values)).toBe(true);
+    expect(pageChanged(values, { ...values, variable: "CurveA" })).toBe(true);
+    expect(pageChanged(values, { ...values, file: "/p/user_interface.ddd.json" })).toBe(true);
+  });
+
+  test("not what a page selects in it, nor the page drawn again", () => {
+    expect(pageChanged(graph, { ...graph, variable: "ValueA" })).toBe(false);
+    expect(pageChanged(controller, { ...controller, variable: "ValueB" })).toBe(false);
+    expect(
+      pageChanged(
+        { page: "project", view: "units" },
+        { page: "project", view: "units", unit: "rpm" },
+      ),
+    ).toBe(false);
+    expect(
+      pageChanged(
+        { page: "project", view: "findings", text: "a" },
+        { page: "project", view: "findings" },
+      ),
+    ).toBe(false);
+    expect(pageChanged({ page: "start" }, { page: "start" })).toBe(false);
+  });
+
+  test("names each page apart, a file and a variable being told apart where their names run on", () => {
+    const values = (file: string, variable: string): Route => ({
+      page: "component",
+      file,
+      variable,
+      view: "values",
+    });
+    expect(pageOf(values("a b", "c"))).not.toBe(pageOf(values("a", "b c")));
+    expect(pageOf({ page: "component", file: "/p/x" })).not.toBe(pageOf(values("/p/x", "")));
+  });
+});
 
 describe("whether a panel drawn takes the control holding the focus as its opener", () => {
   test("the first panel of its slot, drawn from a control of the page", () => {

@@ -1,7 +1,27 @@
+import type { Route } from "./route";
+
 /**
  * Where the keyboard's focus goes as the page changes under it (16:I13, decision 16.3): what the
  * page finds there is gathered by `app/focus.ts`, out of the document, and judged here.
  */
+
+/** The page a route shows, as a change of page reads it: the start page, a tab of the project
+ * screen, a component's page or a variable's values - not what the page selects, a row or a
+ * filter's text, which replaces its address on the same page. */
+export function pageOf(route: Route): string {
+  if (route.page === "start") return JSON.stringify(["start"]);
+  if (route.page === "project") return JSON.stringify(["project", route.view]);
+  return "view" in route
+    ? JSON.stringify(["values", route.file, route.variable])
+    : JSON.stringify(["component", route.file]);
+}
+
+/** Whether going from `before` to `after` changes the page (`pageOf`): the focus then goes to the
+ * new page's heading, as it starts at a page's top once a link loads it, where the control that
+ * held it - a row, a link of a panel - is gone, or stands for another page than the one shown. */
+export function pageChanged(before: Route, after: Route): boolean {
+  return pageOf(before) !== pageOf(after);
+}
 
 /**
  * Whether a panel drawn takes the control holding the focus as the one it was opened from (16:I13):

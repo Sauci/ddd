@@ -1,10 +1,11 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { type ReactNode, useCallback, useEffect, useSyncExternalStore } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { getSession } from "../api/client";
 import { signedOut } from "../api/token";
 import { LoadBannerView } from "../components/LoadBannerView";
 import { SignedOutView } from "../components/SignedOutView";
 import { UndrawnView } from "../components/UndrawnView";
+import { pageChanged } from "../lib/focus";
 import { type ProjectView, type Route, tabHref } from "../lib/route";
 import { projectName, sessionAskedFor } from "../lib/session";
 import type { SharedKind } from "../lib/shared";
@@ -30,7 +31,7 @@ import { LinkTabs } from "../ui/LinkTabs";
 import { PageHeading } from "../ui/PageHeading";
 import { UpdatingStatus } from "../ui/UpdatingNote";
 import { ErrorBoundary } from "./ErrorBoundary";
-import { watchPresses } from "./focus";
+import { askPageHeading, watchReader } from "./focus";
 import { UpdatingContext } from "./updating";
 import { useProjectState } from "./useProjectState";
 import { useRoute } from "./useRoute";
@@ -74,8 +75,17 @@ const BARE_ROUTES: Record<ProjectView, Route> = {
 export function App() {
   const queries = useQueryClient();
   const [route, navigate, arrived, followings] = useRoute();
-  // Which control a press of the pointer is on, for the panel it opens to give the focus back to.
-  useEffect(() => watchPresses(), []);
+  // Which control a press of the pointer is on, for the panel it opens to give the focus back to,
+  // and whether the reader pressed anything since a change of page asked for its heading.
+  useEffect(() => watchReader(), []);
+  // A change of page - a link or a row followed, Back or Forward - puts the focus on the new page's
+  // heading, as a page loaded starts at its top: the control that held it is gone with the page
+  // before, or names it no longer (16:I13). What a page selects in itself is no change of page.
+  const shownRoute = useRef(route);
+  useEffect(() => {
+    if (pageChanged(shownRoute.current, route)) askPageHeading();
+    shownRoute.current = route;
+  }, [route]);
   const out = useSyncExternalStore(signedOut.subscribe, signedOut.current);
   const session = useQuery({ queryKey: ["session"], queryFn: () => getSession() });
   const opened = session.data?.project ?? null;

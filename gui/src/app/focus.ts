@@ -36,14 +36,20 @@ function controlOf(target: EventTarget | null): Control | null {
   return control instanceof HTMLElement || control instanceof SVGElement ? control : null;
 }
 
+/** Whether a change of page waits for its heading to take the focus (`askPageHeading`). */
+let headingWanted = false;
+
 /**
- * Keeps the control each press of the pointer went down on until the press is over: React Aria
- * selects a row as the pointer goes down, and the page draws the row's panel before the browser
- * gives the focus to the cell pressed. Answers what stops the watching.
+ * Watches what the reader presses, from the page's start: keeps the control each press of the
+ * pointer went down on until the press is over - React Aria selects a row as the pointer goes
+ * down, and the page draws the row's panel before the browser gives the focus to the cell pressed -
+ * and lets a page's heading go that has not yet taken the focus a change of page asked it to,
+ * once the reader presses a key or the pointer meanwhile. Answers what stops the watching.
  */
-export function watchPresses(): () => void {
+export function watchReader(): () => void {
   const down = (event: PointerEvent) => {
     pressed = controlOf(event.target);
+    headingWanted = false;
   };
   // After the press's own click, which may open a panel too.
   const over = () => {
@@ -51,14 +57,35 @@ export function watchPresses(): () => void {
       pressed = null;
     }, 0);
   };
+  const key = () => {
+    headingWanted = false;
+  };
   document.addEventListener("pointerdown", down, true);
   document.addEventListener("pointerup", over, true);
   document.addEventListener("pointercancel", over, true);
+  document.addEventListener("keydown", key, true);
   return () => {
     document.removeEventListener("pointerdown", down, true);
     document.removeEventListener("pointerup", over, true);
     document.removeEventListener("pointercancel", over, true);
+    document.removeEventListener("keydown", key, true);
   };
+}
+
+/** Puts the focus on the page's heading after a change of page (`pageChanged`, 16:I13): at once
+ * where the new page draws it, else as it is drawn (`takePageHeading`) - a component's page, its
+ * file read - unless the reader presses a key or the pointer meanwhile. */
+export function askPageHeading(): void {
+  headingWanted = true;
+  const heading = pageHeading();
+  if (heading !== null) takePageHeading(heading);
+}
+
+/** Gives `heading`, a page's heading drawn, the focus a change of page asked for, if it waits. */
+export function takePageHeading(heading: HTMLElement): void {
+  if (!headingWanted) return;
+  headingWanted = false;
+  heading.focus();
 }
 
 /** The control a panel is opened from as it is first drawn: the one a press of the pointer is on,

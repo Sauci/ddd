@@ -7,6 +7,7 @@ import {
   drift,
   held,
   includesNothing,
+  openValues,
   SENSOR_HUB,
   withUnitOfValueA,
   writeUnseen,
@@ -263,6 +264,88 @@ test("the table is one tab away", async ({ page, gui }) => {
   await page.reload();
   await expect(componentRow(page, "Controller").getByRole("gridcell").nth(0)).toHaveText("0");
   await expect(page).toHaveURL(/\?view=table$/);
+});
+
+test("a row followed from the keyboard opens its page with the focus on its heading, and Back the page before with its own", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Table" }).click();
+  await componentRow(page, "Controller").focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("heading", { name: "Controller", level: 1 })).toBeFocused();
+  // The keyboard goes on from the page's top: its first control, not the masthead's.
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "Add a declaration" })).toBeFocused();
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: "DemoDevice", level: 1 })).toBeFocused();
+});
+
+test("a tab, the masthead's Projects and a grid's way back put the focus on the heading of the page they open", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Units" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\?view=units$/);
+  await expect(page.getByRole("heading", { name: "DemoDevice", level: 1 })).toBeFocused();
+  // A row selected is no change of page: the focus stays on it as its panel opens.
+  const row = page.getByRole("grid", { name: "Units" }).getByRole("row", { name: /Hz/ });
+  await row.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("complementary", { name: "Hz" })).toBeVisible();
+  await expect(row).toBeFocused();
+
+  await openValues(page, gui.address, "MapA");
+  await expect(page.getByRole("heading", { name: "MapA", level: 1 })).toBeFocused();
+  await page.getByRole("button", { name: "Back to Controller" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("heading", { name: "Controller", level: 1 })).toBeFocused();
+
+  await page.getByRole("button", { name: "Projects" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("heading", { name: "Open a project", level: 1 })).toBeFocused();
+});
+
+test("a page's heading drawn once its file is read takes the focus then, unless a key was pressed meanwhile", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Table" }).click();
+  const reading = page.getByText("Reading the file…");
+  let release = await held(page, "/api/file");
+  try {
+    await componentRow(page, "Controller").focus();
+    await page.keyboard.press("Enter");
+    await expect(reading).toBeVisible();
+  } finally {
+    release();
+  }
+  await expect(page.getByRole("heading", { name: "Controller", level: 1 })).toBeFocused();
+
+  // The reader in the masthead's go-to, a key pressed there while SensorHub's file is read: the
+  // heading drawn after leaves the focus where the reader has it.
+  await page.goBack();
+  const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+  release = await held(page, "/api/file");
+  try {
+    await componentRow(page, "SensorHub").focus();
+    await page.keyboard.press("Enter");
+    await expect(reading).toBeVisible();
+    await goTo.focus();
+    await page.keyboard.press("Shift");
+  } finally {
+    release();
+  }
+  await expect(page.getByRole("heading", { name: "SensorHub", level: 1 })).toBeVisible();
+  // Two frames on, the heading's own effects have run.
+  await page.evaluate(
+    () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+  );
+  await expect(goTo).toBeFocused();
 });
 
 /** What the Graph and the Table say of a project that includes no component (16:M13). */

@@ -148,6 +148,17 @@ describe("the banner under the masthead", () => {
     expect(four?.lines[0]?.filter((part) => typeof part !== "string")).toHaveLength(4);
   });
 
+  test("counts the rest as every count of the page is written, past a thousand", () => {
+    // A description format moved on: every component of a large project fails at once.
+    const many = Array.from({ length: 3334 }, (_, at) =>
+      file(`C:/work/large/components/c${at}.ddd.json`, false),
+    );
+    expect(loadBanner(PROJECT, analysed(...many), null, [])?.lines[0]?.[6]).toEqual({
+      text: "3,331 more",
+      to: { page: "project", view: "files" },
+    });
+  });
+
   test("says a first analysis failed, and when it is asked again, as an error", () => {
     // Before any revision: no file is known, and the reason is the whole of what there is to say.
     expect(loadBanner(PROJECT, null, "boom", [])).toEqual({

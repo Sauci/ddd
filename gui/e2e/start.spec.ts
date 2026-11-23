@@ -508,7 +508,12 @@ test("a file that does not load is named under the masthead of every page, a com
   await expect(page.getByRole("heading", { name: "SensorHub", level: 1 })).toBeVisible();
   await expect(banner).toHaveText(UNLOADED);
   // The file's name leads to its finding: the Findings tab, asking for the findings that hold it -
-  // the file's own, the one saying why it did not load first among its errors.
+  // the file's own, the one saying why it did not load first among its errors. Followed in the
+  // page, as a tab is: a link followed by loading its address starts a new document, where a
+  // marker on this one is gone.
+  await page.evaluate(() => {
+    (window as unknown as { marker: string }).marker = "this document";
+  });
   await banner.getByRole("link", { name: "controller.ddd.json", exact: true }).click();
   await expect(page).toHaveURL(/\/project\?view=findings&text=controller\.ddd\.json$/);
   await expect(page.getByRole("textbox", { name: "Filter findings" })).toHaveValue(
@@ -516,6 +521,8 @@ test("a file that does not load is named under the masthead of every page, a com
   );
   await expect(page.getByRole("row", { name: "json-syntax" })).toBeVisible();
   await expect(banner).toHaveText(UNLOADED);
+  const kept = await page.evaluate(() => (window as unknown as { marker?: string }).marker);
+  expect(kept).toBe("this document");
   // From the Findings tab itself, its filter holding another text, the link asks for the file's.
   await tab(page, "Findings").click();
   const filter = page.getByRole("textbox", { name: "Filter findings" });

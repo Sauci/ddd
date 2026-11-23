@@ -45,8 +45,9 @@ export function unloadedNames(files: readonly Pick<SourceFile, "path" | "loaded"
 
 /** The parts naming `items`, as every sentence of this interface lists names - "A", "A and B",
  * "A, B and C" - and past one more than `FILES_NAMED`, the first `FILES_NAMED` and how many more
- * there are, as a plan's consequence counts its files (lib/units.ts): a project every file of which
- * failed - its description format moved on - named each, ran to a wall of names on every page. */
+ * there are, as a plan's consequence counts its files (lib/units.ts): named one by one, every file
+ * of a project failing at once - its description format moved on - would run to a wall of names on
+ * every page. */
 function listedParts<T>(
   items: readonly T[],
   named: (item: T) => Part,

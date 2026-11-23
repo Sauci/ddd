@@ -84,8 +84,8 @@ export const RECORD_IGNORED = "this record is ignored, so its severities apply t
  * - why the last analysis failed, and, while ddd gui runs, that it tries again about every second
  *   (`failureLine`): over the last analysis that finished, which every page then shows, or alone
  *   where none has;
- * - the project's own description, where it did not load: nothing it includes is read, so no page
- *   has a file of the project to draw;
+ * - the project's own description, where nothing past it was read: no file it includes is read, so
+ *   no page has a file of the project to draw;
  * - the other files that did not load, each leading to its finding (`findingsOf`), past four the
  *   rest counted and led to the Files tab, whose rows say of each that it did not load. A file that
  *   does not load stops every check of the project (`checksLeft`), and the pages show what the
@@ -104,10 +104,15 @@ export function loadBanner(
   const lines: Part[][] = [];
   if (failed !== null) lines.push([failureLine(failed, state !== null, stopped)]);
   // Named as `unloadedNames` names them, told apart among all of them; the project's own
-  // description, where it is one of them, in a line of its own.
-  const unloaded = (state?.files ?? []).filter((file) => !file.loaded);
+  // description in a line of its own where nothing past it was read: it did not parse, or did not
+  // match its shape, and the state lists it alone. Listed with the files it includes, it read and
+  // matched its shape, and holds an entry naming several files of which the loader could not read
+  // one (`_unloaded`, gui/session.py): every other file it includes was read then.
+  const listed = state?.files ?? [];
+  const unloaded = listed.filter((file) => !file.loaded);
   const names = toldApartAll(unloaded.map((file) => file.path));
-  const described = unloaded.map((file) => file.path === project);
+  const alone = listed.length === 1;
+  const described = unloaded.map((file) => alone && file.path === project);
   for (const name of names.filter((_, at) => described[at])) {
     lines.push([
       findingsOf(name),

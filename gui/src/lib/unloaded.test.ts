@@ -135,6 +135,25 @@ describe("the banner under the masthead", () => {
     });
   });
 
+  test("says of a description that read but did not load what it says of any file", () => {
+    // A file an entry naming several matched and that could not be read - one this process may
+    // not read - is reported at the entry, and the description holding it is listed as the file
+    // that did not load (`_unloaded`, gui/session.py): every file it includes is read then, and
+    // drawn.
+    expect(
+      loadBanner(
+        PROJECT,
+        analysed(file(PROJECT, false, "project"), file(CONTROLLER), file(SENSOR_HUB)),
+        null,
+        [],
+        RUNNING,
+      )?.lines.map(wordsOf),
+    ).toEqual([
+      "demo.ddd.json did not load, so the project's checks wait until it does, and the pages show " +
+        "what the files that loaded declare.",
+    ]);
+  });
+
   test("names each of several, two of one name told apart, each leading to its own", () => {
     const banner = loadBanner(
       PROJECT,

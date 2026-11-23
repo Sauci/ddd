@@ -364,8 +364,11 @@ function landFrom(
   });
   if (place === "table") grid?.focus();
   else if (place === "panel") {
+    // A panel drawn anew stands where the one before it stood: its heading takes the focus where
+    // the page stands, scrolled by the reader meanwhile or not.
     const standing = panel?.isConnected ? panel : replaced;
-    standing?.querySelector<HTMLElement>('[data-heading="panel"]')?.focus();
+    const heading = standing?.querySelector<HTMLElement>('[data-heading="panel"]');
+    heading?.focus({ preventScroll: standing !== panel });
   } else if (place === "return" && panel !== null) returnTo(slot, panel, opener);
   else if (place === "page") askPageHeading();
 }

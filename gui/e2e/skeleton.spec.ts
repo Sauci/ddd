@@ -399,6 +399,60 @@ test("a type a panel links to takes the focus once its panel is drawn, the page'
   ).toBeFocused();
 });
 
+/**
+ * The page scrolled by the reader as a change of page opens a panel (16:M9): the go-to opens
+ * ParameterA beside Controller's declarations in a window 1000 by 420, its panel still reading its
+ * variable, and the reader scrolls the page down past the panel's heading, by the wheel or by a
+ * key. The panel, read and drawn taller, leaves the page where the reader scrolled it: only what
+ * the page itself moved is scrolled back to the panel.
+ */
+for (const way of ["wheel", "key"] as const) {
+  test(`a page the reader scrolls by the ${way} as the go-to opens a panel stays where it is scrolled`, async ({
+    page,
+    gui,
+  }) => {
+    await page.setViewportSize({ width: 1000, height: 420 });
+    await page.goto(gui.address);
+    const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+    await goTo.pressSequentially("ParameterA");
+    await expect(page.getByRole("option", { name: "ParameterA" })).toBeVisible();
+    const panel = page.getByRole("complementary", { name: "ParameterA" });
+    const release = await held(page, "/api/variable");
+    let scrolled = 0;
+    try {
+      await goTo.press("Enter");
+      await expect(panel.getByText("Reading ParameterA…")).toBeVisible();
+      if (way === "wheel") {
+        const box = await panel.boundingBox();
+        if (box === null) throw new Error("the panel is not drawn");
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+        await page.mouse.wheel(0, 400);
+      } else {
+        await page.keyboard.press("PageDown");
+      }
+      // Past the panel's heading, the scroll come to rest.
+      const heading = panel.getByRole("heading", { name: "ParameterA", level: 2 });
+      await expect(heading).not.toBeInViewport();
+      await expect
+        .poll(async () => {
+          const before = await page.evaluate(() => window.scrollY);
+          await page.waitForTimeout(100);
+          return (await page.evaluate(() => window.scrollY)) === before;
+        })
+        .toBe(true);
+      scrolled = await page.evaluate(() => window.scrollY);
+    } finally {
+      release();
+    }
+    await expect(panel.getByRole("grid", { name: "Keys of ParameterA" })).toBeVisible();
+    // Two frames on, what the page watches of its own layout has run.
+    await page.evaluate(
+      () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+    );
+    expect(await page.evaluate(() => window.scrollY)).toBe(scrolled);
+  });
+}
+
 /** What the Graph and the Table say of a project that includes no component (16:M13). */
 const NEW_FILE =
   "This project includes no component yet: New file, on the Files tab, writes one and includes it.";

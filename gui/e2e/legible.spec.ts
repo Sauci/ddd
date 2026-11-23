@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import { drift } from "./demo";
 import { expect, test } from "./fixtures";
 
 // What the page draws for keyboard use and a readable canvas (16:I11, 16:I12, 16:M14, 16:M19,
@@ -78,5 +79,40 @@ for (const forced of [false, true]) {
     for (const head of heads) {
       expect(contrast(head.stroke, head.ground)).toBeGreaterThanOrEqual(GRAPHIC);
     }
+  });
+
+  test(`a button reached by Tab shows an outline of 3:1, in ${mode}`, async ({ page, gui }) => {
+    await page.emulateMedia({ forcedColors: forced ? "active" : "none" });
+    await page.goto(gui.address);
+    await expect(page.getByRole("link", { name: "Graph" })).toBeVisible();
+    for (let tabs = 0; tabs < 12; tabs += 1) {
+      await page.keyboard.press("Tab");
+      if (await page.evaluate(() => document.activeElement?.classList.contains("button"))) break;
+    }
+    const ring = await ringOf(page, ".button:focus-visible");
+    expect(ring.outlineStyle).not.toBe("none");
+    expect(ring.outlineWidth).toBeGreaterThanOrEqual(2);
+    expect(contrast(ring.outlineColour, ring.ground)).toBeGreaterThanOrEqual(GRAPHIC);
+  });
+
+  test(`the selected row of a table carries an outline of its own, in ${mode}`, async ({
+    page,
+    gui,
+  }) => {
+    drift(gui.directory);
+    await page.emulateMedia({ forcedColors: forced ? "active" : "none" });
+    await page.goto(gui.address);
+    await page.getByRole("link", { name: "Findings" }).click();
+    const rows = page.getByRole("row", { name: "definition-mismatch" });
+    await rows.first().click();
+    await expect(page.getByRole("complementary", { name: "definition-mismatch" })).toBeVisible();
+    const ring = await ringOf(page, ".react-aria-Row[data-selected]");
+    expect(ring.outlineStyle).not.toBe("none");
+    expect(ring.outlineWidth).toBeGreaterThanOrEqual(2);
+    expect(contrast(ring.outlineColour, ring.ground)).toBeGreaterThanOrEqual(GRAPHIC);
+    // And only the selected one: the other row of the pair draws none.
+    await expect(await rows.nth(1).evaluate((node) => getComputedStyle(node).outlineStyle)).toBe(
+      "none",
+    );
   });
 }

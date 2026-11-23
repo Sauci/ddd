@@ -6,8 +6,8 @@
    Row, …): both are what this file selects on. */
 
 /* Button: the one action of a view (primary), any other (secondary), or a link (link). Its own
-   focus ring replaces the browser's outline, which would otherwise double up on a <button>; its
-   own text-decoration replaces the browser's default underline, which a plain <a> styled as one
+   focus ring is the outline app.css sets on every button, kept (a box-shadow is not drawn in
+   forced colours, an outline is); its own text-decoration replaces the browser's default underline, which a plain <a> styled as one
    of these - the Findings panel's Open, spec 5.2 - would otherwise carry. */
 .button {
   font: inherit;
@@ -18,10 +18,8 @@
   text-decoration: none;
 }
 .button:focus-visible {
-  outline: none;
-}
-.button[data-focus-visible] {
-  box-shadow: 0 0 0 3px var(--focus);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .button[data-disabled] {
   cursor: default;
@@ -58,12 +56,8 @@
 
 /* A plain <a> styled as one of these - the Findings panel's Open (spec 5.2), a finding's link on
    a component's page or in a variable's panel - carries none of React Aria's data attributes, so
-   `.button:focus-visible`'s own outline: none above would otherwise leave it with no ring at all
-   for a reader tabbing through. Its focus ring and hover feedback come from the native
-   pseudo-classes instead, an anchor always has both. */
-a.button:focus-visible {
-  box-shadow: 0 0 0 3px var(--focus);
-}
+   its hover feedback comes from the native pseudo-class instead; its focus ring is the one rule
+   above, `:focus-visible` being native too. */
 a.button.link:hover {
   text-decoration: underline;
 }
@@ -452,6 +446,12 @@ tr.changing td {
 }
 .react-aria-Row[data-selected] .react-aria-Cell {
   background: var(--accent-ground);
+}
+/* A selected row's mark besides its tint (a tint alone is 1.16:1 and forced colours drop it): an
+   outline, which forced colours draw, as they do not a box-shadow. */
+.react-aria-Row[data-selected] {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 /* Milestone 1's red inset on a row's first cell, kept exactly (app.css's tr.has-error). */
 .react-aria-Row.has-error .react-aria-Cell:first-child {

@@ -81,11 +81,13 @@ export function stateOf(severity: FlowData["severity"]): "error" | "warning" | "
   return severity === "error" || severity === "warning" ? severity : "agreed";
 }
 
-/** What each state paints with; `info` and `ignore` leave the arrow plain, as spec 4.4 says. */
+/** What each state paints with; `info` and `ignore` leave the arrow plain, as spec 4.4 says. An
+ * arrow that agrees is drawn in `--ink-quiet`, whose contrast on the canvas is 4.92:1 - a graphic
+ * that carries meaning wants 3:1 - where `--rule`, which it was drawn in, reads 1.17:1. */
 export const STROKE: Record<ReturnType<typeof stateOf>, string> = {
   error: "var(--error)",
   warning: "var(--warning)",
-  agreed: "var(--rule)",
+  agreed: "var(--ink-quiet)",
 };
 
 /**

@@ -410,3 +410,8 @@ test("openingViewport centres the first rank at minZoom when the whole graph wou
   const result = openingViewport(placed, { width: 1280, height: 800 }, MIN_ZOOM);
   expect(result).toEqual({ x: 595, y: 388, zoom: 0.5 });
 });
+
+// 16:I11: a graphic that carries meaning wants 3:1 on its ground, and `--rule` on `--canvas` is 1.17:1.
+test("an arrow that agrees is drawn in the quiet ink, as dark as the page's own quiet text", () => {
+  expect(STROKE.agreed).toBe("var(--ink-quiet)");
+});

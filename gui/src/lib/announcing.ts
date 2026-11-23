@@ -16,8 +16,12 @@ export interface Write {
   kind: "wrote" | "put back";
   /** What the page called the edit (`Changes.label`): "the unit of ValueA". */
   label: string;
-  /** Every file it wrote, absolute and posix-separated, in the order the server names them. */
+  /** Every file it wrote, absolute and posix-separated, in the order the server names them; of an
+   * undo, every file it put back. */
   files: readonly string[];
+  /** Every file an undo took away, as `files` names them: one its preview names gone, which the
+   * strip notes as removed (`shownUndo`, lib/undo.ts) - an adopted vocabulary's units file. */
+  removed?: readonly string[];
 }
 
 /** One of the page's own writes, by the number the server answered it with (`EditReply.edit`,
@@ -27,12 +31,14 @@ export interface NumberedWrite {
   write: Write;
 }
 
-/** What an undo put back, as its preview says it: the edit's label, and every file it puts back. */
+/** What an undo put back, as its preview says it: the edit's label, every file it puts back, and
+ * apart from them every file it takes away, which its preview names gone. */
 export function putBackOf(preview: UndoPreview): Write {
   return {
     kind: "put back",
     label: preview.label,
-    files: preview.changes.map((change) => change.file),
+    files: preview.changes.filter((change) => !change.gone).map((change) => change.file),
+    removed: preview.changes.filter((change) => change.gone).map((change) => change.file),
   };
 }
 
@@ -55,14 +61,18 @@ function filesNamed(files: readonly string[]): string {
  * What a write of the page's own says on the heading's line: "Wrote 2 files for the unit of
  * ValueA: controller.ddd.json, sensor_hub.ddd.json.", "Undid the unit of ValueA, putting back 1
  * file: controller.ddd.json." - the edit by the label the Undo control names it by, which reads
- * after "for" and "Undid" as it reads after "Undo".
+ * after "for" and "Undid" as it reads after "Undo". A file an undo took away is named apart, in the
+ * strip's own word for it: "Undid the vocabulary adopted, putting back 1 file: demo.ddd.json, and
+ * removing 1 file: units.ddd.json."
  */
-export function writtenSentence({ kind, label, files }: Write): string {
+export function writtenSentence({ kind, label, files, removed = [] }: Write): string {
   const count = fileCount(files.length);
   const named = files.length === 0 ? "" : `: ${filesNamed(files)}`;
-  return kind === "wrote"
-    ? `Wrote ${count} for ${label}${named}.`
-    : `Undid ${label}, putting back ${count}${named}.`;
+  if (kind === "wrote") return `Wrote ${count} for ${label}${named}.`;
+  const back = files.length > 0 || removed.length === 0 ? [`putting back ${count}${named}`] : [];
+  const gone =
+    removed.length === 0 ? [] : [`removing ${fileCount(removed.length)}: ${filesNamed(removed)}`];
+  return `Undid ${label}, ${[...back, ...gone].join(", and ")}.`;
 }
 
 /** What the heading's line says of a write of the page's own: its sentence, and the number the

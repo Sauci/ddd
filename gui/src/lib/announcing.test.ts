@@ -188,6 +188,39 @@ describe("what the heading says the page last wrote", () => {
       kind: "put back",
       label: "the unit of ValueA",
       files: [at("controller.ddd.json"), at("sensor_hub.ddd.json")],
+      removed: [],
     });
+  });
+
+  test("an undo's preview, a file it takes away apart from those it puts back", () => {
+    const undone = putBackOf({
+      revision: 3,
+      at: 2,
+      label: "the vocabulary adopted",
+      changes: [
+        { file: "/work/demo/units.ddd.json", gone: true, hunks: [] },
+        { file: "/work/demo/demo.ddd.json", gone: false, hunks: [] },
+      ],
+    });
+    expect(undone).toEqual({
+      kind: "put back",
+      label: "the vocabulary adopted",
+      files: ["/work/demo/demo.ddd.json"],
+      removed: ["/work/demo/units.ddd.json"],
+    });
+    expect(writtenSentence(undone)).toBe(
+      "Undid the vocabulary adopted, putting back 1 file: demo.ddd.json, and removing 1 file: units.ddd.json.",
+    );
+  });
+
+  test("an undo taking every file away, by what it removed alone", () => {
+    expect(
+      writtenSentence({
+        kind: "put back",
+        label: "the new file pump.ddd.json",
+        files: [],
+        removed: [at("pump.ddd.json"), at("valve.ddd.json")],
+      }),
+    ).toBe("Undid the new file pump.ddd.json, removing 2 files: pump.ddd.json, valve.ddd.json.");
   });
 });

@@ -93,6 +93,11 @@ test("an adopted vocabulary is taken away again, file and include", async ({ pag
   await expect.poll(() => existsSync(adopted)).toBe(false);
   expect(readFileSync(join(gui.directory, "demo.ddd.json")).equals(described)).toBe(true);
   await expect(page.getByText("5 units · no units file")).toBeVisible();
+  // The heading says what the undo did to each file, in the strip's own word for the one it took
+  // away (16:I13).
+  await expect(page.locator(".heading").getByRole("status")).toHaveText(
+    "Undid the vocabulary adopted, putting back 1 file: demo.ddd.json, and removing 1 file: units.ddd.json.",
+  );
 });
 
 test("an undo of an edit whose file was changed by hand is refused, and keeps its place", async ({

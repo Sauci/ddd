@@ -588,14 +588,17 @@ test("a file's link under the masthead, pressed again once other text was typed,
   const link = await followedToControllerFindings(page, gui.directory);
   const filter = page.getByRole("textbox", { name: "Filter findings" });
   const cut = page.getByRole("row", { name: "json-syntax" });
-  // Another text, which no finding holds, asked for once typing pauses.
+  const steps = await page.evaluate(() => window.history.length);
+  // Another text, which no finding holds, asked for once typing pauses, and written into the
+  // address in place of the file's, as a selection is: typing is no step for Back to walk through.
   await filter.fill("sensor");
   await expect(cut).toHaveCount(0);
+  await expect(page).toHaveURL(/\/project\?view=findings&text=sensor$/);
+  expect(await page.evaluate(() => window.history.length)).toBe(steps);
   await link.click();
   await expect(filter).toHaveValue("controller.ddd.json");
   await expect(cut).toBeVisible();
-  // The text typed went into the address as typing paused, replacing it, as a selection does:
-  // Back leads to it, and not to the file's findings a second time.
+  // Back leads to the text typed, and not to the file's findings a second time.
   await page.goBack();
   await expect(page).toHaveURL(/\/project\?view=findings&text=sensor$/);
   await expect(filter).toHaveValue("sensor");

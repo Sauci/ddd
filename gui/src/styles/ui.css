@@ -757,9 +757,10 @@ tr.changing td {
   list-style: none;
 }
 
-/* The project screen's tabs, moved out of app.css. In a window too narrow for one line of them -
-   375px holds five - they wrap onto more, rather than reach past its edge and scroll the page
-   sideways (16:M9); each tab's own padding parts the lines. */
+/* The project screen's tabs, moved out of app.css. In a window too narrow for one line of them - a
+   phone's 375px holds six of the eight, or fewer in a wider font - they wrap onto more, rather than
+   reach past its edge and scroll the page sideways (16:M9); each tab's own padding parts the
+   lines. */
 .tabs {
   display: flex;
   flex-wrap: wrap;

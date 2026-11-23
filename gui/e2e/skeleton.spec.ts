@@ -309,6 +309,20 @@ test("a tab, the masthead's Projects and a grid's way back put the focus on the 
   await expect(page.getByRole("heading", { name: "Open a project", level: 1 })).toBeFocused();
 });
 
+test("every page is titled by its name and the project's", async ({ page, gui }) => {
+  await page.goto(gui.address);
+  await expect(page).toHaveTitle("Graph · DemoDevice · ddd gui");
+  await page.getByRole("link", { name: "Units" }).click();
+  await expect(page).toHaveTitle("Units · DemoDevice · ddd gui");
+  await page.getByRole("link", { name: "Table" }).click();
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await expect(page).toHaveTitle("Controller · DemoDevice · ddd gui");
+  await openValues(page, gui.address, "MapA");
+  await expect(page).toHaveTitle("MapA · Controller · DemoDevice · ddd gui");
+  await page.getByRole("button", { name: "Projects" }).click();
+  await expect(page).toHaveTitle("Open a project · ddd gui");
+});
+
 test("a page's heading drawn once its file is read takes the focus then, unless a key was pressed meanwhile", async ({
   page,
   gui,

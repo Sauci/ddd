@@ -5,6 +5,7 @@ import { signedOut } from "../api/token";
 import { LoadBannerView } from "../components/LoadBannerView";
 import { SignedOutView } from "../components/SignedOutView";
 import { UndrawnView } from "../components/UndrawnView";
+import { PROJECT_VIEWS, pageTitle, VIEW_NAMES } from "../lib/announcing";
 import { pageChanged } from "../lib/focus";
 import { type ProjectView, type Route, tabHref } from "../lib/route";
 import { projectName, sessionAskedFor } from "../lib/session";
@@ -35,18 +36,6 @@ import { askPageHeading, watchFocus } from "./focus";
 import { UpdatingContext } from "./updating";
 import { useProjectState } from "./useProjectState";
 import { useRoute } from "./useRoute";
-
-/** The project screen's tabs, in the order they are shown. */
-const PROJECT_VIEWS = [
-  ["graph", "Graph"],
-  ["table", "Table"],
-  ["units", "Units"],
-  ["types", "Types"],
-  ["shared", "Shared files"],
-  ["files", "Files"],
-  ["findings", "Findings"],
-  ["compare", "Compare"],
-] as const;
 
 /** Each tab's own route, written out one view at a time rather than built from it: `PROJECT_
  * VIEWS.map()` below reads `view` widened to the union of all eight tab literals, and passing
@@ -101,6 +90,17 @@ export function App() {
   useEffect(() => {
     if (askedFor !== null) void queries.invalidateQueries({ queryKey: ["session"] });
   }, [askedFor, queries]);
+  // Each page titled by its name and the project's (16:I13), as what is drawn below names them:
+  // the start page where no project is open, nothing of a page before the session answers.
+  const title = pageTitle({
+    drawn: !out && session.isSuccess,
+    route,
+    project: opened === null ? null : projectName(opened, project),
+    files: state?.files ?? [],
+  });
+  useEffect(() => {
+    document.title = title;
+  }, [title]);
   // One identity for the whole life of the page: the canvas hands this to every module it draws,
   // and a new function each render would lay the canvas out again each render.
   const openComponent = useCallback(
@@ -229,9 +229,9 @@ export function App() {
         </div>
         <LinkTabs
           label="Project views"
-          tabs={PROJECT_VIEWS.map(([view, label]) => ({
+          tabs={PROJECT_VIEWS.map((view) => ({
             href: tabHref(view),
-            label,
+            label: VIEW_NAMES[view],
             current: route.view === view,
             onFollow: () => navigate(BARE_ROUTES[view]),
           }))}

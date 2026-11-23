@@ -22,7 +22,7 @@ export function Sentence({
           <a
             // biome-ignore lint/suspicious/noArrayIndexKey: a part is its own position in its sentence
             key={index}
-            className="button link sentence-link"
+            className="sentence-link"
             href={href}
             onClick={(event: MouseEvent<HTMLAnchorElement>) => {
               // A modified or secondary click asks the browser for a new tab or window.

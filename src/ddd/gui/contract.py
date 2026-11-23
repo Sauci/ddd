@@ -103,6 +103,7 @@ __all__ = [
     "UnitPlace",
     "UnitReply",
     "UnitsReply",
+    "UnreadDescription",
     "UsedUnit",
     "ValuesReply",
     "VariableDeclaration",
@@ -208,6 +209,17 @@ class RefusedBuild(_Frozen):
     """Why it could not be used, as the language server would log it."""
 
 
+class UnreadDescription(_Frozen):
+    """A project description the walk found and could not read, and why."""
+
+    path: str
+    """Absolute, posix-separated path of the file."""
+
+    reason: str
+    """Why it could not be read, as a clause to say after the path: it cannot be opened, is not
+    UTF-8 text, or does not parse, with where."""
+
+
 class Found(_Frozen):
     """What ``GET /api/projects`` answers."""
 
@@ -219,6 +231,10 @@ class Found(_Frozen):
 
     refused: tuple[RefusedBuild, ...]
     """Every build record found but not usable, sorted by path."""
+
+    unreadable: tuple[UnreadDescription, ...]
+    """Every ``*.ddd.json`` the walk found and could not read, sorted by path. A description that
+    parses and states no project (a component's) is not one of them."""
 
 
 # --- GET /api/state ------------------------------------------------------------------------

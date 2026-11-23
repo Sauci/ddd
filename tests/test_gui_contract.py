@@ -103,6 +103,21 @@ def _described(model: str) -> dict[str, str]:
     }
 
 
+class TestTheStartPageListsWhatItCouldNotRead:
+    def test_found_says_each_description_it_could_not_read_with_why(self) -> None:
+        found = contract.api_schema()["$defs"]["Found"]
+        assert list(found["properties"]) == ["root", "projects", "refused", "unreadable"]
+        assert found["required"] == list(found["properties"])
+        assert found["properties"]["unreadable"]["items"] == {"$ref": "#/$defs/UnreadDescription"}
+        assert _described("Found")["unreadable"] == (
+            "Every ``*.ddd.json`` the walk found and could not read, sorted by path. A "
+            "description that parses and states no project (a component's) is not one of them."
+        )
+        unread = contract.api_schema()["$defs"]["UnreadDescription"]
+        assert list(unread["properties"]) == ["path", "reason"]
+        assert unread["required"] == ["path", "reason"]
+
+
 class TestThePageFollowsTheAnalyser:
     """What ``npm run schemas`` turns into the page's own types: the fields an edit and the state
     answer now that an edit is answered once written and its analysis follows."""

@@ -87,6 +87,7 @@ export type {
   UnitQuery,
   UnitReply,
   UnitsReply,
+  UnreadDescription,
   UsedUnit,
   ValuePlanQuery,
   ValuesPlanQuery,

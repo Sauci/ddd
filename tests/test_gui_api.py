@@ -1492,6 +1492,17 @@ class TestProjects:
         assert [(p["name"], p["images"]) for p in body["projects"]] == [("Q", []), ("P", [])]
         assert body["refused"] == []
 
+    def test_a_description_that_does_not_parse_is_listed_with_its_reason(self, root: Path) -> None:
+        (root / "other" / "broken.ddd.json").write_text("{", encoding="utf-8")
+        body = get(Api(Session(root)), "/api/projects").body
+        assert [p["name"] for p in body["projects"]] == ["Q", "P"]
+        (entry,) = body["unreadable"]
+        assert entry["path"] == (root / "other" / "broken.ddd.json").resolve().as_posix()
+        assert entry["reason"].startswith("does not parse: ")
+
+    def test_none_is_unreadable_where_every_description_parses(self, api: Api) -> None:
+        assert get(api, "/api/projects").body["unreadable"] == []
+
     def test_a_refused_record_is_listed_with_its_reason(self, root: Path) -> None:
         from conftest import build_record
 

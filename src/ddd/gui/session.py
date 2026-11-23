@@ -201,11 +201,17 @@ class FoundProject:
 
 @dataclass(frozen=True, slots=True)
 class Found:
-    """Every project found under a directory, and the build records that could not be used."""
+    """Every project found under a directory, the build records that could not be used, and the
+    descriptions that could not be read."""
 
     root: Path
     projects: tuple[FoundProject, ...]
     refused: tuple[tuple[Path, str], ...]
+    unreadable: tuple[tuple[Path, str], ...]
+    """Each project description the walk found and could not read, with why, by path: one that
+    cannot be opened or does not parse. One that parses and states no project (a component's)
+    is no project and is not here, and neither is one a build record offers, which is among the
+    projects without a name."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -454,12 +460,14 @@ def find_projects(root: Path, build_directories: Sequence[Path] = ()) -> Found:
         # none, and two build trees of one image name it twice.
         if info.image and info.image not in named:
             named.append(info.image)
-    paths = sorted(set(images) | set(_descriptions(base)))
+    described, unread = _descriptions(base)
+    paths = sorted(set(images) | set(described))
     projects = tuple(
         FoundProject(path, name_in(read_json(path), "project"), tuple(images.get(path, ())))
         for path in paths
     )
-    return Found(base, projects, tuple(sorted(refused.items())))
+    unreadable = tuple(sorted((path, why) for path, why in unread if path not in images))
+    return Found(base, projects, tuple(sorted(refused.items())), unreadable)
 
 
 def walk_finds(root: Path, path: Path) -> bool:
@@ -1705,8 +1713,11 @@ def _kind_shown(path: Path, stated: str | None) -> str:
     return stated
 
 
-def _descriptions(root: Path) -> list[Path]:
+def _descriptions(root: Path) -> tuple[list[Path], list[tuple[Path, str]]]:
+    """The project descriptions under ``root`` the walk finds, and the ``*.ddd.json`` files it
+    could not read with why (:func:`_unread`)."""
     found: list[Path] = []
+    unread: list[tuple[Path, str]] = []
     for directory, subdirectories, files in root.walk():
         depth = len(directory.relative_to(root).parts)
         # A junction is passed over as a symbolic link is: ``Path.walk`` does so itself from
@@ -1717,12 +1728,31 @@ def _descriptions(root: Path) -> list[Path]:
             for name in subdirectories
             if depth < SEARCH_DEPTH and not _skipped(name) and not (directory / name).is_junction()
         ]
-        found.extend(
-            directory / name
-            for name in files
-            if name.endswith(DESCRIPTION_SUFFIX) and _is_project(directory / name)
-        )
-    return found
+        for name in files:
+            if not name.endswith(DESCRIPTION_SUFFIX):
+                continue
+            data, why = _unread(directory / name)
+            if why is not None:
+                unread.append((directory / name, why))
+            elif isinstance(data, dict) and isinstance(data.get("project"), dict):
+                found.append(directory / name)
+    return found, unread
+
+
+def _unread(path: Path) -> tuple[Any, str | None]:
+    """The document ``path`` holds as :func:`read_json` reads it, and why it could not be read:
+    ``None`` where it was, else a clause the start page says after the path - the file cannot be
+    opened, is not UTF-8 text, or does not parse (the loader's own refusal, with its line)."""
+    try:
+        data = path.read_bytes()
+    except OSError as error:
+        return None, f"cannot be read: {error.strerror or error}"
+    try:
+        return parse_json_text(data.decode("utf-8-sig")), None
+    except UnicodeDecodeError:
+        return None, "is not UTF-8 text"
+    except ValueError as error:
+        return None, f"does not parse: {error}"
 
 
 def _skipped(name: str) -> bool:

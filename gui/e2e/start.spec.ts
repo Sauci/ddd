@@ -223,6 +223,33 @@ test("a build record in a format too new is listed as not used, and its project 
   await expect(page.getByRole("button", { name: /DemoDevice/ })).toBeVisible();
 });
 
+/** A description beside the demo's that does not parse, `brokenone/broken.ddd.json`: cut off at its
+ * first brace, as an editor that crashed leaves one. */
+function brokenBeside(directory: string): void {
+  const dir = join(directory, "brokenone");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "broken.ddd.json"), "{", "utf8");
+}
+
+test("a description that does not parse is listed with its reason, beside the projects that were found, and a component's is not", async ({
+  page,
+  copiedGui,
+}) => {
+  const started = await copiedGui("demo", brokenBeside, { named: false });
+  await page.goto(started.address);
+  await expect(
+    page.getByRole("heading", { name: "Project descriptions that could not be read", level: 2 }),
+  ).toBeVisible();
+  // The path is the server's own `.as_posix()` (api.py's `_projects`), as "an empty directory" says.
+  const broken = `${started.directory.replaceAll("\\", "/")}/brokenone/broken.ddd.json`;
+  const listed = page.locator("ul.unreadable li");
+  // The reason is the loader's own, which names where the text stops being json.
+  await expect(listed).toHaveText([new RegExp(`^${broken}: does not parse: .*line 1 column 2`)]);
+  // The demo's components are descriptions that parse and state no project: not on this list.
+  await expect(listed).toHaveCount(1);
+  await expect(page.getByRole("button", { name: /DemoDevice/ })).toBeVisible();
+});
+
 test("the start page says it is looking for projects, until the list answers", async ({
   page,
   bareGui,

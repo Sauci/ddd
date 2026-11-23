@@ -231,6 +231,54 @@ class TestFindingProjects:
         write_tree(tmp_path, {"p.ddd.json": "{", "q.ddd.json": '{"project": 7}'})
         assert find_projects(tmp_path).projects == ()
 
+    def test_a_file_that_does_not_parse_is_listed_as_unreadable_with_why(
+        self, tmp_path: Path
+    ) -> None:
+        write_tree(tmp_path, {"good/p.ddd.json": project("P"), "brokenone/broken.ddd.json": "{"})
+        found = find_projects(tmp_path)
+        assert [p.name for p in found.projects] == ["P"]
+        ((path, reason),) = found.unreadable
+        assert path == (tmp_path / "brokenone" / "broken.ddd.json").resolve()
+        assert reason.startswith("does not parse: Expecting property name")
+
+    def test_a_file_that_parses_and_states_no_project_is_not_listed_as_unreadable(
+        self, shared: Path, tmp_path: Path
+    ) -> None:
+        """A component's description is no project, and is not one that failed to be read."""
+        write_tree(tmp_path, {"q.ddd.json": '{"project": 7}', "r.ddd.json": "[]"})
+        assert find_projects(tmp_path).unreadable == ()
+        assert find_projects(shared.parent).unreadable == ()
+
+    def test_a_file_that_is_not_utf8_is_listed_as_unreadable_with_why(self, tmp_path: Path) -> None:
+        (tmp_path / "p.ddd.json").write_bytes(b'{"project": {"name": "\xff"}}')
+        ((_, reason),) = find_projects(tmp_path).unreadable
+        assert reason == "is not UTF-8 text"
+
+    def test_a_file_that_cannot_be_opened_is_listed_as_unreadable_with_why(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        write_tree(tmp_path, {"p.ddd.json": project("P")})
+        real = Path.read_bytes
+
+        def refusing(self: Path) -> bytes:
+            if self.name == "p.ddd.json":
+                raise PermissionError(13, "Permission denied")
+            return real(self)
+
+        monkeypatch.setattr(Path, "read_bytes", refusing)
+        found = find_projects(tmp_path)
+        assert found.projects == ()
+        assert [reason for _, reason in found.unreadable] == ["cannot be read: Permission denied"]
+
+    def test_a_file_a_record_offers_that_does_not_parse_is_listed_once_as_a_project(
+        self, tmp_path: Path
+    ) -> None:
+        write_tree(tmp_path, {"p.ddd.json": "{"})
+        build_record(tmp_path, tmp_path / "p.ddd.json", image="firmware.elf")
+        found = find_projects(tmp_path)
+        assert [(p.path.name, p.name) for p in found.projects] == [("p.ddd.json", None)]
+        assert found.unreadable == ()
+
     def test_a_build_record_names_its_project_and_image(self, shared: Path) -> None:
         build_record(shared.parent, shared, image="firmware.elf")
         (found,) = find_projects(shared.parent).projects

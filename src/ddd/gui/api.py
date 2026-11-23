@@ -447,6 +447,10 @@ class Api:
                         {"record": record.as_posix(), "reason": reason}
                         for record, reason in found.refused
                     ],
+                    unreadable=[
+                        {"path": path.as_posix(), "reason": reason}
+                        for path, reason in found.unreadable
+                    ],
                 )
             ),
         )

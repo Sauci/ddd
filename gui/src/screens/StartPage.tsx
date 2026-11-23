@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { getProjects, openProject } from "../api/client";
-import { listHeld } from "../lib/start";
+import { listHeld, UNREAD_HEADING, unreadLine } from "../lib/start";
 import { Banner } from "../ui/Banner";
 
 /** The projects found where `ddd gui` was started, to open one of them. */
@@ -37,6 +37,16 @@ export function StartPage({ onOpened }: { onOpened: () => void }) {
             </li>
           ))}
         </ul>
+      )}
+      {found.data.unreadable.length > 0 && (
+        <>
+          <h2>{UNREAD_HEADING}</h2>
+          <ul className="unreadable">
+            {found.data.unreadable.map((entry) => (
+              <li key={entry.path}>{unreadLine(entry)}</li>
+            ))}
+          </ul>
+        </>
       )}
       {found.data.refused.length > 0 && (
         <>

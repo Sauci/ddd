@@ -15,6 +15,7 @@ import { getGraph } from "../api/client";
 import type { GraphReply, State } from "../api/types";
 import { useKept } from "../app/useKept";
 import { useLayout } from "../app/useLayout";
+import { useReducedMotion } from "../app/useReducedMotion";
 import { FlowEdge } from "../components/FlowEdge";
 import { ModuleNode } from "../components/ModuleNode";
 import {
@@ -22,6 +23,7 @@ import {
   edgesOf,
   fadedNodes,
   firstMatch,
+  flightOf,
   flowTitle,
   MIN_ZOOM,
   type ModuleNodeType,
@@ -49,9 +51,6 @@ import { VariablePanel } from "./VariablePanel";
 // every edge on each render, which it says so itself in the console.
 const nodeTypes = { module: ModuleNode };
 const edgeTypes = { flow: FlowEdge };
-
-/** How long the viewport takes to fly to what `Fit` or a search asked for, in milliseconds. */
-const FLIGHT = 300;
 
 interface Props {
   /** The path of the project the state is of (`State.project`): what the graph is asked for
@@ -177,6 +176,7 @@ function Canvas({
   const layout = useLayout(graph.modules, graph.flows);
   const screen = layoutScreen(layout);
   const flow = useReactFlow();
+  const reducedMotion = useReducedMotion();
   const [hovered, setHovered] = useState<string | null>(null);
   const [reached, setReached] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -290,8 +290,8 @@ function Canvas({
     if (node === null || placement === null) return;
     const size = { width: node.clientWidth, height: node.clientHeight };
     const view = openingViewport(placement, size, MIN_ZOOM);
-    if (view !== null) void flow.setViewport(view, { duration: FLIGHT });
-  }, [flow, drawnPlacement]);
+    if (view !== null) void flow.setViewport(view, { duration: flightOf(reducedMotion) });
+  }, [flow, drawnPlacement, reducedMotion]);
   const onSearchKey = useCallback(
     (event: KeyboardEvent<HTMLInputElement>) => {
       if (event.key !== "Enter") return;
@@ -300,10 +300,14 @@ function Canvas({
       // Centred rather than zoomed onto: one module filling the canvas would answer "where is
       // it" by throwing away everything it is connected to.
       if (first !== null) {
-        void flow.fitView({ nodes: [{ id: first }], duration: FLIGHT, maxZoom: 1 });
+        void flow.fitView({
+          nodes: [{ id: first }],
+          duration: flightOf(reducedMotion),
+          maxZoom: 1,
+        });
       }
     },
-    [flow, graph, search],
+    [flow, graph, search, reducedMotion],
   );
 
   // An arrow in disagreement about several variables asks which one; one about a single

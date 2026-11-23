@@ -148,3 +148,33 @@ test("an error and a warning are said in their words beside their chips", async 
   );
 });
 
+test("a search's Enter moves the view at once under reduced motion", async ({ page, gui }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto(gui.address);
+  await expect(page.locator(".module").first()).toBeVisible();
+  const canvas = page.getByRole("region", { name: "Modules" });
+  const box = await canvas.boundingBox();
+  if (box === null) throw new Error("the canvas draws no box");
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.wheel(0, 300);
+  const search = page.getByRole("textbox", { name: "Search modules" });
+  await search.fill("Sensor");
+  // The viewport's transform is sampled every frame for 600 ms from the keypress: a flight would
+  // pass through several, a jump is one.
+  await expect(page.locator(".react-flow__viewport")).toBeVisible();
+  const seen = await page.evaluate(async () => {
+    const viewport = document.querySelector(".react-flow__viewport") as HTMLElement;
+    const transforms = new Set<string>();
+    const start = performance.now();
+    const sample = () => {
+      transforms.add(viewport.style.transform);
+      if (performance.now() - start < 600) requestAnimationFrame(sample);
+    };
+    sample();
+    const field = document.querySelector('input[aria-label="Search modules"]') as HTMLElement;
+    field.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await new Promise((done) => setTimeout(done, 650));
+    return transforms.size;
+  });
+  expect(seen).toBeLessThanOrEqual(2);
+});

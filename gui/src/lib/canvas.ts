@@ -25,6 +25,15 @@ import { NODE_HEIGHT, NODE_WIDTH } from "./nodeSize";
 import { countText } from "./numbers";
 import { namedFiles } from "./unloaded";
 
+/** How long the viewport takes to fly to what `Fit` or a search asked for, in milliseconds. */
+const FLIGHT = 300;
+
+/** The duration of a flight of the viewport: none for a reader who asked their system for less
+ * motion, where the view lands at once. */
+export function flightOf(reducedMotion: boolean): number {
+  return reducedMotion ? 0 : FLIGHT;
+}
+
 /** React Flow's own default, given explicitly to `<ReactFlow>` so `openingViewport` always
  * agrees with what it is deciding against (review fix round 1, Ruling T10-2). Pinned by the
  * literal 0.5 in canvas.test.ts (review fix round 2, New Important 2). */

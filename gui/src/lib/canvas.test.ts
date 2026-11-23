@@ -5,6 +5,7 @@ import {
   edgesOf,
   fadedNodes,
   firstMatch,
+  flightOf,
   flowTitle,
   MIN_ZOOM,
   noDictionary,
@@ -414,4 +415,10 @@ test("openingViewport centres the first rank at minZoom when the whole graph wou
 // 16:I11: a graphic that carries meaning wants 3:1 on its ground, and `--rule` on `--canvas` is 1.17:1.
 test("an arrow that agrees is drawn in the quiet ink, as dark as the page's own quiet text", () => {
   expect(STROKE.agreed).toBe("var(--ink-quiet)");
+});
+
+// 16:M19: the viewport's flights take 300 ms, and none for a reader who asked for less motion.
+test("the viewport flies for 300 ms, and for no time at all under reduced motion", () => {
+  expect(flightOf(false)).toBe(300);
+  expect(flightOf(true)).toBe(0);
 });

@@ -36,6 +36,39 @@ export function opensAnew(before: string | null, title: string, fromControl: boo
   return fromControl && before !== title;
 }
 
+/** What the page finds of a control that lost the focus to nothing, the page's body taking it. */
+export interface Fallen {
+  /** The page took it away: removed it, disabled it - an Apply or a Put back while its edit is
+   * written - or stopped drawing it. Not where the reader moved on: a press elsewhere, the window
+   * left. */
+  taken: boolean;
+  /** It stood in a table still drawn. */
+  table: boolean;
+  /** Where it stood in a panel: that panel still drawn, another drawn in its place - the same panel
+   * drawn anew, a variable's going from its keys to "Updating the findings…" and back - or none left
+   * there, the panel closed. */
+  panel: "none" | "drawn" | "replaced" | "closed";
+}
+
+/** Where a fallen focus goes. */
+export type Landing = "none" | "table" | "panel" | "return" | "page";
+
+/**
+ * Where the focus goes that a control took with it as the page took the control away (16:I13): to
+ * the table it stood in, which gives it to the row nearest the one gone; else to its panel's
+ * heading, the panel still drawn or drawn anew - "the panel after Apply" - else back to where the
+ * panel was opened from, the panel closed (`returnPlace`); else to the page's heading - after Put
+ * back, the Undo control beside it disabled while the files are put back. Nowhere where the reader
+ * moved it on.
+ */
+export function landing(fallen: Fallen): Landing {
+  if (!fallen.taken) return "none";
+  if (fallen.table) return "table";
+  if (fallen.panel === "drawn" || fallen.panel === "replaced") return "panel";
+  if (fallen.panel === "closed") return "return";
+  return "page";
+}
+
 /** What the page finds, as a panel closes, of the places its focus can go back to. */
 export interface Found {
   /** The control the panel was opened from is still in the page, as that same control: one that

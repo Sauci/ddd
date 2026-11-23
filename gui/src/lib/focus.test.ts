@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { opensAnew, pageChanged, pageOf, returnPlace } from "./focus";
+import { landing, opensAnew, pageChanged, pageOf, returnPlace } from "./focus";
 import type { Route } from "./route";
 
 describe("whether a following changes the page", () => {
@@ -46,6 +46,31 @@ describe("whether a following changes the page", () => {
     });
     expect(pageOf(values("a b", "c"))).not.toBe(pageOf(values("a", "b c")));
     expect(pageOf({ page: "component", file: "/p/x" })).not.toBe(pageOf(values("/p/x", "")));
+  });
+});
+
+describe("where the focus goes that a control took with it", () => {
+  test("nowhere where the reader moved it on", () => {
+    expect(landing({ taken: false, table: true, panel: "drawn" })).toBe("none");
+    expect(landing({ taken: false, table: false, panel: "none" })).toBe("none");
+  });
+
+  test("to the table it stood in, still drawn", () => {
+    expect(landing({ taken: true, table: true, panel: "none" })).toBe("table");
+    expect(landing({ taken: true, table: true, panel: "drawn" })).toBe("table");
+  });
+
+  test("to its panel's heading, the panel still drawn or drawn anew", () => {
+    expect(landing({ taken: true, table: false, panel: "drawn" })).toBe("panel");
+    expect(landing({ taken: true, table: false, panel: "replaced" })).toBe("panel");
+  });
+
+  test("back to where its panel was opened from, the panel closed", () => {
+    expect(landing({ taken: true, table: false, panel: "closed" })).toBe("return");
+  });
+
+  test("to the page's heading, in no table and no panel", () => {
+    expect(landing({ taken: true, table: false, panel: "none" })).toBe("page");
   });
 });
 

@@ -1,7 +1,17 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { CONTROLLER, drift, driftIn, failing, held, SERVER_FAILED, UNITS } from "./demo";
+import {
+  CONTROLLER,
+  chooseUnit,
+  drift,
+  driftIn,
+  failing,
+  held,
+  openPanel,
+  SERVER_FAILED,
+  UNITS,
+} from "./demo";
 import { expect, type Gui, test } from "./fixtures";
 
 /** The strip the Undo button opens. */
@@ -39,6 +49,23 @@ test("a unit settled from a panel is put back exactly as the file was", async ({
   await expect(undo).toBeHidden();
   await page.getByRole("button", { name: "DemoDevice" }).click();
   await expect(page.getByLabel("SensorHub to Controller: 2 variables, error")).toBeVisible();
+});
+
+test("Put back pressed from the keyboard leaves the focus on the page's heading", async ({
+  page,
+  gui,
+}) => {
+  const panel = await openPanel(page, gui.address, "ValueA");
+  await chooseUnit(page, "rpm");
+  await panel.getByRole("button", { name: "Apply to 2 files" }).click();
+  const undo = page.getByRole("button", { name: "Undo the unit of ValueA" });
+  await undo.click();
+  // Put back, and the Undo control beside it, are disabled while the files are put back, and the
+  // strip closes after: the focus goes to the heading they stand beside.
+  await strip(page).getByRole("button", { name: "Put back 2 files" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(undo).toBeHidden();
+  await expect(page.getByRole("heading", { name: "Controller", level: 1 })).toBeFocused();
 });
 
 test("an adopted vocabulary is taken away again, file and include", async ({ page, gui }) => {

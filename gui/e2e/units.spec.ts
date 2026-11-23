@@ -343,6 +343,43 @@ test("Close puts the focus on the panel's row once the filter puts it back, in t
   await expect(page.getByRole("heading", { name: "Controller", level: 1 })).toBeFocused();
 });
 
+test("Apply pressed from the keyboard leaves the focus on the panel's heading as its edit is written and analysed", async ({
+  page,
+  gui,
+}) => {
+  const panel = await openPanel(page, gui.address, "ValueA");
+  await chooseUnit(page, "rpm");
+  await panel.getByRole("button", { name: "Apply to 2 files" }).focus();
+  await page.keyboard.press("Enter");
+  // Apply is disabled while its edit is written, and the panel drawn anew while it is analysed:
+  // the focus stays in the panel, on its heading, from where Tab goes on through it.
+  await expect(panel.getByText("Nothing to change")).toBeVisible();
+  await expect(panel.getByRole("heading", { name: "ValueA", level: 2 })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(panel.getByRole("button", { name: "Close ValueA" })).toBeFocused();
+});
+
+test("a panel the page closes while the focus is in it gives the focus back to where it was opened from", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  const table = page.getByRole("grid", { name: "Declarations of Controller" });
+  await table.getByRole("row", { name: /ValueA/ }).focus();
+  await page.keyboard.press("Enter");
+  const panel = page.getByRole("complementary", { name: "ValueA" });
+  const unit = panel
+    .getByRole("grid", { name: "Keys of ValueA" })
+    .getByRole("row", { name: /unit/ });
+  await unit.focus();
+  await expect(unit).toBeFocused();
+  // Renamed from outside, ValueA is no longer declared, and its panel closes, the focus in it.
+  renameValueA(gui.directory, "ValueZ");
+  await expect(panel).toHaveCount(0);
+  await expect(table.getByRole("row", { name: /ValueZ/ })).toBeFocused();
+});
+
 test("Close puts the focus on the panel's row where its address opened it", async ({
   page,
   gui,

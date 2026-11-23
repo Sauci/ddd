@@ -1,4 +1,4 @@
-import { opensAnew, returnPlace } from "../lib/focus";
+import { type Fallen, landing, opensAnew, returnPlace } from "../lib/focus";
 import { selectedRowFocus } from "../ui/Table";
 
 /**
@@ -40,13 +40,19 @@ function controlOf(target: EventTarget | null): Control | null {
 let headingWanted = false;
 
 /**
- * Watches what the reader presses, from the page's start: keeps the control each press of the
- * pointer went down on until the press is over - React Aria selects a row as the pointer goes
- * down, and the page draws the row's panel before the browser gives the focus to the cell pressed -
- * and lets a page's heading go that has not yet taken the focus a change of page asked it to,
- * once the reader presses a key or the pointer meanwhile. Answers what stops the watching.
+ * Watches the focus from the page's start (16:I13):
+ * - keeps the control each press of the pointer went down on until the press is over - React Aria
+ *   selects a row as the pointer goes down, and the page draws the row's panel before the browser
+ *   gives the focus to the cell pressed;
+ * - lets a page's heading go that has not yet taken the focus a change of page asked it to, once
+ *   the reader presses a key or the pointer meanwhile;
+ * - gives a place to the focus the page takes away with a control, never leaving it to the page's
+ *   body (`landing`): the browser moves it there, its `focusout` naming nothing it moves to, as a
+ *   control is removed, disabled - Apply, Put back, while their edit is written - or no longer drawn.
+ *
+ * Answers what stops the watching.
  */
-export function watchReader(): () => void {
+export function watchFocus(): () => void {
   const down = (event: PointerEvent) => {
     pressed = controlOf(event.target);
     headingWanted = false;
@@ -60,15 +66,27 @@ export function watchReader(): () => void {
   const key = () => {
     headingWanted = false;
   };
+  const out = (event: FocusEvent) => {
+    const from = event.target;
+    if (event.relatedTarget !== null) return;
+    if (!(from instanceof HTMLElement || from instanceof SVGElement)) return;
+    const panel = from.closest<HTMLElement>(".panel");
+    const slot = panel === null ? null : slotOf(panel);
+    const opener = slot === null ? null : (openers.get(slot)?.opener ?? null);
+    const grid = from.closest<HTMLElement>('[role="grid"]');
+    queueMicrotask(() => landFrom(from, panel, slot, opener, grid));
+  };
   document.addEventListener("pointerdown", down, true);
   document.addEventListener("pointerup", over, true);
   document.addEventListener("pointercancel", over, true);
   document.addEventListener("keydown", key, true);
+  document.addEventListener("focusout", out, true);
   return () => {
     document.removeEventListener("pointerdown", down, true);
     document.removeEventListener("pointerup", over, true);
     document.removeEventListener("pointercancel", over, true);
     document.removeEventListener("keydown", key, true);
+    document.removeEventListener("focusout", out, true);
   };
 }
 
@@ -149,13 +167,10 @@ function tableBeside(slot: HTMLElement, panel: HTMLElement): HTMLElement | null 
   return null;
 }
 
-/**
- * Gives the focus back to where `panel` was opened from (`returnPlace`), as it closes: called
- * before the page lets it go, while its table still selects its row.
- */
-export function returnFromPanel(panel: HTMLElement): void {
-  const slot = slotOf(panel);
-  const opener = slot === null ? null : (openers.get(slot)?.opener ?? null);
+/** Gives the focus back to where `panel`, standing in `slot`, was opened from (`returnPlace`):
+ * `opener`, the control the slot kept, else the row its table selects, else the table, else the
+ * page's heading. */
+function returnTo(slot: HTMLElement | null, panel: HTMLElement, opener: Control | null): void {
   const table = slot === null ? null : tableBeside(slot, panel);
   const toRow = table === null ? null : selectedRowFocus(table);
   const place = returnPlace({
@@ -167,4 +182,55 @@ export function returnFromPanel(panel: HTMLElement): void {
   else if (place === "row") toRow?.();
   else if (place === "table") table?.focus();
   else pageHeading()?.focus();
+}
+
+/**
+ * Gives the focus back to where `panel` was opened from, as Close is pressed in it: called before
+ * the page lets it go, while its table still selects its row.
+ */
+export function returnFromPanel(panel: HTMLElement): void {
+  const slot = slotOf(panel);
+  returnTo(slot, panel, slot === null ? null : (openers.get(slot)?.opener ?? null));
+}
+
+/** What became of `panel`, a control's: none, still drawn, drawn anew as `replaced`, or closed. */
+function panelAfter(panel: HTMLElement | null, replaced: HTMLElement | null): Fallen["panel"] {
+  if (panel === null) return "none";
+  if (panel.isConnected) return "drawn";
+  return replaced === null ? "closed" : "replaced";
+}
+
+/** Whether the page took `control` away: removed it, disabled it, or stopped drawing it. */
+function takenAway(control: Control): boolean {
+  return (
+    !control.isConnected || control.matches(":disabled") || control.getClientRects().length === 0
+  );
+}
+
+/**
+ * Where the focus goes that `from` took with it to the page's body (`landing`), found once the
+ * page has drawn what replaces it: `panel`, `slot`, `opener` and `grid` are what `from` stood in,
+ * read as it lost the focus, while it was still in the page.
+ */
+function landFrom(
+  from: Control,
+  panel: HTMLElement | null,
+  slot: HTMLElement | null,
+  opener: Control | null,
+  grid: HTMLElement | null,
+): void {
+  const active = document.activeElement;
+  if (active !== null && active !== document.body) return;
+  const replaced = slot?.isConnected ? slot.querySelector<HTMLElement>(".panel") : null;
+  const place = landing({
+    taken: takenAway(from),
+    table: grid?.isConnected ?? false,
+    panel: panelAfter(panel, replaced),
+  });
+  if (place === "table") grid?.focus();
+  else if (place === "panel") {
+    const standing = panel?.isConnected ? panel : replaced;
+    standing?.querySelector<HTMLElement>('[data-heading="panel"]')?.focus();
+  } else if (place === "return" && panel !== null) returnTo(slot, panel, opener);
+  else if (place === "page") askPageHeading();
 }

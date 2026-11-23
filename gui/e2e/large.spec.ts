@@ -499,6 +499,83 @@ test("Close gives the focus back to the panel's row while a widened filter puts 
   expect(Number(atClose)).toBeLessThan(6015);
 });
 
+/** The words of the row the focus is in, itself or a control of it: `null` where the focus is in
+ * no row. */
+function rowFocused(page: Page): Promise<string | null> {
+  return page.evaluate(() => document.activeElement?.closest('[role="row"]')?.textContent ?? null);
+}
+
+/**
+ * The focus in a table while a widened filter puts its rows back before the focused row (16:I14):
+ * Controller given 6,000 declarations more, its filter leaves Crowd05999 alone, the last, and Tab
+ * takes the focus to its row. Shift+Tab back to the filter, emptied, and Tab at once: the focus is
+ * in the table as the rows come back a thousand at a time, every one of them before it. The row
+ * the focus stands on is still Crowd05999's once they are all back - the row the table draws
+ * focused, the one a screen reader names - and the arrow keys go on from it.
+ */
+test("the focus stays on its row while a widened filter puts the rows back before it", async ({
+  page,
+  copiedGui,
+}) => {
+  const gui = await copiedGui("demo", (directory) => crowd(directory, 6000));
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  const table = page.getByRole("grid", { name: "Declarations of Controller" });
+  const filter = page.getByRole("textbox", { name: "Filter declarations" });
+  const last = table.getByRole("row", { name: /Crowd05999/ });
+  await filter.fill("Crowd05999");
+  await expect(table).toHaveAttribute("aria-rowcount", "2");
+  await page.keyboard.press("Tab");
+  await expect(last).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(filter).toBeFocused();
+
+  await filter.fill("");
+  await page.keyboard.press("Tab");
+  await expect(table).toHaveAttribute("aria-rowcount", "6015");
+  await expect(table).not.toHaveAttribute("data-rows-to-come");
+  await expect.poll(() => rowFocused(page)).toMatch(/Crowd05999/);
+  await expect(last).toBeFocused();
+  await page.keyboard.press("ArrowUp");
+  await expect(table.getByRole("row", { name: /Crowd05998/ })).toBeFocused();
+});
+
+/**
+ * Tab back into a table whose filter was widened (16:I14): of Controller's 6,000 declarations
+ * more, `Crowd059` leaves the hundred last, End takes the focus to the last of them, Crowd05999,
+ * and a Backspace in the filter, `Crowd05`, puts nine hundred rows back before it in one commit.
+ * Tab goes back to Crowd05999's row, the row the table remembers, and the arrow keys go on from it.
+ */
+test("Tab back into a table its filter widened goes to the row it left", async ({
+  page,
+  copiedGui,
+}) => {
+  const gui = await copiedGui("demo", (directory) => crowd(directory, 6000));
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  const table = page.getByRole("grid", { name: "Declarations of Controller" });
+  const filter = page.getByRole("textbox", { name: "Filter declarations" });
+  const last = table.getByRole("row", { name: /Crowd05999/ });
+  await filter.fill("Crowd059");
+  await expect(table).toHaveAttribute("aria-rowcount", "101");
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("End");
+  await expect(last).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(filter).toBeFocused();
+
+  // The text Tab selects in the field left whole, its last letter taken away.
+  await page.keyboard.press("End");
+  await page.keyboard.press("Backspace");
+  await expect(filter).toHaveValue("Crowd05");
+  await expect(table).toHaveAttribute("aria-rowcount", "1001");
+  await page.keyboard.press("Tab");
+  await expect.poll(() => rowFocused(page)).toMatch(/Crowd05999/);
+  await expect(last).toBeFocused();
+  await page.keyboard.press("ArrowUp");
+  await expect(table.getByRole("row", { name: /Crowd05998/ })).toBeFocused();
+});
+
 /**
  * The Findings tab's filter (16:I14): its rows are the server's pages, so the filter asks the
  * server for the findings whose check, words or file's name hold its text. Of the generated

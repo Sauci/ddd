@@ -2,6 +2,8 @@ import { type ComponentProps, useLayoutEffect, useRef } from "react";
 import {
   Cell,
   Column,
+  type Key,
+  Rect,
   Row,
   Table,
   TableBody,
@@ -45,6 +47,46 @@ export interface LongTableProps extends ComponentProps<typeof Table> {
  * lib/filter.ts). */
 const ROWS_TO_COME = "data-rows-to-come";
 
+/**
+ * React Aria's own layout of a long table, keeping the row the table's focus is on drawn where it
+ * now stands (16:I14). React Aria draws that row wherever it is, out of view too, at its place
+ * among the rows it last laid out - and it lays out the rows of the box's view and those it has
+ * shown, no further. A widened filter puts rows back before the focused row and moves it on, past
+ * every row laid out: React Aria then drew the row standing at the focused one's old place
+ * instead, in the focused row's own element, so that the row shown focused, and named to a screen
+ * reader, was that other one, and Tab back into the table went to it, while the row the arrow keys
+ * go on from was drawn nowhere. Where the focused row is not among the rows just laid out, every
+ * row is laid out here, as React Aria lays them out for a row it never laid out, the one End goes
+ * to: its own test for that one compares the area laid out with the table's, which the box's view,
+ * wider than the table, fills before the rows below it are reached.
+ */
+class FocusedRowLayout<T> extends TableLayout<T> {
+  override update(context: Parameters<TableLayout<T>["update"]>[0]): void {
+    super.update(context);
+    for (const key of this.virtualizer?.persistedKeys ?? []) {
+      if (this.collection.getItem(key) !== null && !this.laidOut(key)) {
+        this.requestedRect = new Rect(0, 0, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY);
+        this.rootNodes = this.buildCollection();
+        this.requestedRect = new Rect(0, 0, this.contentSize.width, this.contentSize.height);
+        return;
+      }
+    }
+  }
+
+  /** Whether `key` is among the rows, or the cells, this layout last laid out: itself, and each
+   * part of the table holding it, at its own place among the parts laid out in the part above. */
+  private laidOut(key: Key): boolean {
+    for (let node = this.layoutNodes.get(key); node !== undefined; ) {
+      const above = node.layoutInfo.parentKey;
+      if (above === null) return this.rootNodes.includes(node);
+      const parent = this.layoutNodes.get(above);
+      if (node.index === undefined || parent?.children?.[node.index] !== node) return false;
+      node = parent;
+    }
+    return false;
+  }
+}
+
 /** What holds each long table's state, by the grid it draws: what gives the focus to a row it holds
  * but does not draw (`selectedRowFocus`). The holder, not the state: React Aria draws its table
  * anew as its collection changes, without the long table being drawn again. */
@@ -56,7 +98,8 @@ const states = new WeakMap<Element, { readonly current: TableRenderProps["state"
  * shape is written, rather than eight copies that could each drift apart. A screen gives this
  * what `Table` always took - `aria-label`, the selection props, `children` - and, where it wants
  * one, an extra `className` of its own, merged in beside `.long`. Its state, which React Aria hands
- * the class's render props, is kept by its grid (16:I13). */
+ * the class's render props, is kept by its grid (16:I13); its layout keeps the row its focus is on
+ * drawn where it stands (`FocusedRowLayout`, 16:I14). */
 export function LongTable({ className, rowsToCome = false, ...props }: LongTableProps) {
   const grid = useRef<HTMLTableElement | HTMLDivElement>(null);
   const state = useRef<TableRenderProps["state"] | null>(null);
@@ -65,7 +108,7 @@ export function LongTable({ className, rowsToCome = false, ...props }: LongTable
   });
   return (
     <Virtualizer
-      layout={TableLayout}
+      layout={FocusedRowLayout}
       layoutOptions={{ rowHeight: ROW_HEIGHT, headingHeight: ROW_HEIGHT }}
     >
       <Table

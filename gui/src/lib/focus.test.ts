@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { landing, opensAnew, pageChanged, pageOf, returnPlace } from "./focus";
+import { landing, opensAnew, outOfView, pageChanged, pageOf, returnPlace } from "./focus";
 import type { Route } from "./route";
 
 describe("whether a following changes the page", () => {
@@ -46,6 +46,20 @@ describe("whether a following changes the page", () => {
     });
     expect(pageOf(values("a b", "c"))).not.toBe(pageOf(values("a", "b c")));
     expect(pageOf({ page: "component", file: "/p/x" })).not.toBe(pageOf(values("/p/x", "")));
+  });
+});
+
+describe("whether a panel opened stands out of view", () => {
+  test("its heading past the window's foot, or above its top", () => {
+    // 800 by 600, a row selected: the panel's top at 608, under the table.
+    expect(outOfView({ top: 608, bottom: 632 }, 600)).toBe(true);
+    expect(outOfView({ top: 590, bottom: 614 }, 600)).toBe(true);
+    expect(outOfView({ top: -20, bottom: 4 }, 600)).toBe(true);
+  });
+
+  test("not where its heading stands whole in the window", () => {
+    expect(outOfView({ top: 0, bottom: 24 }, 600)).toBe(false);
+    expect(outOfView({ top: 576, bottom: 600 }, 600)).toBe(false);
   });
 });
 

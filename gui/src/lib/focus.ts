@@ -36,6 +36,17 @@ export function opensAnew(before: string | null, title: string, fromControl: boo
   return fromControl && before !== title;
 }
 
+/**
+ * Whether a panel opened anew from a control of the page stands out of the reader's view, by its
+ * heading (`heading`, its box in the window, `height` high): above the window's top, or past its
+ * foot - in a window narrower than 900px the panel stands under the table it was opened from, and a
+ * row selected in a window 600px high opened it past the window's foot, nothing showing it had
+ * (16:M9). The page then scrolls it into view.
+ */
+export function outOfView(heading: { top: number; bottom: number }, height: number): boolean {
+  return heading.top < 0 || heading.bottom > height;
+}
+
 /** What the page finds of a control that lost the focus to nothing, the page's body taking it. */
 export interface Fallen {
   /** The page took it away: removed it, disabled it - an Apply or a Put back while its edit is

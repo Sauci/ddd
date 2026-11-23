@@ -133,9 +133,11 @@ a.button.link:hover {
   gap: 14px;
   align-items: start;
 }
+/* One column, no wider than the window: a plain `1fr` grows to its widest content - a long table's
+   inner width, which its own box scrolls - and with it the panel, past the window's edge (16:M9). */
 @media (max-width: 899.98px) {
   .with-panel {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -639,13 +641,18 @@ tr.changing td {
   color: var(--ink-quiet);
   font-size: var(--text-small);
 }
+/* The adoption banner's sentence and its two buttons beside it, which go under it in a window too
+   narrow for both on one line (16:M9): the sentence wraps beside the buttons while it keeps at least
+   15em, its own words wrapping as they did. */
 .adopt-banner {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
 }
 .adopt-banner p {
+  flex: 1 1 15em;
   margin: 0;
 }
 .adopt-actions {
@@ -719,10 +726,13 @@ tr.changing td {
   list-style: none;
 }
 
-/* The project screen's tabs, moved out of app.css unchanged. */
+/* The project screen's tabs, moved out of app.css. In a window too narrow for one line of them -
+   375px holds five - they wrap onto more, rather than reach past its edge and scroll the page
+   sideways (16:M9); each tab's own padding parts the lines. */
 .tabs {
   display: flex;
-  gap: var(--space-4);
+  flex-wrap: wrap;
+  column-gap: var(--space-4);
   margin-bottom: var(--space-3);
   border-bottom: 1px solid var(--rule);
 }
@@ -825,6 +835,13 @@ tr.changing td {
 }
 .values-table {
   margin-bottom: var(--space-2);
+}
+/* In a window too narrow for the grid, it scrolls sideways in its own box, as a long table does,
+   rather than the page (16:M9). */
+@media (max-width: 899.98px) {
+  .values-table {
+    overflow-x: auto;
+  }
 }
 /* A grid of one cell - a scalar's value - keeps the width of its own row and column, not the page's. */
 .values-one .react-aria-Table {

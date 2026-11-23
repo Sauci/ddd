@@ -1,4 +1,4 @@
-import { type Fallen, landing, opensAnew, returnPlace } from "../lib/focus";
+import { type Fallen, landing, opensAnew, outOfView, returnPlace } from "../lib/focus";
 import { selectedRowFocus } from "../ui/Table";
 
 /**
@@ -121,7 +121,8 @@ export function openerNow(): Control | null {
 
 /** Notes a panel titled `title` drawn in its slot, from `opener` - the control holding the focus as
  * it was first drawn - which the slot then returns to where the panel opens anew (`opensAnew`);
- * otherwise the slot keeps the control the panel before was opened from. Answers the slot. */
+ * otherwise the slot keeps the control the panel before was opened from. A panel opened anew
+ * standing out of view is scrolled into it (`outOfView`, 16:M9). Answers the slot. */
 export function panelDrawn(
   panel: HTMLElement,
   title: string,
@@ -132,6 +133,10 @@ export function panelDrawn(
   const before = openers.get(slot);
   const anew = opensAnew(before?.title ?? null, title, opener !== null);
   openers.set(slot, { title, opener: anew ? opener : (before?.opener ?? null) });
+  const heading = panel.querySelector('[data-heading="panel"]');
+  if (anew && heading !== null && outOfView(heading.getBoundingClientRect(), window.innerHeight)) {
+    panel.scrollIntoView({ block: "nearest" });
+  }
   return slot;
 }
 

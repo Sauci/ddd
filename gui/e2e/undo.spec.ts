@@ -156,7 +156,11 @@ async function settledAndAnalysed(page: Page, gui: Gui): Promise<void> {
   const panel = page.getByRole("complementary", { name: "ValueA" });
   await panel.getByRole("button", { name: "Apply to 1 file" }).click();
   await expect(panel.getByText("Nothing to change")).toBeVisible();
-  await expect(page.locator(".updating-status")).toHaveText("");
+  // Analysed: the heading's status says what Apply wrote, and no longer that the findings are
+  // updating (16:I13).
+  await expect(page.locator(".updating-status")).toHaveText(
+    "Wrote 1 file for the unit of ValueA: controller.ddd.json.",
+  );
 }
 
 /** The unit Controller's file states for ValueA. */

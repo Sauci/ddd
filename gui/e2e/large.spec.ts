@@ -42,7 +42,9 @@ async function watchUnitCell(page: Page): Promise<void> {
         '[aria-label="Set the unit of C00000_O0000"]',
       );
       const status = document.querySelector(".updating-status");
-      frames.push([cell?.textContent ?? null, status?.textContent === "Updating the findings…"]);
+      // Said after what the page wrote, where it says that too (16:I13).
+      const updating = status?.textContent?.endsWith("Updating the findings…") === true;
+      frames.push([cell?.textContent ?? null, updating]);
       requestAnimationFrame(each);
     };
     requestAnimationFrame(each);

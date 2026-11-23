@@ -540,7 +540,8 @@ export async function watchFrames(page: Page, label: string, edit: string): Prom
       const each = () => {
         const field = document.querySelector<HTMLInputElement>(`input[aria-label="${name}"]`);
         const said = [...document.querySelectorAll('[role="status"]')].some(
-          (status) => status.textContent === "Updating the findings…",
+          // The heading's says it after what the page wrote, where it says that too (16:I13).
+          (status) => status.textContent?.endsWith("Updating the findings…") === true,
         );
         const offered = [...document.querySelectorAll("button")].some(
           (button) => button.textContent === undo,

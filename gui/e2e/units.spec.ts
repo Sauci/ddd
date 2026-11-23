@@ -301,6 +301,42 @@ test("Close puts the focus back on the row the panel was opened from", async ({ 
   await expect(row).toBeFocused();
 });
 
+test("a panel drawn anew while the focus is elsewhere on the page still gives it back to its row", async ({
+  page,
+  gui,
+}) => {
+  // ValueB's panel reads its keys, held until the focus is in the filter - where a reader may be
+  // typing as the keys come in. The panel is drawn anew with them, under the same title: still the
+  // panel opened from the row, which Close gives the focus back to, not the filter.
+  let release = () => {};
+  const held = new Promise<void>((done) => {
+    release = done;
+  });
+  await page.route(
+    (url) => url.pathname === "/api/variable",
+    async (route) => {
+      await held;
+      await route.continue();
+    },
+  );
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  const row = page
+    .getByRole("grid", { name: "Declarations of Controller" })
+    .getByRole("row", { name: /ValueB/ });
+  await row.focus();
+  await page.keyboard.press("Enter");
+  const panel = page.getByRole("complementary", { name: "ValueB" });
+  await expect(panel.getByText("Reading ValueB…")).toBeVisible();
+  const filter = page.getByRole("textbox", { name: "Filter declarations" });
+  await filter.focus();
+  release();
+  await expect(panel.getByRole("grid", { name: "Keys of ValueB" })).toBeVisible();
+  await expect(filter).toBeFocused();
+  await closedByKeyboard(panel, "ValueB");
+  await expect(row).toBeFocused();
+});
+
 test("Close puts the focus on the panel's row once the filter puts it back, in the table while the filter leaves it out, and on the heading where no row is left", async ({
   page,
   gui,

@@ -1,7 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import type { ListedFinding } from "../api/types";
 import { keeps, pendingKeys, type WindowRow } from "../lib/findingsWindow";
-import { also, Cell, Column, Row, Table, TableBody, TableHeader } from "../ui/Table";
+import { also, Cell, Column, keepsWindow, Row, Table, TableBody, TableHeader } from "../ui/Table";
 import { FindingLine } from "./FindingChip";
 
 export interface FindingsTableViewProps {
@@ -27,6 +27,23 @@ export interface FindingsTableViewProps {
 export function FindingsTableView(props: FindingsTableViewProps) {
   const { rows, selected, onSelect, onScroll } = props;
   const box = useRef<HTMLDivElement>(null);
+  const grid = useRef<HTMLTableElement>(null);
+  // Where the window last drew the row it selects: what a panel closing scrolls the window back to,
+  // once a scroll has taken the window past that row (`keepsWindow`, 16:I13).
+  const selectedAt = useRef<WindowRow | null>(null);
+  useLayoutEffect(() => {
+    const drawn = rows.find((row) => row.key === selected);
+    if (drawn !== undefined) selectedAt.current = drawn;
+    if (grid.current === null || box.current === null) return;
+    keepsWindow(grid.current, {
+      box: box.current,
+      selected: () =>
+        selected !== undefined && selectedAt.current?.key === selected
+          ? { key: selected, index: selectedAt.current.index }
+          : null,
+      drawnAt: (index) => rows.find((row) => row.index === index)?.finding?.key ?? null,
+    });
+  });
   // The box's own height, said once it is drawn and again whenever it changes - a short table's
   // box grows with its rows until it is full - which a box that only scrolled would never say.
   useEffect(() => {
@@ -61,6 +78,7 @@ export function FindingsTableView(props: FindingsTableViewProps) {
     >
       <div style={{ height: props.above }} />
       <Table
+        ref={grid}
         aria-label="Findings"
         selectionMode="single"
         disabledBehavior="selection"

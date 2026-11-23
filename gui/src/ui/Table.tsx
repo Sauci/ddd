@@ -12,7 +12,7 @@ import {
   type TableRenderProps,
   Virtualizer,
 } from "react-aria-components";
-import { ROW_HEIGHT } from "../lib/findingsWindow";
+import { ROW_HEIGHT, scrolledTo } from "../lib/findingsWindow";
 
 // React Aria's table, row selection and keyboard navigation included, under the page's own
 // styles in ui.css: the one place a screen takes its table from. `Virtualizer` and `TableLayout`
@@ -124,11 +124,62 @@ export function LongTable({ className, rowsToCome = false, ...props }: LongTable
   );
 }
 
+/** A table drawing a window of its rows of its own, the Findings tab's (lib/findingsWindow.ts). */
+export interface OwnWindow {
+  /** The box the window scrolls in. */
+  box: HTMLElement;
+  /** The row it selects, by its key and its place among all its rows, where the window last drew
+   * it - which the window may have let go since; `null` where it selects none. */
+  selected: () => { key: string; index: number } | null;
+  /** The key of the row the window draws at `index`, `null` where it draws none there yet - or a
+   * row standing in for one whose page has not come. */
+  drawnAt: (index: number) => string | null;
+}
+
+/** Each table's own window, by the grid it draws (`keepsWindow`). */
+const windows = new WeakMap<Element, OwnWindow>();
+
+/** Notes `window` as the one `grid` draws its rows in, for a panel closing to give the focus back
+ * to the row it selects once the window has let that row go (`selectedRowFocus`). */
+export function keepsWindow(grid: Element, window: OwnWindow): void {
+  windows.set(grid, window);
+}
+
+/**
+ * Gives the focus back to the row keyed `key`, at `index`, that a table's own window has let go
+ * (16:I13): the window's box takes the focus at once, the window is scrolled back to the row
+ * (`scrolledTo`), and the row takes the focus once it is drawn - unless the reader has moved the
+ * focus out of the box meanwhile. Where the window draws another finding at that place, a revision
+ * having moved this one on, the table takes the focus instead, and gives it to the row it
+ * remembers.
+ */
+function backToRow(grid: HTMLElement, box: HTMLElement, key: string, index: number): void {
+  box.focus({ preventScroll: true });
+  box.scrollTop = scrolledTo(index);
+  const landed = () => {
+    if (!grid.isConnected || document.activeElement !== box) return true;
+    const row = grid.querySelector<HTMLElement>(`[role="row"][data-key="${CSS.escape(key)}"]`);
+    if (row !== null) {
+      row.focus();
+      return true;
+    }
+    if ((windows.get(grid)?.drawnAt(index) ?? null) === null) return false;
+    grid.focus();
+    return true;
+  };
+  if (landed()) return;
+  const watch = new MutationObserver(() => {
+    if (landed()) watch.disconnect();
+  });
+  watch.observe(grid, { childList: true, subtree: true });
+}
+
 /**
  * What gives the focus to the row `grid` selects, or `null` where it can give it none (16:I13): a
  * long table gives it to the row it holds, drawn or out of view - React Aria draws its focused row
- * and, from the keyboard, scrolls it into view - and none to a row its filter leaves out; any other
- * table to the row it draws.
+ * and, from the keyboard, scrolls it into view - and none to a row its filter leaves out; a table
+ * with a window of its own to the row it draws, or, the window having let it go, to that row once
+ * the window is scrolled back to it (`backToRow`); any other table to the row it draws.
  *
  * While a long table's rows come back (`ROWS_TO_COME`), the table takes the focus at once and the
  * row once they are all back, unless the reader moved it out of the table meanwhile: rows put back
@@ -139,7 +190,12 @@ export function selectedRowFocus(grid: HTMLElement): (() => void) | null {
   const state = states.get(grid)?.current;
   if (state === undefined || state === null) {
     const row = grid.querySelector<HTMLElement>('[role="row"][aria-selected="true"]');
-    return row === null ? null : () => row.focus();
+    if (row !== null) return () => row.focus();
+    const own = windows.get(grid);
+    const selected = own?.selected() ?? null;
+    return own === undefined || selected === null
+      ? null
+      : () => backToRow(grid, own.box, selected.key, selected.index);
   }
   const [key] = state.selectionManager.selectedKeys;
   const coming = grid.hasAttribute(ROWS_TO_COME);

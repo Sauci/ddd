@@ -124,6 +124,14 @@ export function keeps(index: number, scrollTop: number, height: number): boolean
   return span.first <= index && index < span.last;
 }
 
+/** The scroll that brings the row at `index` back into the box, the first in view under the
+ * header kept at the box's top: every row before it - so that the window draws it (`keeps`), and a
+ * panel closing gives the focus back to its row where a scroll had taken the window past it
+ * (16:I13). */
+export function scrolledTo(index: number): number {
+  return Math.max(0, index) * ROW_HEIGHT;
+}
+
 /** Where the Findings tab's box stands for the listing asked under `asking`, the filter's text
  * (16:I14): where it was last scrolled to under that very text (`view`), and at its top for a text
  * newly asked, whose table is drawn anew - so that a filter typed with the box scrolled far down

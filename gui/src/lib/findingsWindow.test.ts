@@ -15,6 +15,7 @@ import {
   pendingKeys,
   type RevisionWindow,
   ROW_HEIGHT,
+  scrolledTo,
   scrolledTop,
   spacersOf,
   spanOf,
@@ -242,6 +243,22 @@ describe("whether a scroll keeps the row the keyboard is on", () => {
     expect(keeps(3, 24 * ROW_HEIGHT, BOX_HEIGHT)).toBe(false);
     expect(keeps(58, 23 * ROW_HEIGHT, BOX_HEIGHT)).toBe(false);
     expect(keeps(3, 1200, BOX_HEIGHT)).toBe(false);
+  });
+});
+
+describe("the scroll that brings a row the window let go back into the box", () => {
+  test("every row before it, so that it stands first in view and the window draws it", () => {
+    expect(scrolledTo(0)).toBe(0);
+    expect(scrolledTo(1)).toBe(ROW_HEIGHT);
+    expect(scrolledTo(24999)).toBe(24999 * ROW_HEIGHT);
+    for (const index of [0, 57, 9999, 24999]) {
+      expect(keeps(index, scrolledTo(index), BOX_HEIGHT)).toBe(true);
+      expect(spanOf(scrolledTo(index), BOX_HEIGHT, 25000).first).toBe(Math.max(0, index - MARGIN));
+    }
+  });
+
+  test("the top of the box, for a place before the first row", () => {
+    expect(scrolledTo(-3)).toBe(0);
   });
 });
 

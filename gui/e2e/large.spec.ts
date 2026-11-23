@@ -182,6 +182,43 @@ test("the Findings table scrolled to its end", async ({ page, generatedGui }) =>
 });
 
 /**
+ * Close in the Findings tab's own window after a scroll (16:I13): Enter on the first of the
+ * generated project's 25,000 findings opens its panel, and the wheel takes the box thousands of
+ * rows on, the window letting the first row go. Close pressed from the keyboard scrolls the window
+ * back to the finding and gives the focus to its own row, once drawn - not to a row of the window's
+ * the reader never touched.
+ */
+test("Close in the Findings window after a scroll gives the focus back to the finding's own row", async ({
+  page,
+  generatedGui,
+}) => {
+  await page.goto(generatedGui.address);
+  await page.getByRole("link", { name: "Findings" }).click();
+  const box = page.locator(".findings-window");
+  const first = box.locator('[role="row"][data-index="0"]');
+  await expect(first.locator(".chip")).toBeVisible();
+  const words = await first.textContent();
+  await first.focus();
+  await page.keyboard.press("Enter");
+  const panel = page.getByRole("complementary");
+  await expect(panel).toBeVisible();
+
+  const bounds = await box.boundingBox();
+  if (bounds === null) throw new Error("no .findings-window to scroll");
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  for (let turns = 0; turns < 10; turns += 1) await page.mouse.wheel(0, 1500);
+  await expect.poll(() => box.evaluate((node) => node.scrollTop)).toBeGreaterThan(10_000);
+  await expect(first).toHaveCount(0);
+
+  await panel.getByRole("button", { name: /^Close / }).focus();
+  await page.keyboard.press("Enter");
+  await expect(panel).toHaveCount(0);
+  await expect.poll(() => rowFocused(page)).toBe(words);
+  await expect(first).toBeFocused();
+  await expect(first).toBeInViewport();
+});
+
+/**
  * The declare form's Name list, over the generated project's names (16:I7): React Aria
  * draws every entry of a list it is handed, so the list is narrowed by what is typed, as the unit
  * picker's is, and drawn to fifty (`NAMES_SHOWN`, lib/declarations.ts), its foot saying how many

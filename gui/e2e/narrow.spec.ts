@@ -42,6 +42,20 @@ for (const width of [375, 320]) {
     await expect(page.getByRole("complementary", { name: "Hz" })).toBeVisible();
     expect(await sideways(page)).toBe(0);
 
+    // A type's panel and its tables: a structure's members, and where an enumeration is used.
+    await page.getByRole("link", { name: "Types" }).click();
+    const types: Record<string, number> = {};
+    for (const [type, table] of [
+      ["SensorDiagnosis_t", "Members"],
+      ["DriverState_t", "Where it is used"],
+    ] as const) {
+      await page.getByRole("grid", { name: "Types" }).getByRole("row", { name: type }).click();
+      const panel = page.getByRole("complementary", { name: type });
+      await expect(panel.getByRole("heading", { name: table })).toBeVisible();
+      types[type] = await sideways(page);
+    }
+    expect(types).toEqual({ SensorDiagnosis_t: 0, DriverState_t: 0 });
+
     await page.getByRole("link", { name: "Findings" }).click();
     await page
       .getByRole("row", { name: /definition-mismatch/ })

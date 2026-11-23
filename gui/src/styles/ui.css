@@ -177,6 +177,14 @@ a.button.link:hover {
 .panel-declarations th {
   font-weight: 600;
 }
+/* In a window too narrow for a panel's table (`PanelTable`), it scrolls sideways in its own box, as
+   the values grid does, rather than the page (16:M9): a structure's six columns of members, or a
+   type's uses by their names, are wider than a phone's window. */
+@media (max-width: 899.98px) {
+  .panel-table {
+    overflow-x: auto;
+  }
+}
 tr.changing td {
   background: var(--warning-ground);
 }

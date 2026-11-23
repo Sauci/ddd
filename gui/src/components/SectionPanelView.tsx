@@ -6,6 +6,7 @@ import { baseName, consequence, PLANNING, planning, shownChanges } from "../lib/
 import { Button } from "../ui/Button";
 import { ComboBox } from "../ui/ComboBox";
 import { Panel } from "../ui/Panel";
+import { PanelTable } from "../ui/PanelTable";
 import { UpdatingNote } from "../ui/UpdatingNote";
 import { Changes } from "./Changes";
 import { FindingChip } from "./FindingChip";
@@ -166,7 +167,7 @@ export function SectionPanelView(props: SectionPanelViewProps) {
       {reply.uses.length === 0 ? (
         <p className="quiet">Nothing in the project places its data in {reply.name}.</p>
       ) : (
-        <table className="panel-declarations">
+        <PanelTable>
           <thead>
             <tr>
               <th scope="col">Where</th>
@@ -187,7 +188,7 @@ export function SectionPanelView(props: SectionPanelViewProps) {
               </tr>
             ))}
           </tbody>
-        </table>
+        </PanelTable>
       )}
       <UpdatingNote updating={props.updating === true} />
       {reply.findings.length > 0 && (

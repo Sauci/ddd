@@ -4,6 +4,7 @@ import { placeOf, routeHref, routeLabel, routeOf } from "../lib/findings";
 import type { Route } from "../lib/route";
 import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
+import { PanelTable } from "../ui/PanelTable";
 import { CompareTableView } from "./CompareTableView";
 import { FindingPanelView } from "./FindingPanelView";
 
@@ -145,7 +146,7 @@ export function CompareView(props: CompareViewProps) {
           {reply.renames.length === 0 ? (
             <p className="quiet">Nothing was renamed.</p>
           ) : (
-            <table className="panel-declarations">
+            <PanelTable>
               <thead>
                 <tr>
                   <th scope="col">Id</th>
@@ -162,7 +163,7 @@ export function CompareView(props: CompareViewProps) {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </PanelTable>
           )}
         </>
       )}

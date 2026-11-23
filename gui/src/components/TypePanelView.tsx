@@ -5,6 +5,7 @@ import type { Route } from "../lib/route";
 import { baseName, consequence, PLANNING, shownChanges, textOf } from "../lib/units";
 import { Button } from "../ui/Button";
 import { Panel } from "../ui/Panel";
+import { PanelTable } from "../ui/PanelTable";
 import { Cell, Column, Row, Table, TableBody, TableHeader } from "../ui/Table";
 import { UpdatingNote } from "../ui/UpdatingNote";
 import { Changes } from "./Changes";
@@ -198,7 +199,7 @@ export function TypePanelView(props: TypePanelViewProps) {
       {type.uses.length === 0 ? (
         <p className="quiet">Nothing in the project uses {type.name}.</p>
       ) : (
-        <table className="panel-declarations">
+        <PanelTable>
           <thead>
             <tr>
               <th scope="col">Where</th>
@@ -219,12 +220,12 @@ export function TypePanelView(props: TypePanelViewProps) {
               </tr>
             ))}
           </tbody>
-        </table>
+        </PanelTable>
       )}
       {type.kind === "struct" && (
         <>
           <h3 className="panel-heading">Members</h3>
-          <table className="panel-declarations">
+          <PanelTable>
             <thead>
               <tr>
                 <th scope="col">Member</th>
@@ -263,7 +264,7 @@ export function TypePanelView(props: TypePanelViewProps) {
                 );
               })}
             </tbody>
-          </table>
+          </PanelTable>
         </>
       )}
       <UpdatingNote updating={props.updating === true} />

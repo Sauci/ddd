@@ -4,6 +4,7 @@ import type { Route } from "../lib/route";
 import { baseName, consequence, PLANNING, planning, shownChanges } from "../lib/units";
 import { Button } from "../ui/Button";
 import { Panel } from "../ui/Panel";
+import { PanelTable } from "../ui/PanelTable";
 import { UpdatingNote } from "../ui/UpdatingNote";
 import { Changes } from "./Changes";
 import { FindingChip } from "./FindingChip";
@@ -138,7 +139,7 @@ export function ConstantPanelView(props: ConstantPanelViewProps) {
       {reply.uses.length === 0 ? (
         <p className="quiet">Nothing in the project uses {reply.name}.</p>
       ) : (
-        <table className="panel-declarations">
+        <PanelTable>
           <thead>
             <tr>
               <th scope="col">Where</th>
@@ -159,7 +160,7 @@ export function ConstantPanelView(props: ConstantPanelViewProps) {
               </tr>
             ))}
           </tbody>
-        </table>
+        </PanelTable>
       )}
       <UpdatingNote updating={props.updating === true} />
       {reply.findings.length > 0 && (

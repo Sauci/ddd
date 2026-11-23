@@ -5,6 +5,7 @@ import { rasterRemovable, rasterRemoveBlocked, rasterUseRoute, rasterUseWhat } f
 import { baseName, consequence, PLANNING, planning, shownChanges } from "../lib/units";
 import { Button } from "../ui/Button";
 import { Panel } from "../ui/Panel";
+import { PanelTable } from "../ui/PanelTable";
 import { UpdatingNote } from "../ui/UpdatingNote";
 import { Changes } from "./Changes";
 import { FindingChip } from "./FindingChip";
@@ -191,7 +192,7 @@ export function RasterPanelView(props: RasterPanelViewProps) {
       {rasterRemovable(reply.uses) ? (
         <p className="quiet">Nothing in the project measures in {reply.name}.</p>
       ) : (
-        <table className="panel-declarations">
+        <PanelTable>
           <thead>
             <tr>
               <th scope="col">Where</th>
@@ -217,7 +218,7 @@ export function RasterPanelView(props: RasterPanelViewProps) {
               </tr>
             ))}
           </tbody>
-        </table>
+        </PanelTable>
       )}
       <UpdatingNote updating={props.updating === true} />
       {reply.findings.length > 0 && (

@@ -337,8 +337,10 @@ tr.changing td {
   font: inherit;
   color: var(--ink);
 }
-.combo-field .react-aria-Input,
-.combo-field .react-aria-Button {
+/* The field's own ring is its box's, drawn around the text and the ▾ alike (below). The ▾ keeps
+   the page's ring (app.css): React Aria leaves it out of the Tab order and a press leaves the
+   focus in the field, but a screen reader may put the focus on it (16:I12). */
+.combo-field .react-aria-Input {
   outline: none;
 }
 .combo-field .react-aria-Button {
@@ -349,9 +351,13 @@ tr.changing td {
   font-size: inherit;
   cursor: pointer;
 }
+/* The field focused, by a click or a key, as a text field shows it: the page's ring, which forced
+   colours draw too, where a shadow is drawn in none and the border's colour is the system's
+   (16:I12). */
 .combo[data-focused] .combo-field {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--focus);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .combo[data-disabled] .combo-field {
   background: var(--ground);
@@ -375,9 +381,6 @@ tr.changing td {
   border-radius: var(--radius);
   box-shadow: var(--shadow-popover);
 }
-.combo-list {
-  outline: none;
-}
 .combo-list .react-aria-Header {
   padding: var(--space-2) var(--space-3) var(--space-1);
   color: var(--ink-quiet);
@@ -393,6 +396,14 @@ tr.changing td {
 }
 .combo-choice[data-focused] {
   background: var(--accent-ground);
+}
+/* The list never takes the focus: the field keeps it and names the choice the keys are on, which
+   its tint alone marked - faint, and drawn in no forced colour (16:I12). It takes the page's ring
+   too, inside its own box, where the list's edge cannot cut it; the pointer's choice keeps the tint
+   alone, as a hover does. */
+.combo-choice[data-focus-visible] {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 .combo-detail {
   color: var(--ink-quiet);

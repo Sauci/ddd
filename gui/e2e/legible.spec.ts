@@ -130,6 +130,58 @@ for (const forced of [false, true]) {
     expect(contrast(ring.outlineColour, ring.ground)).toBeGreaterThanOrEqual(GRAPHIC);
   });
 
+  test(`a chooser's field reached by Tab shows an outline of 3:1, and so does its ▾ where a reader's tool focuses it, in ${mode}`, async ({
+    page,
+    gui,
+  }) => {
+    await page.emulateMedia({ forcedColors: forced ? "active" : "none" });
+    await page.goto(gui.address);
+    // The masthead's go-to, the one chooser of every page.
+    const field = page.getByRole("combobox", { name: "Go to a variable" });
+    await expect(field).toBeVisible();
+    for (let tabs = 0; tabs < 12; tabs += 1) {
+      await page.keyboard.press("Tab");
+      if (await field.evaluate((node) => node === document.activeElement)) break;
+    }
+    await expect(field).toBeFocused();
+    const ring = await ringOf(page, ".combo[data-focused] .combo-field");
+    expect(ring.outlineStyle).not.toBe("none");
+    expect(ring.outlineWidth).toBeGreaterThanOrEqual(2);
+    expect(contrast(ring.outlineColour, ring.ground)).toBeGreaterThanOrEqual(GRAPHIC);
+
+    // Its ▾ is no stop of Tab's (React Aria keeps it out of the order, and a press leaves the
+    // focus in the field), but a screen reader may put the focus on it.
+    const show = page.getByRole("button", { name: "Show the choices for Go to a variable" });
+    await page.keyboard.press("Tab");
+    await expect(show).not.toBeFocused();
+    await page.keyboard.press("Shift");
+    await show.focus();
+    await expect(show).toBeFocused();
+    const own = await ringOf(page, ".combo-field .react-aria-Button:focus-visible");
+    expect(own.outlineStyle).not.toBe("none");
+    expect(own.outlineWidth).toBeGreaterThanOrEqual(2);
+    expect(contrast(own.outlineColour, own.ground)).toBeGreaterThanOrEqual(GRAPHIC);
+  });
+
+  test(`the choice the arrow keys are on in a chooser's list carries an outline of 3:1, in ${mode}`, async ({
+    page,
+    gui,
+  }) => {
+    await page.emulateMedia({ forcedColors: forced ? "active" : "none" });
+    await page.goto(gui.address);
+    const field = page.getByRole("combobox", { name: "Go to a variable" });
+    await field.fill("Value");
+    await expect(page.getByRole("listbox")).toBeVisible();
+    await field.press("ArrowDown");
+    // The list never takes the focus: the field keeps it, and names the choice the keys are on.
+    await expect(field).toBeFocused();
+    await expect(field).toHaveAttribute("aria-activedescendant", /.+/);
+    const ring = await ringOf(page, ".combo-choice[data-focus-visible]");
+    expect(ring.outlineStyle).not.toBe("none");
+    expect(ring.outlineWidth).toBeGreaterThanOrEqual(2);
+    expect(contrast(ring.outlineColour, ring.ground)).toBeGreaterThanOrEqual(GRAPHIC);
+  });
+
   test(`the selected row of a table carries an outline of its own, in ${mode}`, async ({
     page,
     gui,

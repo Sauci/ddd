@@ -1,4 +1,4 @@
-import { type Fallen, landing, opensAnew, outOfView, returnPlace } from "../lib/focus";
+import { type Fallen, landing, opensAnew, outOfView, returnPlace, showsAgain } from "../lib/focus";
 import { selectedRowFocus } from "../ui/Table";
 
 /**
@@ -36,8 +36,14 @@ function controlOf(target: EventTarget | null): Control | null {
   return control instanceof HTMLElement || control instanceof SVGElement ? control : null;
 }
 
-/** Whether a change of page waits for its heading to take the focus (`askPageHeading`). */
-let headingWanted = false;
+/** What a change of page waits to give the focus to (`askPageHeading`): the page's heading, or the
+ * heading of the panel its address opens - the page's heading holding the focus until that panel
+ * is drawn; nothing once given, or once the reader presses a key or the pointer. */
+let headingWanted: "page" | "panel" | null = null;
+
+/** The slot whose panel was scrolled into view as it opened, and the window's scroll that scroll
+ * left, while the panel is still to be shown from its top (`showsAgain`). */
+let showing: { slot: HTMLElement; left: number } | null = null;
 
 /** Whether the key last pressed is Tab, until the focus moves or the key's own task is over
  * (`watchFocus`). */
@@ -64,7 +70,7 @@ let tabbed = false;
 export function watchFocus(): () => void {
   const down = (event: PointerEvent) => {
     pressed = controlOf(event.target);
-    headingWanted = false;
+    headingWanted = null;
   };
   // After the press's own click, which may open a panel too.
   const over = () => {
@@ -73,7 +79,7 @@ export function watchFocus(): () => void {
     }, 0);
   };
   const key = (event: KeyboardEvent) => {
-    headingWanted = false;
+    headingWanted = null;
     tabbing = event.key === "Tab";
     // Tab moves the focus as the key's own default, in the key's own task: a Tab that moves it
     // nowhere on the page - past its last control, to the browser's - is let go with that task.
@@ -123,18 +129,47 @@ export function focusCameByTab(): boolean {
 
 /** Puts the focus on the page's heading after a change of page (`pageChanged`, 16:I13): at once
  * where the new page draws it, else as it is drawn (`takePageHeading`) - a component's page, its
- * file read - unless the reader presses a key or the pointer meanwhile. */
-export function askPageHeading(): void {
-  headingWanted = true;
+ * file read - unless the reader presses a key or the pointer meanwhile. Where the change of page
+ * opens a panel (`panel`, `selectsPanel`), the focus goes on to that panel's heading as the panel
+ * is drawn (`panelDrawn`), at once where it is drawn already. */
+export function askPageHeading(panel = false): void {
+  headingWanted = panel ? "panel" : "page";
+  const opened = panel ? panelHeading() : null;
+  if (opened !== null) {
+    showPanel(opened);
+    return;
+  }
   const heading = pageHeading();
   if (heading !== null) takePageHeading(heading);
 }
 
-/** Gives `heading`, a page's heading drawn, the focus a change of page asked for, if it waits. */
+/** Gives `heading`, a page's heading drawn, the focus a change of page asked for, if it waits:
+ * until the panel the change of page opens is drawn, where it waits for one. */
 export function takePageHeading(heading: HTMLElement): void {
-  if (!headingWanted) return;
-  headingWanted = false;
+  if (headingWanted === null) return;
+  if (headingWanted === "page") headingWanted = null;
   heading.focus();
+}
+
+/** Gives `heading`, that of the panel a change of page opened, the focus the change asked for, the
+ * panel scrolled into view where it stands out of it (`scrollShown`). */
+function showPanel(heading: HTMLElement): void {
+  headingWanted = null;
+  heading.focus({ preventScroll: true });
+  const panel = heading.closest<HTMLElement>(".panel");
+  if (panel !== null) scrollShown(panel, heading);
+}
+
+/** Scrolls `panel`, opened anew, into view where its heading stands out of it (`outOfView`,
+ * 16:M9): to its top, so that the window shows the panel rather than its heading alone at the
+ * window's foot - and, where the page cannot scroll it that far yet, once more as it is drawn again
+ * (`showsAgain`). */
+function scrollShown(panel: HTMLElement, heading: HTMLElement): void {
+  showing = null;
+  if (!outOfView(heading.getBoundingClientRect(), window.innerHeight)) return;
+  panel.scrollIntoView({ block: "start" });
+  const slot = slotOf(panel);
+  showing = slot === null ? null : { slot, left: window.scrollY };
 }
 
 /** The control a panel is opened from as it is first drawn: the one a press of the pointer is on,
@@ -153,7 +188,8 @@ export function openerNow(): Control | null {
 /** Notes a panel titled `title` drawn in its slot, from `opener` - the control holding the focus as
  * it was first drawn - which the slot then returns to where the panel opens anew (`opensAnew`);
  * otherwise the slot keeps the control the panel before was opened from. A panel opened anew
- * standing out of view is scrolled into it (`outOfView`, 16:M9). Answers the slot. */
+ * standing out of view is scrolled into it (`scrollShown`, 16:M9); one a change of page opens takes
+ * the focus that change asked for (`askPageHeading`). Answers the slot. */
 export function panelDrawn(
   panel: HTMLElement,
   title: string,
@@ -164,19 +200,28 @@ export function panelDrawn(
   const before = openers.get(slot);
   const anew = opensAnew(before?.title ?? null, title, opener !== null);
   openers.set(slot, { title, opener: anew ? opener : (before?.opener ?? null) });
-  const heading = panel.querySelector('[data-heading="panel"]');
-  if (anew && heading !== null && outOfView(heading.getBoundingClientRect(), window.innerHeight)) {
-    panel.scrollIntoView({ block: "nearest" });
+  const heading = panel.querySelector<HTMLElement>('[data-heading="panel"]');
+  if (heading === null) return slot;
+  if (headingWanted === "panel" && panel.closest("main") !== null) showPanel(heading);
+  else if (anew) scrollShown(panel, heading);
+  else if (showing?.slot === slot) {
+    if (showsAgain(showing.left, window.scrollY, panel.getBoundingClientRect().top)) {
+      panel.scrollIntoView({ block: "start" });
+      showing = { slot, left: window.scrollY };
+    } else showing = null;
   }
   return slot;
 }
 
 /** Notes a panel taken away from `slot`: once none is drawn there - another drawn in its place
- * comes in the same commit - the control the panels there were opened from is let go. */
+ * comes in the same commit - the control the panels there were opened from is let go, and the
+ * scroll that was showing it. */
 export function panelGone(slot: HTMLElement | null): void {
   if (slot === null) return;
   queueMicrotask(() => {
-    if (slot.querySelector(".panel") === null) openers.delete(slot);
+    if (slot.querySelector(".panel") !== null) return;
+    openers.delete(slot);
+    if (showing?.slot === slot) showing = null;
   });
 }
 
@@ -184,6 +229,12 @@ export function panelGone(slot: HTMLElement | null): void {
  * other place to go back to, put the focus on. */
 function pageHeading(): HTMLElement | null {
   return document.querySelector<HTMLElement>('main [data-heading="page"]');
+}
+
+/** The heading of the panel the page draws, where it draws one: the one a change of page opening
+ * that panel puts the focus on. */
+function panelHeading(): HTMLElement | null {
+  return document.querySelector<HTMLElement>('main .panel [data-heading="panel"]');
 }
 
 /** Whether `control`, the one `panel` was opened from, is still in the page as that control: out of

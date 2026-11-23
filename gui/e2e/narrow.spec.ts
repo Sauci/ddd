@@ -102,4 +102,33 @@ test("a panel opened under its table, out of view in a window 800 by 600, is scr
     .click();
   const panel = page.getByRole("complementary", { name: "ValueB" });
   await expect(panel.getByRole("heading", { name: "ValueB", level: 2 })).toBeInViewport();
+  // The panel itself, once it has read its variable: its keys, not its heading alone at the
+  // window's foot.
+  await expect(panel.getByRole("grid", { name: "Keys of ValueB" })).toBeInViewport({ ratio: 0.5 });
+});
+
+/**
+ * A change of page that opens a panel (16:M9, 16:I13): the masthead's go-to opens ParameterA on
+ * Controller's page, its panel standing under the declarations in a window 800 by 600. The panel
+ * is what the reader asked for: it is scrolled into view, its keys and all, and its heading takes
+ * the focus, where the page's heading takes it on a change of page that opens none.
+ */
+test("a variable the masthead's go-to opens in a window 800 by 600 has its panel in view, the focus on its heading", async ({
+  page,
+  gui,
+}) => {
+  await page.setViewportSize({ width: 800, height: 600 });
+  await page.goto(gui.address);
+  const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+  await goTo.pressSequentially("ParameterA");
+  await expect(page.getByRole("option", { name: "ParameterA" })).toBeVisible();
+  await goTo.press("Enter");
+  await expect(page.getByRole("heading", { name: "Controller", level: 1 })).toBeVisible();
+  const panel = page.getByRole("complementary", { name: "ParameterA" });
+  const heading = panel.getByRole("heading", { name: "ParameterA", level: 2 });
+  await expect(heading).toBeInViewport();
+  await expect(panel.getByRole("grid", { name: "Keys of ParameterA" })).toBeInViewport({
+    ratio: 0.5,
+  });
+  await expect(heading).toBeFocused();
 });

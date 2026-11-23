@@ -24,6 +24,37 @@ export function pageChanged(before: Route, after: Route): boolean {
 }
 
 /**
+ * Whether a route names what its page selects in itself, which the page draws in a panel beside
+ * its table: a variable of the Graph or of a component's page, a unit, a type, an entry of the
+ * shared files, a file - not a variable's values, a page of their own, nor the text of the Findings
+ * tab's filter. A change of page to it, the masthead's go-to, a finding's link or an address naming
+ * a selection, gives the focus to that panel's heading, the panel being what the reader asked for,
+ * and the page's heading meanwhile (16:I13, ruling B11-41).
+ */
+export function selectsPanel(route: Route): boolean {
+  if (route.page === "start") return false;
+  if (route.page === "component") return !("view" in route) && route.variable !== undefined;
+  if (route.view === "graph") return route.variable !== undefined;
+  if (route.view === "units") return route.unit !== undefined;
+  if (route.view === "types") return route.type !== undefined;
+  if (route.view === "shared") return "name" in route;
+  if (route.view === "files") return route.path !== undefined;
+  return false;
+}
+
+/**
+ * Whether a panel scrolled into view as it opened is scrolled to its top once more as it is drawn
+ * again, where the page could not show it whole the first time: the window's scroll is still where
+ * that scroll left it (`left`, `now`), the reader having scrolled nowhere since, and the panel's top
+ * (`top`, in the window) still stands below the window's own. A panel drawn first while it reads
+ * its answer is short, at the page's foot, so that the window cannot scroll it to its top: it then
+ * stood with its heading alone at the window's foot, once its keys were drawn (16:M9).
+ */
+export function showsAgain(left: number, now: number, top: number): boolean {
+  return now === left && top > 0;
+}
+
+/**
  * Whether a panel drawn takes the control holding the focus as the one it was opened from (16:I13):
  * where it was drawn from a control of the page's (`fromControl`), and is not the panel drawn
  * before it in its slot (`before`, that panel's title, `null` where none was) drawn again - a

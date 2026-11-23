@@ -6,7 +6,7 @@ import { LoadBannerView } from "../components/LoadBannerView";
 import { SignedOutView } from "../components/SignedOutView";
 import { UndrawnView } from "../components/UndrawnView";
 import { PROJECT_VIEWS, pageTitle, VIEW_NAMES } from "../lib/announcing";
-import { pageChanged, pageOf } from "../lib/focus";
+import { pageChanged, pageOf, selectsPanel } from "../lib/focus";
 import { type ProjectView, type Route, tabHref } from "../lib/route";
 import { projectName, sessionAskedFor } from "../lib/session";
 import type { SharedKind } from "../lib/shared";
@@ -72,10 +72,12 @@ export function App() {
   useEffect(() => watchFocus(), []);
   // A change of page - a link or a row followed, Back or Forward - puts the focus on the new page's
   // heading, as a page loaded starts at its top: the control that held it is gone with the page
-  // before, or names it no longer (16:I13). What a page selects in itself is no change of page.
+  // before, or names it no longer (16:I13). What a page selects in itself is no change of page;
+  // one whose address names such a selection puts it on the heading of the panel the page draws for
+  // it, the panel being what the reader asked for (ruling B11-41).
   const shownRoute = useRef(route);
   useEffect(() => {
-    if (pageChanged(shownRoute.current, route)) askPageHeading();
+    if (pageChanged(shownRoute.current, route)) askPageHeading(selectsPanel(route));
     shownRoute.current = route;
   }, [route]);
   const out = useSyncExternalStore(signedOut.subscribe, signedOut.current);

@@ -1,5 +1,15 @@
 import { describe, expect, test } from "vitest";
-import { landing, opensAnew, outOfView, pageChanged, pageOf, returnPlace } from "./focus";
+import { PROJECT_VIEWS } from "./announcing";
+import {
+  landing,
+  opensAnew,
+  outOfView,
+  pageChanged,
+  pageOf,
+  returnPlace,
+  selectsPanel,
+  showsAgain,
+} from "./focus";
 import type { Route } from "./route";
 
 describe("whether a following changes the page", () => {
@@ -46,6 +56,48 @@ describe("whether a following changes the page", () => {
     });
     expect(pageOf(values("a b", "c"))).not.toBe(pageOf(values("a", "b c")));
     expect(pageOf({ page: "component", file: "/p/x" })).not.toBe(pageOf(values("/p/x", "")));
+  });
+});
+
+describe("whether a change of page opens a panel, whose heading then takes the focus", () => {
+  const controller = "/p/controller.ddd.json";
+
+  test("a route naming what its page selects in itself", () => {
+    expect(selectsPanel({ page: "component", file: controller, variable: "ParameterA" })).toBe(
+      true,
+    );
+    expect(selectsPanel({ page: "project", view: "graph", variable: "ValueA" })).toBe(true);
+    expect(selectsPanel({ page: "project", view: "units", unit: "rpm" })).toBe(true);
+    expect(selectsPanel({ page: "project", view: "types", type: "Speed_t" })).toBe(true);
+    expect(selectsPanel({ page: "project", view: "shared", kind: "constant", name: "LIMIT" })).toBe(
+      true,
+    );
+    expect(selectsPanel({ page: "project", view: "files", path: "/p/a.ddd.json" })).toBe(true);
+  });
+
+  test("not a page selecting nothing, a variable's values, nor a filter's text", () => {
+    expect(selectsPanel({ page: "start" })).toBe(false);
+    expect(selectsPanel({ page: "component", file: controller })).toBe(false);
+    expect(
+      selectsPanel({ page: "component", file: controller, variable: "MapA", view: "values" }),
+    ).toBe(false);
+    for (const view of PROJECT_VIEWS) {
+      expect(selectsPanel({ page: "project", view } as Route)).toBe(false);
+    }
+    expect(selectsPanel({ page: "project", view: "findings", text: "rpm" })).toBe(false);
+  });
+});
+
+describe("whether a panel scrolled into view is scrolled to its top once more", () => {
+  test("the window where the scroll left it, the panel's top still below the window's", () => {
+    // 800 by 600, ValueB's panel read: its top at 520, the window scrolled to 165 and left there.
+    expect(showsAgain(165, 165, 520)).toBe(true);
+  });
+
+  test("not once the reader has scrolled, nor where the panel's top is shown", () => {
+    expect(showsAgain(165, 300, 520)).toBe(false);
+    expect(showsAgain(165, 165, 0)).toBe(false);
+    expect(showsAgain(165, 165, -40)).toBe(false);
   });
 });
 

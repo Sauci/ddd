@@ -271,15 +271,17 @@ test("Close pressed from the keyboard puts the focus back on the unit cell the p
   page,
   gui,
 }) => {
-  await openPanel(page, gui.address, "ValueA");
-  await page.getByRole("button", { name: "Close ValueA" }).focus();
-  await page.keyboard.press("Enter");
-  await expect(page.getByRole("complementary", { name: "ValueA" })).toHaveCount(0);
+  const panel = await openPanel(page, gui.address, "ValueA");
+  await closedByKeyboard(panel, "ValueA");
   await expect(page.getByRole("button", { name: "Set the unit of ValueA" })).toBeFocused();
 });
 
-/** Presses Close in a panel from the keyboard, and waits for the panel to go. */
+/** Presses Close in a panel from the keyboard, once the panel has read what it shows, and waits for
+ * the panel to go. A variable's panel is drawn anew as its keys come, its Close with it: a press of
+ * the Close it replaced would be lost, the focus then on the new panel's heading. */
 async function closedByKeyboard(panel: Locator, title: string): Promise<void> {
+  await expect(panel).toBeVisible();
+  await expect(panel.getByText(/^Reading .+…$/)).toHaveCount(0);
   await panel.getByRole("button", { name: `Close ${title}` }).focus();
   await panel.page().keyboard.press("Enter");
   await expect(panel).toHaveCount(0);

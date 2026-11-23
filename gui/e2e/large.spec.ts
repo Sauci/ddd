@@ -390,11 +390,40 @@ test("a component page's filter finds a declaration its table does not draw", as
   await expect(page.getByRole("grid", { name: "Declarations of C00530" })).toBeVisible();
 });
 
+/** Records each count of rows the grid named `name` says it has (`aria-rowcount`) from here on, as
+ * each commit of the page draws it: a MutationObserver sees every change, painted or not, and
+ * each record keeps the count it replaced. */
+async function watchRowCounts(page: Page, name: string): Promise<void> {
+  await page.evaluate((label) => {
+    const grid = document.querySelector(`[role="grid"][aria-label="${label}"]`);
+    if (grid === null) throw new Error(`no grid named ${label}`);
+    const replaced: (string | null)[] = [];
+    (window as unknown as { rowCountsReplaced: (string | null)[] }).rowCountsReplaced = replaced;
+    new MutationObserver((records) => {
+      for (const record of records) replaced.push(record.oldValue);
+    }).observe(grid, {
+      attributes: true,
+      attributeFilter: ["aria-rowcount"],
+      attributeOldValue: true,
+    });
+  }, name);
+}
+
+/** Every count the grid `watchRowCounts` watches has said since, in order, the one it says now
+ * last. */
+async function rowCountsWatched(page: Page, grid: Locator): Promise<(string | null)[]> {
+  const replaced = await page.evaluate(
+    () => (window as unknown as { rowCountsReplaced: (string | null)[] }).rowCountsReplaced,
+  );
+  return [...replaced, await grid.getAttribute("aria-rowcount")];
+}
+
 /**
  * A unit's filter (16:I14): rpm is stated 2,500 times over the generated project, and its panel's
  * table draws the places in view. Filtered by a file's name, it holds the four that file states.
- * Emptied, every place comes back to the table, put back a thousand at a time (`ROWS_PUT_BACK`,
- * lib/filter.ts) until its count reaches all 2,500.
+ * Emptied, every place comes back to the table a thousand at a time, each thousand in a commit of
+ * its own (`ROWS_PUT_BACK`, lib/filter.ts): its count of rows goes from the four left, and the
+ * header's row, to all 2,500 in three steps.
  */
 test("a unit's filter finds the places one file states it", async ({ page, generatedGui }) => {
   await page.goto(generatedGui.address);
@@ -413,10 +442,11 @@ test("a unit's filter finds the places one file states it", async ({ page, gener
     await expect(places.getByRole("row", { name: new RegExp(name) })).toBeVisible();
   }
 
+  await watchRowCounts(page, "Where rpm is stated");
   await filter.fill("");
   await expect(filter).toHaveAccessibleDescription("");
-  // The places and the header's row.
   await expect(places).toHaveAttribute("aria-rowcount", "2501");
+  expect(await rowCountsWatched(page, places)).toEqual(["5", "1005", "2005", "2501"]);
 });
 
 /**

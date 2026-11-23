@@ -60,6 +60,55 @@ export function toldApart(path: string, among: readonly string[]): string {
   return parts.slice(-depth).join("/");
 }
 
+/**
+ * Each of `paths` as `toldApart` names it among all of them, in their order - by counting rather
+ * than by comparing each with every other: how many of `paths` end in each run of parts is counted
+ * once, and a path is named by its parts from the first depth at which no other path ends alike,
+ * those equal to it aside, as `toldApart` sets `path` itself aside. Two runs of a different number
+ * of parts never read alike (a part holds no `/`), so a path shorter than a depth ends alike with
+ * none there, as `endsAlike` finds. The banner under the masthead names every file of the project
+ * that did not load (lib/unloaded.ts), on each render: compared pair by pair, the 3,334 files of a
+ * project whose every component failed took seconds to name.
+ */
+export function toldApartAll(paths: readonly string[]): string[] {
+  const named = paths.map((path) => ({ path, ends: endsOf(path) }));
+  const ending = new Map<string, number>();
+  const listed = new Map<string, number>();
+  for (const { path, ends } of named) {
+    for (const end of ends) ending.set(end, counted(ending, end) + 1);
+    listed.set(path, counted(listed, path) + 1);
+  }
+  return named.map(({ path, ends }) => {
+    const itself = counted(listed, path);
+    // The whole path, the last of its ends, is one no other path ends in: found at the latest.
+    let name = path;
+    for (const end of ends) {
+      if (counted(ending, end) === itself) {
+        name = end;
+        break;
+      }
+    }
+    return name;
+  });
+}
+
+/** The runs of parts a path ends in, joined: its last part, then its last two, up to the whole of
+ * it. */
+function endsOf(path: string): string[] {
+  const ends: string[] = [];
+  let end: string | null = null;
+  for (const part of path.split("/").reverse()) {
+    end = end === null ? part : `${part}/${end}`;
+    ends.push(end);
+  }
+  return ends;
+}
+
+/** How many times `key` is counted in `counts`: none where it is not. */
+function counted(counts: ReadonlyMap<string, number>, key: string): number {
+  return counts.get(key) ?? 0;
+}
+
 /** Whether two paths end in the same `depth` parts - all of one that has fewer. */
 function endsAlike(theirs: readonly string[], parts: readonly string[], depth: number): boolean {
   return theirs.slice(-depth).join("/") === parts.slice(-depth).join("/");

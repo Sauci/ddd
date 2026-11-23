@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { shownPath, toldApart } from "./paths";
+import { shownPath, toldApart, toldApartAll } from "./paths";
 
 // Every expected path below is what Python's own `relpath` answers for the same two paths
 // (`posixpath.relpath`, and `ntpath.relpath` for the Windows ones), checked when these were
@@ -91,5 +91,46 @@ describe("a file as a sentence naming several names it", () => {
   test("two files that differ only by their drive are named in full", () => {
     const drives = ["C:/work/types.ddd.json", "D:/work/types.ddd.json"];
     expect(drives.map((path) => toldApart(path, drives))).toEqual(drives);
+  });
+});
+
+describe("every file of a list as a sentence naming them all names it", () => {
+  /** What `toldApart` answers for each of `paths` among all of them, in their order. */
+  const one = (paths: readonly string[]) => paths.map((path) => toldApart(path, paths));
+
+  test("each as `toldApart` names it among them all", () => {
+    const among = [
+      "/w/one/units.ddd.json",
+      "/w/two/units.ddd.json",
+      "/w/a.ddd.json",
+      "/a/x/v.ddd.json",
+      "/b/x/v.ddd.json",
+      "/v.ddd.json",
+    ];
+    expect(toldApartAll(among)).toEqual(one(among));
+    expect(toldApartAll(["C:/work/types.ddd.json", "D:/work/types.ddd.json"])).toEqual([
+      "C:/work/types.ddd.json",
+      "D:/work/types.ddd.json",
+    ]);
+    // A share's root parts are two empty ones: told apart from a posix path of the same names.
+    const shares = ["//server/share/x.ddd.json", "/server/share/x.ddd.json", "/x.ddd.json"];
+    expect(toldApartAll(shares)).toEqual(one(shares));
+    expect(toldApartAll([])).toEqual([]);
+  });
+
+  test("a file listed twice is not told apart from itself", () => {
+    const twice = ["C:/work/demo/types.ddd.json", "C:/work/demo/types.ddd.json", "C:/b/x.ddd.json"];
+    expect(toldApartAll(twice)).toEqual(["types.ddd.json", "types.ddd.json", "x.ddd.json"]);
+    expect(toldApartAll(twice)).toEqual(one(twice));
+  });
+
+  test("a list of many, folders and names repeating, as `toldApart` names each", () => {
+    // Three hundred paths over four folders deep, each name in several folders: the pairs a
+    // comparison of each with every other meets, counted instead.
+    const many = Array.from(
+      { length: 300 },
+      (_, at) => `/p/${at % 3}/${at % 5}/${at % 7}/c${at % 11}.ddd.json`,
+    );
+    expect(toldApartAll(many)).toEqual(one(many));
   });
 });

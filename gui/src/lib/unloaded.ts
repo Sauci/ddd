@@ -1,6 +1,6 @@
 import type { RefusedBuild, SourceFile } from "../api/types";
 import { countText } from "./numbers";
-import { shownPath, toldApart } from "./paths";
+import { shownPath, toldApartAll } from "./paths";
 import type { Route } from "./route";
 import { baseName, FILES_NAMED } from "./units";
 
@@ -22,25 +22,13 @@ export interface Lead {
 /** A part of a sentence the page draws: words, or words leading to a page. */
 export type Part = string | Lead;
 
-/** A file of the state that did not load, by the name a sentence gives it. */
-interface Unloaded {
-  name: string;
-  path: string;
-}
-
-/** Each file of `files` that did not load, by its own name, and two of one name in different
- * folders by as much of their paths as tells them apart (`toldApart`) among those that did not
+/** Each file of `files` that did not load, as every sentence of the page names it - the banner,
+ * the Graph's, a removal's and the go-to's: by its own name, and two of one name in different
+ * folders by as much of their paths as tells them apart (`toldApartAll`) among those that did not
  * load - as the server's refusals name them (`ddd.gui.api._unread`), so that one file is one name
  * on the page and in a refusal. In the state's order, by path. */
-function unloadedOf(files: readonly Pick<SourceFile, "path" | "loaded">[]): Unloaded[] {
-  const paths = files.filter((file) => !file.loaded).map((file) => file.path);
-  return paths.map((path) => ({ name: toldApart(path, paths), path }));
-}
-
-/** The names of the files of `files` that did not load, as every sentence of the page names them
- * (`unloadedOf`): the banner, the Graph's, a removal's and the go-to's. */
 export function unloadedNames(files: readonly Pick<SourceFile, "path" | "loaded">[]): string[] {
-  return unloadedOf(files).map((file) => file.name);
+  return toldApartAll(files.filter((file) => !file.loaded).map((file) => file.path));
 }
 
 /** The parts naming `items`, as every sentence of this interface lists names - "A", "A and B",
@@ -114,7 +102,7 @@ export function loadBanner(
         : `Analysing the project failed: ${failed}. The pages show the last analysis that finished, and ddd gui analyses the project again when a file it reads changes.`,
     ]);
   }
-  const unloaded = unloadedOf(state?.files ?? []);
+  const unloaded = unloadedNames(state?.files ?? []);
   if (unloaded.length > 0) {
     lines.push([
       ...listedParts(unloaded, findingsOf, (count) => ({
@@ -131,11 +119,12 @@ export function loadBanner(
   return { tone: failed === null ? "warning" : "error", lines };
 }
 
-/** A file that did not load, leading to its finding: the Findings tab, asked for the findings that
- * hold the file's own name - its own, the one saying why it did not load among its errors, and one
- * filed at the entry naming a file that is not there, whose words name it. By the file's own name
- * rather than the one telling two apart, which a finding's file name does not hold (`_holds`,
- * gui/api.py): two of one name lead to the findings of both. */
-function findingsOf(file: Unloaded): Lead {
-  return { text: file.name, to: { page: "project", view: "findings", text: baseName(file.path) } };
+/** A file that did not load, by its name (`unloadedNames`), leading to its finding: the Findings
+ * tab, asked for the findings that hold the file's own name - its own, the one saying why it did
+ * not load among its errors, and one filed at the entry naming a file that is not there, whose
+ * words name it. By the file's own name, the last part of the one telling two apart, which a
+ * finding's file name does not hold (`_holds`, gui/api.py): two of one name lead to the findings
+ * of both. */
+function findingsOf(name: string): Lead {
+  return { text: name, to: { page: "project", view: "findings", text: baseName(name) } };
 }

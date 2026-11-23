@@ -87,8 +87,8 @@ function builtTwice(directory: string): void {
 }
 
 /** The demo's description cut in half, so that it no longer loads, and a record that names it: the
- * walk for projects keeps only a description that parses (`_descriptions`, `_is_project`,
- * session.py), so only a record can still offer it. */
+ * walk for projects lists a description it cannot read as unreadable (`_descriptions`, session.py)
+ * unless a record offers it, which then lists it as a project without a name. */
 function unreadable(directory: string): void {
   const description = join(directory, "demo.ddd.json");
   writeRecord(directory, "build", { format: 1, project: description, image: "firmware" });
@@ -201,6 +201,11 @@ test("an empty directory finds no project, and the start page says so", async ({
   await expect(
     page.getByText("No project description was found here. Start ddd gui with the path of one."),
   ).toBeVisible();
+  // Nothing was met that could not be read, so no list of such files is drawn.
+  await expect(
+    page.getByRole("heading", { name: "Project descriptions that could not be read" }),
+  ).toHaveCount(0);
+  await expect(page.locator("ul.unreadable")).toHaveCount(0);
 });
 
 test("a build record in a format too new is listed as not used, and its project is still offered", async ({
@@ -248,6 +253,33 @@ test("a description that does not parse is listed with its reason, beside the pr
   // The demo's components are descriptions that parse and state no project: not on this list.
   await expect(listed).toHaveCount(1);
   await expect(page.getByRole("button", { name: /DemoDevice/ })).toBeVisible();
+});
+
+/** Nothing but a description that does not parse, `brokenone/broken.ddd.json`: the only project
+ * of the directory is the one that cannot be read. */
+function onlyBroken(directory: string): void {
+  empty(directory);
+  brokenBeside(directory);
+}
+
+test("a directory whose only description does not parse says none could be read, and lists it with its reason", async ({
+  page,
+  copiedGui,
+}) => {
+  const started = await copiedGui("demo", onlyBroken, { named: false });
+  await page.goto(started.address);
+  await expect(page.getByRole("heading", { name: "Open a project" })).toBeVisible();
+  await expect(
+    page.getByText(
+      "No project description found here could be read. Each is listed below with why.",
+    ),
+  ).toBeVisible();
+  await expect(page.getByText("No project description was found here")).toHaveCount(0);
+  await expect(page.locator("ul.projects")).toHaveCount(0);
+  const broken = `${started.directory.replaceAll("\\", "/")}/brokenone/broken.ddd.json`;
+  await expect(page.locator("ul.unreadable li")).toHaveText([
+    new RegExp(`^${broken}: does not parse: `),
+  ]);
 });
 
 test("the start page says it is looking for projects, until the list answers", async ({
@@ -364,9 +396,10 @@ test("a project whose description does not load is listed as an unnamed project"
     `${started.directory.replaceAll("\\", "/")}/demo.ddd.json`,
   );
   await expect(unnamed.getByText("built as firmware", { exact: true })).toBeVisible();
-  // The name is the cut file's, which no longer loads: the walk does not find it (`unreadable`),
-  // and only the record offers it, so there is no entry under the demo's name. The other project
-  // is listed as usual.
+  // The name is the cut file's, which no longer loads: it is offered by the record alone, so there
+  // is no entry under the demo's name, and no line among the descriptions that could not be read,
+  // which a record's project is not listed among. The other project is listed as usual.
+  await expect(page.locator("ul.unreadable")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^DemoDevice/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Logging/ })).toBeVisible();
 });

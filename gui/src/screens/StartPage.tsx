@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { getProjects, openProject } from "../api/client";
-import { listHeld, UNREAD_HEADING, unreadLine } from "../lib/start";
+import { listHeld, noProjectSentence, UNREAD_HEADING, unreadLine, unreadShown } from "../lib/start";
 import { Banner } from "../ui/Banner";
 
 /** The projects found where `ddd gui` was started, to open one of them. */
@@ -18,7 +18,7 @@ export function StartPage({ onOpened }: { onOpened: () => void }) {
       <h1>Open a project</h1>
       <p className="quiet">Found under {found.data.root}</p>
       {found.data.projects.length === 0 ? (
-        <p>No project description was found here. Start ddd gui with the path of one.</p>
+        <p>{noProjectSentence(found.data.unreadable.length)}</p>
       ) : (
         <ul className="projects">
           {found.data.projects.map((project) => (
@@ -38,7 +38,7 @@ export function StartPage({ onOpened }: { onOpened: () => void }) {
           ))}
         </ul>
       )}
-      {found.data.unreadable.length > 0 && (
+      {unreadShown(found.data.unreadable) && (
         <>
           <h2>{UNREAD_HEADING}</h2>
           <ul className="unreadable">

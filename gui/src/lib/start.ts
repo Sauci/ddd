@@ -26,3 +26,19 @@ export const UNREAD_HEADING = "Project descriptions that could not be read";
 export function unreadLine(entry: UnreadDescription): string {
   return `${entry.path}: ${entry.reason}`;
 }
+
+/** Whether the start page draws the list of descriptions that could not be read: only where the
+ * walk met one, so that no heading over nothing is drawn on a page where every file was read. */
+export function unreadShown(entries: readonly UnreadDescription[]): boolean {
+  return entries.length > 0;
+}
+
+/** What the start page says in place of the list where no project is offered: the walk found no
+ * description at all, or found some (`unread` of them) and could read none, which is not "none was
+ * found" while the list below names each. */
+export function noProjectSentence(unread: number): string {
+  if (unread === 0) {
+    return "No project description was found here. Start ddd gui with the path of one.";
+  }
+  return "No project description found here could be read. Each is listed below with why.";
+}

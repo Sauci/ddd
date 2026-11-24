@@ -3627,6 +3627,38 @@ export const ADD_BRINGING: FilesPlanReply = {
 export const ADDED_BY_A_PATTERN =
   "lib/l.ddd.json is part of this project already: the pattern 'lib/*.ddd.json' brings it in";
 
+// Add refused for the plugins it would bring in (constructed: the tree of `TestAFilesPlanAsksThe
+// PluginsRefusal.test_an_add_of_a_description_that_names_plugins_is_refused`) - a root including
+// a.ddd.json, beside sub.ddd.json, a project description naming the plugin x.py. `ddd gui` changes
+// no plugins list a description names, so the plan refuses the add before the reader presses.
+
+const PLUGINS_A = "C:/work/plugins/a.ddd.json";
+
+export const PLUGINS_FILES: FilesReply = {
+  revision: 1,
+  project: "C:/work/plugins/p.ddd.json",
+  entries: [literalEntry(0, "a.ddd.json", PLUGINS_A)],
+  creatable: FILES_CREATABLE,
+};
+
+/** Its one component, `empty-component` its one finding, at info. */
+export const PLUGINS_SOURCES: readonly SourceFile[] = [
+  {
+    path: PLUGINS_A,
+    kind: "component",
+    name: "A",
+    loaded: true,
+    fingerprint: "224e4cee37d5adb44bf720c2007b342dac61a15869a89c66121adf54ac94202e",
+    findings: { error: 0, warning: 0, info: 1 },
+  },
+];
+
+/** sub.ddd.json refused, as that test pins it whole (its `REFUSED_INCLUDES`), asked with the
+ * story's own path. */
+export const ADDED_NAMING_PLUGINS =
+  "ddd gui does not change which plugins the project's descriptions name; change the includes " +
+  "in a text editor";
+
 // Remove refused, over examples/vocabulary: its constants.ddd.json declares TREND_SAMPLES, which
 // pump.ddd.json's PressureTrend is dimensioned by.
 

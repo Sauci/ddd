@@ -6,6 +6,7 @@ import {
   ADDABLE_FILES,
   ADDABLE_SOURCES,
   ADDED_BY_A_PATTERN,
+  ADDED_NAMING_PLUGINS,
   COMPONENT_NAME_TAKEN,
   CREATE_COMPONENT,
   CREATE_CONSTANTS,
@@ -19,6 +20,8 @@ import {
   KEPT_A,
   KEPT_FILES,
   KEPT_SOURCES,
+  PLUGINS_FILES,
+  PLUGINS_SOURCES,
   PROJECT_FILES,
   PROJECT_SOURCE_FILES,
   READER_BROKEN,
@@ -247,6 +250,19 @@ export const AddRefusedAsAPatternsFile = () => (
     files={ADDABLE_SOURCES}
     path="lib/l.ddd.json"
     refusal={ADDED_BY_A_PATTERN}
+  />
+);
+
+/** Add refused for the plugins it would bring in (constructed: the tree of
+ * `TestAFilesPlanAsksThePluginsRefusal`): sub.ddd.json is a project description naming the plugin
+ * x.py, and `ddd gui` changes no plugins list the project's descriptions name (decision M7), so the
+ * plan is refused before the reader presses, in the server's words, with nothing to apply. */
+export const AddRefusedAsADescriptionNamingPlugins = () => (
+  <AddFile
+    reply={PLUGINS_FILES}
+    files={PLUGINS_SOURCES}
+    path="sub.ddd.json"
+    refusal={ADDED_NAMING_PLUGINS}
   />
 );
 

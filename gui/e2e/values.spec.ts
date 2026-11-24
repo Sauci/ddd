@@ -2318,3 +2318,37 @@ test("the project screen's own panel offers no description, and still says what 
   await expect(panel.getByRole("textbox")).toHaveCount(0);
   await expect(panel.getByRole("region", { name: "Describe the declaration" })).toHaveCount(0);
 });
+
+test("the Graph and the values grid take the window, and the other pages keep the 1,100 px measure", async ({
+  page,
+  gui,
+}) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  const app = page.locator(".app");
+  const widthOf = async () => (await app.boundingBox())?.width ?? 0;
+  // The window less any scrollbar of the page's own.
+  const window = () => page.evaluate(() => document.documentElement.clientWidth);
+
+  await page.goto(gui.address);
+  await expect(page.getByRole("region", { name: "Modules" })).toBeVisible();
+  expect(await widthOf()).toBe(await window());
+  // The canvas fills what the page gives it, less the page's own padding on each side.
+  const canvas = await page.getByRole("region", { name: "Modules" }).boundingBox();
+  expect(canvas?.width).toBeGreaterThan(1700);
+
+  await page.getByRole("link", { name: "Table" }).click();
+  await expect(page.getByRole("grid", { name: "Components" })).toBeVisible();
+  expect(await widthOf()).toBe(1100);
+
+  await openValues(page, gui.address, "CurveA");
+  await expect(page.getByRole("grid", { name: "Values of CurveA" })).toBeVisible();
+  expect(await widthOf()).toBe(await window());
+
+  // The component's own page, one step back, is a table's page again.
+  await page
+    .getByRole("button", { name: /^Back to/ })
+    .first()
+    .click();
+  await expect(page.getByRole("heading", { name: "Controller", level: 1 })).toBeVisible();
+  expect(await widthOf()).toBe(1100);
+});

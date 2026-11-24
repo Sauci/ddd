@@ -12,6 +12,11 @@ body {
   margin: 0 auto;
   padding: var(--space-4);
 }
+/* The Graph and a component's values grid take the window (decision 16.4): every other page keeps
+   the measure above. Padding stays, so that nothing meets the window's edge. */
+.app.wide {
+  max-width: none;
+}
 .masthead {
   display: flex;
   flex-wrap: wrap;

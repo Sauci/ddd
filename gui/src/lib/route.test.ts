@@ -9,6 +9,7 @@ import {
   type Route,
   replacing,
   tabHref,
+  takesWindow,
 } from "./route";
 
 test.each([
@@ -419,4 +420,18 @@ test("going to the address the page is at replaces its entry in the history, as 
   expect(replacing(here, findings(), false)).toBe(false);
   // A route no address can carry adds a step, the address left as it stands, as it did.
   expect(replacing(here, { page: "project", view: "units", unit: HIGH }, false)).toBe(false);
+});
+
+test.each([
+  // The Graph and a component's values grid take the window; the 1,100 px measure stays for the rest
+  // (decision 16.4).
+  [{ page: "project", view: "graph" }, true],
+  [{ page: "project", view: "graph", variable: "ValueA" }, true],
+  [{ page: "component", file: "/p/a.ddd.json", variable: "ValueA", view: "values" }, true],
+  [{ page: "project", view: "table" }, false],
+  [{ page: "project", view: "findings" }, false],
+  [{ page: "component", file: "/p/a.ddd.json" }, false],
+  [{ page: "start" }, false],
+] as const)("%o takes the window: %s", (route, takes) => {
+  expect(takesWindow(route)).toBe(takes);
 });

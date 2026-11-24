@@ -15,7 +15,7 @@ import { UndrawnView } from "../components/UndrawnView";
 import { PROJECT_VIEWS, pageTitle, VIEW_NAMES } from "../lib/announcing";
 import type { CompareHeld } from "../lib/compare";
 import { headingAsked, pageOf, type Shown } from "../lib/focus";
-import { type ProjectView, type Route, tabHref } from "../lib/route";
+import { type ProjectView, type Route, tabHref, takesWindow } from "../lib/route";
 import { projectName, sessionAskedFor } from "../lib/session";
 import type { SharedKind } from "../lib/shared";
 import { undrawnSentence } from "../lib/undrawn";
@@ -391,7 +391,7 @@ export function App() {
   }
 
   return (
-    <div className="app">
+    <div className={takesWindow(route) ? "app wide" : "app"}>
       <header className="masthead">
         <span className="brand">ddd gui</span>
         <span className="preview">preview</span>

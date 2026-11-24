@@ -223,3 +223,11 @@ export function heldFollowing(held: Held, followed: Route): Held {
 export function replacing(here: Route, next: Route, replace: boolean): boolean {
   return replace || hrefOf(next) === hrefOf(here);
 }
+
+/** Whether the page the route shows takes the whole window, freed of the 1,100 px measure every
+ * other page keeps (decision 16.4, 16:M8): the Graph, whose canvas is the wider the more modules it
+ * can show side by side, and a component's values grid, whose columns were cut at any screen. */
+export function takesWindow(route: Route): boolean {
+  if (route.page === "project") return route.view === "graph";
+  return route.page === "component" && "view" in route;
+}

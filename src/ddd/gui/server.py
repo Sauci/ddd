@@ -269,7 +269,9 @@ def page_policy(page: bytes) -> str:
 
 SIGN_IN_PAGE: Final = (
     b'<!doctype html><html lang="en"><meta charset="utf-8"><title>ddd gui</title>'
-    b"<p>Open the address <code>ddd gui</code> printed in its terminal.</p></html>"
+    b"<p>Open the address <code>ddd gui</code> printed in its terminal, or, if that "
+    b"address was opened already, stop <code>ddd gui</code> (Ctrl+C), start it again and "
+    b"open the address it prints then.</p></html>"
 )
 
 

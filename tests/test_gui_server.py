@@ -892,7 +892,9 @@ class TestWhoMayAsk:
         _, data = ask(server, "GET", "/project", headers={"Sec-Fetch-Site": "same-site"})
         assert data == (
             b'<!doctype html><html lang="en"><meta charset="utf-8"><title>ddd gui</title>'
-            b"<p>Open the address <code>ddd gui</code> printed in its terminal.</p></html>"
+            b"<p>Open the address <code>ddd gui</code> printed in its terminal, or, if that "
+            b"address was opened already, stop <code>ddd gui</code> (Ctrl+C), start it again and "
+            b"open the address it prints then.</p></html>"
         )
 
     @pytest.mark.parametrize("site", [None, "same-origin", "none"])

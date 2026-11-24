@@ -300,6 +300,13 @@ test("a curve is drawn from the numbers it holds", async ({ page, gui }) => {
     "8000",
   ]);
   await expect(plot.locator(".values-plot-side")).toHaveText(["12", "6.5"]);
+  // Beside the frame, right-aligned to it: a long figure grows away from the markers, never over
+  // the first of them (16:M22).
+  const readings = await plot
+    .locator(".values-plot-side")
+    .evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().right));
+  const marker = await plot.locator("circle").first().boundingBox();
+  for (const right of readings) expect(right).toBeLessThan(marker?.x ?? 0);
 
   await page.getByRole("button", { name: "Raw" }).click();
   // What the toggle actually redraws, in text a reader can see: AxisA's own ticks (its raw

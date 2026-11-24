@@ -352,7 +352,6 @@ input:focus-visible,
 /* A project's name of the 128 characters the specification allows, in the masthead's button, breaks
    where it must (16:M18). */
 .masthead nav button {
-  min-width: 0;
   text-align: left;
   overflow-wrap: anywhere;
 }

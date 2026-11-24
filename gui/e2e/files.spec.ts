@@ -1,7 +1,7 @@
 import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { drift, failing, held, SERVER_FAILED, UNITS, writeUnseen } from "./demo";
+import { draggedAcross, drift, failing, held, SERVER_FAILED, UNITS, writeUnseen } from "./demo";
 import { expect, type Gui, test } from "./fixtures";
 
 /** A component the project does not include yet, declaring nothing - written into the copy
@@ -1106,6 +1106,25 @@ test("a row's panel leads to its component's page and to its findings, beside it
   await panel.getByRole("link", { name: "Open Controller", exact: true }).click();
   await expect(page).toHaveURL(/\/component\?file=[^&]+controller\.ddd\.json$/);
   await expect(page.getByRole("heading", { name: "Controller", level: 1 })).toBeVisible();
+});
+
+test("an entry dragged over is selected, and opens no panel, where a click on its row does", async ({
+  page,
+  gui,
+}) => {
+  // 16:M21: a press on a row turned text selection off on it, and selected the row as it went
+  // down, its panel opening under a drag over its entry.
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Files", exact: true }).click();
+  const row = page.getByRole("row", { name: "components/controller.ddd.json", exact: true });
+  const entry = row.getByRole("rowheader");
+  expect(await draggedAcross(page, entry)).toBe("components/controller.ddd.json");
+  await expect(page.getByRole("complementary")).toHaveCount(0);
+  await expect(page).toHaveURL(/\/project\?view=files$/);
+  await entry.click();
+  await expect(
+    page.getByRole("complementary", { name: "components/controller.ddd.json", exact: true }),
+  ).toBeVisible();
 });
 
 test("a removal of a file only a pattern brings in is refused, naming the pattern, with nothing to press", async ({

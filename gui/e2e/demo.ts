@@ -219,6 +219,23 @@ export async function withinBox(page: Page, label: string, target: Locator): Pro
   );
 }
 
+/** Drags the mouse across `words` - pressed just inside its left edge, moved to just inside its
+ * right and let go there - as a reader selects a path or a message in a table to copy it (16:M21),
+ * and answers what the page's selection holds once the press is over: React Aria marks the row it
+ * went down on `data-pressed` until it lets the press go, which it does on the click, or a moment
+ * after a click it does not take as its own. */
+export async function draggedAcross(page: Page, words: Locator): Promise<string> {
+  const box = await words.boundingBox();
+  if (box === null) throw new Error("no words to drag across");
+  const y = box.y + Math.min(box.height / 2, 10);
+  await page.mouse.move(box.x + 1, y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width - 1, y, { steps: 8 });
+  await page.mouse.up();
+  await expect(page.locator("[data-pressed]")).toHaveCount(0);
+  return page.evaluate(() => document.getSelection()?.toString() ?? "");
+}
+
 /** A table pasted into the grid the way a browser delivers one: a `DataTransfer` built in the
  * page and dispatched as a `paste` event, because Playwright cannot put a table on the system
  * clipboard. Dispatched on the grid's own `<section>` - the one `ValuesGridView` binds `onPaste`

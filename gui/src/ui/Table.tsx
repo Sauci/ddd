@@ -1,11 +1,11 @@
-import { type ComponentProps, useLayoutEffect, useRef } from "react";
+import { type ComponentProps, type Ref, useCallback, useLayoutEffect, useRef } from "react";
 import {
+  Table as AriaTable,
   Cell,
   Column,
   type Key,
   Rect,
   Row,
-  Table,
   TableBody,
   TableHeader,
   TableLayout,
@@ -13,6 +13,7 @@ import {
   Virtualizer,
 } from "react-aria-components";
 import { ROW_HEIGHT, scrolledTo } from "../lib/findingsWindow";
+import { selectsText } from "../lib/pressing";
 
 // React Aria's table, row selection and keyboard navigation included, under the page's own
 // styles in ui.css: the one place a screen takes its table from. `Virtualizer` and `TableLayout`
@@ -20,8 +21,82 @@ import { ROW_HEIGHT, scrolledTo } from "../lib/findingsWindow";
 // view, which is how every long table but the Findings one is drawn - that one keeps its own
 // hand-made window (lib/findingsWindow.ts, part 17's task 7). `LongTable` below is the one place
 // that wrapping is written (fix round 1, Minor 3): every long table drew it by hand before, eight
-// times over.
-export { Cell, Column, Row, Table, TableBody, TableHeader };
+// times over. `Table` is React Aria's with the words of its cells selectable (16:M21).
+export { Cell, Column, Row, TableBody, TableHeader };
+
+/** What a table asks of React Aria so that the words of its cells can be selected (16:M21): its rows
+ * selected as a press on them ends, not as it goes down - a drag over a row's words, which selects
+ * them, is pressed on the row the whole while, and its panel opened under it. React Aria's own
+ * option, which its table hands each row (`useGrid`'s `shouldSelectOnPressUp`), though the types of
+ * its components leave it out. */
+const SELECTED_ON_PRESS_UP = { shouldSelectOnPressUp: true };
+
+/**
+ * Watches the presses of `grid`'s rows for one that selected the words of its cells (16:M21). React
+ * Aria turns text selection off on the row pressed while the press lasts (`usePress`'s
+ * `disableTextSelection`), which a cell's own `user-select` (ui.css) turns on again within it; and
+ * whether the press began a selection, and the selection holds words of its row as it ends, is
+ * what `selectsText` (lib/pressing.ts) judges. Such a press's click goes no further than the grid:
+ * the row's handlers never see it, and React Aria lets the press go a moment after, as it lets go
+ * a click it never saw. Answers what stops the watching.
+ */
+function watchSelecting(grid: HTMLElement): () => void {
+  let began = false;
+  const down = () => {
+    began = false;
+  };
+  const start = () => {
+    began = true;
+  };
+  const click = (event: MouseEvent) => {
+    const row = event.target instanceof Element ? event.target.closest('[role="row"]') : null;
+    const selection = document.getSelection();
+    const selected =
+      row !== null &&
+      selection !== null &&
+      selection.toString() !== "" &&
+      row.contains(selection.anchorNode) &&
+      row.contains(selection.focusNode);
+    if (selectsText({ began, selected })) event.stopPropagation();
+    began = false;
+  };
+  grid.addEventListener("pointerdown", down, true);
+  grid.addEventListener("selectstart", start, true);
+  grid.addEventListener("click", click, true);
+  return () => {
+    grid.removeEventListener("pointerdown", down, true);
+    grid.removeEventListener("selectstart", start, true);
+    grid.removeEventListener("click", click, true);
+  };
+}
+
+/** Hands `element` to `ref`, a ref object or a function, as React hands one the element it is
+ * given to. */
+function handTo<T>(ref: Ref<T> | undefined, element: T | null): void {
+  if (typeof ref === "function") ref(element);
+  else if (ref) ref.current = element;
+}
+
+/** React Aria's table, whose cells' words the reader can select without the row pressed opening
+ * what it leads to (16:M21) - a path to copy, a message, a unit - as a panel's words always could
+ * be: every table the page draws is this one, `LongTable`'s among them. Its rows are selected as a
+ * press on them ends (`SELECTED_ON_PRESS_UP`), and a press that selected words opens nothing
+ * (`watchSelecting`); the element it draws is handed to `ref`. */
+export function Table({ ref, ...props }: ComponentProps<typeof AriaTable>) {
+  const watched = useCallback(
+    (grid: HTMLTableElement | HTMLDivElement | null) => {
+      handTo(ref, grid);
+      if (grid === null) return;
+      const stop = watchSelecting(grid);
+      return () => {
+        stop();
+        handTo(ref, null);
+      };
+    },
+    [ref],
+  );
+  return <AriaTable {...props} {...SELECTED_ON_PRESS_UP} ref={watched} />;
+}
 
 /** React Aria's own class, with one or more of a table's own beside it, since ui.css selects on
  * both: a string on its own would replace React Aria's rather than join it. Every long table once

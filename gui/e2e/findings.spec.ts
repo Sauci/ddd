@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   CONTROLLER,
+  draggedAcross,
   drift,
   driftIn,
   EVENT_LOGGER,
@@ -170,6 +171,27 @@ test("a component's page reached from a finding leads back to the Findings tab, 
   await page.getByRole("button", { name: "Back to Table", exact: true }).click();
   await expect(page).toHaveURL(/\/project\?view=table$/);
   await expect(page.getByRole("grid", { name: "Components" })).toBeVisible();
+});
+
+test("a finding's words dragged over are selected, and open no panel, where a click on its row does", async ({
+  page,
+  gui,
+}) => {
+  // 16:M21: a press on a row turned text selection off on it, and selected the row as it went
+  // down, its panel opening under a drag over its words.
+  drift(gui.directory);
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Findings" }).click();
+  const row = page
+    .getByRole("row", { name: "definition-mismatch" })
+    .filter({ hasText: "controller.ddd.json" });
+  const words = row.getByRole("gridcell").first();
+  await expect(words).toContainText("is declared differently");
+  expect(await draggedAcross(page, words)).toContain("is declared differently");
+  await expect(page.getByRole("complementary")).toHaveCount(0);
+  await expect(row).toHaveAttribute("aria-selected", "false");
+  await words.click();
+  await expect(page.getByRole("complementary", { name: "definition-mismatch" })).toBeVisible();
 });
 
 test("a filter the server fails on says so above the table", async ({ page, gui }) => {

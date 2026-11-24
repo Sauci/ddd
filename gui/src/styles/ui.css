@@ -480,6 +480,14 @@ tr.changing td {
   font-size: var(--text-small);
   font-weight: 600;
 }
+/* The words of a cell can be selected, a path or a message to copy, as a panel's can (16:M21):
+   React Aria turns selection off on a row for as long as a press on it lasts (`usePress`'s
+   `disableTextSelection` sets `user-select: none` on the row), which a cell's own value keeps from
+   reaching its words. A press that selected some opens nothing (`selectsText`, lib/pressing.ts). */
+.react-aria-Cell {
+  -webkit-user-select: text;
+  user-select: text;
+}
 /* ValuesGridView's own grid (spec 5.2): every header and cell is a number (or blank), so the
    whole table reads right aligned, like a spreadsheet's - placed ahead of the row-selection and
    error tints below so their own, more specific selectors keep winning over this one. */

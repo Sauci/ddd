@@ -89,9 +89,10 @@ let tabbed = false;
 
 /**
  * Watches the focus from the page's start (16:I13):
- * - keeps the control each press of the pointer went down on until the press is over - React Aria
- *   selects a row as the pointer goes down, and the page draws the row's panel before the browser
- *   gives the focus to the cell pressed;
+ * - keeps the control each press of the pointer went down on until the press is over, for a panel
+ *   the press opens to take as the control it was opened from wherever the browser has put the
+ *   focus by then - a table's row is selected as the press on it ends (16:M21), the focus on the
+ *   cell pressed since the press went down;
  * - lets go of what a change of page asked for and has not had yet, once the reader presses a key
  *   or the pointer, turns the wheel or touches the page meanwhile (ruling B11-48): while the
  *   panel's heading is still to take the focus, that focus and the panel's show, the focus staying

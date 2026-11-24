@@ -64,15 +64,15 @@ export function ProjectPage({ state, onComponent, onOpen }: Props) {
         <LongTable
           aria-label="Components"
           // A press anywhere in a row opens its component, not only a press on the Name button, and
-          // so does Enter on a focused row (fix round 1, Minor 4). A press on a row selects no
-          // text: React Aria's `usePress` takes it, and turns text selection off on the row from
-          // the press's start to its end (`usePress.mjs`, `disableTextSelection`), so a mouse
-          // dragged across a File cell selects none of its path - as a press on a row of the Files
-          // tab, which selects that row and opens its Remove panel, selects none of its entry. The
-          // Name button's own `onPress` does not also fire the row's: `usePress` stops a press
-          // event from propagating past whichever element handles it first, by default, and a
-          // `Button` never opts out of that (`usePress.mjs`'s own `shouldStopPropagation`) - so the
-          // two never fire together over one click.
+          // so does Enter on a focused row (fix round 1, Minor 4). A mouse dragged across a File
+          // cell selects its path, to be copied, and opens nothing (16:M21): React Aria's `usePress`
+          // turns text selection off on the row pressed, which a cell's own `user-select` turns on
+          // again within it, and a press that selected words is no press of the row (`Table`,
+          // ui/Table.tsx) - as a drag over an entry of the Files tab selects it, and opens no
+          // panel. The Name button's own `onPress` does not also fire the row's: `usePress` stops a
+          // press event from propagating past whichever element handles it first, by default, and
+          // a `Button` never opts out of that (`usePress.mjs`'s own `shouldStopPropagation`) - so
+          // the two never fire together over one click.
           onRowAction={(key) => onComponent(String(key))}
         >
           <TableHeader>

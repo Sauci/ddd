@@ -4,6 +4,7 @@ import type { Page } from "@playwright/test";
 import {
   CONTROLLER,
   chooseUnit,
+  draggedAcross,
   drift,
   gainLink,
   held,
@@ -268,6 +269,22 @@ test("the table is one tab away", async ({ page, gui }) => {
   await page.reload();
   await expect(componentRow(page, "Controller").getByRole("gridcell").nth(0)).toHaveText("0");
   await expect(page).toHaveURL(/\?view=table$/);
+});
+
+test("a path dragged over in the Table tab is selected, and opens no component, where a click on its row does", async ({
+  page,
+  gui,
+}) => {
+  // 16:M21: a press on a row turned text selection off on it, and the drag's press opened the
+  // component, so no path in a table could be copied.
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Table" }).click();
+  const path = componentRow(page, "Controller").locator(".path span");
+  await expect(path).toHaveText("components/controller.ddd.json");
+  expect(await draggedAcross(page, path)).toBe("components/controller.ddd.json");
+  await expect(page).toHaveURL(/\?view=table$/);
+  await path.click();
+  await expect(page.getByRole("heading", { name: "Controller", level: 1 })).toBeVisible();
 });
 
 test("a row followed from the keyboard opens its page with the focus on its heading, and Back the page before with its own", async ({

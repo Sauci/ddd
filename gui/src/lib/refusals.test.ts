@@ -5,6 +5,8 @@ import {
   isStale,
   offerShown,
   STALE as PAGE_STALE,
+  type PanelShows,
+  panelReads,
   panelShows,
   type Refused,
   refusalOf,
@@ -242,4 +244,41 @@ describe("what a panel shows of the answer about its own entity", () => {
       });
     },
   );
+});
+
+describe("what a panel shows once it reads the project's units beside its entity", () => {
+  // The unit, type and variable panels read `GET /api/units` for what their choosers list.
+  const RPM = { unit: "RPM", sites: 2 };
+  const reply: PanelShows<typeof RPM> = { shown: "reply", reply: RPM };
+  const UNITS = { units: [], vocabulary: null };
+  const failed = new ApiError(500, "internal", "ddd gui failed on this request");
+
+  test.each([
+    { shown: "reading" } as const,
+    { shown: "updating" } as const,
+    { shown: "refusal", refusal: "'RPM' is not declared in the open project" } as const,
+  ])("what it shows short of its entity's answer stands, whatever the units' read: %o", (shows) => {
+    expect(panelReads(shows, { data: undefined, error: failed })).toEqual(shows);
+    expect(panelReads(shows, { data: UNITS, error: null })).toEqual(shows);
+  });
+
+  test("its entity's answer and the units', it shows the answer", () => {
+    expect(panelReads(reply, { data: UNITS, error: null })).toEqual(reply);
+  });
+
+  test("its entity's answer, the units on their way, it is reading", () => {
+    expect(panelReads(reply, { data: undefined, error: null })).toEqual({ shown: "reading" });
+  });
+
+  test("its entity's answer, the units' read failed with nothing to draw from, it says so in its place", () => {
+    // Where it once said it was reading, for good.
+    expect(panelReads(reply, { data: undefined, error: failed })).toEqual({
+      shown: "refusal",
+      refusal: "ddd gui failed on this request",
+    });
+  });
+
+  test("its entity's answer, the units' read failed over an answer the query still holds, it draws from that", () => {
+    expect(panelReads(reply, { data: UNITS, error: failed })).toEqual(reply);
+  });
 });

@@ -12,7 +12,14 @@ import { useUpdating } from "../app/updating";
 import { useDebounced } from "../app/useDebounced";
 import { TypePanelView } from "../components/TypePanelView";
 import { planEdit } from "../lib/projectUnits";
-import { heldOf, offerShown, panelShows, type Refused, refusalOf } from "../lib/refusals";
+import {
+  heldOf,
+  offerShown,
+  panelReads,
+  panelShows,
+  type Refused,
+  refusalOf,
+} from "../lib/refusals";
 import type { Route } from "../lib/route";
 import { planShown, unsettled } from "../lib/typing";
 import { typeLabel } from "../lib/undo";
@@ -131,7 +138,11 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
 
   // What the panel shows of that answer (`panelShows`): a type just renamed to this spelling is
   // refused until the rename is analysed, and the panel says the findings are updating meanwhile.
-  const answer = panelShows(reply, (shown) => shown.name, name, updating);
+  // Its read of the units failed with nothing to draw from, it says why (`panelReads`).
+  const answer = panelReads(
+    panelShows(reply, (shown) => shown.name, name, updating),
+    units,
+  );
   const type = answer.shown === "reply" ? answer.reply : undefined;
   const offer = type?.keys.find((entry) => entry.key === selected);
   const starting = offer?.values[0]?.raw ?? null;

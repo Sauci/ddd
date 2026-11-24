@@ -12,7 +12,14 @@ import { useUpdating } from "../app/updating";
 import { useDebounced } from "../app/useDebounced";
 import { type Offer, type UnitAction, UnitPanelView } from "../components/UnitPanelView";
 import { offers, planEdit } from "../lib/projectUnits";
-import { heldOf, offerShown, panelShows, type Refused, refusalOf } from "../lib/refusals";
+import {
+  heldOf,
+  offerShown,
+  panelReads,
+  panelShows,
+  type Refused,
+  refusalOf,
+} from "../lib/refusals";
 import type { Route } from "../lib/route";
 import { planShown, unsettled } from "../lib/typing";
 import { unitLabel } from "../lib/undo";
@@ -58,15 +65,19 @@ export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved, o
     queryFn: () => getUnit(name),
     placeholderData: (previous) => previous,
   });
-  // What the panel shows of that answer (`panelShows`): a unit just renamed to this spelling is
-  // refused until the rename is analysed, and the panel says the findings are updating meanwhile.
-  const answer = panelShows(reply, (shown) => shown.unit, name, updating);
-  const shownReply = answer.shown === "reply" ? answer.reply : undefined;
   const units = useQuery({
     queryKey: ["units", revision],
     queryFn: () => getUnits(),
     placeholderData: (previous) => previous,
   });
+  // What the panel shows of that answer (`panelShows`): a unit just renamed to this spelling is
+  // refused until the rename is analysed, and the panel says the findings are updating meanwhile.
+  // Its read of the units failed with nothing to draw from, it says why (`panelReads`).
+  const answer = panelReads(
+    panelShows(reply, (shown) => shown.unit, name, updating),
+    units,
+  );
+  const shownReply = answer.shown === "reply" ? answer.reply : undefined;
   // Set once this panel renamed or removed its unit: the unit is then gone because the reader
   // asked, and the panel moves on without the tab saying that it disappeared.
   const moving = useRef(false);

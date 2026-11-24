@@ -179,3 +179,22 @@ export function panelShows<T>(
   if (own !== undefined) return { shown: "reply", reply: own };
   return answer.error === null ? { shown: "reading" } : { shown: "updating" };
 }
+
+/**
+ * What a panel shows once it reads the project's units beside its entity - the unit, type and
+ * variable panels, for what their choosers list (`GET /api/units`): what it shows of its entity
+ * (`panelShows`) while that is not the entity's answer; once it is, that it is reading while the
+ * units have not come, and their read's failure in its place once that read failed with nothing to
+ * draw from, where the panel said it was reading, for good (15:M15). A read that failed while the
+ * query still holds the units of an earlier read draws from them, as the Units tab draws the table
+ * it keeps beside the same failure.
+ */
+export function panelReads<T>(
+  shows: PanelShows<T>,
+  units: { data: unknown; error: Error | null },
+): PanelShows<T> {
+  if (shows.shown !== "reply" || units.data !== undefined) return shows;
+  return units.error === null
+    ? { shown: "reading" }
+    : { shown: "refusal", refusal: units.error.message };
+}

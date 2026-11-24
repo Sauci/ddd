@@ -788,6 +788,26 @@ test("a type's panel says it is reading the type until it is read", async ({
   await expect(reading).toHaveCount(0);
 });
 
+test("a type's panel whose read of the project's units fails says why, where it said it was reading", async ({
+  page,
+  structuresGui,
+}) => {
+  // The type's own read goes through: the units its chooser lists fail, every one of them, and
+  // nothing else on the Types tab reads them.
+  const failed = await failing(page, "/api/units", "http");
+  await page.goto(structuresGui.address);
+  await page.getByRole("link", { name: "Types", exact: true }).click();
+  const row = page.getByRole("row", { name: "Temperature_t", exact: true });
+  await row.click();
+
+  const panel = page.getByRole("complementary", { name: "Temperature_t", exact: true });
+  await expect(panel.getByRole("heading", { name: "Temperature_t" })).toBeVisible();
+  await expect(panel.getByRole("alert")).toHaveText(SERVER_FAILED);
+  await expect(panel.getByText("Reading Temperature_t…")).toHaveCount(0);
+  await expect(row).toBeVisible();
+  expect(failed()).toBeGreaterThanOrEqual(1);
+});
+
 test("an apply made from a type's panel whose plan the server fails on when asked again offers nothing to press beside the refusal", async ({
   page,
   structuresGui,

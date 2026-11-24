@@ -510,6 +510,27 @@ test("a unit's panel whose unit fails to load says why, beside the table", async
   expect(failed()).toBeGreaterThanOrEqual(1);
 });
 
+test("a unit's panel whose read of the units fails on a new revision says why, beside the table the tab keeps", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Units", exact: true }).click();
+  const row = page.getByRole("row", { name: "ms", exact: true });
+  await row.click();
+  const panel = page.getByRole("complementary", { name: "ms", exact: true });
+  await expect(panel.getByRole("combobox", { name: "Rename ms to" })).toBeVisible();
+
+  // Every read of the units fails from here, and the restamp makes a new revision at once: the
+  // tab keeps its table under its alert (kept.spec.ts), and the unit's own read goes through.
+  const failed = await failing(page, "/api/units", "http");
+  restamp(gui.directory, CONTROLLER);
+  await expect(panel.getByRole("alert")).toHaveText(SERVER_FAILED);
+  await expect(panel.getByText("Reading ms…")).toHaveCount(0);
+  await expect(row).toBeVisible();
+  expect(failed()).toBeGreaterThanOrEqual(1);
+});
+
 test("a units file listing no unit has the units in use adopted into it, and nothing else written", async ({
   page,
   copiedGui,

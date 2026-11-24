@@ -767,6 +767,26 @@ test("a variable's panel whose variable fails to load says why, beside the table
   expect(failed()).toBeGreaterThanOrEqual(1);
 });
 
+test("a variable's panel whose read of the project's units fails says why, where it said it was reading", async ({
+  page,
+  gui,
+}) => {
+  // The variable's own read goes through: the units its chooser lists fail, every one of them.
+  const failed = await failing(page, "/api/units", "http");
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  const row = page.getByRole("row", { name: "ValueB", exact: true });
+  await expect(row).toBeVisible();
+  await row.click();
+
+  const panel = page.getByRole("complementary", { name: "ValueB", exact: true });
+  await expect(panel.getByRole("heading", { name: "ValueB" })).toBeVisible();
+  await expect(panel.getByRole("alert")).toHaveText(SERVER_FAILED);
+  await expect(panel.getByText("Reading ValueB…")).toHaveCount(0);
+  await expect(page.getByRole("rowheader", { name: "ValueB", exact: true })).toBeVisible();
+  expect(failed()).toBeGreaterThanOrEqual(1);
+});
+
 test("a finding in a variable's panel leads to the unit it names, on the Units tab", async ({
   page,
   copiedGui,

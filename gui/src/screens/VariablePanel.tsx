@@ -23,7 +23,14 @@ import {
   descriptionShown,
 } from "../lib/description";
 import { planEdit } from "../lib/projectUnits";
-import { heldOf, offerShown, panelShows, type Refused, refusalSentence } from "../lib/refusals";
+import {
+  heldOf,
+  offerShown,
+  panelReads,
+  panelShows,
+  type Refused,
+  refusalSentence,
+} from "../lib/refusals";
 import { planShown, unsettled } from "../lib/typing";
 import { removeLabel, settleLabel } from "../lib/undo";
 import { editOf, outsideVocabulary, planning, textOf } from "../lib/units";
@@ -102,10 +109,19 @@ export function VariablePanel({
     queryFn: () => getVariable(name),
     placeholderData: (previous) => previous,
   });
+  const units = useQuery({
+    queryKey: ["units", revision],
+    queryFn: () => getUnits(),
+    placeholderData: (previous) => previous,
+  });
   // What the panel shows of that answer (`panelShows`): refused because a file an edit wrote has
   // not been analysed yet, it says the findings are updating rather than the refusal, over the
-  // variable as it showed it, and never another variable's answer under this name.
-  const answer = panelShows(variable, (shown) => shown.name, name, updating);
+  // variable as it showed it, and never another variable's answer under this name. Its read of
+  // the units failed with nothing to draw from, it says why (`panelReads`).
+  const answer = panelReads(
+    panelShows(variable, (shown) => shown.name, name, updating),
+    units,
+  );
   const reply = answer.shown === "reply" ? answer.reply : undefined;
   // Spec 5.5: a variable renamed or removed on disk - or named by an address no file declares,
   // such as an old bookmark - is not declared any longer, and its panel closes. It says why on
@@ -116,11 +132,6 @@ export function VariablePanel({
   useEffect(() => {
     if (undeclared) onUndeclared();
   }, [undeclared, onUndeclared]);
-  const units = useQuery({
-    queryKey: ["units", revision],
-    queryFn: () => getUnits(),
-    placeholderData: (previous) => previous,
-  });
   // What removing this declaration from `file` would take - asked for only on a component's
   // page, which is what `file` being stated says; the project screen's own panel offers no
   // removal, and asks for no plan.

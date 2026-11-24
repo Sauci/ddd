@@ -1,7 +1,7 @@
 import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { failing, held, SERVER_FAILED, UNITS, writeUnseen } from "./demo";
+import { drift, failing, held, SERVER_FAILED, UNITS, writeUnseen } from "./demo";
 import { expect, type Gui, test } from "./fixtures";
 
 /** A component the project does not include yet, declaring nothing - written into the copy
@@ -930,22 +930,25 @@ function changeIncludes(
   writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`, "utf8");
 }
 
+/** examples/vocabulary's sections file in `directory` with .calib aligned to three bytes, as
+ * shared.spec.ts breaks it: still json and plainly a sections file, but no power of two, so the
+ * file fails its own model and does not load. */
+function unloadedSections(directory: string): void {
+  const path = join(directory, "sections.ddd.json");
+  const before = readFileSync(path, "utf8");
+  const broken = before.replace(
+    /("section": "\.calib"[^}]*?"alignment": )4/,
+    (_, head: string) => `${head}3`,
+  );
+  if (broken === before) throw new Error(`.calib states no alignment 4 in ${path}`);
+  writeFileSync(path, broken);
+}
+
 test("an entry whose file did not load is listed as not loaded, its kind still read", async ({
   page,
   copiedGui,
 }) => {
-  const gui = await copiedGui("vocabulary", (directory) => {
-    // .calib aligned to three bytes, as shared.spec.ts breaks it: still json and plainly a
-    // sections file, but no power of two, so the file fails its own model and does not load.
-    const path = join(directory, "sections.ddd.json");
-    const before = readFileSync(path, "utf8");
-    const broken = before.replace(
-      /("section": "\.calib"[^}]*?"alignment": )4/,
-      (_, head: string) => `${head}3`,
-    );
-    if (broken === before) throw new Error(`.calib states no alignment 4 in ${path}`);
-    writeFileSync(path, broken);
-  });
+  const gui = await copiedGui("vocabulary", unloadedSections);
   await page.goto(gui.address);
   await page.getByRole("link", { name: "Files", exact: true }).click();
 
@@ -956,6 +959,28 @@ test("an entry whose file did not load is listed as not loaded, its kind still r
   // Against a file that loaded, whose State says nothing.
   const units = page.getByRole("row", { name: UNITS, exact: true });
   await expect(units.getByRole("gridcell")).toHaveText(["units", "", ""]);
+});
+
+test("a row whose file did not load leads to why, where the banner under the masthead leads it", async ({
+  page,
+  copiedGui,
+}) => {
+  // 16:M20: the row's panel offered its removal alone, as for every row.
+  const gui = await copiedGui("vocabulary", unloadedSections);
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Files", exact: true }).click();
+  await page.getByRole("row", { name: "sections.ddd.json", exact: true }).click();
+  const panel = page.getByRole("complementary", { name: "sections.ddd.json", exact: true });
+  // A sections file has no page of its own, and did not load: why is the one way it leads.
+  await expect(panel.getByRole("link")).toHaveText(["Why it did not load"]);
+  await panel.getByRole("link", { name: "Why it did not load", exact: true }).click();
+  await expect(page).toHaveURL(/\/project\?view=findings&text=sections\.ddd\.json$/);
+  await expect(page.getByRole("textbox", { name: "Filter findings" })).toHaveValue(
+    "sections.ddd.json",
+  );
+  await expect(
+    page.getByRole("row").filter({ hasText: "sections.ddd.json" }).first(),
+  ).toBeVisible();
 });
 
 test("an entry naming no file, and a pattern matching none, are listed as naming no file, with nothing beneath them", async ({
@@ -1043,6 +1068,44 @@ test("a pattern's row is listed with the files it matches beneath it, each one a
   });
   await expect(logging).not.toHaveClass(/\bchild\b/);
   await expect(logging.getByRole("gridcell").nth(0)).toHaveText("project");
+});
+
+test("a row's panel leads to its component's page and to its findings, beside its removal", async ({
+  page,
+  gui,
+}) => {
+  // 16:M20: selecting a row offered its removal alone, for a file a pattern brings in a refusal
+  // as the panel's whole content, and its Findings count is no link. Controller's reading of ValueA
+  // drifted from SensorHub's, so its file has a finding to lead to.
+  drift(gui.directory);
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Files", exact: true }).click();
+  const row = page.getByRole("row", { name: "components/controller.ddd.json", exact: true });
+  await expect(row.getByRole("gridcell").last()).toHaveText("1");
+  await row.click();
+  const panel = page.getByRole("complementary", {
+    name: "components/controller.ddd.json",
+    exact: true,
+  });
+  await expect(panel.getByRole("link")).toHaveText(["Open Controller", "Show its findings"]);
+  // The refusal stands beside them, as it did.
+  await expect(panel.getByRole("region", { name: "Remove from the includes" })).toContainText(
+    "has no entry of its own",
+  );
+
+  await panel.getByRole("link", { name: "Show its findings", exact: true }).click();
+  await expect(page).toHaveURL(/\/project\?view=findings&text=controller\.ddd\.json$/);
+  await expect(
+    page
+      .getByRole("row", { name: "definition-mismatch" })
+      .filter({ hasText: "controller.ddd.json" }),
+  ).toBeVisible();
+
+  // Back to the row's panel, and on to its component.
+  await page.goBack();
+  await panel.getByRole("link", { name: "Open Controller", exact: true }).click();
+  await expect(page).toHaveURL(/\/component\?file=[^&]+controller\.ddd\.json$/);
+  await expect(page.getByRole("heading", { name: "Controller", level: 1 })).toBeVisible();
 });
 
 test("a removal of a file only a pattern brings in is refused, naming the pattern, with nothing to press", async ({

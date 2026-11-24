@@ -165,6 +165,7 @@ function Remove({
       {removal !== null && (
         <RemoveFileView
           removal={removal}
+          onFollow={() => undefined}
           project={reply.project}
           waiting={waiting}
           offer={{ plan: plan ?? null, refusal: refusal ?? null }}

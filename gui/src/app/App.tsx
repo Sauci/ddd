@@ -342,6 +342,7 @@ export function App() {
             arrived={arrived}
             onPath={openFiles}
             stopped={stopped}
+            onOpen={navigate}
           />
         ) : route.view === "findings" ? (
           // Drawn anew at each following - a link pressed, the banner's to a file's findings and

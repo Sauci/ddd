@@ -174,12 +174,18 @@ function checksLeft(count: number, stopped: boolean): string {
   return `the project's checks wait until ${count === 1 ? "it does" : "they do"}`;
 }
 
-/** A file that did not load, by its name (`unloadedNames`), leading to its finding: the Findings
- * tab, asked for the findings that hold the file's own name - its own, the one saying why it did
- * not load among its errors, and one filed at the entry naming a file that is not there, whose
- * words name it. By the file's own name, the last part of the one telling two apart, which a
- * finding's file name does not hold (`_holds`, gui/api.py): two of one name lead to the findings
- * of both. */
+/** A file that did not load, by its name (`unloadedNames`), leading to its finding
+ * (`fileFindings`). */
 function findingsOf(name: string): Lead {
-  return { text: name, to: { page: "project", view: "findings", text: baseName(name) } };
+  return { text: name, to: fileFindings(name) };
+}
+
+/** Where a file's findings are: the Findings tab, asked for the findings that hold the file's own
+ * name - its own, the one saying why it did not load among its errors where it did not, and one
+ * filed at the entry naming a file that is not there, whose words name it. By the file's own name,
+ * the last part of its path or of the name telling two apart, which a finding's file name does not
+ * hold (`_holds`, gui/api.py): two of one name lead to the findings of both. Where the banner leads
+ * a file that did not load, and a row of the Files tab its file (`fileRemoval`, lib/files.ts). */
+export function fileFindings(file: string): Route {
+  return { page: "project", view: "findings", text: baseName(file) };
 }

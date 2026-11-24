@@ -26,6 +26,7 @@ import {
   rowsOf,
 } from "../lib/files";
 import { type FilesHold, filesHoldAfter, filesHoldOf, filesShown } from "../lib/filesHold";
+import type { Route } from "../lib/route";
 import { planEdit } from "../lib/shared";
 import { planShown } from "../lib/typing";
 import { filesLabel } from "../lib/undo";
@@ -46,6 +47,9 @@ interface Props {
   onPath: (path: string | undefined) => void;
   /** The server stopped: nothing can be applied. */
   stopped: boolean;
+  /** Following where a row leads - its component's page, its findings, why its file did not load
+   * (16:M20): the route, which the app navigates to. */
+  onOpen: (route: Route) => void;
 }
 
 /** The open project's Files tab (design §2 and §3): the root project's own `includes`, one row per
@@ -59,7 +63,7 @@ interface Props {
  * changed (`filesHoldOf`) and draws the answer with it (`filesShown`) until an answer shows it,
  * the page's own undo puts it back, or an answer of a revision including the edit comes
  * (`filesHoldAfter`). An edit refused holds nothing, and its row stays as it was. */
-export function FilesPage({ state, path, arrived, onPath, stopped }: Props) {
+export function FilesPage({ state, path, arrived, onPath, stopped, onOpen }: Props) {
   const revision = state?.revision;
   const files = useQuery({
     queryKey: ["files", revision],
@@ -120,6 +124,7 @@ export function FilesPage({ state, path, arrived, onPath, stopped }: Props) {
             stopped={stopped}
             onClose={() => onPath(undefined)}
             onHeld={setHold}
+            onFollow={onOpen}
           />
         ) : form === "create" ? (
           <NewFile
@@ -373,6 +378,7 @@ function RemoveFile({
   stopped,
   onClose,
   onHeld,
+  onFollow,
 }: {
   removal: FileRemoval;
   /** Whether the route is still the one the page was loaded with (`FilesPage`'s own `arrived`). */
@@ -383,6 +389,8 @@ function RemoveFile({
   onClose: () => void;
   /** Applied: the key taken out, whose entries the tab leaves out until its entries do. */
   onHeld: (hold: FilesHold | null) => void;
+  /** Following where the row leads (`FileRemoval.leads`). */
+  onFollow: (to: Route) => void;
 }) {
   const [changesShown, setChangesShown] = useState(false);
   // Whether the reader pressed for the plan of the row the page was loaded with. Kept for as long
@@ -406,6 +414,7 @@ function RemoveFile({
   return (
     <RemoveFileView
       removal={removal}
+      onFollow={onFollow}
       project={project}
       waiting={asked ? undefined : () => setPressed(true)}
       offer={{ plan: offerPlan, refusal, planning: offerPlanning }}

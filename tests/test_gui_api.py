@@ -10398,6 +10398,53 @@ class TestTwoFilesOfOneNameThatDidNotLoad:
         )
 
 
+class TestTwoFilesOfOneNameInTheFindingsFilter:
+    """Two components, each ``b.ddd.json`` in a folder of its own, both loaded and both filing a
+    finding: the Findings tab's File column names each by as much of its path as tells the two
+    apart (``toldApart``, ``gui/src/lib/paths.ts``), and its text filter matches what that column
+    draws, so that a reader typing a name as the column shows it finds the row (16:M15)."""
+
+    @staticmethod
+    def opened(base: Path) -> Api:
+        return opened(
+            base,
+            {
+                "p.ddd.json": project("P", "x/b.ddd.json", "y/b.ddd.json", "c.ddd.json"),
+                "x/b.ddd.json": component("B1", declare("output", "Pace", typename="Speed_t")),
+                "y/b.ddd.json": component("B2", declare("output", "Pace", typename="Speed_t")),
+                "c.ddd.json": component("C", declare("output", "Pace", typename="Speed_t")),
+            },
+        )
+
+    @staticmethod
+    def files_of(api: Api, text: str) -> list[str]:
+        body = get(api, "/api/findings", text=text).body
+        return sorted({"/".join(found["file"].split("/")[-2:]) for found in body["findings"]})
+
+    def test_a_text_as_the_column_names_one_file_leaves_its_findings_alone(
+        self, tmp_path: Path
+    ) -> None:
+        api = self.opened(tmp_path)
+        assert self.files_of(api, "x/b.ddd.json") == ["x/b.ddd.json"]
+        assert self.files_of(api, "Y/B.ddd.json") == ["y/b.ddd.json"]
+
+    def test_a_text_as_the_column_names_a_file_of_a_name_of_its_own_is_unchanged(
+        self, tmp_path: Path
+    ) -> None:
+        api = self.opened(tmp_path)
+        assert {
+            Path(found["file"]).name
+            for found in get(api, "/api/findings", text="c.ddd.json").body["findings"]
+        } == {"c.ddd.json"}
+
+    def test_the_name_alone_leaves_both_files_and_a_folder_of_a_path_is_still_no_name(
+        self, tmp_path: Path
+    ) -> None:
+        api = self.opened(tmp_path)
+        assert self.files_of(api, "b.ddd.json") == ["x/b.ddd.json", "y/b.ddd.json"]
+        assert self.files_of(api, tmp_path.name) == []
+
+
 class TestAPlanOfWhatNoFileThatLoadedDeclares:
     """A name only a file that did not load declares is in no index, and a plan asked about it
     has to say why: that a file did not load, naming it, in the words its panel's route answers

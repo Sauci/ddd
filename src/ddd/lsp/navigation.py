@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections import Counter
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -635,14 +636,19 @@ def told_apart(files: Iterable[Path]) -> list[str]:
     and all of them together spell the path in full.
     """
     listed = [(file, file.as_posix().split("/")) for file in files]
+    # Counted rather than compared pair by pair: a project of thousands of files, named all at
+    # once for a filter over its findings, took seconds to compare each with every other.
+    ending: Counter[tuple[str, ...]] = Counter()
+    for _, segments in listed:
+        for depth in range(1, len(segments) + 1):
+            ending[tuple(segments[-depth:])] += 1
+    listing = Counter(file for file, _ in listed)
     named = []
     for file, segments in listed:
-        # The last segment is the name, so a file of another name stops the walk at once.
-        others = [theirs for other, theirs in listed if other != file]
+        # The last segment is the name, so a file of another name stops the walk at once. Those
+        # equal to the file are the file itself, set aside.
         depth = 1
-        while depth < len(segments) and any(
-            theirs[-depth:] == segments[-depth:] for theirs in others
-        ):
+        while depth < len(segments) and ending[tuple(segments[-depth:])] > listing[file]:
             depth += 1
         named.append("/".join(segments[-depth:]))
     return named

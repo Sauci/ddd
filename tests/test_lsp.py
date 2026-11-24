@@ -1651,6 +1651,12 @@ class TestNavigation:
             "/v.ddd.json",
         ]
 
+    def test_a_file_listed_twice_is_not_another_file_of_its_name(self) -> None:
+        """The same path twice is one file twice, not two files to tell apart."""
+        assert navigation.told_apart(
+            [Path("/w/a/u.ddd.json"), Path("/w/a/u.ddd.json"), Path("/w/b/u.ddd.json")]
+        ) == ["a/u.ddd.json", "a/u.ddd.json", "b/u.ddd.json"]
+
 
 class TestHover:
     """What the project made of a variable, which is not what the file under the cursor says."""

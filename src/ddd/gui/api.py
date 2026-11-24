@@ -636,7 +636,8 @@ class Api:
             order = [at for at in order if findings[at].diagnostic.check == check]
         if text is not None:
             wanted = text.lower()
-            order = [at for at in order if _holds(findings[at], wanted)]
+            named = _file_names(revision)
+            order = [at for at in order if _holds(findings[at], wanted, named)]
         page = order[offset:]
         if limit is not None:
             page = page[:limit]
@@ -2119,13 +2120,24 @@ def _named(built: Index, derived: Derived, name: str) -> dict[str, str]:
     }
 
 
-def _holds(filed: Filed, wanted: str) -> bool:
+def _file_names(revision: Revision) -> dict[Path, str]:
+    """Each file of ``revision`` as the Findings tab's File column names it: by its name alone, and
+    two of one name in different folders by as much of their paths as tells them apart
+    (:func:`~ddd.lsp.navigation.told_apart`) among every file of the revision, as the page names
+    them (``toldApartAll``, ``gui/src/lib/paths.ts``)."""
+    paths = [file.path for file in revision.files]
+    return dict(zip(paths, told_apart(paths), strict=True))
+
+
+def _holds(filed: Filed, wanted: str, named: Mapping[Path, str]) -> bool:
     """Whether a text filter of ``GET /api/findings`` leaves ``filed`` (16:I14): its check, its
-    words or its file's own name - as the Findings tab's File column names it - holds ``wanted``,
-    the text the reader typed, in lower case as they are compared. A folder of the file's path is
-    not its name: every finding's path holds the folders the project lies in."""
+    words or its file's name - as the Findings tab's File column draws it, which tells two files of
+    one name apart by their paths (``named``, :func:`_file_names`), and names one the revision does
+    not list by its own name - holds ``wanted``, the text the reader typed, in lower case as they
+    are compared. A folder of the file's path is not its name, unless it is what tells two files
+    apart: every finding's path holds the folders the project lies in."""
     finding = filed.diagnostic
-    texts = (finding.check, finding.message, filed.file.name)
+    texts = (finding.check, finding.message, named.get(filed.file, filed.file.name))
     return any(wanted in each.lower() for each in texts)
 
 

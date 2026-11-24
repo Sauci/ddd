@@ -396,6 +396,8 @@ test("modules are cut where a module's box reaches past the canvas, whichever ed
   // A module of this width, zoomed in, reaches further than at the zoom of 1.
   expect(modulesCut([at(150, 0)], { x: 0, y: 0, zoom: 2 }, size)).toBe(true);
   expect(modulesCut([at(150, 0)], { x: 0, y: 0, zoom: 1 }, size)).toBe(false);
+  expect(modulesCut([at(0, 0)], { x: 0, y: 0, zoom: 4 }, { width: 5000, height: 100 })).toBe(true);
+  expect(modulesCut([at(0, 0)], { x: 0, y: 0, zoom: 1 }, { width: 5000, height: 100 })).toBe(false);
   expect(modulesCut([], view, size)).toBe(false);
 });
 

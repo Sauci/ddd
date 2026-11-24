@@ -54,9 +54,9 @@ export interface TypePanelViewProps {
   /** Whether the findings may be about to change (spec 6): the panel says so where it lists them,
    * also while it lists none - an edit may be about to bring the first. */
   updating?: boolean;
-  /** When the chooser's list opens: as its field takes the focus, as the panel's does once a key
-   * is picked (`focus`, left out), or once it is typed into (`input`), for a story to show what
-   * the open list covers - a range's two fields and the sentence under them. */
+  /** When the chooser's list opens: once it is typed into, or asked for with ArrowDown or the arrow
+   * (`input`, left out), or as its field takes the focus (`focus`), for a story to photograph the
+   * list open: opened on the focus, the list would cover the panel below the field. */
   pickerTrigger?: "input" | "focus" | undefined;
 }
 
@@ -148,7 +148,7 @@ export function TypePanelView(props: TypePanelViewProps) {
               note={props.note}
               busy={busy}
               focus={1}
-              pickerTrigger={props.pickerTrigger ?? "focus"}
+              pickerTrigger={props.pickerTrigger}
             />
           )}
         </>

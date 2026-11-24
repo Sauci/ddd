@@ -283,6 +283,33 @@ test("a type's range that is no range says so under the chooser, and offers no A
   await expect(panel.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
 });
 
+test("a key row, pressed by the mouse or by Enter, hands the focus to its chooser with the list closed", async ({
+  page,
+  structuresGui,
+}) => {
+  // 16:M6: the keyboard once opened the list over the panel, the mouse gave no focus at all.
+  await page.goto(structuresGui.address);
+  await page.getByRole("link", { name: "Types" }).click();
+  await page.getByRole("row", { name: "Temperature_t", exact: true }).click();
+  const panel = page.getByRole("complementary", { name: "Temperature_t" });
+  const chooser = panel.getByRole("combobox", { name: "Unit of Temperature_t" });
+  const unit = panel.getByRole("row", { name: "Unit", exact: true });
+
+  await unit.click();
+  await expect(chooser).toBeFocused();
+  await expect(chooser).toHaveAttribute("aria-expanded", "false");
+
+  const limits = panel.getByRole("row", { name: "Limits", exact: true });
+  await limits.focus();
+  await limits.press("Enter");
+  await expect(panel.getByRole("combobox", { name: "Limits of Temperature_t" })).toBeFocused();
+  await expect(panel.getByRole("combobox", { name: "Limits of Temperature_t" })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
+  await expect(panel.getByRole("textbox", { name: "Rename Temperature_t to" })).toBeVisible();
+});
+
 for (const typed of ["Description", "Rename Temperature_t to"]) {
   test(`a type's ${typed === "Description" ? "description" : "new name"} typed stays in its field when a key row is chosen`, async ({
     page,

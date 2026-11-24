@@ -47,7 +47,7 @@ function PanelStory({
   shown = false,
   refusal,
   renameTo: renameSeed = null,
-  pickerTrigger,
+  pickerTrigger = "focus",
 }: Props) {
   const [selected, setSelected] = useState<string | undefined>(on);
   const [typed, setTyped] = useState<string | undefined>(undefined);

@@ -121,7 +121,13 @@ export function ComboBox({
   // opens it.
   const [puttingBack, setPuttingBack] = useState(false);
   useEffect(() => {
-    if (autoFocus !== null) input.current?.focus();
+    if (autoFocus === null) return;
+    input.current?.focus();
+    // A row pressed by the mouse is drawn, and this field given the focus, as the button goes
+    // down: the browser then focuses the cell pressed, once the press's own event is over. Asked
+    // again after it, the field has the focus whichever way the row was chosen.
+    const again = setTimeout(() => input.current?.focus(), 0);
+    return () => clearTimeout(again);
   }, [autoFocus]);
   return (
     <AriaComboBox

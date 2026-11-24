@@ -31,6 +31,16 @@ export function unloadedNames(files: readonly Pick<SourceFile, "path" | "loaded"
   return toldApartAll(files.filter((file) => !file.loaded).map((file) => file.path));
 }
 
+/** Whether `files` is the project's own description alone, and it did not load: the state lists it
+ * alone then, since nothing past a description that does not parse or match its shape is read
+ * (`loadBanner`), so the project has no file to draw a module of. */
+export function descriptionAlone(
+  project: string,
+  files: readonly Pick<SourceFile, "path" | "loaded">[],
+): boolean {
+  return files.length === 1 && files.every((file) => !file.loaded && file.path === project);
+}
+
 /** The parts naming `items`, as every sentence of this interface lists names - "A", "A and B",
  * "A, B and C" - and past one more than `FILES_NAMED`, the first `FILES_NAMED` and how many more
  * there are, as a plan's consequence counts its files (lib/units.ts): named one by one, every file

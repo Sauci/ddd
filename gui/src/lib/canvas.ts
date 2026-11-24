@@ -432,9 +432,14 @@ export function searchLine(modules: readonly GraphModule[], search: string): str
  * (lib/unloaded.ts) - that is why: such a file leaves every read of the project with an error, and
  * said as "no dictionary" alone, it named neither file nor cause (16:I9). Otherwise only that there
  * is none: a plugin that raised and a constant declared twice leave none too, which the graph does
- * not tell apart.
+ * not tell apart. Where the project's own description is what did not load (`described`,
+ * `descriptionAlone`), nothing past it was read and the canvas draws no module at all: it says
+ * that, rather than that modules are drawn without arrows.
  */
-export function noDictionary(unloaded: readonly string[]): string {
+export function noDictionary(unloaded: readonly string[], described: boolean): string {
+  if (described) {
+    return `${namedFiles(unloaded)} did not load, so this project has no dictionary and no module is drawn.`;
+  }
   if (unloaded.length === 0) {
     return "This project has no dictionary, so its modules are drawn without arrows.";
   }

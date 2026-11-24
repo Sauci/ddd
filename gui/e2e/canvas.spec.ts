@@ -115,6 +115,22 @@ test("a project with a file that does not load is drawn without arrows, and says
   await expect(page.locator(".react-flow__edge")).toHaveCount(0);
 });
 
+test("a project whose own description does not load says no module is drawn, not that its arrows are missing", async ({
+  page,
+  gui,
+}) => {
+  // Cut in half: nothing past the description is read, so no file of the project loads and the
+  // canvas has no module to draw.
+  const path = join(gui.directory, "demo.ddd.json");
+  const bytes = readFileSync(path);
+  writeFileSync(path, bytes.subarray(0, Math.floor(bytes.length / 2)));
+  await page.goto(gui.address);
+  await expect(page.getByRole("status").filter({ hasText: "no dictionary" })).toHaveText(
+    "demo.ddd.json did not load, so this project has no dictionary and no module is drawn.",
+  );
+  await expect(page.locator(".react-flow__node")).toHaveCount(0);
+});
+
 test("Fit returns the viewport to the one the canvas opened on", async ({ page, gui }) => {
   await page.goto(gui.address);
   const nodes = page.locator(".react-flow__node");

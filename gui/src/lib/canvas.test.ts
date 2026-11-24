@@ -324,17 +324,26 @@ test("the line counts exactly what a search dims the rest for, ignoring case", (
 test("a canvas with no dictionary says so, naming the files that did not load where that is why", () => {
   // A plugin that raised or a constant declared twice leaves no dictionary too, with every file
   // loaded: the graph cannot tell those apart, and names no cause.
-  expect(noDictionary([])).toBe(
+  expect(noDictionary([], false)).toBe(
     "This project has no dictionary, so its modules are drawn without arrows.",
   );
   // A file that did not load leaves every read of the project with an error, and so no dictionary.
-  expect(noDictionary(["controller.ddd.json"])).toBe(
+  expect(noDictionary(["controller.ddd.json"], false)).toBe(
     "controller.ddd.json did not load, so this project has no dictionary, and its modules are " +
       "drawn without arrows.",
   );
-  expect(noDictionary(["a.ddd.json", "b.ddd.json", "c.ddd.json", "d.ddd.json", "e.ddd.json"])).toBe(
+  expect(
+    noDictionary(["a.ddd.json", "b.ddd.json", "c.ddd.json", "d.ddd.json", "e.ddd.json"], false),
+  ).toBe(
     "a.ddd.json, b.ddd.json, c.ddd.json and 2 more did not load, so this project has no " +
       "dictionary, and its modules are drawn without arrows.",
+  );
+});
+
+test("a canvas whose project's own description did not load says no module is drawn", () => {
+  // Nothing past the description is read, so there is no module for arrows to be missing from.
+  expect(noDictionary(["demo.ddd.json"], true)).toBe(
+    "demo.ddd.json did not load, so this project has no dictionary and no module is drawn.",
   );
 });
 

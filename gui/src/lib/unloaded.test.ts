@@ -1,6 +1,13 @@
 import { describe, expect, test } from "vitest";
 import type { RefusedBuild, SourceFile } from "../api/types";
-import { loadBanner, namedFiles, type Part, RECORD_IGNORED, unloadedNames } from "./unloaded";
+import {
+  descriptionAlone,
+  loadBanner,
+  namedFiles,
+  type Part,
+  RECORD_IGNORED,
+  unloadedNames,
+} from "./unloaded";
 
 const PROJECT = "C:/work/demo/demo.ddd.json";
 
@@ -322,5 +329,20 @@ describe("the banner under the masthead", () => {
       "build/ddd-build.json: unknown check 'nonesuch'; this record is ignored, so its severities " +
         "apply to no analysis.",
     ]);
+  });
+});
+
+describe("descriptionAlone", () => {
+  test("is true where the project's own description is the one file, and it did not load", () => {
+    expect(descriptionAlone(PROJECT, [file(PROJECT, false, "unknown")])).toBe(true);
+  });
+
+  test("is false where the description loaded, or other files are listed with it", () => {
+    expect(descriptionAlone(PROJECT, [file(PROJECT)])).toBe(false);
+    expect(descriptionAlone(PROJECT, [file(PROJECT, false, "project"), file(CONTROLLER)])).toBe(
+      false,
+    );
+    expect(descriptionAlone(PROJECT, [file(CONTROLLER, false)])).toBe(false);
+    expect(descriptionAlone(PROJECT, [])).toBe(false);
   });
 });

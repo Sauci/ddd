@@ -39,7 +39,7 @@ import { emptyProjectLine } from "../lib/files";
 import { layoutScreen } from "../lib/layoutAnswers";
 import type { Route } from "../lib/route";
 import { visibleOnly } from "../lib/shape";
-import { unloadedNames } from "../lib/unloaded";
+import { descriptionAlone, unloadedNames } from "../lib/unloaded";
 import { forgetPositions, rememberPosition, savedPositions } from "../state/positions";
 import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
@@ -110,7 +110,11 @@ export function GraphPage({
           beside it - what is drawn is still the truth of the last revision that was read. */}
       {graph.isError && <Banner tone="error">{graph.error.message}</Banner>}
       {/* Naming the files that did not load, where that is why (`noDictionary`, 16:I9). */}
-      {!answer.dictionary && <Banner tone="warning">{noDictionary(unread)}</Banner>}
+      {!answer.dictionary && (
+        <Banner tone="warning">
+          {noDictionary(unread, descriptionAlone(project, state?.files ?? []))}
+        </Banner>
+      )}
       {/* A project that includes no component draws no module: the line says how to write one
           (`emptyProjectLine`, 16:M13). */}
       {empty !== null && (

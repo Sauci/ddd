@@ -220,6 +220,23 @@ function boundsOf(placed: readonly Placed[]): {
   return { x: left, y: top, width: right - left, height: bottom - top };
 }
 
+/** Whether a view of the canvas, at `viewport` in a box of `size`, leaves any placed module's box
+ * partly or wholly past the box's edge: what a panel opening beside the canvas does to the view it
+ * had, narrowing the box under it, so that the far modules are cut until `Fit` (16:M22). */
+export function modulesCut(
+  placed: readonly Placed[],
+  viewport: Viewport,
+  size: { width: number; height: number },
+): boolean {
+  return placed.some((at) => {
+    const left = at.x * viewport.zoom + viewport.x;
+    const top = at.y * viewport.zoom + viewport.y;
+    const right = left + NODE_WIDTH * viewport.zoom;
+    const bottom = top + NODE_HEIGHT * viewport.zoom;
+    return left < 0 || top < 0 || right > size.width || bottom > size.height;
+  });
+}
+
 /**
  * Where the canvas should open, and what `Fit` returns it to - review fix round 2, item 1
  * (continuing round 1's Ruling T10-2, which this replaces): applied as `defaultViewport` on React

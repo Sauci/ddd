@@ -10,7 +10,15 @@ import {
   ReactFlowProvider,
   useReactFlow,
 } from "@xyflow/react";
-import { type KeyboardEvent, useCallback, useId, useMemo, useRef, useState } from "react";
+import {
+  type KeyboardEvent,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { getGraph } from "../api/client";
 import type { GraphReply, State } from "../api/types";
 import { useKept } from "../app/useKept";
@@ -27,6 +35,7 @@ import {
   flowTitle,
   MIN_ZOOM,
   type ModuleNodeType,
+  modulesCut,
   noDictionary,
   nodesOf,
   objectsInDisagreement,
@@ -296,6 +305,24 @@ function Canvas({
     const view = openingViewport(placement, size, MIN_ZOOM);
     if (view !== null) void flow.setViewport(view, { duration: flightOf(reducedMotion) });
   }, [flow, drawnPlacement, reducedMotion]);
+  // A panel opening beside the canvas narrows the box React Flow draws in under the view it had,
+  // and the far modules are cut until Fit (16:M22): the view is fitted again when the box resizes
+  // and leaves a module cut, and left as the reader put it when it does not.
+  const sized = containerSize !== null;
+  useEffect(() => {
+    const node = containerRef.current;
+    if (!sized || node === null) return;
+    let width = node.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (node.clientWidth === width) return;
+      width = node.clientWidth;
+      const placement = drawnPlacement();
+      const size = { width: node.clientWidth, height: node.clientHeight };
+      if (placement !== null && modulesCut(placement, flow.getViewport(), size)) onFit();
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [sized, drawnPlacement, flow, onFit]);
   const onSearchKey = useCallback(
     (event: KeyboardEvent<HTMLInputElement>) => {
       if (event.key !== "Enter") return;

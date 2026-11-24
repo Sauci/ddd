@@ -878,3 +878,36 @@ test("a row of the components table opens its component, pressed beside its name
   await expect(page.getByRole("heading", { name: "SensorHub", level: 1 })).toBeVisible();
   await expect(page).toHaveURL(/\/component\?file=.*sensor_hub\.ddd\.json$/);
 });
+
+test("a panel opened beside the canvas leaves no module cut, without Fit", async ({
+  page,
+  gui,
+}) => {
+  drift(gui.directory);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(gui.address);
+  const canvas = page.getByRole("region", { name: "Modules" });
+  const nodes = page.locator(".react-flow__node");
+  /** How far the modules reach past the canvas's box, in px: nothing where every one is inside. */
+  const cut = async () => {
+    const frame = await canvas.boundingBox();
+    const boxes = await nodes.evaluateAll((all) =>
+      all.map((node) => {
+        const { left, right } = node.getBoundingClientRect();
+        return { left, right };
+      }),
+    );
+    return Math.max(
+      0,
+      ...boxes.map((box) =>
+        Math.max((frame?.x ?? 0) - box.left, box.right - ((frame?.x ?? 0) + (frame?.width ?? 0))),
+      ),
+    );
+  };
+  await expect(nodes).toHaveCount(4);
+  expect(await cut()).toBe(0);
+  await page.locator(".flow-label.error").click();
+  await expect(page.getByRole("complementary", { name: "ValueA" })).toBeVisible();
+  // The box narrowed under the panel: the view follows it, as Fit would have it.
+  await expect.poll(cut).toBe(0);
+});

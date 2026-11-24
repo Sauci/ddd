@@ -9,6 +9,7 @@ import {
   flowTitle,
   insideBox,
   MIN_ZOOM,
+  modulesCut,
   noDictionary,
   nodesOf,
   objectsInDisagreement,
@@ -375,6 +376,24 @@ test("an arrow is bright only while both of its ends are, and open only while it
 // constant against itself the way passing it as openingViewport's own minZoom argument would.
 test("MIN_ZOOM is React Flow's own default, 0.5", () => {
   expect(MIN_ZOOM).toBe(0.5);
+});
+
+test("modules are cut where a module's box reaches past the canvas, whichever edge", () => {
+  const module = {} as GraphModule;
+  const at = (x: number, y: number): Placed => ({ module, x, y });
+  const size = { width: 600, height: 400 };
+  const view = { x: 0, y: 0, zoom: 1 };
+  // NODE_WIDTH wide: inside at 0, cut past the right edge once it reaches beyond 600.
+  expect(modulesCut([at(0, 0), at(100, 100)], view, size)).toBe(false);
+  expect(modulesCut([at(0, 0), at(600 - NODE_WIDTH + 1, 0)], view, size)).toBe(true);
+  expect(modulesCut([at(-1, 0)], view, size)).toBe(true);
+  expect(modulesCut([at(0, -1)], view, size)).toBe(true);
+  expect(modulesCut([at(0, 400)], view, size)).toBe(true);
+  // The view's own offset and zoom move every box with it.
+  expect(modulesCut([at(10, 10)], { x: 590, y: 0, zoom: 1 }, size)).toBe(true);
+  expect(modulesCut([at(0, 0)], { x: 0, y: 0, zoom: 0.5 }, size)).toBe(false);
+  expect(modulesCut([at(500, 0)], { x: 0, y: 0, zoom: 2 }, size)).toBe(true);
+  expect(modulesCut([], view, size)).toBe(false);
 });
 
 test("openingViewport shows nothing when nothing is placed", () => {

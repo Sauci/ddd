@@ -10476,6 +10476,26 @@ class TestTwoFilesOfOneNameInTheFindingsFilter:
         # Typed as part of a name, the same text is found in both.
         assert _holds(Filed(second, finding), "/x/b.ddd.json", named, exact=False)
 
+    def test_the_link_to_a_namesake_whose_name_another_contains_finds_its_own_alone(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Through the api: names as two namesakes at a drive's root draw them, one the other's
+        tail, ``/x/b.ddd.json`` and ``a/x/b.ddd.json``."""
+        api = self.opened(tmp_path)
+        first, second = (tmp_path / "x" / "b.ddd.json"), (tmp_path / "y" / "b.ddd.json")
+        monkeypatch.setattr(
+            "ddd.gui.api._file_names",
+            lambda revision: {
+                file.path: names
+                for file in revision.files
+                for path, names in ((first, "/x/b.ddd.json"), (second, "a/x/b.ddd.json"))
+                if file.path == path
+            },
+        )
+        assert self.files_of(api, "/x/b.ddd.json") == ["x/b.ddd.json"]
+        assert self.files_of(api, "a/x/b.ddd.json") == ["y/b.ddd.json"]
+        assert self.files_of(api, "x/b.ddd.json") == ["x/b.ddd.json", "y/b.ddd.json"]
+
     def test_the_filter_reads_a_text_that_is_a_name_the_column_draws_as_a_whole_name(
         self, tmp_path: Path
     ) -> None:

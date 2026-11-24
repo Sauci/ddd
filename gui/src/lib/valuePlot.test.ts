@@ -166,6 +166,13 @@ describe("plotted", () => {
     const plot = plotted(wide, false);
     // Ten digits of 6.5 units, the gap to the frame and a little over.
     expect(plot.left).toBeGreaterThanOrEqual(6 + 6.5 * 10);
+    // A negative least reading is a character longer than the greatest.
+    const negative: ValuesReply = {
+      ...CURVE_A,
+      datatype: "sint32",
+      rows: [[-2147483648, 2, 3, 4, 5, 6]],
+    };
+    expect(plotted(negative, false).left).toBeGreaterThanOrEqual(6 + 6.5 * 11);
     expect(plot.lines[0]?.points[0]?.x).toBeCloseTo(plot.left);
     expect(plot.lines[0]?.points.at(-1)?.x).toBeCloseTo(BOX.width - BOX.right);
   });

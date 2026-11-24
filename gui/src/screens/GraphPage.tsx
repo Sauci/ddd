@@ -174,7 +174,7 @@ function Canvas({
   // reader is waiting for, not a throwaway layout of nothing that would make `placed` stop being
   // `null` before a real one has arrived.
   const layout = useLayout(graph.modules, graph.flows);
-  const screen = layoutScreen(layout);
+  const screen = layoutScreen(layout, stopped);
   const flow = useReactFlow();
   const reducedMotion = useReducedMotion();
   const [hovered, setHovered] = useState<string | null>(null);
@@ -345,6 +345,9 @@ function Canvas({
   // Minor 6): this reads its tag and draws accordingly, deciding nothing about when either
   // applies itself.
   if (screen.kind === "waiting") return <p className="quiet">Laying the project out…</p>;
+  // Nothing, where ddd gui has stopped and the worker with it: the line under the masthead says
+  // what to do (`layoutScreen`).
+  if (screen.kind === "stopped") return null;
   if (screen.kind === "failed") return <Banner tone="error">{screen.message}</Banner>;
   return (
     <div className={variable !== undefined || chooser !== null ? "with-panel" : undefined}>

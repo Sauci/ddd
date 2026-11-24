@@ -6,9 +6,11 @@ import {
   drift,
   driftMax,
   EVENT_LOGGER,
+  failing,
   held,
   includesNothing,
   renameValueA,
+  restamp,
 } from "./demo";
 import { expect, test } from "./fixtures";
 
@@ -334,6 +336,33 @@ test("a layout worker that cannot start says to reload, and a reload draws the c
   await page.reload();
   await expect(page.getByRole("button", { name: "Controller", exact: true })).toBeVisible();
   await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
+test("a layout worker that cannot start says nothing of a reload once ddd gui has stopped", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await expect(page.getByRole("button", { name: "Controller", exact: true })).toBeVisible();
+  // Away from the canvas and back to it, as a reader finds the server gone: the canvas, left, lets
+  // its worker go, and the one the next visit makes asks the server for its script.
+  await page.getByRole("link", { name: "Units" }).click();
+  await expect(page.getByRole("grid", { name: "Units" })).toBeVisible();
+  // The server gone, as the long poll finds it (start.spec.ts), and so every request of the page.
+  await failing(page, "/api/state", "network");
+  restamp(gui.directory, CONTROLLER);
+  const stopped = "ddd gui has stopped. Start it again and open the address it prints.";
+  await expect(page.getByRole("alert").filter({ hasText: "has stopped" })).toHaveText(stopped);
+  const asked = await failing(page, /^\/assets\/layoutWorker-[^/]+\.js$/, "network");
+  await page.getByRole("link", { name: "Graph" }).click();
+  // The worker created once more failed too: its script asked for twice, no more.
+  await expect.poll(asked).toBe(2);
+  await expect(page.getByText("Laying the project out…", { exact: true })).toHaveCount(0);
+  // A reload would meet the browser's refused connection and lose the tab: only the page's own
+  // line says what to do.
+  await expect(page.getByText("The layout worker stopped", { exact: false })).toHaveCount(0);
+  await expect(page.getByRole("alert").filter({ hasText: "layout worker" })).toHaveCount(0);
+  await expect(page.getByRole("alert")).toHaveText(stopped);
 });
 
 /** Records, from now on and at every frame the page paints, what the components table's summary

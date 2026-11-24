@@ -122,22 +122,44 @@ export function tableLine(counts: FindingCounts, updating: boolean): string {
   return updating ? `${errors}, ${warnings}${UPDATING}` : `${errors}, ${warnings}`;
 }
 
-/** What the Findings tab keeps as its selected finding once `reply` - the findings of its file and
+/**
+ * What the Findings tab keeps as its selected finding once `reply` - the findings of its file and
  * its check, asked of the newest revision - has come: the reply's own report of it, its notes and
  * its route that revision's, kept as the selection so that while the next revision's reply is
  * asked for the panel goes on showing it, never the finding as it was first selected; `selected`
- * itself while no reply has come; and nothing, `gone`, once the reply no longer reports its key -
- * the panel closes, saying so. Its key is the one thing a page of findings and a selection hold in
- * common. */
+ * itself while no reply has come; and nothing, `gone`, once the reply reports neither its key nor
+ * its words - the panel closes, saying so.
+ *
+ * Its key, the one thing a page of findings and a selection hold in common, is the server's, and
+ * holds the finding's place (`ddd.gui.derived.content_of`): a declaration taken out above it, or
+ * put in, moves its pointer, and the same finding comes back under another key. Where the key is
+ * gone, the reply's first report of the same words - in the same file, at the same severity and
+ * of the same check - is the finding at its new place, and is kept in its stead (15:M12). Of two
+ * findings saying one sentence in one file, the panel then follows the first: the pointer, which
+ * told them apart, is what moved.
+ */
 export function selectionAfter(
   selected: ListedFinding | undefined,
   reply: FindingsReply | undefined,
 ): { selected: ListedFinding | undefined; gone: boolean } {
   if (selected === undefined || reply === undefined) return { selected, gone: false };
-  const reported = reply.findings.find((finding) => finding.key === selected.key);
+  const reported =
+    reply.findings.find((finding) => finding.key === selected.key) ??
+    reply.findings.find((finding) => saysTheSame(finding, selected));
   return reported === undefined
     ? { selected: undefined, gone: true }
     : { selected: reported, gone: false };
+}
+
+/** Whether two findings say one thing of one file: its file, its severity, its check and its words,
+ * wherever in the file each is filed. */
+function saysTheSame(one: Finding, other: Finding): boolean {
+  return (
+    one.file === other.file &&
+    one.severity === other.severity &&
+    one.check === other.check &&
+    one.message === other.message
+  );
 }
 
 /** What the button that follows a finding says, or `null` when it leads nowhere. */

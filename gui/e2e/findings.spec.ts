@@ -372,6 +372,46 @@ test("a finding fixed from outside while its panel is open is no longer reported
   await expect(panel).toHaveCount(0);
 });
 
+test("a finding whose declaration moved up in its file keeps its panel, on the finding at its new place", async ({
+  page,
+  gui,
+}) => {
+  // UserInterface's own reading of ValueC drifted from SensorHub's: a definition-mismatch on
+  // UserInterface's third declaration, whose fix sets its unit back.
+  driftIn(gui.directory, USER_INTERFACE, "ValueC", "K");
+  const file = join(gui.directory, USER_INTERFACE);
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Findings", exact: true }).click();
+  await page
+    .getByRole("row", { name: "definition-mismatch" })
+    .filter({ hasText: "user_interface.ddd.json" })
+    .click();
+  const panel = page.getByRole("complementary", { name: "definition-mismatch" });
+  await panel.getByRole("button", { name: "Use the unit declared in sensor_hub" }).click();
+  await panel.getByRole("button", { name: "Show changes" }).click();
+  // Where the fix writes ValueC's unit: the line of ValueC's own unit in the file as it stands.
+  const where = panel.locator(".hunk .where");
+  await expect(where).toHaveText(`user_interface.ddd.json, line ${unitOfValueCAt(file)}`);
+
+  // ValueF's declaration, the one above it, taken out from outside, as an editor saving the file
+  // would: the same finding, in the same words, now stands at UserInterface's second declaration,
+  // and the panel stays on it, its fix planned again at the line ValueC's unit moved up to.
+  const data = JSON.parse(readFileSync(file, "utf8"));
+  data.component.interface.splice(1, 1);
+  writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
+  await expect(where).toHaveText(`user_interface.ddd.json, line ${unitOfValueCAt(file)}`);
+  await expect(panel.getByText("is declared differently by component")).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "no longer reported" })).toHaveCount(0);
+});
+
+/** The line, counted from 1, of ValueC's own `"unit"` in a file as it stands: the first after its
+ * name. */
+function unitOfValueCAt(file: string): number {
+  const lines = readFileSync(file, "utf8").split("\n");
+  const name = lines.findIndex((line) => line.includes('"name": "ValueC"'));
+  return lines.findIndex((line, at) => at > name && line.includes('"unit"')) + 1;
+}
+
 /** What the Findings tab says when a fix's Apply is refused because a file changed under its
  * preview: `FindingsPage.tsx`'s own sentence, held until the reader's next choice. */
 const STALE =

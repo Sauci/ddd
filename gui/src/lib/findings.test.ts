@@ -236,11 +236,49 @@ describe("what the Findings tab keeps of a selected finding", () => {
     expect(selectionAfter(kept.selected, undefined).selected).toBe(moved);
   });
 
-  test("nothing, and gone, where the reply no longer reports its key - however alike another reads", () => {
-    expect(selectionAfter(selected, reply(listed("a"), listed("c")))).toEqual({
-      selected: undefined,
-      gone: true,
-    });
+  // A declaration above it taken out, or put in: the server keys a finding by its place too, so
+  // the same finding comes back under another key, its pointer moved.
+  const HERE = "component.interface[2].definition";
+  const ABOVE = "component.interface[1].definition";
+  const BELOW = "component.interface[3].definition";
+
+  test("its place moved, the reply's report of the same words in its file is kept in its stead", () => {
+    const at = listed("b", { pointer: HERE });
+    const moved = listed("b moved", { pointer: ABOVE });
+    expect(selectionAfter(at, reply(moved))).toEqual({ selected: moved, gone: false });
+  });
+
+  test("its place moved, of two reports of the same words the panel follows the first", () => {
+    const at = listed("b", { pointer: HERE });
+    const first = listed("a", { pointer: ABOVE });
+    const second = listed("c", { pointer: BELOW });
+    expect(selectionAfter(at, reply(first, second))).toEqual({ selected: first, gone: false });
+  });
+
+  test("its own key reported, it is kept, before a report of the same words met first", () => {
+    const at = listed("b", { pointer: HERE });
+    const alike = listed("a", { pointer: ABOVE });
+    const own = listed("b", { pointer: HERE });
+    expect(selectionAfter(at, reply(alike, own)).selected).toBe(own);
+  });
+
+  test.each([
+    ["other words", { message: "'ValueA' is declared differently by component 'Pump'" }],
+    ["another severity", { severity: "warning" as const }],
+    ["another check", { check: "unknown-unit" }],
+    ["another file", { file: TYPES }],
+  ])(
+    "nothing, and gone, where the reply no longer reports its key nor its words: %s",
+    (_, fields) => {
+      const at = listed("b", { pointer: HERE });
+      expect(selectionAfter(at, reply(listed("a", { ...fields, pointer: ABOVE })))).toEqual({
+        selected: undefined,
+        gone: true,
+      });
+    },
+  );
+
+  test("nothing, and gone, where the reply reports nothing", () => {
     expect(selectionAfter(selected, reply())).toEqual({ selected: undefined, gone: true });
   });
 });

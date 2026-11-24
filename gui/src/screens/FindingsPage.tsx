@@ -206,7 +206,8 @@ export function FindingsPage({ state, text, onText, place, onPlace, stopped, onO
   // is a choice, so it is never given this one's sentence.
   const [refused, setRefused] = useState<string | null>(null);
   // The finding whose panel closed because the next revision no longer reports it - the
-  // analysis moved on, or somebody else fixed it (spec 5.3) - named above the table until
+  // analysis moved on, or somebody else fixed it (spec 5.3), its words gone with it: one that
+  // only moved in its file keeps its panel (`selectionAfter`) - named above the table until
   // another finding is selected or the reader leaves the tab. `UnitsPage`'s `gone` is the same
   // pattern; a finding has no name of its own to say instead.
   const [gone, setGone] = useState(false);
@@ -221,8 +222,8 @@ export function FindingsPage({ state, text, onText, place, onPlace, stopped, onO
         : () => getFindings({ file: selected.file, check: selected.check }),
   });
   // What the panel keeps of its finding once that reply has come (`selectionAfter`): the newest
-  // report of it, kept as the selection, or nothing once the reply no longer reports it - when the
-  // panel closes, and the tab says so.
+  // report of it, kept as the selection - at its new place where only its place moved - or
+  // nothing once the reply no longer reports it, when the panel closes, and the tab says so.
   const after = selectionAfter(selected, reported.data);
   if (after.selected !== selected) {
     setSelected(after.selected);

@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import {
   CONTROLLER,
   chooseUnit,
@@ -10,6 +10,7 @@ import {
   namingAScalarType,
   openValues,
   SENSOR_HUB,
+  twoFrames,
   withUnitOfValueA,
   writeUnseen,
 } from "./demo";
@@ -452,6 +453,82 @@ for (const way of ["wheel", "key"] as const) {
     expect(await page.evaluate(() => window.scrollY)).toBe(scrolled);
   });
 }
+
+/**
+ * A focus moved by no key and no pointer once a change of page's panel has read (16:I13, ruling
+ * B11-45): the go-to opens ParameterA beside Controller's declarations in a window 1000 by 420, its
+ * heading in view and focused. An assistive technology moves the focus on to the panel's Remove
+ * button, the page scrolling it into view, and the window then narrows. The focus stays where it
+ * was moved, in view: nothing the change of page left waiting takes it, or the page, back.
+ */
+test("a focus moved by no key and no pointer once a change of page's panel has read stays where it was moved, in view", async ({
+  page,
+  gui,
+}) => {
+  await page.setViewportSize({ width: 1000, height: 420 });
+  await page.goto(gui.address);
+  const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+  await goTo.pressSequentially("ParameterA");
+  await expect(page.getByRole("option", { name: "ParameterA" })).toBeVisible();
+  await goTo.press("Enter");
+  const panel = page.getByRole("complementary", { name: "ParameterA" });
+  await expect(panel.getByRole("grid", { name: "Keys of ParameterA" })).toBeVisible();
+  await expect(panel.getByRole("heading", { name: "ParameterA", level: 2 })).toBeFocused();
+  const remove = panel.getByRole("button", { name: "Remove from Controller" });
+  await expect(remove).toBeVisible();
+  await remove.focus();
+  await expect(remove).toBeInViewport();
+  await page.setViewportSize({ width: 960, height: 420 });
+  await twoFrames(page);
+  await expect(remove).toBeFocused();
+  await expect(remove).toBeInViewport();
+});
+
+/** GainA's panel on the Graph, and its link to Gain_t, the scalar type giving GainA its unit. */
+async function gainLink(page: Page, address: string): Promise<Locator> {
+  await page.goto(address);
+  const graph = new URL(page.url());
+  graph.pathname = "/project";
+  graph.search = "?variable=GainA";
+  await page.goto(graph.href);
+  const link = page
+    .getByRole("complementary", { name: "GainA" })
+    .getByRole("link", { name: "Gain_t" })
+    .first();
+  await expect(link).toBeVisible();
+  return link;
+}
+
+/**
+ * A focus moved by no key and no pointer while a change of page waits for its panel (16:I13,
+ * ruling B11-45): GainA's link to Gain_t opens the Types tab, whose types are held back, the
+ * page's heading holding the focus meanwhile. An assistive technology moves the focus on to the
+ * Units tab: the type's panel, drawn once the types are read, leaves it there.
+ */
+test("a focus moved by no key and no pointer while a type a panel links to is read stays where it was moved", async ({
+  page,
+  copiedGui,
+}) => {
+  const gui = await copiedGui("demo", namingAScalarType);
+  const link = await gainLink(page, gui.address);
+  const units = page.getByRole("link", { name: "Units", exact: true });
+  const release = await held(page, "/api/types");
+  try {
+    await link.click();
+    await expect(page.getByText("Reading the project's types…")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "DemoDevice", level: 1 })).toBeFocused();
+    await units.focus();
+  } finally {
+    release();
+  }
+  await expect(
+    page
+      .getByRole("complementary", { name: "Gain_t" })
+      .getByRole("heading", { name: "Gain_t", level: 2 }),
+  ).toBeVisible();
+  await twoFrames(page);
+  await expect(units).toBeFocused();
+});
 
 /** What the Graph and the Table say of a project that includes no component (16:M13). */
 const NEW_FILE =

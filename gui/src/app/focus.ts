@@ -4,6 +4,7 @@ import {
   type HeadingWanted,
   headingTaking,
   landing,
+  letsWaitGo,
   opensAnew,
   outOfView,
   returnPlace,
@@ -47,12 +48,14 @@ function controlOf(target: EventTarget | null): Control | null {
 }
 
 /** What a change of page waits to give the focus to (`askHeading`, `headingTaking`): nothing
- * once given, or once the reader presses a key or the pointer. */
+ * once given, or once the reader presses a key or the pointer, or the focus is moved elsewhere
+ * (`letsWaitGo`). */
 let headingWanted: HeadingWanted | null = null;
 
 /** Whether the panel a change of page, a following or a page loaded anew opens waits to be drawn,
  * to be scrolled into view once its page has settled (`askHeading`, `showWhenSettled`): no longer
- * once drawn, or once the reader presses a key or the pointer, or scrolls by a wheel or a touch. */
+ * once drawn, or once the reader presses a key or the pointer, or scrolls by a wheel or a touch, or
+ * the focus is moved elsewhere (`letsWaitGo`). */
 let showWanted = false;
 
 /** The slot whose panel was scrolled into view as it opened, and the window's scroll that scroll
@@ -77,6 +80,8 @@ let tabbed = false;
  * - lets a page's heading go that has not yet taken the focus a change of page asked it to, once
  *   the reader presses a key or the pointer meanwhile, and the panel the change opened that is not
  *   yet scrolled into view (`showWhenSettled`), once the reader scrolls by a wheel or a touch too;
+ *   and both once the focus is moved anywhere but onto a heading, a screen reader's doing or the
+ *   page's own (`letsWaitGo`, ruling B11-45);
  * - gives a place to the focus the page takes away with a control, never leaving it to the page's
  *   body (`landing`): the browser moves it there, its `focusout` naming nothing it moves to, as a
  *   control is removed, disabled - Apply, Put back, while their edit is written - or no longer drawn;
@@ -107,9 +112,14 @@ export function watchFocus(): () => void {
       }, 0);
     }
   };
-  const into = () => {
+  const into = (event: FocusEvent) => {
     tabbed = tabbing;
     tabbing = false;
+    // Moved with no key and no pointer - a screen reader taking it on, or the page's own code:
+    // where the reader is now, which nothing a change of page left waiting takes back
+    // (`letsWaitGo`).
+    const to = event.target;
+    if (letsWaitGo(to instanceof Element && to.matches("[data-heading]"))) letGo();
   };
   // A wheel or a touch scrolls the page as the reader would have it: the panel a change of page
   // opened is no longer to be scrolled to.
@@ -217,7 +227,8 @@ function giveHeading(page: HTMLElement | null, panel: HTMLElement | null): void 
  * itself - is laid out after the panel is first drawn, and pushes it out of view then. Watched by
  * the size of the slot it stands in (`slot`), the panel drawn there is scrolled into view as soon as
  * it stands out of it (`scrollShown`); the watch ends then, once no panel is drawn there, or once
- * the reader presses a key or the pointer, or scrolls the page by a wheel or a touch.
+ * the reader presses a key or the pointer, or scrolls the page by a wheel or a touch, or the focus
+ * is moved elsewhere (`letsWaitGo`).
  */
 function showWhenSettled(slot: HTMLElement): void {
   settling?.();

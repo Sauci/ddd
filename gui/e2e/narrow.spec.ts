@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { drift, held } from "./demo";
+import { drift, held, twoFrames } from "./demo";
 import { expect, test } from "./fixtures";
 
 // The page in a narrow window (16:M9), whether the window shares its screen, is a phone's, or is
@@ -222,4 +222,35 @@ test("a page loaded anew at an address naming a variable, in a window 800 by 600
   });
   await expect(panel.getByRole("heading", { name: "ParameterA", level: 2 })).toBeInViewport();
   expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+});
+
+/**
+ * The same address loaded anew while Controller's file is read slowly (16:M9, 16:I13, ruling
+ * B11-45): an assistive technology moves the focus on to the masthead's go-to meanwhile, by no key
+ * and no pointer. The panel, drawn once the file is read, is left where it stands, out of view:
+ * the page stays where the focus was moved.
+ */
+test("a variable's address loaded anew, the focus moved meanwhile by no key and no pointer, leaves the page where the focus is", async ({
+  page,
+  gui,
+}) => {
+  await page.setViewportSize({ width: 800, height: 600 });
+  const parameter = await parameterAddress(page, gui.address);
+  await page.goto(gui.address);
+  await expect(page.getByRole("region", { name: "Modules" })).toBeVisible();
+  const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+  const release = await held(page, "/api/file");
+  try {
+    await page.goto(parameter);
+    await expect(page.getByText("Reading the file…")).toBeVisible();
+    await goTo.focus();
+  } finally {
+    release();
+  }
+  const panel = page.getByRole("complementary", { name: "ParameterA" });
+  await expect(panel.getByRole("grid", { name: "Keys of ParameterA" })).toBeVisible();
+  await twoFrames(page);
+  await expect(goTo).toBeFocused();
+  await expect(goTo).toBeInViewport();
+  await expect(panel.getByRole("heading", { name: "ParameterA", level: 2 })).not.toBeInViewport();
 });

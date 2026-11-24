@@ -117,6 +117,19 @@ export function headingTaking(
 }
 
 /**
+ * Whether a focus moved while a change of page or a page loaded anew waits - to give a heading the
+ * focus, or to show the panel its address opens - lets what it waits for go (16:I13, ruling
+ * B11-45). Moved with no key and no pointer - a screen reader or voice control taking it on, or
+ * the page's own code - onto anything but a heading (`onHeading`), it is where the reader is now:
+ * it is never taken back to a heading, nor the page scrolled away from it to the panel. A heading taking it is the change's own
+ * doing: the page's while the panel is drawn, or the panel's drawn anew, from "Reading…" to its
+ * keys.
+ */
+export function letsWaitGo(onHeading: boolean): boolean {
+  return !onHeading;
+}
+
+/**
  * Whether a panel drawn takes the control holding the focus as the one it was opened from (16:I13):
  * where it was drawn from a control of the page's (`fromControl`), and is not the panel drawn
  * before it in its slot (`before`, that panel's title, `null` where none was) drawn again - a

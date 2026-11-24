@@ -721,6 +721,17 @@ export async function held(
   return release;
 }
 
+/** Waits two of the page's frames: by then what it does once a change is drawn has run - its
+ * effects, and what it watches of its own layout. */
+export async function twoFrames(page: Page): Promise<void> {
+  await page.evaluate(
+    () =>
+      new Promise<void>((done) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => done()));
+      }),
+  );
+}
+
 /**
  * Moves `file`'s modification time to now and changes none of its bytes. The watcher compares a
  * file's `(st_mtime_ns, st_size)` alone (`stamped` and `poll`, session.py), so its next poll

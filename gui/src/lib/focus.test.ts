@@ -4,6 +4,7 @@ import {
   headingAsked,
   headingTaking,
   landing,
+  letsWaitGo,
   opensAnew,
   outOfView,
   pageChanged,
@@ -146,6 +147,16 @@ describe("what the page asks of the focus and the window as its route moves on",
         shown({ page: "project", view: "findings", text: "b" }, 2),
       ),
     ).toBeNull();
+  });
+});
+
+describe("whether a focus moved by no key and no pointer lets what a change of page waits for go", () => {
+  test("moved anywhere but onto a heading: a control, a row, a tab", () => {
+    expect(letsWaitGo(false)).toBe(true);
+  });
+
+  test("not moved onto a heading, the change's own doing, or a panel's drawn anew", () => {
+    expect(letsWaitGo(true)).toBe(false);
   });
 });
 

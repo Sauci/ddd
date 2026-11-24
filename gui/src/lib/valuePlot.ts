@@ -34,8 +34,8 @@ export interface PlotReading {
   y: number;
 }
 
-/** The least height between two readings or two row labels, in the box's own units: a line of the
- * 10px text they are drawn in, and a pixel over. Two nearer than this are drawn over one another. */
+/** The least height between two row labels, in the box's own units: a line of the 10px text they
+ * are drawn in, and a pixel over. Two nearer than this are drawn over one another. */
 export const LABEL_GAP = 11;
 
 export interface PlotRule {
@@ -158,8 +158,9 @@ export function plotted(reply: ValuesReply, physical: boolean): Plot {
 }
 
 /** The readings beside the frame, from the greatest and the least value: each at its own place,
- * the lower moved down where it would be drawn over the greater (`LABEL_GAP`), and the one where
- * both are the same value. */
+ * and the one where both are the same value. The range is padded a twentieth of the span beyond
+ * the two (`rangeOf`), so that two readings stand the better part of the frame's height apart,
+ * however little the values differ: they never meet. */
 function readingsOf(
   ends: readonly [number, number] | null,
   yAt: (value: number) => number,
@@ -167,10 +168,9 @@ function readingsOf(
   if (ends === null) return [];
   const [greatest, least] = ends;
   if (greatest === least) return [{ text: String(rounded(greatest)), y: yAt(greatest) }];
-  const top = yAt(greatest);
   return [
-    { text: String(rounded(greatest)), y: top },
-    { text: String(rounded(least)), y: Math.max(yAt(least), top + LABEL_GAP) },
+    { text: String(rounded(greatest)), y: yAt(greatest) },
+    { text: String(rounded(least)), y: yAt(least) },
   ];
 }
 

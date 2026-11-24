@@ -175,6 +175,12 @@ test.each([
     answered(DESCRIBED, ["C:/work/demo/sizes.ddd.jsonc", null]),
     "the creation of 'sizes.ddd.jsonc'",
   ],
+  // A file created of the name the description has is told apart from it by its path (16:M15).
+  [
+    { action: "create", kind: "types", name: "demo" },
+    answered(DESCRIBED, ["C:/work/demo/shared/demo.ddd.json", null]),
+    "the creation of 'shared/demo.ddd.json'",
+  ],
   // An add is named by the path exactly as typed: that text is the entry the includes gain.
   [
     { action: "add", path: "sensors/a.ddd.json" },

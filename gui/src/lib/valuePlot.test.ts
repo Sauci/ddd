@@ -149,14 +149,15 @@ describe("plotted", () => {
     expect(plotted(empty, true).readings).toEqual([]);
   });
 
-  test("two readings too close to be read apart are drawn a reading's height apart", () => {
-    // 100 and 100.001 of a range whose span is a twentieth of it: the points are a hair apart.
+  test("the two readings are always a good way apart: the range is padded beyond them", () => {
+    // 100 and 100.001: the range is theirs and a twentieth either side, so they are drawn near the
+    // frame's two ends, however little they differ.
     const close: ValuesReply = {
       ...BLOCK_A,
       rows: [[100, 100.001, 100, 100.001, 100, 100, 100, 100]],
     };
     const [high, low] = plotted(close, false).readings;
-    expect((low?.y ?? 0) - (high?.y ?? 0)).toBeGreaterThanOrEqual(11);
+    expect((low?.y ?? 0) - (high?.y ?? 0)).toBeGreaterThan(100);
   });
 
   test("a value at the top of the range is drawn at the top of the padding", () => {
@@ -223,6 +224,9 @@ describe("plotted", () => {
     const plot = plotted(tenths, true);
     expect(plot.high).toBe(1.235);
     expect(plot.low).toBe(0.465);
+    // The figures beside the frame are the cells' own, with the same tail taken off: 12 counts of
+    // a tenth is 1.2000000000000002 as a float.
+    expect(plot.readings.map((reading) => reading.text)).toEqual(["1.2", "0.5"]);
   });
 
   test("a flat line at zero is ruled by its own lower limit", () => {

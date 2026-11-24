@@ -8,6 +8,7 @@ import {
   PLANNING,
   planning,
   sentenceKeys,
+  settleConsequence,
   shownChanges,
   unloadableOf,
 } from "../lib/units";
@@ -154,7 +155,7 @@ export function VariablePanelView(props: VariablePanelViewProps) {
         ) : (
           selected !== undefined &&
           (preview !== null ? (
-            <p className="consequence">{consequence(changes)}</p>
+            <p className="consequence">{settleConsequence(changes)}</p>
           ) : (
             props.planning === true && <p className="consequence">{PLANNING}</p>
           ))

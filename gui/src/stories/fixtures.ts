@@ -1307,7 +1307,7 @@ export const DEFINITION_MISMATCH_FIX: FixReply = {
   revision: 7,
   fixes: [
     {
-      title: "Use the datatype declared in controller",
+      title: "Use the datatype declared in controller (the code of the readers is not touched)",
       changes: [
         {
           file: USER_INTERFACE,
@@ -1326,7 +1326,7 @@ export const DEFINITION_MISMATCH_FIX: FixReply = {
       ],
     },
     {
-      title: "Use the unit declared in controller",
+      title: "Use the unit declared in controller (the code of the readers is not touched)",
       changes: [
         {
           file: USER_INTERFACE,

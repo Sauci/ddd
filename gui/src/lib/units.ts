@@ -201,6 +201,18 @@ export function consequence(changes: readonly PlannedChange[]): string {
   return `Changes ${files.length} file${files.length === 1 ? "" : "s"}: ${named}`;
 }
 
+/** What every settlement says after what it changes, in the words the server's fix titles end in
+ * (`CODE_NOT_TOUCHED`, ddd.finding_fixes): the descriptions agree once it is applied, and the code
+ * that reads the variable keeps the scale it was written with. */
+export const CODE_NOT_TOUCHED = " (the code of the readers is not touched)";
+
+/** What a settle's preview says: the consequence a preview always says, and that the readers' code
+ * is not touched - as the quick fix's own title says it, which the server writes. Nothing more
+ * than the consequence where there is nothing to change. */
+export function settleConsequence(changes: readonly PlannedChange[]): string {
+  return changes.length === 0 ? consequence(changes) : `${consequence(changes)}${CODE_NOT_TOUCHED}`;
+}
+
 /** The names a change gives the files it writes, in its order: the one place they are made, all of
  * them, before `consequence` keeps the first few - each by its own name, and two files of one name
  * in different folders by as much of their paths as tells them apart (`toldApartAll`), among every

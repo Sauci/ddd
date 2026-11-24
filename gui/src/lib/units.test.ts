@@ -15,6 +15,7 @@ import {
   planning,
   rawOf,
   sentenceKeys,
+  settleConsequence,
   shownChanges,
   textOf,
   unitLabel,
@@ -360,6 +361,13 @@ group("what a preview says and sends", () => {
       "the declaration of 'ValueA' in sensor_hub.ddd.json would not load with that datatype: enum conversion 'Mode_t' requires an integer datatype, got 'uint16'",
     ];
     expect(unloadableOf({ ...ONE_FILE, unloadable: said }, null)).toEqual(said);
+  });
+
+  test("a settle's preview says that the readers' code is not touched, as the fix's title does", () => {
+    expect(settleConsequence(ONE_FILE.changes)).toBe(
+      "Changes 1 file: controller.ddd.json (the code of the readers is not touched)",
+    );
+    expect(settleConsequence([])).toBe("Nothing to change");
   });
 
   test("each sentence of a plan has a key of its own, two alike told apart by which they are", () => {

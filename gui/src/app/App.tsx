@@ -32,7 +32,7 @@ import { LinkTabs } from "../ui/LinkTabs";
 import { PageHeading } from "../ui/PageHeading";
 import { UpdatingStatus } from "../ui/UpdatingNote";
 import { ErrorBoundary } from "./ErrorBoundary";
-import { askHeading, watchFocus } from "./focus";
+import { askHeading, pageShown, watchFocus } from "./focus";
 import { UpdatingContext } from "./updating";
 import { useProjectState } from "./useProjectState";
 import { useRoute } from "./useRoute";
@@ -90,6 +90,13 @@ export function App() {
   const { state, project, failed, refused, updating, stopped, failure } = useProjectState(
     opened !== null,
   );
+  // What a page loaded anew waits to show waits the short time from when the page first draws its
+  // own content: every page draws its own once the project's first analysis has landed, and before
+  // it its heading alone, so that a slow analysis takes none of that time (ruling B11-47).
+  const analysed = state !== null;
+  useEffect(() => {
+    if (analysed) pageShown();
+  }, [analysed]);
   // Asked again for each project the state followed comes to be of while the session names
   // another: another page of the same server opened it (`sessionAskedFor`, lib/session.ts). Keyed
   // by that project, so that a state moving on while an ask is out asks once more, cancelling the

@@ -759,6 +759,24 @@ export function moreScalarTypes(directory: string, count: number): void {
   writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`, "utf8");
 }
 
+/** A component of `name` declaring nothing, as its file holds it. */
+export function emptyComponent(name: string): string {
+  const data = { component: { name, description: `${name}, declaring nothing`, interface: [] } };
+  return `${JSON.stringify(data, null, 2)}\n`;
+}
+
+/** `count` components more in the demo's own `components/*.ddd.json` pattern, `Extra00` and on,
+ * each declaring nothing: rows enough to fill the Files tab's table box. */
+export function moreComponents(directory: string, count: number): void {
+  for (let index = 0; index < count; index += 1) {
+    const name = `Extra${String(index).padStart(2, "0")}`;
+    writeFileSync(
+      join(directory, "components", `${name.toLowerCase()}.ddd.json`),
+      emptyComponent(name),
+    );
+  }
+}
+
 /** Waits two of the page's frames: by then what it does once a change is drawn has run - its
  * effects, and what it watches of its own layout. */
 export async function twoFrames(page: Page): Promise<void> {

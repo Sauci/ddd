@@ -55,13 +55,16 @@ function controlOf(target: EventTarget | null): Control | null {
  * (`stillWaits`). Each ask is a want of its own, so that every change of page waits afresh. */
 let headingWanted: { heading: HeadingWanted; holding: number | null } | null = null;
 
-/** Whether the panel a page loaded anew opens waits to be drawn, to be scrolled into view once its
- * page has settled with no heading taking the focus (`askHeading`, `showWhenSettled`): no longer
- * once drawn, or once the reader presses a key or the pointer, or scrolls by a wheel or a touch, or
- * the focus is moved elsewhere (`letsWaitGo`). The panel a change of page opens waits for nothing
- * of its own: it is shown with its heading as that takes the focus (`giveHeading`), and so no later
- * than the page's heading holds the focus for it (ruling B11-47). */
-let showWanted = false;
+/** What a page loaded anew waits to show: the panel its address opens, to be scrolled into view
+ * once drawn and its page settled, with no heading taking the focus (`askHeading`,
+ * `showWhenSettled`); and since when the page has drawn what it shows (`pageShown`), `null` until
+ * then. No longer once drawn, or once the reader presses a key or the pointer, or scrolls by a
+ * wheel or a touch, or the focus is moved elsewhere (`letsWaitGo`), or `WAITS_AT_MOST_MS` after the
+ * page first drew what it shows (`stillWaits`, ruling B11-47): a slow first analysis spends none of
+ * that time. The panel a change of page opens waits for nothing of its own: it is shown with its
+ * heading as that takes the focus (`giveHeading`), and so no later than the page's heading holds
+ * the focus for it. */
+let showWanted: { since: number | null } | null = null;
 
 /** The slot whose panel was scrolled into view as it opened, and the window's scroll that scroll
  * left, while the panel is still to be shown from its top (`showsAgain`). */
@@ -171,7 +174,7 @@ export function focusCameByTab(): boolean {
 /** Lets go of what the panel a change of page or a page loaded anew opens waits for to be shown:
  * its draw, or its page's settling (`showWhenSettled`). */
 function letShowGo(): void {
-  showWanted = false;
+  showWanted = null;
   settling?.();
 }
 
@@ -190,8 +193,16 @@ function letGo(): void {
  * scrolled into view once its page has settled - on a page loaded anew, with no focus moved. */
 export function askHeading(asked: Asked): void {
   headingWanted = asked.heading === null ? null : { heading: asked.heading, holding: null };
-  showWanted = asked.shown;
+  showWanted = asked.shown ? { since: null } : null;
   giveHeading(pageHeading(), panelHeading());
+}
+
+/** Notes that the page draws what it shows, its project's first analysis having landed (`App`):
+ * what a page loaded anew waits to show waits `WAITS_AT_MOST_MS` from now at most (ruling B11-47),
+ * the time the analysis took left out of it - before, a page draws its heading alone, and says the
+ * analysis is on its way. */
+export function pageShown(): void {
+  if (showWanted !== null) showWanted.since ??= performance.now();
 }
 
 /** Puts the focus on the page's heading, at once where it is drawn, else as it is drawn: where a
@@ -213,7 +224,9 @@ export function takePageHeading(heading: HTMLElement): void {
  * the focus and the view go together (ruling B11-46): a heading focused is never left out of view,
  * the page's being scrolled to as it takes it, the panel's with its panel. */
 function giveHeading(page: HTMLElement | null, panel: HTMLElement | null): void {
-  let shows = showWanted;
+  const since = showWanted?.since ?? null;
+  if (since !== null && !stillWaits(since, performance.now())) showWanted = null;
+  let shows = showWanted !== null;
   const wanted = headingWanted;
   const holding = wanted?.holding ?? null;
   if (holding !== null && !stillWaits(holding, performance.now())) {
@@ -234,7 +247,7 @@ function giveHeading(page: HTMLElement | null, panel: HTMLElement | null): void 
     }
   }
   if (!shows || panel === null) return;
-  showWanted = false;
+  showWanted = null;
   const shown = panel.closest<HTMLElement>(".panel");
   const slot = shown === null ? null : slotOf(shown);
   if (slot !== null) showWhenSettled(slot);
@@ -312,7 +325,7 @@ export function panelDrawn(
   openers.set(slot, { title, opener: anew ? opener : (before?.opener ?? null) });
   const heading = panel.querySelector<HTMLElement>('[data-heading="panel"]');
   if (heading === null) return slot;
-  const waited = headingWanted?.heading === "panel" || showWanted;
+  const waited = headingWanted?.heading === "panel" || showWanted !== null;
   if (waited && panel.closest("main") !== null) giveHeading(null, heading);
   else if (anew) scrollShown(panel, heading);
   else if (showing?.slot === slot) {

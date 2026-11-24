@@ -1,8 +1,12 @@
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import {
   drift,
+  emptyComponent,
   gainLink,
   held,
+  moreComponents,
   moreScalarTypes,
   namingAScalarType,
   PAST_THE_WAITS,
@@ -357,4 +361,64 @@ test("a type drawn past a short wait under a table taller than a window 800 by 6
   await expect(heading).toBeFocused();
   await expect(heading).toBeInViewport();
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
+});
+
+/**
+ * A Files address naming a file the project does not hold yet, loaded anew (16:M9, ruling
+ * B11-47): the Files tab of a project with twenty more components, in a window 800 by 600. The
+ * file is written past the short time after the tab has drawn its table, and its row's panel,
+ * drawn then under the table, stays where it falls: the page is not scrolled to it, and no focus
+ * is moved.
+ */
+test("a Files address whose row comes past a short wait after the tab loaded anew at it leaves the page where it stands", async ({
+  page,
+  copiedGui,
+}) => {
+  await page.setViewportSize({ width: 800, height: 600 });
+  const gui = await copiedGui("demo", (directory) => moreComponents(directory, 20));
+  await page.goto(gui.address);
+  await expect(page.getByRole("link", { name: "Files", exact: true })).toBeVisible();
+  const late = "components/late.ddd.json";
+  const key = `${gui.directory.replaceAll("\\", "/")}/${late}`;
+  await page.goto(
+    `${new URL(gui.address).origin}/project?view=files&path=${encodeURIComponent(key)}`,
+  );
+  await expect(page.getByRole("grid", { name: "Files" })).toBeVisible();
+  await page.waitForTimeout(PAST_THE_WAITS);
+  writeFileSync(join(gui.directory, late), emptyComponent("Late"));
+  const panel = page.getByRole("complementary", { name: late });
+  await expect(panel).toBeAttached();
+  await twoFrames(page);
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  await expect(panel.getByRole("heading", { name: late, level: 2 })).not.toBeInViewport();
+  expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+});
+
+/**
+ * A page loaded anew whose project is slow to analyse (16:M9, ruling B11-47): Controller's address
+ * on ParameterA, in a window 800 by 600, the page's first state held back longer than the short
+ * time. The short time counts from when the page first draws its own content, not from the load:
+ * ParameterA's panel, drawn once the analysis has landed, is scrolled into view all the same.
+ */
+test("a page loaded anew at a variable's address while its project is analysed slowly has its panel in view", async ({
+  page,
+  gui,
+}) => {
+  await page.setViewportSize({ width: 800, height: 600 });
+  const parameter = await parameterAddress(page, gui.address);
+  await page.goto(gui.address);
+  await expect(page.getByRole("region", { name: "Modules" })).toBeVisible();
+  const release = await held(page, "/api/state");
+  try {
+    await page.goto(parameter);
+    await expect(page.getByRole("heading", { name: "DemoDevice", level: 1 })).toBeVisible();
+    await page.waitForTimeout(PAST_THE_WAITS);
+  } finally {
+    release();
+  }
+  const panel = page.getByRole("complementary", { name: "ParameterA" });
+  await expect(panel.getByRole("grid", { name: "Keys of ParameterA" })).toBeInViewport({
+    ratio: 0.5,
+  });
+  expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
 });

@@ -13,6 +13,7 @@ import {
   tabTitle,
 } from "../lib/projectUnits";
 import { refusalOfOffer } from "../lib/refusals";
+import type { Route } from "../lib/route";
 import { unitLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
 import { refusalOf, UnitPanel, usePlan } from "./UnitPanel";
@@ -23,11 +24,12 @@ interface Props {
   unit: string | undefined;
   stopped: boolean;
   onUnit: (unit: string | undefined) => void;
+  onOpen: (route: Route) => void;
 }
 
 /** The open project's Units tab (spec 5.1): every unit it states or lists, the panel of the one
  * selected, and adoption for a project whose units files list no unit (spec 5.3). */
-export function UnitsPage({ state, unit, stopped, onUnit }: Props) {
+export function UnitsPage({ state, unit, stopped, onUnit, onOpen }: Props) {
   const queries = useQueryClient();
   const revision = state?.revision;
   const units = useQuery({
@@ -132,6 +134,7 @@ export function UnitsPage({ state, unit, stopped, onUnit }: Props) {
               onUnit(undefined);
             }}
             onMoved={select}
+            onOpen={onOpen}
           />
         ) : (
           preview !== null && (

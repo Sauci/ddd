@@ -6,14 +6,17 @@ import { distinctFindings, keyedFindings } from "../lib/findings";
 import {
   offers,
   placeRole,
+  placeRoute,
   renameConsequence,
   renameSections,
   unitMeta,
 } from "../lib/projectUnits";
+import type { Route } from "../lib/route";
 import { baseName, consequence, PLANNING, planning, shownChanges } from "../lib/units";
 import { Button } from "../ui/Button";
 import { FilterField } from "../ui/FilterField";
 import { Panel } from "../ui/Panel";
+import { Sentence } from "../ui/Sentence";
 import { also, Cell, Column, LongTable, Row, TableBody, TableHeader } from "../ui/Table";
 import { UpdatingNote } from "../ui/UpdatingNote";
 import { Changes } from "./Changes";
@@ -78,6 +81,8 @@ export interface UnitPanelViewProps {
   /** Applying, or the server stopped: nothing can be changed or applied. */
   busy: boolean;
   onClose: () => void;
+  /** A place's name followed to the page of what states the unit there (`placeRoute`). */
+  onOpen: (route: Route) => void;
   /** Whether the findings may be about to change (spec 6): the panel says so where it lists them,
    * also while it lists none - an edit may be about to bring the first. */
   updating?: boolean;
@@ -175,7 +180,12 @@ export function UnitPanelView(props: UnitPanelViewProps) {
               <TableBody items={drawn}>
                 {(site) => (
                   <Row id={placeKey(site)}>
-                    <Cell>{site.name}</Cell>
+                    <Cell>
+                      <Sentence
+                        parts={[{ text: site.name, to: placeRoute(site) }]}
+                        onFollow={props.onOpen}
+                      />
+                    </Cell>
                     <Cell className={also("quiet")}>{baseName(site.path)}</Cell>
                     <Cell>{placeRole(site)}</Cell>
                   </Row>

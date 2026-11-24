@@ -317,7 +317,13 @@ export function App() {
             onOpen={navigate}
           />
         ) : route.view === "units" ? (
-          <UnitsPage state={state} unit={route.unit} stopped={stopped} onUnit={openUnit} />
+          <UnitsPage
+            state={state}
+            unit={route.unit}
+            stopped={stopped}
+            onUnit={openUnit}
+            onOpen={navigate}
+          />
         ) : route.view === "types" ? (
           <TypesPage
             state={state}

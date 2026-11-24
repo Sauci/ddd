@@ -13,6 +13,7 @@ import { useDebounced } from "../app/useDebounced";
 import { type Offer, type UnitAction, UnitPanelView } from "../components/UnitPanelView";
 import { offers, planEdit } from "../lib/projectUnits";
 import { panelShows, type Refused, refusalShown } from "../lib/refusals";
+import type { Route } from "../lib/route";
 import { planShown, unsettled } from "../lib/typing";
 import { unitLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
@@ -28,6 +29,8 @@ interface Props {
   onGone: () => void;
   /** Renamed or removed from this panel: the tab opens the new spelling's panel, or none. */
   onMoved: (unit: string | undefined) => void;
+  /** A place of the unit followed to its page. */
+  onOpen: (route: Route) => void;
 }
 
 /** What the tab says when an edit it posted was refused: stale, as part 1's panel says it, or the
@@ -55,7 +58,7 @@ export function usePlan(request: UnitPlanRequest | null, revision: number | unde
 }
 
 /** One unit's panel: where it is stated, its vocabulary entry, and a spelling to rename it to. */
-export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }: Props) {
+export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved, onOpen }: Props) {
   const queries = useQueryClient();
   const updating = useUpdating();
   const reply = useQuery({
@@ -254,6 +257,7 @@ export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }:
       onApply={(action) => apply.mutate(action)}
       busy={stopped || apply.isPending}
       onClose={onClose}
+      onOpen={onOpen}
     />
   );
 }

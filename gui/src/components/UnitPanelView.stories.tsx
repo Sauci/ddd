@@ -71,6 +71,7 @@ function View({
       units={PROJECT_UNITS}
       placesFilter={places}
       onPlacesFilter={setPlaces}
+      onOpen={() => {}}
       description={description ?? unit.description ?? ""}
       onDescription={setDescription}
       typed={typed ?? to ?? unit.unit}

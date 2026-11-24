@@ -719,3 +719,20 @@ test("a wheel notch while the rename's list is open keeps what was typed, and th
   await rename.press("Tab");
   await expect(rename).toHaveValue("km/h");
 });
+
+test("a place of a unit's panel leads to the variable that states the unit there (16:M22)", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Units" }).click();
+  await page.getByRole("row", { name: "ms", exact: true }).click();
+  const panel = page.getByRole("complementary", { name: "ms" });
+  const places = panel.getByRole("grid", { name: "Where ms is stated" });
+  await expect(places.getByRole("row")).toHaveCount(2);
+  const [row] = await places.getByRole("link").all();
+  const name = (await row?.innerText()) ?? "";
+  await row?.click();
+  await expect(page).toHaveURL(new RegExp(`variable=${name}`));
+  await expect(page.getByRole("complementary", { name })).toBeVisible();
+});

@@ -6,6 +6,7 @@ import type {
   UnitReply,
   UnitsReply,
 } from "../api/types";
+import type { Route } from "./route";
 import { baseName, consequence, editOf, outsideVocabulary, type UnitSection } from "./units";
 
 /** The file adoption writes beside the project description (`ddd.lsp.units.ADOPTED`). */
@@ -85,6 +86,21 @@ export function placeRole(place: UnitPlace): string {
   if (place.kind === "type") return "scalar type";
   if (place.kind === "member") return "structure member";
   return place.role ?? "variable";
+}
+
+/** Where a place's row leads, as the rows of the other panels do: a variable's own panel on its
+ * component's page, and for a scalar type or a structure member - whose `name` is
+ * `"<Type>.<member>"` - the type's, on the Types tab. */
+export function placeRoute(place: UnitPlace): Route {
+  if (place.kind === "variable") {
+    return { page: "component", file: place.path, variable: place.name };
+  }
+  const dot = place.name.indexOf(".");
+  return {
+    page: "project",
+    view: "types",
+    type: dot === -1 ? place.name : place.name.slice(0, dot),
+  };
 }
 
 /** What the unit's state offers beside the rename, which it always offers (spec 5.2): a

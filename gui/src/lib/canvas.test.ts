@@ -16,6 +16,8 @@ import {
   searchLine,
   shownEdges,
   stateOf,
+  tooltipSpot,
+  windowPointOf,
   withSavedPositions,
 } from "./canvas";
 import type { Placed } from "./layout";
@@ -421,4 +423,44 @@ test("an arrow that agrees is drawn in the quiet ink, as dark as the page's own 
 test("the viewport flies for 300 ms, and for no time at all under reduced motion", () => {
   expect(flightOf(false)).toBe(300);
   expect(flightOf(true)).toBe(0);
+});
+
+test("a point of the canvas is in the window where the viewport's pan and zoom, and the canvas's corner, put it", () => {
+  expect(windowPointOf({ x: 100, y: 50 }, [10, -20, 1], { x: 0, y: 0 })).toEqual({ x: 110, y: 30 });
+  expect(windowPointOf({ x: 100, y: 50 }, [10, -20, 2], { x: 40, y: 90 })).toEqual({
+    x: 250,
+    y: 170,
+  });
+});
+
+test("a tooltip sits above its arrow, centred, and keeps its size whatever the zoom", () => {
+  const spot = tooltipSpot(
+    { x: 500, y: 400 },
+    { width: 200, height: 80 },
+    { width: 1000, height: 800 },
+  );
+  expect(spot).toEqual({ x: 400, y: 308 });
+});
+
+test("a tooltip with no room above its arrow goes below it", () => {
+  const spot = tooltipSpot(
+    { x: 500, y: 50 },
+    { width: 200, height: 80 },
+    { width: 1000, height: 800 },
+  );
+  expect(spot).toEqual({ x: 400, y: 62 });
+});
+
+test("a tooltip is moved in from the window's edges, and never above or left of its corner", () => {
+  const window = { width: 1000, height: 800 };
+  const size = { width: 200, height: 80 };
+  expect(tooltipSpot({ x: 20, y: 400 }, size, window).x).toBe(8);
+  expect(tooltipSpot({ x: 990, y: 400 }, size, window).x).toBe(792);
+  // Below an arrow near the window's foot there is no room either: kept in, its first line shown.
+  expect(tooltipSpot({ x: 500, y: 20 }, size, { width: 1000, height: 100 }).y).toBe(12);
+  // Larger than the window: the first line first.
+  expect(tooltipSpot({ x: 500, y: 400 }, { width: 2000, height: 900 }, window)).toEqual({
+    x: 8,
+    y: 8,
+  });
 });

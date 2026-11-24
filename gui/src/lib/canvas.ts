@@ -483,3 +483,48 @@ export function shownEdges(
     return { ...edge, data: { ...edge.data, faded, active } };
   });
 }
+
+/** A point, or a size, in pixels. */
+export interface Point {
+  x: number;
+  y: number;
+}
+export interface Size {
+  width: number;
+  height: number;
+}
+
+/**
+ * Where a point of the canvas's own space, an arrow's middle, is in the window: React Flow's
+ * viewport transform (`[x, y, zoom]`) applied to it, and the canvas's own corner added. An arrow's
+ * tooltip is drawn in the window's space rather than the canvas's (16:M11), so that it keeps its
+ * size at every zoom and is not cut by the canvas's edge; this is what it is placed by.
+ */
+export function windowPointOf(
+  point: Point,
+  transform: readonly [number, number, number],
+  corner: Point,
+): Point {
+  const [x, y, zoom] = transform;
+  return { x: corner.x + x + point.x * zoom, y: corner.y + y + point.y * zoom };
+}
+
+/** The room a tooltip keeps from the window's edge and from the arrow's middle it points at. */
+export const TOOLTIP_EDGE = 8;
+export const TOOLTIP_GAP = 12;
+
+/**
+ * Where an arrow's tooltip's top left corner goes, in the window, for an `anchor` (its arrow's
+ * middle) and the `size` it is drawn at: above the arrow and centred on it, below it where there is
+ * no room above, and moved in from the window's edges where it would pass them - so that its first
+ * line, which lists the variables the arrow carries, is never out of view. A tooltip larger than the window is
+ * kept at the top left corner, its first line first.
+ */
+export function tooltipSpot(anchor: Point, size: Size, window: Size): Point {
+  const above = anchor.y - TOOLTIP_GAP - size.height;
+  const top = above >= TOOLTIP_EDGE ? above : anchor.y + TOOLTIP_GAP;
+  const centred = anchor.x - size.width / 2;
+  const left = Math.min(centred, window.width - size.width - TOOLTIP_EDGE);
+  const lowest = window.height - size.height - TOOLTIP_EDGE;
+  return { x: Math.max(left, TOOLTIP_EDGE), y: Math.max(Math.min(top, lowest), TOOLTIP_EDGE) };
+}

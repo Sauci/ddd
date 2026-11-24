@@ -530,6 +530,70 @@ test("an arrow reached by the keyboard says what is wrong, until the keyboard le
   await expect(tooltip).toHaveCount(0);
 });
 
+test("an arrow's tooltip keeps its size at every zoom and is drawn outside the canvas, whole", async ({
+  page,
+  gui,
+}) => {
+  drift(gui.directory);
+  await page.goto(gui.address);
+  const arrow = page.getByRole("button", { name: "SensorHub to Controller: 2 variables, error" });
+  await expect(arrow).toBeVisible();
+  const zoomIn = page.getByRole("button", { name: "Zoom In", exact: true });
+  // The canvas's greatest zoom, 2: the tooltip was twice its size there, and its first line out of
+  // the canvas.
+  for (let presses = 0; presses < 10 && (await zoomIn.isEnabled()); presses += 1) {
+    await zoomIn.click();
+  }
+  await expect(zoomIn).toBeDisabled();
+  await expect.poll(async () => (await viewportOf(page)).zoom).toBeCloseTo(2, 3);
+  for (let stop = 0; stop < 50; stop += 1) {
+    if (await arrow.evaluate((element) => element === document.activeElement)) break;
+    await page.keyboard.press("Tab");
+  }
+  await expect(arrow).toBeFocused();
+  const tooltip = page.getByRole("tooltip");
+  await expect(tooltip.locator(".objects")).toHaveText("ValueA, ValueB");
+  // Drawn at its own size: the box it paints is the box it lays out.
+  const scale = await tooltip.evaluate(
+    (element) => element.getBoundingClientRect().width / (element as HTMLElement).offsetWidth,
+  );
+  expect(scale).toBe(1);
+  // Outside the canvas, which cuts what is past its edge, and outside the layer it zooms.
+  expect(
+    await tooltip.evaluate((element) => element.closest(".canvas, .react-flow") === null),
+  ).toBe(true);
+  // Whole in the window, first line included, wherever the arrow is.
+  const box = await tooltip.boundingBox();
+  const size = page.viewportSize();
+  if (box === null || size === null) throw new Error("the tooltip draws no box");
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(size.width);
+  expect(box.y + box.height).toBeLessThanOrEqual(size.height);
+  // Still the arrow's description, though drawn elsewhere in the page.
+  await expect(arrow).toHaveAccessibleDescription(/^ValueA, ValueB definition-mismatch/);
+});
+
+test("an arrow's tooltip sits above its label's middle, while the pointer is on the label", async ({
+  page,
+  gui,
+}) => {
+  drift(gui.directory);
+  await page.goto(gui.address);
+  const label = page.locator(".flow-label.error");
+  await expect(label).toBeVisible();
+  await label.hover();
+  const tooltip = page.getByRole("tooltip");
+  await expect(tooltip.locator(".objects")).toHaveText("ValueA, ValueB");
+  const [said, on] = await Promise.all([tooltip.boundingBox(), label.boundingBox()]);
+  if (said === null || on === null) throw new Error("the tooltip or its label draws no box");
+  expect(said.y + said.height).toBeLessThanOrEqual(on.y + on.height / 2);
+  expect(Math.abs(said.x + said.width / 2 - (on.x + on.width / 2))).toBeLessThanOrEqual(1);
+  // Gone with the pointer.
+  await page.mouse.move(5, 5);
+  await expect(tooltip).toHaveCount(0);
+});
+
 test("the canvas's own buttons zoom it in and out, and stop zooming out at its least zoom", async ({
   page,
   gui,

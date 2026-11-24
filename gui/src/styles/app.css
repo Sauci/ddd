@@ -305,13 +305,15 @@ input:focus-visible,
   border-color: var(--warning);
   color: var(--warning);
 }
-/* What the arrow carries, while the reader is on it. Above its own label, and never under the
-   pointer: a tooltip that took the pointer would leave the arrow and so close itself. */
+/* What the arrow carries, while the reader is on it (FlowEdge.tsx): drawn in the window, outside the
+   canvas's zoomed layer and its edge (16:M11), above the arrow's own label where there is room,
+   and never under the pointer: a tooltip that took the pointer would leave the arrow and so close
+   itself. Above the panel and the masthead, in the window's own stacking. */
 .flow-tooltip {
-  position: absolute;
+  position: fixed;
   pointer-events: none;
-  z-index: 1;
-  max-width: 30em;
+  z-index: 10;
+  max-width: min(30em, calc(100vw - 2 * var(--space-2)));
   padding: var(--space-2) var(--space-3);
   background: var(--surface);
   border: 1px solid var(--rule);

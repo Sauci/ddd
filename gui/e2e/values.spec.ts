@@ -2359,3 +2359,38 @@ test("the Graph and the values grid take the window, and the other pages keep th
   await expect(page.getByRole("heading", { name: "Controller", level: 1 })).toBeVisible();
   expect(await widthOf()).toBe(1100);
 });
+
+test("a plot's readings keep every digit of the longest value a cell holds, inside the box", async ({
+  page,
+  copiedGui,
+}) => {
+  // CurveA as a uint32 whose cells hold 4294967295 counts: ten digits raw, eleven characters in ms.
+  const gui = await copiedGui("demo", (directory) => {
+    const path = join(directory, CONTROLLER);
+    const data = JSON.parse(readFileSync(path, "utf8"));
+    const entry = data.component.interface.find(
+      (declaration: { definition: { name: string } }) => declaration.definition.name === "CurveA",
+    );
+    entry.definition.datatype = "uint32";
+    entry.definition.init = [4294967295, 900, 800, 750, 700, 650];
+    writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`);
+  });
+  await openValues(page, gui.address, "CurveA");
+  const plot = page.getByRole("img", { name: "plotted against AxisA" });
+  const sides = plot.locator(".values-plot-side");
+  await expect(sides).toHaveText(["42949672.95", "6.5"]);
+  for (const reading of ["physical", "raw"]) {
+    if (reading === "raw") await page.getByRole("button", { name: "Raw" }).click();
+    const frame = await plot.boundingBox();
+    const marker = await plot.locator("circle").first().boundingBox();
+    for (const box of await sides.evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const { left, right } = node.getBoundingClientRect();
+        return { left, right };
+      }),
+    )) {
+      expect(box.left).toBeGreaterThanOrEqual(frame?.x ?? 0);
+      expect(box.right).toBeLessThan(marker?.x ?? 0);
+    }
+  }
+});

@@ -160,6 +160,16 @@ describe("plotted", () => {
     expect((low?.y ?? 0) - (high?.y ?? 0)).toBeGreaterThan(100);
   });
 
+  test("the margin beside the frame grows to hold the longest reading, never less than the box's", () => {
+    expect(plotted(CURVE_A, true).left).toBe(BOX.left);
+    const wide: ValuesReply = { ...CURVE_A, rows: [[4294967295, 900, 800, 750, 700, 650]] };
+    const plot = plotted(wide, false);
+    // Ten digits of 6.5 units, the gap to the frame and a little over.
+    expect(plot.left).toBeGreaterThanOrEqual(6 + 6.5 * 10);
+    expect(plot.lines[0]?.points[0]?.x).toBeCloseTo(plot.left);
+    expect(plot.lines[0]?.points.at(-1)?.x).toBeCloseTo(BOX.width - BOX.right);
+  });
+
   test("a value at the top of the range is drawn at the top of the padding", () => {
     const plot = plotted(CURVE_A, true);
     expect(plot.lines[0]?.points[0]?.y).toBeGreaterThan(BOX.top);

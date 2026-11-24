@@ -40,7 +40,7 @@ export const ValuesPlotView = memo(function ValuesPlotView({
           // biome-ignore lint/suspicious/noArrayIndexKey: a rule is its own position in `plot.rules`
           key={index}
           className="values-plot-rule"
-          x1={BOX.left}
+          x1={plot.left}
           x2={BOX.width - BOX.right}
           y1={rule.y}
           y2={rule.y}
@@ -48,7 +48,7 @@ export const ValuesPlotView = memo(function ValuesPlotView({
       ))}
       <line
         className="values-plot-axis"
-        x1={BOX.left}
+        x1={plot.left}
         x2={BOX.width - BOX.right}
         y1={BOX.top + inside}
         y2={BOX.top + inside}
@@ -67,7 +67,7 @@ export const ValuesPlotView = memo(function ValuesPlotView({
         // figure grows leftwards, away from the markers. Keyed by place, two readings of a flat
         // range being one figure each.
         // biome-ignore lint/suspicious/noArrayIndexKey: a reading is its own position in `plot.readings`
-        <text key={index} className="values-plot-side" x={BOX.left - 6} y={reading.y} dy="3">
+        <text key={index} className="values-plot-side" x={plot.left - 6} y={reading.y} dy="3">
           {reading.text}
         </text>
       ))}

@@ -28,6 +28,13 @@ export interface PlotLine {
   points: PlotPoint[];
 }
 
+/** What a reading's figure needs of the margin beside the frame, in the box's own units: each
+ * character of the 10px text a little over a digit's width, the gap between the figure and the
+ * frame, and a little to spare. */
+const READING_CHAR = 6.5;
+const READING_GAP = 6;
+const READING_PAD = 2;
+
 /** One of the two readings printed beside the frame: the figure, and where its point stands. */
 export interface PlotReading {
   text: string;
@@ -55,6 +62,9 @@ export interface Plot {
    * exact numbers. */
   low: number;
   high: number;
+  /** Where the frame's left edge stands: `BOX.left`, or further right where a reading is too long
+   * for that margin. */
+  left: number;
   /** The greatest and the least value a cell holds, each beside the frame at the place of the
    * point that reads it, the greatest first - what a reader finds in the grid, never the padded
    * range's own figures, which no cell holds (16:M22). One where every cell reads alike, none where
@@ -181,15 +191,22 @@ function drawn(reply: ValuesReply, physical: boolean): Plot {
     row.map((raw) => (physical ? physicalOf(raw, reply.conversion) : raw)),
   );
   const [low, high] = rangeOf(values);
-  const across = BOX.width - BOX.left - BOX.right;
+  const [least, greatest] = extremes(values);
+  // The margin that holds the readings: the box's own, or wider where a reading's figure is longer
+  // than it holds, so that none loses a leading digit to the frame's edge (16:M22).
+  const longest = values.length === 0 ? 0 : String(rounded(greatest)).length;
+  const left = Math.max(
+    BOX.left,
+    READING_GAP + READING_PAD + READING_CHAR * Math.max(longest, String(rounded(least)).length),
+  );
+  const across = BOX.width - left - BOX.right;
   const down = BOX.height - BOX.top - BOX.bottom;
   // A place for every column the shape has (`alongTheBottom`), and no row or tick drawn past the
   // shape's last column (`drawnRows`, `columnHeader`): each index read here has its place.
   const [first, last] = extremes(xs);
-  const xAt = (index: number) => placed(xs[index] as number, first, last, BOX.left, across);
+  const xAt = (index: number) => placed(xs[index] as number, first, last, left, across);
   const yAt = (value: number) => BOX.top + down - placed(value, low, high, 0, down);
   const labels = reply.shape.length === 1 ? rows.map(() => "") : rowHeader(reply, physical);
-  const [least, greatest] = extremes(values);
   const lines = rows.map((row, index) => ({
     // A label for every row the shape has (`rowHeader`), and no row drawn past its last.
     label: labels[index] as string,
@@ -231,6 +248,7 @@ function drawn(reply: ValuesReply, physical: boolean): Plot {
     yLabel: labelled(reply.name, reply.unit, physical),
     low: rounded(low),
     high: rounded(high),
+    left,
     readings: readingsOf(values.length === 0 ? null : [greatest, least], yAt),
   };
 }

@@ -50,32 +50,44 @@ const asking = (failureCount: number, failureReason: Error | null = busy) => ({
 });
 
 test("the session's ask failing is said while it is asked again, from the second in a row", () => {
-  expect(failureSaid(null, asking(2))).toBe(BUSY);
-  expect(failureSaid(null, asking(5))).toBe(BUSY);
+  expect(failureSaid(null, asking(2), false)).toBe(BUSY);
+  expect(failureSaid(null, asking(5), false)).toBe(BUSY);
   // Waited for in a tab hidden, React Query asks again once it is shown: it is still asked.
-  expect(failureSaid(null, { ...asking(2), fetchStatus: "paused" })).toBe(BUSY);
+  expect(failureSaid(null, { ...asking(2), fetchStatus: "paused" }, false)).toBe(BUSY);
 });
 
 test("but not at the first, asked again at once, nor once an ask is answered", () => {
-  expect(failureSaid(null, asking(1))).toBeNull();
+  expect(failureSaid(null, asking(1), false)).toBeNull();
   // React Query counts nothing failed once an ask is answered.
   expect(
-    failureSaid(null, { fetchStatus: "idle", failureCount: 0, failureReason: null }),
+    failureSaid(null, { fetchStatus: "idle", failureCount: 0, failureReason: null }, false),
   ).toBeNull();
 });
 
 test("nor once a refusal ends the asking: the page says that refusal in its own place", () => {
   const refused = new ApiError(404, "not-found", "no such route");
   expect(
-    failureSaid(null, { fetchStatus: "idle", failureCount: 3, failureReason: refused }),
+    failureSaid(null, { fetchStatus: "idle", failureCount: 3, failureReason: refused }, false),
   ).toBeNull();
 });
 
 test("the long poll's failure is said over the session's, which is never said twice", () => {
   // Both asked again at once, as the page opening a project may: one banner, the long poll's.
   const failed = "ddd gui failed on this request; the terminal it runs in shows why";
-  expect(failureSaid(failed, asking(2))).toBe(failed);
-  expect(failureSaid(failed, { fetchStatus: "idle", failureCount: 0, failureReason: null })).toBe(
-    failed,
-  );
+  expect(failureSaid(failed, asking(2), false)).toBe(failed);
+  expect(
+    failureSaid(failed, { fetchStatus: "idle", failureCount: 0, failureReason: null }, false),
+  ).toBe(failed);
+});
+
+test("nothing of the session's asking is said beside the stopped banner, which says it", () => {
+  // An ask of the session unanswered while ddd gui is said to have stopped: no second banner says
+  // that it is not answering.
+  const unanswered = new ServerUnreachable(new TypeError("fetch failed"));
+  expect(failureSaid(null, asking(2, unanswered), true)).toBeNull();
+  // Nor one the server answered, failing it: the follow's next ask, a server answering, lifts the
+  // stopped banner, and the session's failure is said then.
+  expect(failureSaid(null, asking(2), true)).toBeNull();
+  // Not stopped, the same ask is said.
+  expect(failureSaid(null, asking(2, unanswered), false)).toBe("ddd gui is not answering");
 });

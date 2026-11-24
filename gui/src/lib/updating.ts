@@ -24,10 +24,13 @@ export function beforeAnalysis(failed: string | null, stopped: boolean): string 
  * running, or the page's own last edit is newer than the revision it holds - which covers the
  * moment between an edit's answer and the state saying it is being analysed. Never before the
  * project's first analysis has landed: there is no finding on screen to update, and the page says
- * "Analysing the project…" instead. */
+ * "Analysing the project…" instead. Nor once ddd gui has `stopped`: no analysis is on its way to
+ * land then, as none is said to be before the first (`beforeAnalysis`), whatever the last state
+ * read said ran. */
 export function updatingOf(
   state: Pick<State, "revision" | "analysing" | "edits">,
   ownEdit: number,
+  stopped: boolean,
 ): boolean {
-  return analysed(state) && (state.analysing || ownEdit > state.edits);
+  return !stopped && analysed(state) && (state.analysing || ownEdit > state.edits);
 }

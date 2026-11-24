@@ -56,7 +56,7 @@ export function useProjectState(open: boolean): {
     project: latest === null ? null : latest.project,
     failed: latest === null ? null : latest.failed,
     refused: latest === null ? NONE : latest.refused,
-    updating: latest !== null && updatingOf(latest, ownEdit),
+    updating: latest !== null && updatingOf(latest, ownEdit, stopped),
     stopped,
     failure,
   };

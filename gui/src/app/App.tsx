@@ -262,8 +262,8 @@ export function App() {
   // nothing once it failed or ddd gui has stopped, which a banner under the masthead says.
   const waiting = beforeAnalysis(failed, stopped);
   // Why the long poll, or else the session asked again, fails: one banner, lifted at the next
-  // answer (`failureSaid`).
-  const missed = failureSaid(failure, session);
+  // answer, and none of the session's beside the stopped one (`failureSaid`).
+  const missed = failureSaid(failure, session, stopped);
   // The banner is the open project's, under the masthead of each of its pages - its tabs, a
   // component's and its values - and of no other: the start page lists the projects to open.
   // Once the server has stopped, it promises nothing ddd gui would do.

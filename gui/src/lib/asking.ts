@@ -57,11 +57,19 @@ export interface Asked {
  * fails (`useProjectState`'s `failure`), as `followStates` says it - or, the follow having ended
  * at a refusal, that refusal - else why its ask of the session (`session`) fails while it is asked
  * again, from the second in a row (`missedSaid`). Nothing of the session's once one of its asks is
- * answered, nor once a refusal ends its asking, which the page says in its own place. One banner,
- * the long poll's first: both are asked again together where the page opens a project.
+ * answered, nor once a refusal ends its asking, which the page says in its own place, nor while
+ * ddd gui is said to have `stopped`: that banner says it, and a second beside it said that ddd gui
+ * was not answering. A failed answer of the session gives way too, said once the follow's next ask
+ * finds the server answering and lifts the stopped banner. One banner, the long poll's first: both
+ * are asked again together where the page opens a project.
  */
-export function failureSaid(follow: string | null, session: Asked): string | null {
+export function failureSaid(
+  follow: string | null,
+  session: Asked,
+  stopped: boolean,
+): string | null {
   if (follow !== null) return follow;
+  if (stopped) return null;
   const asking = session.fetchStatus !== "idle";
   return asking && session.failureReason !== null && missedSaid(session.failureCount)
     ? session.failureReason.message

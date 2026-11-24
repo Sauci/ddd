@@ -469,6 +469,65 @@ test("a project whose first analysis has not landed promises none once ddd gui h
   await expect(page.getByRole("region", { name: "Modules" })).toHaveCount(0);
 });
 
+test("an ask of the session unanswered while ddd gui is said to have stopped raises no second banner", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await expect(page.getByRole("region", { name: "Modules" })).toBeVisible();
+  // The long poll's asks dropped on the network, as a stopped server drops them: a stamp moved
+  // answers the ask in flight, so that the next is the first dropped.
+  await failing(page, "/api/state", "network");
+  restamp(gui.directory, CONTROLLER);
+  const alerts = page.getByRole("alert");
+  await expect(alerts).toHaveText(STOPPED);
+  // Then the session's asks dropped too, and one made: another project opened from the start page,
+  // whose open goes through, asks the session again (`onOpened`).
+  const sessionDropped = await failing(page, "/api/session", "network");
+  await page.getByRole("button", { name: "Projects", exact: true }).click();
+  await page
+    .getByRole("main")
+    .getByRole("button", { name: /^Logging/ })
+    .click();
+  // Three of its asks gone unanswered, each sent twice: the second would have been said by now.
+  await expect.poll(sessionDropped).toBeGreaterThanOrEqual(6);
+  // The stopped banner says it all: no second one says that ddd gui is not answering.
+  await expect(page.getByText("ddd gui is not answering", { exact: true })).toHaveCount(0);
+  await expect(alerts).toHaveText(STOPPED);
+});
+
+test("the heading promises no update once ddd gui has stopped while an analysis ran", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await expect(page.getByRole("region", { name: "Modules" })).toBeVisible();
+  // The next ask of the long poll answered as the server's own state says, but for an analysis
+  // still running; every ask after it dropped on the network, as a stopped server drops it.
+  let asked = 0;
+  await page.route(
+    (url) => url.pathname === "/api/state",
+    async (route) => {
+      asked += 1;
+      if (asked > 1) {
+        await route.abort("failed");
+        return;
+      }
+      const response = await route.fetch();
+      await route.fulfill({ response, json: { ...(await response.json()), analysing: true } });
+    },
+  );
+  // A stamp moved answers the ask in flight, past the route; once the next has reached the route,
+  // another answers that one, which waits on the server for the version to move.
+  restamp(gui.directory, CONTROLLER);
+  await expect.poll(() => asked).toBeGreaterThanOrEqual(1);
+  restamp(gui.directory, CONTROLLER);
+  await expect(page.getByRole("alert")).toHaveText(STOPPED);
+  // Under "ddd gui has stopped", the analysis the last state read says runs is not on its way.
+  await expect(page.getByText("Updating the findings…", { exact: true })).toHaveCount(0);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
 test("a project is listed with the images its build records name", async ({ page, copiedGui }) => {
   const started = await copiedGui("demo", builtTwice, { named: false });
   await page.goto(started.address);

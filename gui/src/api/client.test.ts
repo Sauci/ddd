@@ -784,6 +784,13 @@ describe("askedAgain", () => {
     expect(askedAgain(new ApiError(414, "too-long", "too long"))).toBe(false);
   });
 
+  test("a refusal whose code reads not-json is still a refusal, its status says so", () => {
+    expect(
+      askedAgain(new ApiError(409, "not-json", "ddd gui's answer to /api/state is not json")),
+    ).toBe(false);
+    expect(askedAgain(new ApiError(400, "not-json", "no"))).toBe(false);
+  });
+
   test("nor an abort, which the page asked for itself, nor anything else thrown", () => {
     expect(askedAgain(new DOMException("aborted", "AbortError"))).toBe(false);
     expect(askedAgain(new TypeError("x is undefined"))).toBe(false);

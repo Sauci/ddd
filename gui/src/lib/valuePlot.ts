@@ -22,8 +22,21 @@ export interface PlotPoint {
 
 export interface PlotLine {
   label: string;
+  /** Whether the label is drawn: it has words, and no label drawn before it stands within a line's
+   * height of it (`LABEL_GAP`). A label left out is still the grid's own row header. */
+  labelled: boolean;
   points: PlotPoint[];
 }
+
+/** One of the two readings printed beside the frame: the figure, and where its point stands. */
+export interface PlotReading {
+  text: string;
+  y: number;
+}
+
+/** The least height between two readings or two row labels, in the box's own units: a line of the
+ * 10px text they are drawn in, and a pixel over. Two nearer than this are drawn over one another. */
+export const LABEL_GAP = 11;
 
 export interface PlotRule {
   value: number;
@@ -36,12 +49,17 @@ export interface Plot {
   rules: PlotRule[];
   xLabel: string;
   yLabel: string;
-  /** The two readings printed at the frame's edges, with the arithmetic's tail taken off the
-   * way `columnHeader` already takes it off a tick's. The padding below is ordinary floating
-   * point: a `x0.1` curve running 0.5 to 1.2 pads to a `high` of 1.2349999999999999, and that
-   * is what a reader would see beside one-decimal values. The geometry keeps the exact numbers. */
+  /** The range the values are drawn in, with the arithmetic's tail taken off the way
+   * `columnHeader` already takes it off a tick's. The padding is ordinary floating point: a
+   * `x0.1` curve running 0.5 to 1.2 pads to a `high` of 1.2349999999999999. The geometry keeps the
+   * exact numbers. */
   low: number;
   high: number;
+  /** The greatest and the least value a cell holds, each beside the frame at the place of the
+   * point that reads it, the greatest first - what a reader finds in the grid, never the padded
+   * range's own figures, which no cell holds (16:M22). One where every cell reads alike, none where
+   * no cell holds a value. */
+  readings: PlotReading[];
 }
 
 const PAD = 20;
@@ -139,6 +157,23 @@ export function plotted(reply: ValuesReply, physical: boolean): Plot {
   return plot;
 }
 
+/** The readings beside the frame, from the greatest and the least value: each at its own place,
+ * the lower moved down where it would be drawn over the greater (`LABEL_GAP`), and the one where
+ * both are the same value. */
+function readingsOf(
+  ends: readonly [number, number] | null,
+  yAt: (value: number) => number,
+): PlotReading[] {
+  if (ends === null) return [];
+  const [greatest, least] = ends;
+  if (greatest === least) return [{ text: String(rounded(greatest)), y: yAt(greatest) }];
+  const top = yAt(greatest);
+  return [
+    { text: String(rounded(greatest)), y: top },
+    { text: String(rounded(least)), y: Math.max(yAt(least), top + LABEL_GAP) },
+  ];
+}
+
 function drawn(reply: ValuesReply, physical: boolean): Plot {
   const xs = alongTheBottom(reply, physical);
   const rows = drawnRows(reply);
@@ -154,20 +189,33 @@ function drawn(reply: ValuesReply, physical: boolean): Plot {
   const xAt = (index: number) => placed(xs[index] as number, first, last, BOX.left, across);
   const yAt = (value: number) => BOX.top + down - placed(value, low, high, 0, down);
   const labels = reply.shape.length === 1 ? rows.map(() => "") : rowHeader(reply, physical);
+  const [least, greatest] = extremes(values);
+  const lines = rows.map((row, index) => ({
+    // A label for every row the shape has (`rowHeader`), and no row drawn past its last.
+    label: labels[index] as string,
+    labelled: false,
+    points: row.map((raw, at) => ({
+      x: xAt(at),
+      y: yAt(physical ? physicalOf(raw, reply.conversion) : raw),
+    })),
+  }));
+  // A row's label stands at its last point: kept where no label kept before it is a line's height
+  // away or nearer, in the order of the rows.
+  const stood: number[] = [];
+  for (const line of lines) {
+    const end = line.points.at(-1);
+    if (line.label === "" || end === undefined) continue;
+    if (stood.some((y) => Math.abs(y - end.y) < LABEL_GAP)) continue;
+    line.labelled = true;
+    stood.push(end.y);
+  }
   // The axis placing the values along the bottom (`placing`), or none where they sit at their
   // indices - an axis stating fewer breakpoints than the shape included, which is not named under
   // ticks reading the indices: its name and unit there made readings of them, `AxisA (Hz)` under
   // 0 to 5, where the grid's header above reads its breakpoints.
   const axis = placing(reply);
   return {
-    // A label for every row the shape has (`rowHeader`), and no row drawn past its last.
-    lines: rows.map((row, index) => ({
-      label: labels[index] as string,
-      points: row.map((raw, at) => ({
-        x: xAt(at),
-        y: yAt(physical ? physicalOf(raw, reply.conversion) : raw),
-      })),
-    })),
+    lines,
     // Where the values sit at their indices, the ticks read them, as over an axis stating no
     // breakpoints: a breakpoint read at an index's place said what the place is not - 100, of
     // breakpoints 0, 100 and 5000, drawn halfway between 0 and 5000 (fix round 1, M10).
@@ -183,5 +231,6 @@ function drawn(reply: ValuesReply, physical: boolean): Plot {
     yLabel: labelled(reply.name, reply.unit, physical),
     low: rounded(low),
     high: rounded(high),
+    readings: readingsOf(values.length === 0 ? null : [greatest, least], yAt),
   };
 }

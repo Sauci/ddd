@@ -62,12 +62,15 @@ export const ValuesPlotView = memo(function ValuesPlotView({
           {tick.label}
         </text>
       ))}
-      <text className="values-plot-side" x={4} y={BOX.top + 8}>
-        {String(plot.high)}
-      </text>
-      <text className="values-plot-side" x={4} y={BOX.top + inside}>
-        {String(plot.low)}
-      </text>
+      {plot.readings.map((reading, index) => (
+        // Beside the frame and right-aligned to it, level with the point it reads: a long
+        // figure grows leftwards, away from the markers. Keyed by place, two readings of a flat
+        // range being one figure each.
+        // biome-ignore lint/suspicious/noArrayIndexKey: a reading is its own position in `plot.readings`
+        <text key={index} className="values-plot-side" x={BOX.left - 6} y={reading.y} dy="3">
+          {reading.text}
+        </text>
+      ))}
       {plot.lines.map((line, index) => {
         // Keyed by the row's own index rather than `line.label`: a map's y axis is free to
         // repeat a reading (two rows, one label), and the index is unique regardless a label is
@@ -87,7 +90,7 @@ export const ValuesPlotView = memo(function ValuesPlotView({
             ))}
             {/* `last` is `undefined` only when `line.points` is empty, so this is the one
                 condition that guards it - no `?? 0` fallback left for nothing to reach. */}
-            {line.label !== "" && last !== undefined && (
+            {line.labelled && last !== undefined && (
               // `last.x`, not `BOX.width - BOX.right` again: they read the same for an ordinary
               // row because the last column always reaches the right edge, but the two are not
               // the same fact - a shape of one element centres its lone marker (`placed`'s

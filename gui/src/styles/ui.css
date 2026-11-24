@@ -1014,7 +1014,8 @@ tr.changing td {
 .values-plot-tick {
   text-anchor: middle;
 }
-.values-plot-row {
+.values-plot-row,
+.values-plot-side {
   text-anchor: end;
 }
 /* The x axis's own name: drawn at the frame's right-hand end rather than its left (task 2's own

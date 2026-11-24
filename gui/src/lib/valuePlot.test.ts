@@ -133,6 +133,32 @@ describe("plotted", () => {
     expect(plot.high).toBeCloseTo(12.275);
   });
 
+  test("the side readings are the least and the greatest value a cell holds, at their own places", () => {
+    // CurveA reads 6.5 to 12: the padded range's own 6.225 and 12.275 are no cell's (16:M22). Each
+    // reading stands level with the point it reads.
+    const plot = plotted(CURVE_A, true);
+    const ys = plot.lines[0]?.points.map((point) => point.y) ?? [];
+    expect(plot.readings.map((reading) => reading.text)).toEqual(["12", "6.5"]);
+    expect(plot.readings[0]?.y).toBeCloseTo(Math.min(...ys));
+    expect(plot.readings[1]?.y).toBeCloseTo(Math.max(...ys));
+  });
+
+  test("one reading for a line as flat as a cell holds, and none where no cell holds a value", () => {
+    expect(plotted(CURVE_B, true).readings.map((reading) => reading.text)).toEqual(["100"]);
+    const empty: ValuesReply = { ...BLOCK_A, shape: [6], rows: [[]] };
+    expect(plotted(empty, true).readings).toEqual([]);
+  });
+
+  test("two readings too close to be read apart are drawn a reading's height apart", () => {
+    // 100 and 100.001 of a range whose span is a twentieth of it: the points are a hair apart.
+    const close: ValuesReply = {
+      ...BLOCK_A,
+      rows: [[100, 100.001, 100, 100.001, 100, 100, 100, 100]],
+    };
+    const [high, low] = plotted(close, false).readings;
+    expect((low?.y ?? 0) - (high?.y ?? 0)).toBeGreaterThanOrEqual(11);
+  });
+
   test("a value at the top of the range is drawn at the top of the padding", () => {
     const plot = plotted(CURVE_A, true);
     expect(plot.lines[0]?.points[0]?.y).toBeGreaterThan(BOX.top);
@@ -222,6 +248,22 @@ describe("plotted", () => {
     const plot = plotted(MAP_A, true);
     expect(plot.lines).toHaveLength(4);
     expect(plot.lines.map((line) => line.label)).toEqual(["0", "30", "70", "100"]);
+  });
+
+  test("a row's label is left out where it would be drawn over another's", () => {
+    // Sixteen rows an eighth of a unit apart in a box a few hundred units high: each label a line
+    // tall, so the labels run into one another unless the nearer ones are left to the grid.
+    const rows = Array.from({ length: 16 }, (_, at) => [at, at + 0.1]);
+    const crowded: ValuesReply = { ...MAP_A, shape: [16, 2], rows, axes: [] };
+    const shown = plotted(crowded, false).lines.filter((line) => line.labelled);
+    const tops = shown.map((line) => line.points.at(-1)?.y ?? 0).sort((a, b) => a - b);
+    expect(shown.length).toBeLessThan(16);
+    expect(shown.length).toBeGreaterThan(1);
+    for (let at = 1; at < tops.length; at += 1) {
+      expect((tops[at] ?? 0) - (tops[at - 1] ?? 0)).toBeGreaterThanOrEqual(11);
+    }
+    // The four rows of MapA are far enough apart to be named every one.
+    expect(plotted(MAP_A, true).lines.every((line) => line.labelled)).toBe(true);
   });
 
   test("a row with no label of its own is left unlabelled", () => {

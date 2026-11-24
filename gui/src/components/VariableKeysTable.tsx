@@ -163,7 +163,12 @@ export function VariableKeysTable({
                       </a>
                     </>
                   )}
-                  {cell.changing && <span className="tag">will change</span>}
+                  {cell.changing && (
+                    <>
+                      {/* A space of its own, so that what is read out is `kHz will change`. */}{" "}
+                      <span className="tag">will change</span>
+                    </>
+                  )}
                 </Cell>
               );
             }}

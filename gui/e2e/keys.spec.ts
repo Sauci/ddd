@@ -640,3 +640,18 @@ test("an Enter that takes nothing keeps the text, and so does text that spells n
   await expect(datatype).toHaveValue("uint8");
   await expect(nothing).toHaveCount(0);
 });
+
+test("a key row says that it will change in words of their own, and its chooser's button is named once", async ({
+  page,
+  gui,
+}) => {
+  // A screen reader reads the cell's text as it stands, and the button's name as the field and the
+  // button's own words make it (16:M22): `kHzwill change` and a field's label said twice before.
+  const panel = await openPanel(page, gui.address, "ValueA");
+  await chooseUnit(page, "rpm");
+  const changing = page.getByRole("gridcell").filter({ has: page.locator(".tag") });
+  await expect(changing.first()).toHaveText(/\S will change$/);
+  await expect(
+    panel.getByRole("button", { name: /^Show the choices for Unit of ValueA/ }),
+  ).toHaveAccessibleName("Show the choices for Unit of ValueA");
+});

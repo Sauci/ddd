@@ -185,7 +185,13 @@ export function ComboBox({
             if (endsTyped("blur")) onClose();
           }}
         />
-        <AriaButton aria-label={`Show the choices for ${label}`}>▾</AriaButton>
+        {/* Named by its own label alone: React Aria names the button by it and by the field's label
+            too, so that a screen reader read out the label twice (16:M22). An empty reference
+            is how a prop of the button's own overrides the one React Aria gives it. */}
+        {/* biome-ignore lint/a11y/useValidAriaValues: the empty list drops React Aria's own reference */}
+        <AriaButton aria-label={`Show the choices for ${label}`} aria-labelledby="">
+          ▾
+        </AriaButton>
       </Group>
       {/* Always drawn, empty while there is no note (`.combo-note:empty` takes no room): React
           Aria ties a field to its description only if the description's element is there when

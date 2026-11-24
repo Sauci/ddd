@@ -197,7 +197,6 @@ tr.changing td {
   background: var(--warning-ground);
 }
 .tag {
-  margin-left: var(--space-1);
   color: var(--warning);
   font-size: var(--text-small);
 }

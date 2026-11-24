@@ -304,12 +304,19 @@ const SHOWN = new Set(["component", "constants", "types", "units", "sections", "
  * analysis read it, or a unit no longer stated where it was. Neither is about the project, and
  * neither is a sentence to guess at, so the reason says only what is certain of both.
  *
+ * `named` is how the caller names a file - the Findings tab names it as its panel's lines do, told
+ * apart from another of its name by its path (16:M15).
+ *
  * A route the server did answer, to a name no address can carry (`hrefOf`, 15:I5), is said
  * first: such a finding leads somewhere, and no link can take the reader there. */
-export function noRouteReason(finding: Finding, state: State): string {
+export function noRouteReason(
+  finding: Finding,
+  state: State,
+  named: (path: string) => string = baseName,
+): string {
   const route = routeOf(finding);
   if (route !== null && hrefOf(route) === null) return "No address can carry the name it leads to";
-  const name = baseName(finding.file);
+  const name = named(finding.file);
   const listed = state.files.find((file) => file.path === finding.file);
   if (listed === undefined) return `${name} is not a file of this project`;
   if (!listed.loaded) return `${name} did not load`;

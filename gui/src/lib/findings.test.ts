@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import type {
   Finding,
   FindingCounts,
@@ -25,6 +25,7 @@ import {
   toneOf,
   unreadable,
 } from "./findings";
+import * as paths from "./paths";
 import { SHARED_KINDS } from "./shared";
 import { baseName } from "./units";
 
@@ -415,6 +416,20 @@ describe("where a finding leads", () => {
 });
 
 describe("why a finding leads nowhere", () => {
+  test("names its file as the caller does, told apart from a namesake by its path", () => {
+    const one = finding({});
+    const withFiles = state([one]);
+    withFiles.files = [
+      ...withFiles.files.filter((file) => file.path !== one.file),
+      fileRow(one.file, "component", false),
+    ];
+    const named = (path: string) => (path === one.file ? "components/sensor_hub.ddd.json" : path);
+    expect(noRouteReason(one, withFiles, named)).toBe(
+      "components/sensor_hub.ddd.json did not load",
+    );
+    expect(noRouteReason(one, withFiles)).toBe("sensor_hub.ddd.json did not load");
+  });
+
   test("where it leads is a name no address can carry", () => {
     // Its file loaded and has a page, and the place is still there: what is missing is the
     // address, which `hrefOf` does not write for half of a surrogate pair alone. Read as a route
@@ -689,7 +704,8 @@ describe("why a finding leads nowhere", () => {
 
     test("thousands of them are named in one pass, never compared pair by pair", () => {
       // Every component of a large project failing at once: named pairwise, 3,334 files took
-      // about two seconds on each render of the Types and Shared files tabs (B11-35).
+      // about two seconds on each render of the Types and Shared files tabs (B11-35). Held by
+      // what is asked of the naming, never by the clock: it is asked once for all of them.
       const one = finding({});
       const withFiles = state([one]);
       withFiles.files = Array.from({ length: 3334 }, (_, at) =>
@@ -699,12 +715,20 @@ describe("why a finding leads nowhere", () => {
           false,
         ),
       );
-      const started = performance.now();
-      const named = unreadable(withFiles, ["types"]);
-      expect(performance.now() - started).toBeLessThan(500);
-      expect(named.own).toHaveLength(1667);
-      expect(named.untold).toHaveLength(1667);
-      expect(named.own[0]).toBe("c0.ddd.json");
+      const together = vi.spyOn(paths, "namedAmong");
+      const pairwise = vi.spyOn(paths, "toldApart");
+      try {
+        const named = unreadable(withFiles, ["types"]);
+        expect(together).toHaveBeenCalledTimes(1);
+        expect(together.mock.calls[0]?.[0]).toHaveLength(3334);
+        expect(pairwise).not.toHaveBeenCalled();
+        expect(named.own).toHaveLength(1667);
+        expect(named.untold).toHaveLength(1667);
+        expect(named.own[0]).toBe("c0.ddd.json");
+      } finally {
+        together.mockRestore();
+        pairwise.mockRestore();
+      }
     });
 
     test("a file of a name no other has is named by its name alone beside them", () => {

@@ -323,7 +323,7 @@ export function FindingsPage({ state, text, onText, place, onPlace, stopped, onO
               finding={finding}
               label={routeLabel(finding, state)}
               href={routeHref(finding)}
-              reason={noRouteReason(finding, state)}
+              reason={noRouteReason(finding, state, namedBy(names))}
               place={placeOf(finding, namedBy(names))}
               fileName={namedBy(names)}
               onOpen={() => {

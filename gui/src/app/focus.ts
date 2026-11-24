@@ -1,4 +1,5 @@
 import {
+  type Asked,
   type Fallen,
   type HeadingWanted,
   headingTaking,
@@ -45,9 +46,14 @@ function controlOf(target: EventTarget | null): Control | null {
   return control instanceof HTMLElement || control instanceof SVGElement ? control : null;
 }
 
-/** What a change of page waits to give the focus to (`askPageHeading`, `headingTaking`): nothing
+/** What a change of page waits to give the focus to (`askHeading`, `headingTaking`): nothing
  * once given, or once the reader presses a key or the pointer. */
 let headingWanted: HeadingWanted | null = null;
+
+/** Whether the panel a change of page, a following or a page loaded anew opens waits to be drawn,
+ * to be scrolled into view once its page has settled (`askHeading`, `showWhenSettled`): no longer
+ * once drawn, or once the reader presses a key or the pointer, or scrolls by a wheel or a touch. */
+let showWanted = false;
 
 /** The slot whose panel was scrolled into view as it opened, and the window's scroll that scroll
  * left, while the panel is still to be shown from its top (`showsAgain`). */
@@ -82,8 +88,7 @@ let tabbed = false;
 export function watchFocus(): () => void {
   const down = (event: PointerEvent) => {
     pressed = controlOf(event.target);
-    headingWanted = null;
-    settling?.();
+    letGo();
   };
   // After the press's own click, which may open a panel too.
   const over = () => {
@@ -92,8 +97,7 @@ export function watchFocus(): () => void {
     }, 0);
   };
   const key = (event: KeyboardEvent) => {
-    headingWanted = null;
-    settling?.();
+    letGo();
     tabbing = event.key === "Tab";
     // Tab moves the focus as the key's own default, in the key's own task: a Tab that moves it
     // nowhere on the page - past its last control, to the browser's - is let go with that task.
@@ -109,7 +113,7 @@ export function watchFocus(): () => void {
   };
   // A wheel or a touch scrolls the page as the reader would have it: the panel a change of page
   // opened is no longer to be scrolled to.
-  const scrolled = () => settling?.();
+  const scrolled = () => letShowGo();
   const out = (event: FocusEvent) => {
     const from = event.target;
     if (event.relatedTarget !== null) return;
@@ -148,14 +152,36 @@ export function focusCameByTab(): boolean {
   return tabbed;
 }
 
-/** Puts the focus on the page's heading after a change of page (`headingAsked`, 16:I13): at once
- * where the new page draws it, else as it is drawn (`takePageHeading`) - a component's page, its
- * file read - unless the reader presses a key or the pointer meanwhile. Where the change of page
- * opens a panel (`panel`, `selectsPanel`), or a following opens one on the page already shown, the
- * focus goes on to that panel's heading as the panel is drawn (`panelDrawn`), at once where it is
- * drawn already. */
-export function askPageHeading(panel = false): void {
-  headingWanted = panel ? "panel" : "page";
+/** Lets go of what the panel a change of page or a page loaded anew opens waits for to be shown:
+ * its draw, or its page's settling (`showWhenSettled`). */
+function letShowGo(): void {
+  showWanted = false;
+  settling?.();
+}
+
+/** Lets go of all that a change of page or a page loaded anew waits for: the heading to give the
+ * focus to, and the panel to show. */
+function letGo(): void {
+  headingWanted = null;
+  letShowGo();
+}
+
+/** Asks what `headingAsked` answers as the page's route moves on (16:I13, 16:M9): the focus on the
+ * page's heading at once where the new page draws it, else as it is drawn (`takePageHeading`) - a
+ * component's page, its file read - unless the reader presses a key or the pointer meanwhile; on
+ * the heading of the panel the address opens (`panel`, `selectsPanel`) as the panel is drawn
+ * (`panelDrawn`), at once where it is drawn already; and that panel, where it is to be `shown`,
+ * scrolled into view once its page has settled - on a page loaded anew, with no focus moved. */
+export function askHeading(asked: Asked): void {
+  headingWanted = asked.heading;
+  showWanted = asked.shown;
+  giveHeading(pageHeading(), panelHeading());
+}
+
+/** Puts the focus on the page's heading, at once where it is drawn, else as it is drawn: where a
+ * control the page took away leaves it nowhere else to go (`landing`). */
+function askPageHeading(): void {
+  headingWanted = "page";
   giveHeading(pageHeading(), panelHeading());
 }
 
@@ -165,18 +191,21 @@ export function takePageHeading(heading: HTMLElement): void {
 }
 
 /** Gives the focus a change of page asked for, where it waits, to the heading `headingTaking`
- * names of those drawn: the page's (`page`), or the panel's (`panel`), the panel then scrolled into
- * view once the page it stands in has settled (`showWhenSettled`). */
+ * names of those drawn: the page's (`page`), or the panel's (`panel`); and scrolls the panel drawn
+ * into view once the page it stands in has settled (`showWhenSettled`), where it waits to be
+ * shown. */
 function giveHeading(page: HTMLElement | null, panel: HTMLElement | null): void {
-  if (headingWanted === null) return;
-  const { takes, waits } = headingTaking(headingWanted, {
-    page: page !== null,
-    panel: panel !== null,
-  });
-  if (!waits) headingWanted = null;
-  if (takes === "page") page?.focus();
-  if (takes !== "panel" || panel === null) return;
-  panel.focus({ preventScroll: true });
+  if (headingWanted !== null) {
+    const { takes, waits } = headingTaking(headingWanted, {
+      page: page !== null,
+      panel: panel !== null,
+    });
+    if (!waits) headingWanted = null;
+    if (takes === "page") page?.focus();
+    if (takes === "panel") panel?.focus({ preventScroll: true });
+  }
+  if (!showWanted || panel === null) return;
+  showWanted = false;
   const shown = panel.closest<HTMLElement>(".panel");
   const slot = shown === null ? null : slotOf(shown);
   if (slot !== null) showWhenSettled(slot);
@@ -251,7 +280,8 @@ export function panelDrawn(
   openers.set(slot, { title, opener: anew ? opener : (before?.opener ?? null) });
   const heading = panel.querySelector<HTMLElement>('[data-heading="panel"]');
   if (heading === null) return slot;
-  if (headingWanted === "panel" && panel.closest("main") !== null) giveHeading(null, heading);
+  const waited = headingWanted === "panel" || showWanted;
+  if (waited && panel.closest("main") !== null) giveHeading(null, heading);
   else if (anew) scrollShown(panel, heading);
   else if (showing?.slot === slot) {
     if (showsAgain(showing.left, window.scrollY, panel.getBoundingClientRect().top)) {

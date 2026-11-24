@@ -186,3 +186,40 @@ for (const before of ["no panel", "ValueA's panel"] as const) {
     await expect(heading).toBeFocused();
   });
 }
+
+/** The address of Controller's page with ParameterA's panel open, as the page writes it once
+ * ParameterA's row is selected there. */
+async function parameterAddress(page: Page, address: string): Promise<string> {
+  await page.goto(address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page
+    .getByRole("grid", { name: "Declarations of Controller" })
+    .getByRole("row", { name: /ParameterA/ })
+    .click();
+  await expect(page).toHaveURL(/[?&]variable=ParameterA$/);
+  return page.url();
+}
+
+/**
+ * A page loaded anew at an address naming a selection (16:M9, ruling B11-44): a bookmark or a
+ * typed address opening Controller's page on ParameterA, in a window 800 by 600, loaded from
+ * another page so that the browser has no scroll of its own to restore. The panel stands under the
+ * declarations, out of view: it is scrolled into view once drawn. The focus is left where the
+ * browser starts a page it loads, on none of the page's own controls.
+ */
+test("a page loaded anew at an address naming a variable, in a window 800 by 600, has its panel in view and moves no focus", async ({
+  page,
+  gui,
+}) => {
+  await page.setViewportSize({ width: 800, height: 600 });
+  const parameter = await parameterAddress(page, gui.address);
+  await page.goto(gui.address);
+  await expect(page.getByRole("region", { name: "Modules" })).toBeVisible();
+  await page.goto(parameter);
+  const panel = page.getByRole("complementary", { name: "ParameterA" });
+  await expect(panel.getByRole("grid", { name: "Keys of ParameterA" })).toBeInViewport({
+    ratio: 0.5,
+  });
+  await expect(panel.getByRole("heading", { name: "ParameterA", level: 2 })).toBeInViewport();
+  expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+});

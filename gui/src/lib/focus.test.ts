@@ -90,27 +90,43 @@ describe("whether a change of page opens a panel, whose heading then takes the f
   });
 });
 
-describe("which heading the page asks to take the focus as its route moves on", () => {
+describe("what the page asks of the focus and the window as its route moves on", () => {
   const controller = "/p/controller.ddd.json";
   const page: Route = { page: "component", file: controller };
   const parameter: Route = { ...page, variable: "ParameterA" };
   const shown = (route: Route, followings: number) => ({ route, followings });
+  const panel = { heading: "panel", shown: true };
 
-  test("a change of page: its page's heading, or the panel's its address opens", () => {
-    expect(headingAsked(shown({ page: "project", view: "table" }, 1), shown(page, 2))).toBe("page");
-    expect(headingAsked(shown({ page: "project", view: "graph" }, 1), shown(parameter, 2))).toBe(
-      "panel",
+  test("a change of page: its page's heading, or the panel's its address opens, shown", () => {
+    expect(headingAsked(shown({ page: "project", view: "table" }, 1), shown(page, 2))).toEqual({
+      heading: "page",
+      shown: false,
+    });
+    expect(headingAsked(shown({ page: "project", view: "graph" }, 1), shown(parameter, 2))).toEqual(
+      panel,
     );
   });
 
   test("a following on the page it was on, to an address naming a selection: that panel's", () => {
     // The masthead's go-to used on the component's page it opens on, with no panel open, with
     // another open, or with that very one open; Forward back to it.
-    expect(headingAsked(shown(page, 1), shown(parameter, 2))).toBe("panel");
-    expect(headingAsked(shown({ ...page, variable: "ValueA" }, 1), shown(parameter, 2))).toBe(
-      "panel",
+    expect(headingAsked(shown(page, 1), shown(parameter, 2))).toEqual(panel);
+    expect(headingAsked(shown({ ...page, variable: "ValueA" }, 1), shown(parameter, 2))).toEqual(
+      panel,
     );
-    expect(headingAsked(shown(parameter, 1), shown(parameter, 2))).toBe("panel");
+    expect(headingAsked(shown(parameter, 1), shown(parameter, 2))).toEqual(panel);
+  });
+
+  test("a page loaded anew at an address naming a selection: its panel shown, no focus moved", () => {
+    expect(headingAsked(null, shown(parameter, 0))).toEqual({ heading: null, shown: true });
+    expect(
+      headingAsked(null, shown({ page: "project", view: "types", type: "Gain_t" }, 0)),
+    ).toEqual({ heading: null, shown: true });
+  });
+
+  test("none for a page loaded anew naming no selection", () => {
+    expect(headingAsked(null, shown(page, 0))).toBeNull();
+    expect(headingAsked(null, shown({ page: "start" }, 0))).toBeNull();
   });
 
   test("none for a selection made in the page, nor for a following that opens no panel", () => {

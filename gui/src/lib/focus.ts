@@ -30,7 +30,8 @@ export function pageChanged(before: Route, after: Route): boolean {
  * tab's filter. A change of page to it, the masthead's go-to, a finding's link or an address naming
  * a selection, gives the focus to that panel's heading, the panel being what the reader asked for,
  * and the page's heading meanwhile (16:I13, ruling B11-41); so does the go-to used on the page it
- * opens on (`headingAsked`, ruling B11-44).
+ * opens on, and a page loaded anew at such an address shows its panel, moving no focus
+ * (`headingAsked`, ruling B11-44).
  */
 export function selectsPanel(route: Route): boolean {
   if (route.page === "start") return false;
@@ -67,22 +68,36 @@ export interface Shown {
   followings: number;
 }
 
+/** What the page asks as what it shows moves on (`headingAsked`): the heading to give the focus
+ * to, if any, and whether the panel its address opens is scrolled into view once drawn
+ * (`showWhenSettled`, app/focus.ts). */
+export interface Asked {
+  heading: HeadingWanted | null;
+  shown: boolean;
+}
+
 /**
- * Which heading the page asks to take the focus as what it shows moves from `before` to `now`
- * (16:I13, rulings B11-41 and B11-44), `null` where it asks none:
- * - on a change of page (`pageChanged`), the new page's heading, or the heading of the panel its
- *   address opens (`selectsPanel`);
- * - on a following that stays on its page, to an address naming such a panel, that panel's
- *   heading: the masthead's go-to used on the component's page it opens on - the reader asked for
+ * What the page asks of the focus and the window as what it shows moves from `before` to `now`
+ * (16:I13, 16:M9, rulings B11-41 and B11-44), `before` being `null` for the page loaded anew, and
+ * `null` where it asks nothing:
+ * - on a change of page (`pageChanged`), the focus on the new page's heading, or on the heading of
+ *   the panel its address opens (`selectsPanel`), that panel shown;
+ * - on a following that stays on its page, to an address naming such a panel, the same of that
+ *   panel: the masthead's go-to used on the component's page it opens on - the reader asked for
  *   that panel by name, as from another page - or Forward back to it;
- * - none for a selection made in the page, a row or a filter's text, which replaces its address and
- *   leaves the focus on what made it, nor for a following that opens no panel on the page it was
- *   on.
+ * - on a page loaded anew at such an address - a bookmark, a reload, a typed address - that panel
+ *   shown, and no focus moved: a page loaded starts where the browser starts it;
+ * - nothing for a selection made in the page, a row or a filter's text, which replaces its address
+ *   and leaves the focus on what made it, nor for a following that opens no panel on the page it
+ *   was on.
  */
-export function headingAsked(before: Shown, now: Shown): HeadingWanted | null {
+export function headingAsked(before: Shown | null, now: Shown): Asked | null {
   const panel = selectsPanel(now.route);
-  if (pageChanged(before.route, now.route)) return panel ? "panel" : "page";
-  return panel && now.followings !== before.followings ? "panel" : null;
+  if (before === null) return panel ? { heading: null, shown: true } : null;
+  if (pageChanged(before.route, now.route)) {
+    return { heading: panel ? "panel" : "page", shown: panel };
+  }
+  return panel && now.followings !== before.followings ? { heading: "panel", shown: true } : null;
 }
 
 /**

@@ -789,6 +789,51 @@ export async function twoFrames(page: Page): Promise<void> {
 }
 
 /**
+ * A wheel the page turns itself from the moment the heading of the panel titled `title` takes the
+ * focus: a wheel event at each of its next `frames` frames, dispatched in the frame's animation
+ * callbacks - before the frame's layout and what watches the page's sizes, where the browser hands
+ * the page a wheel turned by hand too. So the turn falls in the frames right after the focus,
+ * whatever the platform's own timing of the wheel. A wheel event the page dispatches scrolls
+ * nothing itself, as a wheel turned upward at the page's top. Set before what moves the focus;
+ * answers what waits until the last of those events has been dispatched.
+ */
+export async function wheelFromFocus(
+  page: Page,
+  title: string,
+  frames: number,
+): Promise<() => Promise<void>> {
+  const turning = await page.evaluateHandle(
+    ({ title, frames }) => ({
+      over: new Promise<void>((done) => {
+        const start = (event: FocusEvent) => {
+          const heading = event.target;
+          if (!(heading instanceof HTMLElement) || heading.dataset.heading !== "panel") return;
+          if (heading.textContent !== title) return;
+          document.removeEventListener("focusin", start, true);
+          let left = frames;
+          const turn = () => {
+            const under = document.elementFromPoint(innerWidth / 2, innerHeight / 2);
+            (under ?? document.body).dispatchEvent(
+              new WheelEvent("wheel", { deltaY: -100, bubbles: true, cancelable: true }),
+            );
+            left -= 1;
+            if (left > 0) requestAnimationFrame(turn);
+            else done();
+          };
+          requestAnimationFrame(turn);
+        };
+        document.addEventListener("focusin", start, true);
+      }),
+    }),
+    { title, frames },
+  );
+  return async () => {
+    await turning.evaluate(({ over }) => over);
+    await turning.dispose();
+  };
+}
+
+/**
  * Moves `file`'s modification time to now and changes none of its bytes. The watcher compares a
  * file's `(st_mtime_ns, st_size)` alone (`stamped` and `poll`, session.py), so its next poll
  * reads a new revision, and the server's long poll, which would otherwise wait out its

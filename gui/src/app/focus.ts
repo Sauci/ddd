@@ -220,13 +220,16 @@ export function takePageHeading(heading: HTMLElement): void {
 /** Gives the focus a change of page asked for, where it waits, to the heading `headingTaking`
  * names of those drawn: the page's (`page`), holding it for a panel no longer than a short time,
  * or the panel's (`panel`); and scrolls the panel drawn into view once the page it stands in has
- * settled (`showWhenSettled`), where it waits to be shown, or where its heading takes the focus -
- * the focus and the view go together (ruling B11-46): a heading focused is never left out of view,
- * the page's being scrolled to as it takes it, the panel's with its panel. */
+ * settled (`showWhenSettled`), where it waits to be shown, or where its heading takes the focus.
+ * The focus and the view go together (rulings B11-46, B11-48): the page's heading is scrolled to as
+ * it takes the focus, and the panel's heading is shown in the very step it takes it in, before any
+ * input of the reader's can come between the two. What the page does after that step is the
+ * reader's to stop: their key, pointer, wheel or touch ends what the watch would still move. */
 function giveHeading(page: HTMLElement | null, panel: HTMLElement | null): void {
   const since = showWanted?.since ?? null;
   if (since !== null && !stillWaits(since, performance.now())) showWanted = null;
-  let shows = showWanted !== null;
+  const shows = showWanted !== null;
+  let focused = false;
   const wanted = headingWanted;
   const holding = wanted?.holding ?? null;
   if (holding !== null && !stillWaits(holding, performance.now())) {
@@ -243,30 +246,34 @@ function giveHeading(page: HTMLElement | null, panel: HTMLElement | null): void 
     }
     if (takes === "panel") {
       panel?.focus({ preventScroll: true });
-      shows = true;
+      focused = true;
     }
   }
-  if (!shows || panel === null) return;
+  if (!(shows || focused) || panel === null) return;
   showWanted = null;
   const shown = panel.closest<HTMLElement>(".panel");
   const slot = shown === null ? null : slotOf(shown);
-  if (slot !== null) showWhenSettled(slot);
+  if (slot !== null) showWhenSettled(slot, focused);
 }
 
 /**
  * Scrolls the panel a change of page opened into view once the page it opened has settled (16:M9):
  * what stands above it - a long table, which sizes its box to its rows only once it has measured
- * itself - is laid out after the panel is first drawn, and pushes it out of view then. Watched by
- * the size of the slot it stands in (`slot`), the panel drawn there is scrolled into view as soon as
- * it stands out of it (`scrollShown`); the watch ends then, once no panel is drawn there, or once
- * the reader presses a key or the pointer, or scrolls the page by a wheel or a touch, or the focus
- * is moved elsewhere (`letsWaitGo`), or a short time after it began (`stillWaits`): the page has
- * settled by then, and what it does next is no longer the change's.
+ * itself - is laid out after the panel is first drawn, and pushes it out of view then. Where its
+ * heading has just taken the focus (`focused`), the panel is looked at first in that very step
+ * (ruling B11-48), once what the step itself lays out has been laid out: a long table drawn with
+ * the panel measures itself in a microtask queued as it was drawn, before the panel was, while the
+ * reader's input comes in a task or a frame of its own, after the step. Then, watched by the size
+ * of the slot it stands in (`slot`), the panel drawn there is scrolled into view as soon as it
+ * stands out of it (`scrollShown`); the watch ends then, once no panel is drawn there, or once the
+ * reader presses a key or the pointer, turns the wheel or touches the page, or the focus is moved
+ * elsewhere (`letsWaitGo`), or a short time after it began (`stillWaits`): the page has settled by
+ * then, and what it does next is no longer the change's.
  */
-function showWhenSettled(slot: HTMLElement): void {
+function showWhenSettled(slot: HTMLElement, focused: boolean): void {
   settling?.();
   const since = performance.now();
-  const watch = new ResizeObserver(() => {
+  const look = () => {
     const panel = slot.querySelector<HTMLElement>(".panel");
     const heading = panel?.querySelector<HTMLElement>('[data-heading="panel"]') ?? null;
     if (panel === null || heading === null || !stillWaits(since, performance.now())) stop();
@@ -274,13 +281,19 @@ function showWhenSettled(slot: HTMLElement): void {
       stop();
       scrollShown(panel, heading);
     }
-  });
+  };
+  const watch = new ResizeObserver(look);
   const stop = () => {
     watch.disconnect();
     if (settling === stop) settling = null;
   };
   settling = stop;
   watch.observe(slot);
+  if (focused) {
+    queueMicrotask(() => {
+      if (settling === stop) look();
+    });
+  }
 }
 
 /** Scrolls `panel`, opened anew, into view where its heading stands out of it (`outOfView`,

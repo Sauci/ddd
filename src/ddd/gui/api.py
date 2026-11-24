@@ -637,7 +637,10 @@ class Api:
         if text is not None:
             wanted = text.lower()
             named = _file_names(revision)
-            order = [at for at in order if _holds(findings[at], wanted, named)]
+            # A text that is a whole name the column draws leads to that file alone: a link to
+            # `/x/b.ddd.json` must not list the findings of `a/x/b.ddd.json`, which contains it.
+            exact = wanted in {each.lower() for each in named.values()}
+            order = [at for at in order if _holds(findings[at], wanted, named, exact=exact)]
         page = order[offset:]
         if limit is not None:
             page = page[:limit]
@@ -2129,16 +2132,21 @@ def _file_names(revision: Revision) -> dict[Path, str]:
     return dict(zip(paths, told_apart(paths), strict=True))
 
 
-def _holds(filed: Filed, wanted: str, named: Mapping[Path, str]) -> bool:
+def _holds(filed: Filed, wanted: str, named: Mapping[Path, str], *, exact: bool) -> bool:
     """Whether a text filter of ``GET /api/findings`` leaves ``filed`` (16:I14): its check, its
     words or its file's name - as the Findings tab's File column draws it, which tells two files of
     one name apart by their paths (``named``, :func:`_file_names`), and names one the revision does
     not list by its own name - holds ``wanted``, the text the reader typed, in lower case as they
     are compared. A folder of the file's path is not its name, unless it is what tells two files
-    apart: every finding's path holds the folders the project lies in."""
+    apart: every finding's path holds the folders the project lies in.
+
+    ``exact`` is whether ``wanted`` is a whole name the column draws: the file's name must then be
+    that name, not hold it, so that the link leading to one of two namesakes, one's name contained
+    in the other's, lists its own file's findings alone."""
     finding = filed.diagnostic
-    texts = (finding.check, finding.message, named.get(filed.file, filed.file.name))
-    return any(wanted in each.lower() for each in texts)
+    name = named.get(filed.file, filed.file.name).lower()
+    in_words = any(wanted in each.lower() for each in (finding.check, finding.message))
+    return in_words or (wanted == name if exact else wanted in name)
 
 
 def _route(route: FindingRoute | None) -> dict[str, Any] | None:

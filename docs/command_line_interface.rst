@@ -850,7 +850,9 @@ The commands
        name, a place by its name or its file's, and a finding, asked of the server, by its
        check, its words or its file's name as the File column draws it - by its own name, and
        by as much of its path as tells it apart from another file of that name - and says how
-       many rows it leaves of how many. The Findings tab's File column, a plan's consequence
+       many rows it leaves of how many. A text that is a whole name the File column draws leaves
+       the findings of that file alone, where part of a name is found wherever it stands. The
+       Findings tab's File column, a plan's consequence
        and the lines a change prints name two files of one name in different folders by as
        much of their paths as tells them apart. The
        masthead goes to a variable by a part of its name, listing at most fifty of the names

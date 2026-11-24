@@ -10460,6 +10460,30 @@ class TestTwoFilesOfOneNameInTheFindingsFilter:
         assert self.files_of(api, "y/b.ddd.json") == ["y/b.ddd.json"]
         assert self.files_of(api, "x/b.ddd.json") == []
 
+    def test_a_text_that_is_a_file_s_whole_name_finds_that_file_alone(self) -> None:
+        """Two namesakes at the root of a drive: ``/x/b.ddd.json`` is contained in
+        ``a/x/b.ddd.json``, and the link that leads to the first must not list the second's
+        findings too (16:M15)."""
+        from ddd.diagnostics import Diagnostic, Severity
+        from ddd.gui.api import _holds
+        from ddd.gui.session import Filed
+
+        first, second = Path("/x/b.ddd.json"), Path("/a/x/b.ddd.json")
+        named = {first: "/x/b.ddd.json", second: "a/x/b.ddd.json"}
+        finding = Diagnostic("schema", Severity.ERROR, "m", None, ())
+        assert _holds(Filed(first, finding), "/x/b.ddd.json", named, exact=True)
+        assert not _holds(Filed(second, finding), "/x/b.ddd.json", named, exact=True)
+        # Typed as part of a name, the same text is found in both.
+        assert _holds(Filed(second, finding), "/x/b.ddd.json", named, exact=False)
+
+    def test_the_filter_reads_a_text_that_is_a_name_the_column_draws_as_a_whole_name(
+        self, tmp_path: Path
+    ) -> None:
+        api = self.opened(tmp_path)
+        assert self.files_of(api, "y/b.ddd.json") == ["y/b.ddd.json"]
+        # Part of a name is still found where it is: the one `y/b.ddd.json` among the findings.
+        assert self.files_of(api, "/b.ddd.json") == ["x/b.ddd.json", "y/b.ddd.json"]
+
     def test_a_file_the_revision_does_not_list_is_named_by_its_own_name(self) -> None:
         from ddd.diagnostics import Diagnostic, Severity
         from ddd.gui.api import _holds
@@ -10468,9 +10492,9 @@ class TestTwoFilesOfOneNameInTheFindingsFilter:
         filed = Filed(
             Path("/w/z/unlisted.ddd.json"), Diagnostic("schema", Severity.ERROR, "m", None, ())
         )
-        assert _holds(filed, "unlisted.ddd", {})
-        assert not _holds(filed, "z/unlisted", {})
-        assert _holds(filed, "z/unlisted", {filed.file: "z/unlisted.ddd.json"})
+        assert _holds(filed, "unlisted.ddd", {}, exact=False)
+        assert not _holds(filed, "z/unlisted", {}, exact=False)
+        assert _holds(filed, "z/unlisted", {filed.file: "z/unlisted.ddd.json"}, exact=False)
 
 
 class TestAPlanOfWhatNoFileThatLoadedDeclares:

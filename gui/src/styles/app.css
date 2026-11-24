@@ -47,9 +47,6 @@ body {
   margin-left: auto;
   display: flex;
   gap: var(--space-3);
-  /* A project's name of the 128 characters the specification allows breaks where it must,
-     within the masthead rather than past the window's edge (16:M18). */
-  min-width: 0;
 }
 .brand {
   font-weight: 600;

@@ -478,9 +478,13 @@ test("a long name keeps Close in view and the page no wider than the window (16:
     data.project.name = "P".repeat(128);
     writeFileSync(description, `${JSON.stringify(data, null, 2)}\n`);
   });
-  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.setViewportSize({ width: 1000, height: 800 });
   await page.goto(gui.address);
   await expect(page.getByRole("button", { name: "P".repeat(128) })).toBeVisible();
+  // The masthead's button and the project's heading, each of the 128 characters, break where they
+  // must: the page is no wider than the window before any panel is open.
+  await expect(page.getByRole("heading", { name: "P".repeat(128), level: 1 })).toBeVisible();
+  expect(await sideways(page)).toBe(0);
   await page.getByRole("button", { name: "Controller", exact: true }).click();
   await page.getByRole("button", { name: `Set the unit of ${variable}` }).click();
   const panel = page.getByRole("complementary", { name: variable });

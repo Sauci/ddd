@@ -28,11 +28,14 @@ import {
   arrivedPages,
   BOX_HEIGHT,
   drawnWindow,
+  type FindingsPlace,
   type KeptWindow,
   keptAfter,
   listingTotal,
+  opensAt,
   pageQuery,
   pagesOf,
+  placeOpened,
   scrolledTop,
   spacersOf,
   spanOf,
@@ -57,6 +60,13 @@ interface Props {
    * address, replacing it (16:I9): the address follows the filter, so that a reload keeps it and a
    * link to a file's findings, pressed after other text was typed, is a move to another address. */
   onText: (text: string) => void;
+  /** The tab's place as it was last drawn (`FindingsPlace`), which the app holds above it while
+   * another page is shown (16:M16), `null` before the tab was drawn: read as the tab is drawn anew,
+   * which opens at it where it is of the listing the address asks for (`placeOpened`). */
+  place: () => FindingsPlace | null;
+  /** The tab's place as it moves - the listing asked, its box's scroll, the finding whose panel is
+   * open - for the app to hold. */
+  onPlace: (place: FindingsPlace) => void;
   stopped: boolean;
   /** Following a finding: the route it leads to, which the app navigates to. `routeOf` says
    * what that route is, and `routeHref` writes the address the link carries. */
@@ -79,8 +89,13 @@ const STALE =
  * cannot filter itself. A filtered listing's first page says how many rows it has (`listingTotal`),
  * and the listing drawn before stays until its own rows have come, as through a landing. Its table
  * starts at its top, and the line beside the filter counts it (`windowLine`), where the line above
- * the table goes on counting the revision's statements. */
-export function FindingsPage({ state, text, onText, stopped, onOpen }: Props) {
+ * the table goes on counting the revision's statements.
+ *
+ * Drawn anew at each following, the tab opens at its place (16:M16): the box scrolled where it
+ * stood and the finding's panel open, where the place the app holds is of the listing the address
+ * asks for (`placeOpened`) - a finding followed and Back, the tab pressed, a component's page's way
+ * back - and otherwise at that listing's top, no panel open. */
+export function FindingsPage({ state, text, onText, place, onPlace, stopped, onOpen }: Props) {
   const queries = useQueryClient();
   const updating = useUpdating();
   const revision = state.revision;
@@ -90,14 +105,24 @@ export function FindingsPage({ state, text, onText, stopped, onOpen }: Props) {
   // the tab opens (`useDebounced` starts at its value).
   const [typed, setTyped] = useState(text ?? "");
   const asking = useDebounced(filterText(typed));
+  // Where the tab opens, read once as it is drawn anew: the listing the address asks for, and the
+  // place held of it, or its top.
+  const [opening] = useState(() => {
+    const listing = filterText(text ?? "");
+    return { listing, ...placeOpened(place(), state.project, listing) };
+  });
   // The address follows what the filter asks, written where it says otherwise.
   useEffect(() => {
     if (asking !== (text ?? "")) onText(asking);
   }, [asking, text, onText]);
-  // Where the box is scrolled to and how tall it is, and the filter it was scrolled under: at the
-  // top and one box high, until the box says otherwise - and at the top again for a filter newly
-  // asked, whose table is drawn anew (`scrolledTop`, and `key` below).
-  const [view, setView] = useState({ text: "", top: 0, height: BOX_HEIGHT });
+  // Where the box is scrolled to and how tall it is, and the filter it was scrolled under: where the
+  // tab opens and one box high, until the box says otherwise - and at the top again for a filter
+  // newly asked, whose table is drawn anew (`scrolledTop`, and `key` below).
+  const [view, setView] = useState({
+    text: opening.listing,
+    top: opening.top,
+    height: BOX_HEIGHT,
+  });
   const onScroll = useCallback(
     (top: number, height: number) => setView({ text: asking, top, height }),
     [asking],
@@ -168,8 +193,8 @@ export function FindingsPage({ state, text, onText, stopped, onOpen }: Props) {
   const rows = windowRows(drawn.span, drawn.pages);
   const unasked = head.error ?? asked.find((page) => page.isError)?.error ?? null;
   // The finding whose panel is open, kept whole - as it was selected, then as the newest reply
-  // about it reported it: the window may have scrolled its row away.
-  const [selected, setSelected] = useState<ListedFinding | undefined>(undefined);
+  // about it reported it: the window may have scrolled its row away. The place's, as the tab opens.
+  const [selected, setSelected] = useState<ListedFinding | undefined>(opening.selected);
   const [chosen, setChosen] = useState<string | undefined>(undefined);
   const [changesShown, setChangesShown] = useState(false);
   // What the server refused the last apply for, if it did, in the tab's own words where a file
@@ -202,6 +227,11 @@ export function FindingsPage({ state, text, onText, stopped, onOpen }: Props) {
     setGone(after.gone);
   }
   const finding = after.selected;
+  // The tab's place as it moves, for the app to hold while another page is shown (16:M16): the
+  // listing asked, where its box is scrolled to, and the finding whose panel is open.
+  useEffect(() => {
+    onPlace({ project: state.project, text: asking, top, selected: finding });
+  }, [onPlace, state.project, asking, top, finding]);
 
   const fixes = useQuery({
     queryKey: ["fix", finding?.file, finding?.pointer, finding?.check, revision],
@@ -270,10 +300,12 @@ export function FindingsPage({ state, text, onText, stopped, onOpen }: Props) {
       <div className={finding !== undefined ? "with-panel" : undefined}>
         <div>
           <FindingsTableView
-            // Drawn anew for each filter asked, its box at the top, as `top` is.
+            // Drawn anew for each filter asked, its box where `top` is: at the place the tab opens
+            // at, for the listing it opens on, and at the top for one newly asked.
             key={asking}
             rows={rows}
             {...spacersOf(drawn.span, drawn.total ?? 0)}
+            opensAt={opensAt(drawn, top)}
             selected={finding?.key}
             onSelect={select}
             onScroll={onScroll}

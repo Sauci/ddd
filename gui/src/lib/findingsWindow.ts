@@ -140,6 +140,48 @@ export function scrolledTop(view: { text: string; top: number }, asking: string)
   return view.text === asking ? view.top : 0;
 }
 
+/**
+ * Where the reader stands on the Findings tab (16:M16): the listing - the filter's text it was
+ * asked under, `""` for none - how far down its box is scrolled, in pixels, and the finding whose
+ * panel is open. Held above the tab, in the page's memory, while another page is shown, so that a
+ * finding followed and Back, the tab pressed - from another tab or from itself, which draws it
+ * anew - or a component's page's way back find the tab where it was left, and a list worked down
+ * is not lost at each finding. Of one project, `project`, its description's path as the state
+ * names it: another project's tab opens at its top.
+ */
+export interface FindingsPlace {
+  readonly project: string;
+  readonly text: string;
+  readonly top: number;
+  readonly selected: ListedFinding | undefined;
+}
+
+/** What the Findings tab opens at as it is drawn anew. */
+export interface Opened {
+  top: number;
+  selected: ListedFinding | undefined;
+}
+
+/** What the Findings tab of `project`, drawn anew for the listing its address asks for (`text`),
+ * opens at (16:M16): the place held of that very listing - its box's scroll and the finding whose
+ * panel was open - and otherwise the listing's top, no panel open: a link to another listing, a
+ * file's findings, asks for that listing from its first row, as a text typed does (`scrolledTop`),
+ * and another project's place, or none held yet, is no place of this tab's. */
+export function placeOpened(place: FindingsPlace | null, project: string, text: string): Opened {
+  if (place === null || place.project !== project || place.text !== text) {
+    return { top: 0, selected: undefined };
+  }
+  return { top: place.top, selected: place.selected };
+}
+
+/** Where the box of `window`'s table is scrolled to as the table is drawn anew (16:M16): `top`, the
+ * place the tab opens at, once the spaces standing for the listing's rows are known - its total,
+ * which a filtered listing's first page says (`listingTotal`) - and nowhere yet before, the box not
+ * holding rows enough to stand there: scrolled then, it would stop at the foot of what it holds. */
+export function opensAt(window: RevisionWindow, top: number): number | null {
+  return window.total === null ? null : top;
+}
+
 /** One listing's window: which revision it is of, and the filter's text it was asked under - `""`
  * where none is typed (16:I14) - how many rows its table has in all (`listingTotal`, `null` while
  * a filtered listing's first page has not come), how many its revision files unfiltered - every

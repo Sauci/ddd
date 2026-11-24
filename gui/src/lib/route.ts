@@ -224,6 +224,64 @@ export function replacing(here: Route, next: Route, replace: boolean): boolean {
   return replace || hrefOf(next) === hrefOf(here);
 }
 
+/**
+ * The pages of the open project last shown, which the page leads back to (16:M16): the tab last
+ * shown, as its address had it - a component's page has no tabs of its own, and leads back to the
+ * one it was reached from (`wayBack`, lib/announcing.ts) - and the Findings tab's own address last
+ * shown, its filter's text, which the tab's link leads back to (`findingsLeadsTo`). Of one project,
+ * `project`, its description's path as the state names it.
+ */
+export interface ShownLast {
+  readonly project: string;
+  readonly tab: TabRoute;
+  readonly findings: Extract<TabRoute, { view: "findings" }>;
+}
+
+/** A tab of the project screen, with what its address selects in it. */
+export type TabRoute = Extract<Route, { page: "project" }>;
+
+/** The Findings tab with nothing asked of it: no filter's text. */
+const FINDINGS_TAB: ShownLast["findings"] = { page: "project", view: "findings" };
+
+/** How a route is told from another: by the address `hrefOf` writes, however it is spelled, and,
+ * for one no address can carry, by its names. */
+function routeKey(route: Route): string {
+  return hrefOf(route) ?? JSON.stringify(route);
+}
+
+/** What the page holds of the pages last shown (`ShownLast`) once it shows `route` of `project`
+ * - `null` before the project's state names one, when nothing is noted: a tab of the project noted
+ * as its address has it, and, where it is the Findings tab, that address as the tab's own. Any
+ * other page - a component's, its values, the start page - leaves what was noted, and so does the
+ * tab noted already, the very same answer, so that the page can tell nothing moved. Another
+ * project's are noted afresh, its Findings tab bare. */
+export function shownLastAfter(
+  last: ShownLast | null,
+  project: string | null,
+  route: Route,
+): ShownLast | null {
+  if (project === null || route.page !== "project") return last;
+  const own = last !== null && last.project === project ? last : null;
+  const findings = route.view === "findings" ? route : (own?.findings ?? FINDINGS_TAB);
+  if (
+    own !== null &&
+    routeKey(own.tab) === routeKey(route) &&
+    routeKey(own.findings) === routeKey(findings)
+  ) {
+    return own;
+  }
+  return { project, tab: route, findings };
+}
+
+/** Where the Findings tab's link leads (16:M16): back to its own address last shown in `project`,
+ * the filter's text it held, the tab opening at its place - the box's scroll and the finding whose
+ * panel was open (`placeOpened`, lib/findingsWindow.ts) - as the Table's filter stays when its tab
+ * is pressed; and to the bare tab before it was shown, or where what was noted is another
+ * project's. */
+export function findingsLeadsTo(last: ShownLast | null, project: string | null): Route {
+  return last !== null && last.project === project ? last.findings : FINDINGS_TAB;
+}
+
 /** Whether the page the route shows takes the whole window, freed of the 1,100 px measure every
  * other page keeps (decision 16.4, 16:M8): the Graph, whose canvas is the wider the more modules it
  * can show side by side, and a component's values grid, whose columns were cut at any screen. */

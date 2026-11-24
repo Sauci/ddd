@@ -16,8 +16,14 @@ export interface FindingsTableViewProps {
   selected: string | undefined;
   onSelect: (finding: ListedFinding | undefined) => void;
   /** The box drawn, scrolled, grown or shrunk: where it is scrolled to, and how tall it is. One
-   * identity for the life of the table: the box is watched again whenever it changes. */
+   * identity for the life of the table: the box is watched again whenever it changes. Said once the
+   * box stands where the table opens it (`opensAt`), and from then on. */
   onScroll: (scrollTop: number, height: number) => void;
+  /** Where the box is scrolled to as the table is drawn: the place the tab opens at (16:M16), once
+   * the spaces standing for the listing's rows are known (`opensAt`, lib/findingsWindow.ts), and
+   * `null` until then - the box would stop at the foot of what it holds. Read until the box has
+   * stood there: the table is drawn anew for each listing asked. */
+  opensAt: number | null;
 }
 
 /** The Findings tab's table (spec 5.1): a window of the project's findings, worst first - the
@@ -25,9 +31,20 @@ export interface FindingsTableViewProps {
  * of its own that the table scrolls in, its header kept at the top. A picture of its props: which
  * rows those are is `lib/findingsWindow`'s to say. */
 export function FindingsTableView(props: FindingsTableViewProps) {
-  const { rows, selected, onSelect, onScroll } = props;
+  const { rows, selected, onSelect, onScroll, opensAt } = props;
   const box = useRef<HTMLDivElement>(null);
   const grid = useRef<HTMLTableElement>(null);
+  // Whether the box has stood where the table opens it (`opensAt`). Until then it says nothing of
+  // where it stands: drawn before the listing's size is known, it stands at its top, and saying so
+  // would take the place the tab opens at for the top.
+  const opened = useRef(false);
+  useLayoutEffect(() => {
+    const drawn = box.current;
+    if (opened.current || opensAt === null || drawn === null) return;
+    opened.current = true;
+    drawn.scrollTop = opensAt;
+    onScroll(drawn.scrollTop, drawn.clientHeight);
+  }, [opensAt, onScroll]);
   // Where the window last drew the row it selects: what a panel closing scrolls the window back to,
   // once a scroll has taken the window past that row (`keepsWindow`, 16:I13).
   const selectedAt = useRef<WindowRow | null>(null);
@@ -49,7 +66,9 @@ export function FindingsTableView(props: FindingsTableViewProps) {
   useEffect(() => {
     const drawn = box.current;
     if (drawn === null) return;
-    const observer = new ResizeObserver(() => onScroll(drawn.scrollTop, drawn.clientHeight));
+    const observer = new ResizeObserver(() => {
+      if (opened.current) onScroll(drawn.scrollTop, drawn.clientHeight);
+    });
     observer.observe(drawn);
     return () => observer.disconnect();
   }, [onScroll]);

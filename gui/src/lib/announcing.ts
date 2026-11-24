@@ -1,7 +1,8 @@
 import type { SourceFile, UndoPreview } from "../api/types";
 import { toldApartAll } from "./paths";
-import type { ProjectView, Route } from "./route";
+import type { ProjectView, Route, ShownLast } from "./route";
 import { baseName, FILES_NAMED } from "./units";
+import type { Lead } from "./unloaded";
 
 /**
  * What the page says of itself (16:I13): the title the browser names each page by - its tab, its
@@ -115,6 +116,18 @@ export const VIEW_NAMES: Readonly<Record<ProjectView, string>> = {
   findings: "Findings",
   compare: "Compare",
 };
+
+/** A component's page's way back to the tab of the project it was reached from (16:M16): the
+ * page has no tabs of its own, and the masthead's project link goes to the Graph, so a finding
+ * followed there left the Findings tab out of reach but by Back. Named as the values grid names its
+ * way back to its component, "Back to Findings", and leading to the tab last shown in `project` as
+ * its address had it (`ShownLast`, lib/route.ts) - the Findings tab at its place, a unit's panel
+ * open where it was. None before a tab of the project was shown, the page loaded at its own address,
+ * nor where the one noted is another project's. */
+export function wayBack(last: ShownLast | null, project: string | null): Lead | null {
+  if (last === null || last.project !== project) return null;
+  return { text: `Back to ${VIEW_NAMES[last.tab.view]}`, to: last.tab };
+}
 
 /** The tool, which every title ends with. */
 const TOOL = "ddd gui";

@@ -12,10 +12,20 @@ import { signedOut } from "../api/token";
 import { LoadBannerView } from "../components/LoadBannerView";
 import { SignedOutView } from "../components/SignedOutView";
 import { UndrawnView } from "../components/UndrawnView";
-import { PROJECT_VIEWS, pageTitle, VIEW_NAMES } from "../lib/announcing";
+import { PROJECT_VIEWS, pageTitle, VIEW_NAMES, wayBack } from "../lib/announcing";
 import type { CompareHeld } from "../lib/compare";
+import type { FindingsPlace } from "../lib/findingsWindow";
 import { headingAsked, pageOf, type Shown } from "../lib/focus";
-import { type ProjectView, type Route, tabHref, takesWindow } from "../lib/route";
+import {
+  findingsLeadsTo,
+  hrefOf,
+  type ProjectView,
+  type Route,
+  type ShownLast,
+  shownLastAfter,
+  tabHref,
+  takesWindow,
+} from "../lib/route";
 import { projectName, sessionAskedFor } from "../lib/session";
 import type { SharedKind } from "../lib/shared";
 import { undrawnSentence } from "../lib/undrawn";
@@ -99,6 +109,20 @@ export function App() {
   const { state, project, failed, refused, updating, stopped, failure } = useProjectState(
     opened !== null,
   );
+  // The pages of the project last shown (16:M16): the tab, which a component's page leads back to,
+  // and the Findings tab's own address, its filter's text, which that tab's link leads back to.
+  // Noted as each is shown, of the project the state is of (`shownLastAfter`).
+  const [shownLast, setShownLast] = useState<ShownLast | null>(null);
+  const shownNow = shownLastAfter(shownLast, project, route);
+  if (shownNow !== shownLast) setShownLast(shownNow);
+  // The Findings tab's place (16:M16) - the listing asked, its box's scroll and the finding whose
+  // panel is open - held here, above the tab, while another page is shown, for the tab drawn anew
+  // to open at: in the page's memory, written as the tab moves without drawing the page again.
+  const findingsPlace = useRef<FindingsPlace | null>(null);
+  const heldPlace = useCallback(() => findingsPlace.current, []);
+  const holdPlace = useCallback((place: FindingsPlace) => {
+    findingsPlace.current = place;
+  }, []);
   // What a page loaded anew waits to show waits the short time from the landing of the project's
   // first analysis (ruling B11-47). Before it, a page draws no more than the project's heading -
   // with its tabs, on a tab of the project - and the line saying the analysis is on its way, so that
@@ -262,12 +286,17 @@ export function App() {
         </div>
         <LinkTabs
           label="Project views"
-          tabs={PROJECT_VIEWS.map((view) => ({
-            href: tabHref(view),
-            label: VIEW_NAMES[view],
-            current: route.view === view,
-            onFollow: () => navigate(BARE_ROUTES[view]),
-          }))}
+          tabs={PROJECT_VIEWS.map((view) => {
+            // The Findings tab leads back to its own address last shown, its filter's text, and
+            // opens at its place (16:M16); every other tab to itself with nothing selected.
+            const to = view === "findings" ? findingsLeadsTo(shownNow, project) : BARE_ROUTES[view];
+            return {
+              href: hrefOf(to) ?? tabHref(view),
+              label: VIEW_NAMES[view],
+              current: route.view === view,
+              onFollow: () => navigate(to),
+            };
+          })}
         />
         {/* No tab asks the server anything before the project's first analysis has landed: each
             would be refused, and the graph would be asked for once more with no revision. */}
@@ -324,6 +353,8 @@ export function App() {
             state={state}
             text={route.text}
             onText={filterFindings}
+            place={heldPlace}
+            onPlace={holdPlace}
             stopped={stopped}
             onOpen={navigate}
           />
@@ -386,6 +417,8 @@ export function App() {
         onOpenConstant={(name) =>
           navigate({ page: "project", view: "shared", kind: "constant", name })
         }
+        wayBack={wayBack(shownNow, project)}
+        onFollow={navigate}
       />
     );
   }

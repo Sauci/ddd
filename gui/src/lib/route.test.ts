@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 import {
   arrivedAfter,
+  findingsLeadsTo,
   type Held,
   heldFollowing,
   heldGoingTo,
@@ -8,6 +9,7 @@ import {
   parseRoute,
   type Route,
   replacing,
+  shownLastAfter,
   tabHref,
   takesWindow,
 } from "./route";
@@ -434,4 +436,86 @@ test.each([
   [{ page: "start" }, false],
 ] as const)("%o takes the window: %s", (route, takes) => {
   expect(takesWindow(route)).toBe(takes);
+});
+
+/** The pages of the demo last shown (16:M16), noted by `shownLastAfter`. */
+const DEMO = "C:/work/demo/demo.ddd.json";
+const CONTROLLER = "C:/work/demo/components/controller.ddd.json";
+
+test("a tab shown is noted as its address has it, and the Findings tab's address with it", () => {
+  const units: Route = { page: "project", view: "units", unit: "Hz" };
+  expect(shownLastAfter(null, DEMO, units)).toEqual({
+    project: DEMO,
+    tab: units,
+    findings: findings(),
+  });
+  const filtered = shownLastAfter(null, DEMO, findings("sensor"));
+  expect(filtered).toEqual({
+    project: DEMO,
+    tab: findings("sensor"),
+    findings: findings("sensor"),
+  });
+  // Another tab shown after it keeps the Findings tab's address, the filter's text.
+  expect(shownLastAfter(filtered, DEMO, { page: "project", view: "table" })).toEqual({
+    project: DEMO,
+    tab: { page: "project", view: "table" },
+    findings: findings("sensor"),
+  });
+});
+
+test("a page that is no tab leaves what was noted, and the tab noted already is the very same", () => {
+  const noted = shownLastAfter(null, DEMO, findings("sensor"));
+  expect(shownLastAfter(noted, DEMO, { page: "component", file: CONTROLLER })).toBe(noted);
+  expect(
+    shownLastAfter(noted, DEMO, {
+      page: "component",
+      file: CONTROLLER,
+      variable: "MapA",
+      view: "values",
+    }),
+  ).toBe(noted);
+  expect(shownLastAfter(noted, DEMO, { page: "start" })).toBe(noted);
+  // However its address is spelled.
+  expect(shownLastAfter(noted, DEMO, parseRoute("/project", "?text=sensor&view=findings"))).toBe(
+    noted,
+  );
+  // And before the state names a project, nothing is noted.
+  expect(shownLastAfter(noted, null, { page: "project", view: "table" })).toBe(noted);
+  expect(shownLastAfter(null, null, findings("sensor"))).toBeNull();
+});
+
+test("a tab whose address cannot carry what it selects is told apart by its names", () => {
+  // A unit named by half of a surrogate pair alone (15:I5), which no address carries.
+  const lone: Route = { page: "project", view: "units", unit: `${HIGH}x` };
+  const noted = shownLastAfter(null, DEMO, lone);
+  expect(noted).toEqual({ project: DEMO, tab: lone, findings: findings() });
+  expect(shownLastAfter(noted, DEMO, { ...lone })).toBe(noted);
+  const other: Route = { page: "project", view: "units", unit: `${HIGH}y` };
+  expect(shownLastAfter(noted, DEMO, other)).toEqual({
+    project: DEMO,
+    tab: other,
+    findings: findings(),
+  });
+});
+
+test("another project's tabs are noted afresh, its Findings tab bare", () => {
+  const noted = shownLastAfter(null, DEMO, findings("sensor"));
+  const second = "C:/work/demo/second/second.ddd.json";
+  expect(shownLastAfter(noted, second, { page: "project", view: "graph" })).toEqual({
+    project: second,
+    tab: { page: "project", view: "graph" },
+    findings: findings(),
+  });
+});
+
+test("the Findings tab leads back to its address last shown, of the project shown", () => {
+  const noted = shownLastAfter(shownLastAfter(null, DEMO, findings("sensor")), DEMO, {
+    page: "project",
+    view: "graph",
+  });
+  expect(findingsLeadsTo(noted, DEMO)).toEqual(findings("sensor"));
+  // To the bare tab before it was shown, or where what was noted is another project's.
+  expect(findingsLeadsTo(null, DEMO)).toEqual(findings());
+  expect(findingsLeadsTo(noted, "C:/work/demo/second/second.ddd.json")).toEqual(findings());
+  expect(findingsLeadsTo(noted, null)).toEqual(findings());
 });

@@ -218,6 +218,89 @@ test("Close in the Findings window after a scroll gives the focus back to the fi
   await expect(first).toBeInViewport();
 });
 
+/** Where `placedInTheFindings` leaves the Findings tab's box: 20,000 px down the 15,000
+ * `missing-id` findings, row 606 the first in view. */
+const PLACE = 20_000;
+
+/** The row `placedInTheFindings` opens, a few rows into the box scrolled to `PLACE`. */
+const OPENED = 610;
+
+/**
+ * The Findings tab worked down as a reader works down a list (16:M16): filtered to its `missing-id`
+ * findings, its box scrolled to `PLACE` - as the scrollbar dragged there sets it - and the finding
+ * at row `OPENED` pressed, its panel open. Returns the box, the filter, the row and its panel.
+ */
+async function placedInTheFindings(page: Page) {
+  await page.getByRole("link", { name: "Findings", exact: true }).click();
+  const filter = page.getByRole("textbox", { name: "Filter findings" });
+  await filter.fill("missing-id");
+  await expect(filter).toHaveAccessibleDescription("15,000 of 25,000 findings");
+  const box = page.locator(".findings-window");
+  await box.evaluate((node, top) => {
+    node.scrollTop = top;
+  }, PLACE);
+  const row = box.locator(`[role="row"][data-index="${OPENED}"]`);
+  await expect(row.locator(".chip")).toBeVisible();
+  await row.click();
+  const panel = page.getByRole("complementary", { name: "missing-id" });
+  await expect(panel).toBeVisible();
+  return { box, filter, row, panel };
+}
+
+/**
+ * Back keeps the Findings tab's place (16:M16): a finding followed to its variable's page from
+ * 20,000 px down a filtered list, and Back, finds the tab as it was left - its filter's text, its
+ * box scrolled where it stood, and the finding's panel open on its row - not at its top with no
+ * panel, the place to be found again for each finding of the list worked down.
+ */
+test("Back from a finding followed finds the Findings tab as it was left: its filter, its scroll and its finding", async ({
+  page,
+  generatedGui,
+}) => {
+  await page.goto(generatedGui.address);
+  const { box, filter, row, panel } = await placedInTheFindings(page);
+  await panel.getByRole("link", { name: /^Open / }).click();
+  await expect(page).toHaveURL(/\/component\?file=.*&variable=/);
+  await expect(panel).toHaveCount(0);
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/project\?view=findings&text=missing-id$/);
+  await expect(filter).toHaveValue("missing-id");
+  await expect(panel).toBeVisible();
+  await expect(row).toHaveAttribute("aria-selected", "true");
+  await expect.poll(() => box.evaluate((node) => node.scrollTop)).toBe(PLACE);
+});
+
+/**
+ * The Findings tab pressed opens it at its place (16:M16), as the Table's filter stays when its tab
+ * is pressed: pressed while on it, the finding's panel stays open and the box where it stood, where
+ * the tab drawn anew closed one and went back to the other's top; and pressed from another tab, the
+ * filter's text, the scroll and the panel are as the tab was left.
+ */
+test("the Findings tab pressed opens it at its place, from the tab itself and from another", async ({
+  page,
+  generatedGui,
+}) => {
+  await page.goto(generatedGui.address);
+  const { box, filter, row, panel } = await placedInTheFindings(page);
+  const findings = page
+    .getByRole("navigation", { name: "Project views" })
+    .getByRole("link", { name: "Findings", exact: true });
+  await findings.click();
+  await expect(panel).toBeVisible();
+  await expect(row).toHaveAttribute("aria-selected", "true");
+  await expect.poll(() => box.evaluate((node) => node.scrollTop)).toBe(PLACE);
+
+  await page.getByRole("link", { name: "Table", exact: true }).click();
+  await expect(page.getByRole("grid", { name: "Components" })).toBeVisible();
+  await findings.click();
+  await expect(page).toHaveURL(/\/project\?view=findings&text=missing-id$/);
+  await expect(filter).toHaveValue("missing-id");
+  await expect(panel).toBeVisible();
+  await expect(row).toHaveAttribute("aria-selected", "true");
+  await expect.poll(() => box.evaluate((node) => node.scrollTop)).toBe(PLACE);
+});
+
 /**
  * The declare form's Name list, over the generated project's names (16:I7): React Aria
  * draws every entry of a list it is handed, so the list is narrowed by what is typed, as the unit

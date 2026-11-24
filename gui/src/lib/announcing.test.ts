@@ -5,9 +5,11 @@ import {
   pageTitle,
   putBackOf,
   VIEW_NAMES,
+  wayBack,
   writtenSentence,
   writtenSince,
 } from "./announcing";
+import type { ShownLast } from "./route";
 
 const file = (path: string, name: string | null): SourceFile => ({
   path,
@@ -222,5 +224,39 @@ describe("what the heading says the page last wrote", () => {
         removed: [at("pump.ddd.json"), at("valve.ddd.json")],
       }),
     ).toBe("Undid the new file pump.ddd.json, removing 2 files: pump.ddd.json, valve.ddd.json.");
+  });
+});
+
+describe("a component's page's way back to the tab it was reached from (16:M16)", () => {
+  const DEMO = "/work/demo/demo.ddd.json";
+
+  test("back to the tab last shown, by its name, as its address had it", () => {
+    const findings = { page: "project", view: "findings", text: "sensor" } as const;
+    expect(wayBack({ project: DEMO, tab: findings, findings }, DEMO)).toEqual({
+      text: "Back to Findings",
+      to: findings,
+    });
+    const graph = { page: "project", view: "graph", variable: "ValueA" } as const;
+    expect(
+      wayBack({ project: DEMO, tab: graph, findings: { page: "project", view: "findings" } }, DEMO),
+    ).toEqual({ text: "Back to Graph", to: graph });
+    const shared = { page: "project", view: "shared" } as const;
+    expect(
+      wayBack(
+        { project: DEMO, tab: shared, findings: { page: "project", view: "findings" } },
+        DEMO,
+      ),
+    ).toEqual({ text: "Back to Shared files", to: shared });
+  });
+
+  test("none before a tab of the project was shown, or where the one noted is another project's", () => {
+    const noted: ShownLast = {
+      project: DEMO,
+      tab: { page: "project", view: "table" },
+      findings: { page: "project", view: "findings" },
+    };
+    expect(wayBack(null, DEMO)).toBeNull();
+    expect(wayBack(noted, "/work/second/second.ddd.json")).toBeNull();
+    expect(wayBack(noted, null)).toBeNull();
   });
 });

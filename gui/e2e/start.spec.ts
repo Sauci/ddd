@@ -599,9 +599,10 @@ test("a file that does not load is named under the masthead of every page, a com
   const kept = await page.evaluate(() => (window as unknown as { marker?: string }).marker);
   expect(kept).toBe("this document");
   // From the Findings tab itself, its filter holding another text, the link asks for the file's.
+  // The tab pressed opens it at its place, the file's text kept (16:M16).
   await tab(page, "Findings").click();
   const filter = page.getByRole("textbox", { name: "Filter findings" });
-  await expect(filter).toHaveValue("");
+  await expect(filter).toHaveValue("controller.ddd.json");
   await filter.fill("sensor");
   await banner.getByRole("link", { name: "controller.ddd.json", exact: true }).click();
   await expect(filter).toHaveValue("controller.ddd.json");

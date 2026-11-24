@@ -21,8 +21,9 @@ import { leadsElsewhere, routeHref, routeOf } from "../lib/findings";
 import { findingsByRow } from "../lib/findingsByRow";
 import type { ComponentFile } from "../lib/formats";
 import { pointerOf, valueAt } from "../lib/pointer";
+import type { Route } from "../lib/route";
 import { shapeColumn, typeKinds } from "../lib/shapeColumn";
-import { unloadedNames } from "../lib/unloaded";
+import { type Lead, unloadedNames } from "../lib/unloaded";
 import { asList, asText } from "../lib/values";
 import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
@@ -50,6 +51,12 @@ interface Props {
   /** Following a `dimensions` entry of the open variable's panel to the constant it names - the
    * Shared files tab, which leaves this page too, for the same reason. */
   onOpenConstant: (name: string) => void;
+  /** The way back to the tab of the project this page was reached from (`wayBack`,
+   * lib/announcing.ts; 16:M16) - the page has no tabs of its own - or `null` where none was shown
+   * before it. */
+  wayBack: Lead | null;
+  /** Following the way back: the route it leads to, which the app navigates to. */
+  onFollow: (to: Route) => void;
 }
 
 /** No findings, while this file's own have not come: one array for every such render, so that
@@ -69,6 +76,8 @@ export function ComponentPage({
   onValues,
   onOpenType,
   onOpenConstant,
+  wayBack,
+  onFollow,
 }: Props) {
   const updating = useUpdating();
   // What the heading says the page last wrote, on this component's page.
@@ -241,6 +250,13 @@ export function ComponentPage({
           >
             Add a declaration
           </Button>
+          {/* Back to the tab this page was reached from, as the values grid leads back to its
+              component (16:M16). */}
+          {wayBack !== null && (
+            <Button variant="link" onPress={() => onFollow(wayBack.to)}>
+              {wayBack.text}
+            </Button>
+          )}
           {/* Last in the row, so that none of the controls before it ever moves. */}
           <UpdatingStatus updating={updating} written={written} />
         </div>

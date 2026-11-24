@@ -9,10 +9,12 @@ import {
   keptAfter,
   listingTotal,
   MARGIN,
+  opensAt,
   PAGE_SIZE,
   pageQuery,
   pagesOf,
   pendingKeys,
+  placeOpened,
   type RevisionWindow,
   ROW_HEIGHT,
   scrolledTo,
@@ -226,6 +228,60 @@ describe("where the box stands for the listing asked", () => {
     // And back to every finding, or on to another text.
     expect(scrolledTop({ text: "c00500", top: 990 }, "")).toBe(0);
     expect(scrolledTop({ text: "c00500", top: 990 }, "missing-id")).toBe(0);
+  });
+});
+
+describe("where the tab opens, drawn anew (16:M16)", () => {
+  const PROJECT = "C:/work/demo/demo.ddd.json";
+  /** Scrolled to row 606 of the 15,000 `missing-id` findings, the one at row 610 opened. */
+  const held = { project: PROJECT, text: "missing-id", top: 20_000, selected: listed(610) };
+
+  test("at the place held of the very listing its address asks for: its scroll and its finding", () => {
+    expect(placeOpened(held, PROJECT, "missing-id")).toEqual({
+      top: 20_000,
+      selected: listed(610),
+    });
+    // The bare tab's own place, its box scrolled and no panel open.
+    const bare = { project: PROJECT, text: "", top: 824_967, selected: undefined };
+    expect(placeOpened(bare, PROJECT, "")).toEqual({ top: 824_967, selected: undefined });
+  });
+
+  test("at its top, no panel open, for another listing, another project's place, or none held", () => {
+    // A link to a file's findings, while the place held is of every finding.
+    expect(placeOpened(held, PROJECT, "controller.ddd.json")).toEqual({
+      top: 0,
+      selected: undefined,
+    });
+    expect(placeOpened(held, PROJECT, "")).toEqual({ top: 0, selected: undefined });
+    expect(placeOpened(held, "C:/work/second/second.ddd.json", "missing-id")).toEqual({
+      top: 0,
+      selected: undefined,
+    });
+    expect(placeOpened(null, PROJECT, "missing-id")).toEqual({ top: 0, selected: undefined });
+  });
+
+  /** A listing's window as the tab draws it, `total` rows in all or `null` where its count is not
+   * known yet. */
+  function drawnOf(text: string, total: number | null): RevisionWindow {
+    return {
+      revision: 7,
+      text,
+      total,
+      all: 25000,
+      statements: { error: 0, warning: 25000, info: 0 },
+      span: { first: 0, last: 0 },
+      pages: new Map(),
+    };
+  }
+
+  test("its box scrolled there once the spaces standing for its rows are known", () => {
+    expect(opensAt(drawnOf("", 25000), 20_000)).toBe(20_000);
+    expect(opensAt(drawnOf("missing-id", 15000), 20_000)).toBe(20_000);
+    expect(opensAt(drawnOf("missing-id", 15000), 0)).toBe(0);
+  });
+
+  test("nowhere yet while a filtered listing's count has not come: the box could not stand there", () => {
+    expect(opensAt(drawnOf("missing-id", null), 20_000)).toBeNull();
   });
 });
 

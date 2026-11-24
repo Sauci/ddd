@@ -138,6 +138,40 @@ test("a row the Findings tab's filter leaves stays selected once the filter is e
   await expect(page.getByText("1 finding · 1 error", { exact: true })).toBeVisible();
 });
 
+test("a component's page reached from a finding leads back to the Findings tab, as it was left", async ({
+  page,
+  gui,
+}) => {
+  // 16:M16: a component's page has no tabs of its own, and the masthead's project link goes to the
+  // Graph: the page leads back to the tab it was reached from, the Findings tab at its place.
+  drift(gui.directory);
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Findings" }).click();
+  const filter = page.getByRole("textbox", { name: "Filter findings" });
+  await filter.fill("sensor_hub");
+  await expect(filter).toHaveAccessibleDescription("1 of 2 findings");
+  const row = page.getByRole("row", { name: "definition-mismatch" });
+  await row.click();
+  const panel = page.getByRole("complementary", { name: "definition-mismatch" });
+  await panel.getByRole("link", { name: "Open ValueA" }).click();
+  await expect(page).toHaveURL(/\/component\?file=.*variable=ValueA$/);
+
+  await page.getByRole("button", { name: "Back to Findings", exact: true }).click();
+  await expect(page).toHaveURL(/\/project\?view=findings&text=sensor_hub$/);
+  await expect(filter).toHaveValue("sensor_hub");
+  await expect(panel).toBeVisible();
+  await expect(row).toHaveAttribute("aria-selected", "true");
+  // A change of page, as Back is: the focus on the new page's heading (16:I13).
+  await expect(page.getByRole("heading", { name: "DemoDevice", level: 1 })).toBeFocused();
+
+  // Reached from another tab, the way back names that tab, and leads to it.
+  await page.getByRole("link", { name: "Table", exact: true }).click();
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("button", { name: "Back to Table", exact: true }).click();
+  await expect(page).toHaveURL(/\/project\?view=table$/);
+  await expect(page.getByRole("grid", { name: "Components" })).toBeVisible();
+});
+
 test("a filter the server fails on says so above the table", async ({ page, gui }) => {
   drift(gui.directory);
   await page.goto(gui.address);

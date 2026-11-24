@@ -75,7 +75,7 @@ const STATE: State = {
 test("a baseline's own finding is answered before the state is ever asked", () => {
   // The case `noRouteReason` cannot answer: the baseline's file is, path for path, a live and
   // loaded component of the open project, with a pointer naming a declaration that is really
-  // there. Asked of it, `noRouteReason` would say "there is nothing at that place any more".
+  // there. Asked of it, `noRouteReason` would say "There is nothing at that place any more".
   const baseline = row({
     fromBaseline: true,
     finding: finding({
@@ -84,13 +84,13 @@ test("a baseline's own finding is answered before the state is ever asked", () =
     }),
   });
   expect(compareRouteReason(baseline, STATE)).toBe(
-    "it is the baseline's own finding, not a place in your project",
+    "It is the baseline's own finding, not a place in your project",
   );
 });
 
 test("a finding filed at no place in particular is about the whole delivery", () => {
   expect(compareRouteReason(row(), STATE)).toBe(
-    "it is about the whole delivery being compared, not a place in one file",
+    "It is about the whole delivery being compared, not a place in one file",
   );
 });
 

@@ -82,7 +82,7 @@ export function rasterLabel(plan: RasterPlanRequest): string {
  * to a directory is named by where it leads, a spelling no entry has; and a key outside the
  * description's directory by its base name alone, `relativeToProject`'s own fallback. */
 export function filesLabel(plan: FilesPlanRequest, answered: PlanReply, project: string): string {
-  if (plan.action === "create") return fitted(`${createdBy(answered)} created`);
+  if (plan.action === "create") return fitted(`the creation of ${createdBy(answered)}`);
   if (plan.action === "add") return fitted(`'${plan.path}' added to the includes`);
   return fitted(`'${relativeToProject(plan.path, project)}' removed from the includes`);
 }
@@ -145,12 +145,12 @@ export function valuesLabel(
  *
  * The one fix the tab offers is `missing-id`, whose route names the declaration it stamps, so
  * the sentence can name it too. Any other fix is named by its own title, which is the best the
- * page has and reads well enough after "Undo".
+ * page has, said as a fix: a title is a sentence of its own, and after "Undo" it ran on as one.
  */
 export function fixLabel(finding: Finding, title: string): string {
   const named = finding.route === null ? null : finding.route.name;
   if (finding.check === "missing-id" && named !== null) return fitted(`the identity of ${named}`);
-  return fitted(title);
+  return fitted(`the fix "${title}"`);
 }
 
 /** A label as the api takes it: a long one cut short, so that no edit is ever refused for the

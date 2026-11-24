@@ -487,7 +487,7 @@ test("a finding about the whole delivery says why it leads nowhere", async ({
   // is about the delivery, not a place in one file, so the panel says so and has no link.
   const panel = page.getByRole("complementary", { name: "changed-interface" });
   await expect(
-    panel.getByText("it is about the whole delivery being compared, not a place in one file", {
+    panel.getByText("It is about the whole delivery being compared, not a place in one file", {
       exact: true,
     }),
   ).toBeVisible();
@@ -532,7 +532,7 @@ test("the baseline's own findings are named as the baseline's and lead nowhere, 
 
   const panel = page.getByRole("complementary", { name: "definition-mismatch" });
   await expect(
-    panel.getByText("it is the baseline's own finding, not a place in your project", {
+    panel.getByText("It is the baseline's own finding, not a place in your project", {
       exact: true,
     }),
   ).toBeVisible();

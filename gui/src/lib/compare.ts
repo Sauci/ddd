@@ -27,9 +27,9 @@ import { baseName } from "./units";
  *   and it is the open project's own file it is answering about.
  */
 export function compareRouteReason(row: CompareRow, state: State): string {
-  if (row.fromBaseline) return "it is the baseline's own finding, not a place in your project";
+  if (row.fromBaseline) return "It is the baseline's own finding, not a place in your project";
   if (row.finding.pointer === "") {
-    return "it is about the whole delivery being compared, not a place in one file";
+    return "It is about the whole delivery being compared, not a place in one file";
   }
   return noRouteReason(row.finding, state);
 }

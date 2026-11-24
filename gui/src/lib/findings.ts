@@ -308,17 +308,17 @@ const SHOWN = new Set(["component", "constants", "types", "units", "sections", "
  * first: such a finding leads somewhere, and no link can take the reader there. */
 export function noRouteReason(finding: Finding, state: State): string {
   const route = routeOf(finding);
-  if (route !== null && hrefOf(route) === null) return "no address can carry the name it leads to";
+  if (route !== null && hrefOf(route) === null) return "No address can carry the name it leads to";
   const name = baseName(finding.file);
   const listed = state.files.find((file) => file.path === finding.file);
   if (listed === undefined) return `${name} is not a file of this project`;
   if (!listed.loaded) return `${name} did not load`;
   if (!SHOWN.has(listed.kind)) return `${name} is a ${listed.kind} file, which has no page yet`;
-  if (finding.pointer === "") return "it is about the project rather than a place in a file";
+  if (finding.pointer === "") return "It is about the project rather than a place in a file";
   if (!/[.[]/.test(finding.pointer)) {
-    return `it is about the whole of ${name} rather than one entry of it`;
+    return `It is about the whole of ${name} rather than one entry of it`;
   }
-  return "there is nothing at that place any more";
+  return "There is nothing at that place any more";
 }
 
 /** Where a finding is, for a panel with no route to offer: `file:line:column` as `ddd check`

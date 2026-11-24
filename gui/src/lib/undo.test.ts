@@ -80,13 +80,17 @@ describe("what an edit is called", () => {
     expect(fixLabel(MISSING_ID, "Give 'ValueA' an id")).toBe("the identity of ValueA");
   });
 
-  it("falls back on the fix's own title where it names no declaration", () => {
+  it("falls back on the fix's own title, named as a fix, where it names no declaration", () => {
+    // The button reads "Undo" and the label: a title alone - an "Undo Apply this unit to ..." -
+    // opened a sentence of its own after the verb (16:M22).
     expect(fixLabel({ ...MISSING_ID, route: null }, "Give 'ValueA' an id")).toBe(
-      "Give 'ValueA' an id",
+      "the fix \"Give 'ValueA' an id\"",
     );
-    expect(fixLabel({ ...MISSING_ID, check: "unknown-unit" }, "Adopt 'rpm'")).toBe("Adopt 'rpm'");
+    expect(fixLabel({ ...MISSING_ID, check: "unknown-unit" }, "Adopt 'rpm'")).toBe(
+      "the fix \"Adopt 'rpm'\"",
+    );
     expect(fixLabel({ ...MISSING_ID, route: { kind: "component", name: null } }, "Open it")).toBe(
-      "Open it",
+      'the fix "Open it"',
     );
   });
 
@@ -157,19 +161,19 @@ test.each([
   [
     { action: "create", kind: "types", name: "sizes" },
     answered(DESCRIBED, ["C:/work/demo/sizes.ddd.json", null]),
-    "'sizes.ddd.json' created",
+    "the creation of 'sizes.ddd.json'",
   ],
   [
     { action: "create", kind: "component", name: "pump", component: "Pump" },
     answered(DESCRIBED, ["C:/work/demo/pump.ddd.json", null]),
-    "'pump.ddd.json' created",
+    "the creation of 'pump.ddd.json'",
   ],
   // A created file is named as the plan creates it, never by the name typed with a suffix the
   // page would have to restate: a server creating it under another suffix is followed.
   [
     { action: "create", kind: "types", name: "sizes" },
     answered(DESCRIBED, ["C:/work/demo/sizes.ddd.jsonc", null]),
-    "'sizes.ddd.jsonc' created",
+    "the creation of 'sizes.ddd.jsonc'",
   ],
   // An add is named by the path exactly as typed: that text is the entry the includes gain.
   [
@@ -246,6 +250,13 @@ describe("the undo control", () => {
   it("says what it would undo", () => {
     expect(undoButton({ ...STATE, undoable: { at: 3, label: "the unit of ValueA" } })).toBe(
       "Undo the unit of ValueA",
+    );
+  });
+
+  it("reads a fix applied as a fix", () => {
+    const fix = fixLabel({ ...MISSING_ID, route: null }, "Apply this unit to 1 other declaration");
+    expect(undoButton({ ...STATE, undoable: { at: 3, label: fix } })).toBe(
+      'Undo the fix "Apply this unit to 1 other declaration"',
     );
   });
 

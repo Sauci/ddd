@@ -424,7 +424,7 @@ describe("why a finding leads nowhere", () => {
       pointer: "component.interface[0].definition.unit",
       route: { kind: "unit", name: `${String.fromCharCode(0xd800)}x` },
     });
-    expect(noRouteReason(one, state([one]))).toBe("no address can carry the name it leads to");
+    expect(noRouteReason(one, state([one]))).toBe("No address can carry the name it leads to");
   });
 
   test("a route an address carries is never said to lack one", () => {
@@ -435,7 +435,7 @@ describe("why a finding leads nowhere", () => {
       pointer: "component.interface[0].definition.unit",
       route: { kind: "unit", name: "degC" },
     });
-    expect(noRouteReason(one, state([one]))).not.toBe("no address can carry the name it leads to");
+    expect(noRouteReason(one, state([one]))).not.toBe("No address can carry the name it leads to");
   });
 
   test("its file did not load", () => {
@@ -465,7 +465,7 @@ describe("why a finding leads nowhere", () => {
         findings: { error: 1, warning: 0, info: 0 },
       },
     ];
-    expect(noRouteReason(one, withUnits)).toBe("there is nothing at that place any more");
+    expect(noRouteReason(one, withUnits)).toBe("There is nothing at that place any more");
   });
 
   test("a finding on a constants file no longer says it has no page", () => {
@@ -491,7 +491,7 @@ describe("why a finding leads nowhere", () => {
       },
     ];
     expect(noRouteReason(one, withConstants)).toBe(
-      "it is about the project rather than a place in a file",
+      "It is about the project rather than a place in a file",
     );
   });
 
@@ -517,7 +517,7 @@ describe("why a finding leads nowhere", () => {
         findings: { error: 1, warning: 0, info: 0 },
       },
     ];
-    expect(noRouteReason(one, withSections)).toBe("there is nothing at that place any more");
+    expect(noRouteReason(one, withSections)).toBe("There is nothing at that place any more");
   });
 
   test("a finding on a rasters file no longer says it has no page", () => {
@@ -542,7 +542,7 @@ describe("why a finding leads nowhere", () => {
         findings: { error: 1, warning: 0, info: 0 },
       },
     ];
-    expect(noRouteReason(one, withRasters)).toBe("there is nothing at that place any more");
+    expect(noRouteReason(one, withRasters)).toBe("There is nothing at that place any more");
   });
 
   test("a file of a kind that still has no page says so", () => {
@@ -571,7 +571,7 @@ describe("why a finding leads nowhere", () => {
   test("it names no place in a file", () => {
     const one = finding({ pointer: "", route: null, check: "missing-producer" });
     expect(noRouteReason(one, state([one]))).toBe(
-      "it is about the project rather than a place in a file",
+      "It is about the project rather than a place in a file",
     );
   });
 
@@ -590,7 +590,7 @@ describe("why a finding leads nowhere", () => {
     const withConstants = state([one]);
     withConstants.files = [...withConstants.files, fileRow(CONSTANTS, "constants", true)];
     expect(noRouteReason(one, withConstants)).toBe(
-      "it is about the whole of constants.ddd.json rather than one entry of it",
+      "It is about the whole of constants.ddd.json rather than one entry of it",
     );
   });
 
@@ -796,7 +796,7 @@ describe("why a finding leads nowhere", () => {
     // there - `ddd.finding_routes.route_of`. The file is a loaded component all the same, so
     // the reason must not tell the reader it is a finding about the project.
     const one = finding({ route: null });
-    expect(noRouteReason(one, state([one]))).toBe("there is nothing at that place any more");
+    expect(noRouteReason(one, state([one]))).toBe("There is nothing at that place any more");
   });
 
   test("the unit it was filed on is no longer stated there", () => {
@@ -805,7 +805,7 @@ describe("why a finding leads nowhere", () => {
       pointer: "component.interface[2].definition.unit",
       route: null,
     });
-    expect(noRouteReason(one, state([one]))).toBe("there is nothing at that place any more");
+    expect(noRouteReason(one, state([one]))).toBe("There is nothing at that place any more");
   });
 
   test("its file is not one the analysis listed", () => {

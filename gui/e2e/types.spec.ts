@@ -264,6 +264,25 @@ test("a type's range is settled from its two fields, and written", async ({
   await expect(limits).toContainText("-40 … 120");
 });
 
+test("a type's range that is no range says so under the chooser, and offers no Apply", async ({
+  page,
+  structuresGui,
+}) => {
+  // 16:M5 stays closed: a bound that is no number is told, where the list and Apply once went.
+  await page.goto(structuresGui.address);
+  await page.getByRole("link", { name: "Types" }).click();
+  await page.getByRole("row", { name: "Temperature_t", exact: true }).click();
+  const panel = page.getByRole("complementary", { name: "Temperature_t" });
+  await panel.getByRole("row", { name: "Limits", exact: true }).click();
+  const min = panel.getByLabel("Min", { exact: true });
+  await min.click();
+  await min.clear();
+  await min.pressSequentially("abc");
+  const chooser = panel.getByRole("combobox", { name: "Limits of Temperature_t" });
+  await expect(chooser).not.toHaveAccessibleDescription("");
+  await expect(panel.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+});
+
 /** Temperature_t made a uint64 read as it is stored, its limits up to the most a uint64 holds,
  * written as text: as a number here the maximum would already be the double nearest it. */
 function wideTemperature(directory: string): void {

@@ -573,7 +573,7 @@ test("a constant nothing names is removed, row and panel, where one in use says 
   // In use: ManifoldPressure is sized by PRESSURE_CELLS, so its panel offers no Remove.
   const used = await openEntry(page, gui, "PRESSURE_CELLS");
   const blocked = used.getByRole("region", { name: "Remove from the constants" });
-  await expect(blocked).toHaveText("1 shape names PRESSURE_CELLS, so it cannot be removed.");
+  await expect(blocked).toHaveText("1 place names PRESSURE_CELLS, so it cannot be removed.");
   await expect(blocked.getByRole("button")).toHaveCount(0);
 
   await page.getByRole("row", { name: "TREND_SAMPLES", exact: true }).click();
@@ -1077,3 +1077,29 @@ for (const { kind, vocabulary, name, region, text } of SAVES) {
     expect(entryOf(vocabularyGui.directory, vocabulary, name)).toEqual(before);
   });
 }
+
+/** ManifoldPressure's declaration in a copy of examples/vocabulary's pump.ddd.json given a
+ * condition spelling PRESSURE_CELLS too, as its dimension does, from outside the page: the one
+ * declaration then names the constant twice. */
+function conditionOnManifoldPressure(directory: string): void {
+  const path = join(directory, PUMP);
+  const before = readFileSync(path, "utf8");
+  const text = before.replace(
+    /("scope": "local",\s*)("definition": \{\s*"name": "ManifoldPressure")/,
+    '$1"condition": "PRESSURE_CELLS > 4",\n        $2',
+  );
+  if (text === before) throw new Error(`ManifoldPressure not found in ${path}`);
+  writeFileSync(path, text, "utf8");
+}
+
+test("a declaration spelling a constant twice is one row of its Used by table (14:M13)", async ({
+  page,
+  copiedGui,
+}) => {
+  const gui = await copiedGui("vocabulary", conditionOnManifoldPressure);
+  const panel = await openEntry(page, gui, "PRESSURE_CELLS");
+  const uses = panel.getByRole("table").getByRole("row").filter({ hasText: "ManifoldPressure" });
+  await expect(uses).toHaveCount(1);
+  const blocked = panel.getByRole("region", { name: "Remove from the constants" });
+  await expect(blocked).toHaveText("1 place names PRESSURE_CELLS, so it cannot be removed.");
+});

@@ -1,4 +1,5 @@
 import type { ConstantReply, ConstantUse, PlanReply } from "../api/types";
+import { constantRemoveBlocked, placesNaming } from "../lib/constantUses";
 import { distinctFindings, keyedFindings } from "../lib/findings";
 import type { Route } from "../lib/route";
 import { baseName, consequence, PLANNING, planning, shownChanges } from "../lib/units";
@@ -72,6 +73,8 @@ export interface ConstantPanelViewProps {
 /** One constant's panel (spec 5.2), drawn from what the api answered: a picture of its props. */
 export function ConstantPanelView(props: ConstantPanelViewProps) {
   const { reply, busy } = props;
+  // One row for each declaration naming the constant, however many of its strings spell it.
+  const places = placesNaming(reply.uses);
   // The entry's own pointer is `constants[i]` in a constants file or `component.constants[i]`
   // inline (`ConstantReply.pointer`'s own doc): the prefix is the only place that tells the two
   // apart, since a constants file is not a component and so has no page of its own to link to.
@@ -148,7 +151,7 @@ export function ConstantPanelView(props: ConstantPanelViewProps) {
             </tr>
           </thead>
           <tbody>
-            {reply.uses.map((use) => (
+            {places.map((use) => (
               <tr key={`${use.path} ${use.pointer}`}>
                 <td>
                   <Button variant="link" onPress={() => props.onOpen(routeOfUse(use))}>
@@ -200,7 +203,7 @@ export function ConstantPanelView(props: ConstantPanelViewProps) {
         {reply.uses.length === 0 ? (
           outcome("remove", props.removeOffer, () => "Remove from the constants")
         ) : (
-          <p className="quiet">{removeBlocked(reply.name, reply.uses.length)}</p>
+          <p className="quiet">{constantRemoveBlocked(reply.name, places.length)}</p>
         )}
       </section>
     </Panel>
@@ -276,17 +279,6 @@ function routeOfUse(use: ConstantUse): Route {
   }
   const dot = use.name.indexOf(".");
   return { page: "project", view: "types", type: dot === -1 ? use.name : use.name.slice(0, dot) };
-}
-
-/** What stands where Remove would be, while a shape still names the constant: not the server's
- * own refusal - trying would only ever come back with the one word this already says, and a
- * control asked for just to prove it refuses is the lying button `ComponentPage.tsx` already
- * refuses to draw - but the count that made it refuse, read off `reply.uses` already on screen,
- * in the quiet register the "Used by" table's own empty line above uses, not the warning tone an
- * actual refusal is drawn in. The table above already names each of them; this only says how many. */
-function removeBlocked(name: string, count: number): string {
-  const verb = count === 1 ? "names" : "name";
-  return `${count} shape${count === 1 ? "" : "s"} ${verb} ${name}, so it cannot be removed.`;
 }
 
 /* The form that declares a new constant lived here, beside the panel, while a constant was the

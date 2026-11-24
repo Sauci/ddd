@@ -69,8 +69,11 @@ export interface Shown {
 }
 
 /** What the page asks as what it shows moves on (`headingAsked`): the heading to give the focus
- * to, if any, and whether the panel its address opens is scrolled into view once drawn
- * (`showWhenSettled`, app/focus.ts). */
+ * to, if any - a panel's heading taking it with its panel shown (app/focus.ts's `giveHeading`) -
+ * and whether the panel its address opens is scrolled into view once drawn with no heading taking
+ * the focus (`showWhenSettled`). Both are what the change leaves waiting, bounded alike (ruling
+ * B11-47): a panel drawn past the short time the page's heading holds the focus for it takes
+ * neither the focus nor the view, and stays where it falls. */
 export interface Asked {
   heading: HeadingWanted | null;
   shown: boolean;
@@ -81,7 +84,7 @@ export interface Asked {
  * (16:I13, 16:M9, rulings B11-41 and B11-44), `before` being `null` for the page loaded anew, and
  * `null` where it asks nothing:
  * - on a change of page (`pageChanged`), the focus on the new page's heading, or on the heading of
- *   the panel its address opens (`selectsPanel`), that panel shown;
+ *   the panel its address opens (`selectsPanel`), that panel shown with it;
  * - on a following that stays on its page, to an address naming such a panel, the same of that
  *   panel: the masthead's go-to used on the component's page it opens on - the reader asked for
  *   that panel by name, as from another page - or Forward back to it;
@@ -95,9 +98,9 @@ export function headingAsked(before: Shown | null, now: Shown): Asked | null {
   const panel = selectsPanel(now.route);
   if (before === null) return panel ? { heading: null, shown: true } : null;
   if (pageChanged(before.route, now.route)) {
-    return { heading: panel ? "panel" : "page", shown: panel };
+    return { heading: panel ? "panel" : "page", shown: false };
   }
-  return panel && now.followings !== before.followings ? { heading: "panel", shown: true } : null;
+  return panel && now.followings !== before.followings ? { heading: "panel", shown: false } : null;
 }
 
 /**

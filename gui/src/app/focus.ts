@@ -55,11 +55,12 @@ function controlOf(target: EventTarget | null): Control | null {
  * (`stillWaits`). Each ask is a want of its own, so that every change of page waits afresh. */
 let headingWanted: { heading: HeadingWanted; holding: number | null } | null = null;
 
-/** Whether the panel a change of page, a following or a page loaded anew opens waits to be drawn,
- * to be scrolled into view once its page has settled (`askHeading`, `showWhenSettled`): no longer
+/** Whether the panel a page loaded anew opens waits to be drawn, to be scrolled into view once its
+ * page has settled with no heading taking the focus (`askHeading`, `showWhenSettled`): no longer
  * once drawn, or once the reader presses a key or the pointer, or scrolls by a wheel or a touch, or
- * the focus is moved elsewhere (`letsWaitGo`). A panel whose heading the change gives the focus to
- * is shown with it all the same (`giveHeading`). */
+ * the focus is moved elsewhere (`letsWaitGo`). The panel a change of page opens waits for nothing
+ * of its own: it is shown with its heading as that takes the focus (`giveHeading`), and so no later
+ * than the page's heading holds the focus for it (ruling B11-47). */
 let showWanted = false;
 
 /** The slot whose panel was scrolled into view as it opened, and the window's scroll that scroll

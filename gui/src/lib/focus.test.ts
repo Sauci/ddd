@@ -98,9 +98,10 @@ describe("what the page asks of the focus and the window as its route moves on",
   const page: Route = { page: "component", file: controller };
   const parameter: Route = { ...page, variable: "ParameterA" };
   const shown = (route: Route, followings: number) => ({ route, followings });
-  const panel = { heading: "panel", shown: true };
+  // The panel whose heading takes the focus is shown with it: nothing more is asked to show it.
+  const panel = { heading: "panel", shown: false };
 
-  test("a change of page: its page's heading, or the panel's its address opens, shown", () => {
+  test("a change of page: its page's heading, or the panel's its address opens", () => {
     expect(headingAsked(shown({ page: "project", view: "table" }, 1), shown(page, 2))).toEqual({
       heading: "page",
       shown: false,

@@ -721,6 +721,44 @@ export async function held(
   return release;
 }
 
+/** Longer than what a change of page leaves waiting waits at most, 3 s (`WAITS_AT_MOST_MS`,
+ * lib/focus.ts). */
+export const PAST_THE_WAITS = 4000;
+
+/** GainA's panel on the Graph, and its link to Gain_t, the scalar type giving GainA its unit
+ * (`namingAScalarType`): the Graph loaded at GainA's address, after the address ddd gui printed. */
+export async function gainLink(page: Page, address: string): Promise<Locator> {
+  await page.goto(address);
+  const graph = new URL(page.url());
+  graph.pathname = "/project";
+  graph.search = "?variable=GainA";
+  await page.goto(graph.href);
+  const link = page
+    .getByRole("complementary", { name: "GainA" })
+    .getByRole("link", { name: "Gain_t" })
+    .first();
+  await expect(link).toBeVisible();
+  return link;
+}
+
+/** Controller made to declare `count` scalar types more than it does, `Scale00_t` and on, each
+ * naming nothing: enough of them stand the Types tab's table past a window's foot. */
+export function moreScalarTypes(directory: string, count: number): void {
+  const path = join(directory, CONTROLLER);
+  const data = JSON.parse(readFileSync(path, "utf8"));
+  data.component.types ??= [];
+  for (let index = 0; index < count; index += 1) {
+    data.component.types.push({
+      type: "scalar",
+      name: `Scale${String(index).padStart(2, "0")}_t`,
+      description: "A scale, for a long table of types",
+      datatype: "uint16",
+      conversion: { factor: 1 },
+    });
+  }
+  writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+}
+
 /** Waits two of the page's frames: by then what it does once a change is drawn has run - its
  * effects, and what it watches of its own layout. */
 export async function twoFrames(page: Page): Promise<void> {

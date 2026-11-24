@@ -1,5 +1,13 @@
 import type { Page } from "@playwright/test";
-import { drift, held, twoFrames } from "./demo";
+import {
+  drift,
+  gainLink,
+  held,
+  moreScalarTypes,
+  namingAScalarType,
+  PAST_THE_WAITS,
+  twoFrames,
+} from "./demo";
 import { expect, test } from "./fixtures";
 
 // The page in a narrow window (16:M9), whether the window shares its screen, is a phone's, or is
@@ -311,4 +319,42 @@ test("a wheel turned as the go-to's change of page reads its file, in a window 8
   });
   await expect(heading).toBeFocused();
   await expect(heading).toBeInViewport();
+});
+
+/**
+ * A change of page whose panel is drawn past a short wait, under a table taller than the window
+ * (16:M9, 16:I13, ruling B11-47): GainA's link to Gain_t opens the Types tab of a project with
+ * thirty more types, in a window 800 by 600, the project's types held back longer than the page
+ * waits for them. Gain_t's panel, drawn at last under the table, stays where it falls: the page's
+ * heading keeps the focus it took meanwhile, and the page is not scrolled away from it.
+ */
+test("a type drawn past a short wait under a table taller than a window 800 by 600 leaves the page and the focus on the page's heading", async ({
+  page,
+  copiedGui,
+}) => {
+  await page.setViewportSize({ width: 800, height: 600 });
+  const gui = await copiedGui("demo", (directory) => {
+    namingAScalarType(directory);
+    moreScalarTypes(directory, 30);
+  });
+  const link = await gainLink(page, gui.address);
+  const heading = page.getByRole("heading", { name: "DemoDevice", level: 1 });
+  const release = await held(page, "/api/types");
+  try {
+    await link.click();
+    await expect(page.getByText("Reading the project's types…")).toBeVisible();
+    await expect(heading).toBeFocused();
+    await page.waitForTimeout(PAST_THE_WAITS);
+  } finally {
+    release();
+  }
+  await expect(
+    page
+      .getByRole("complementary", { name: "Gain_t" })
+      .getByRole("heading", { name: "Gain_t", level: 2 }),
+  ).toBeAttached();
+  await twoFrames(page);
+  await expect(heading).toBeFocused();
+  await expect(heading).toBeInViewport();
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
 });

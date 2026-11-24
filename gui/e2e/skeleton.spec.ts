@@ -1,14 +1,16 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Locator, Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import {
   CONTROLLER,
   chooseUnit,
   drift,
+  gainLink,
   held,
   includesNothing,
   namingAScalarType,
   openValues,
+  PAST_THE_WAITS,
   SENSOR_HUB,
   twoFrames,
   withUnitOfValueA,
@@ -484,21 +486,6 @@ test("a focus moved by no key and no pointer once a change of page's panel has r
   await expect(remove).toBeInViewport();
 });
 
-/** GainA's panel on the Graph, and its link to Gain_t, the scalar type giving GainA its unit. */
-async function gainLink(page: Page, address: string): Promise<Locator> {
-  await page.goto(address);
-  const graph = new URL(page.url());
-  graph.pathname = "/project";
-  graph.search = "?variable=GainA";
-  await page.goto(graph.href);
-  const link = page
-    .getByRole("complementary", { name: "GainA" })
-    .getByRole("link", { name: "Gain_t" })
-    .first();
-  await expect(link).toBeVisible();
-  return link;
-}
-
 /**
  * A focus moved by no key and no pointer while a change of page waits for its panel (16:I13,
  * ruling B11-45): GainA's link to Gain_t opens the Types tab, whose types are held back, the
@@ -529,10 +516,6 @@ test("a focus moved by no key and no pointer while a type a panel links to is re
   await twoFrames(page);
   await expect(units).toBeFocused();
 });
-
-/** Longer than what a change of page leaves waiting waits at most, 3 s (`WAITS_AT_MOST_MS`,
- * lib/focus.ts). */
-const PAST_THE_WAITS = 4000;
 
 /**
  * A change of page whose panel is drawn past a short wait (16:I13, ruling B11-45): GainA's link

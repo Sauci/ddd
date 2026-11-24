@@ -299,12 +299,12 @@ test("a curve is drawn from the numbers it holds", async ({ page, gui }) => {
     "4800",
     "8000",
   ]);
-  await expect(plot.locator(".values-plot-side")).toHaveText(["12.275", "6.225"]);
+  await expect(plot.locator(".values-plot-side")).toHaveText(["12", "6.5"]);
 
   await page.getByRole("button", { name: "Raw" }).click();
   // What the toggle actually redraws, in text a reader can see: AxisA's own ticks (its raw
   // breakpoints rather than what its conversion makes of them) and the two side readings (the
-  // padded range of CurveA's own raw counts rather than of what its conversion makes of them).
+  // greatest and least of CurveA's own raw counts rather than of what its conversion makes of them).
   //
   // The polyline's own `points` are deliberately not re-asserted here. The plot scales to its own
   // range (`rangeOf`, `placed` in valuePlot.ts), so the same six numbers in a different unit are
@@ -323,7 +323,7 @@ test("a curve is drawn from the numbers it holds", async ({ page, gui }) => {
     "19200",
     "32000",
   ]);
-  await expect(plot.locator(".values-plot-side")).toHaveText(["1227.5", "622.5"]);
+  await expect(plot.locator(".values-plot-side")).toHaveText(["1200", "650"]);
 });
 
 test("a cell changed is written to the producer's file", async ({ page, gui }) => {

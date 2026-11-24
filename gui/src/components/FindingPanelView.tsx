@@ -64,6 +64,10 @@ export function FindingPanelView(props: FindingPanelViewProps) {
         <Chip tone={toneOf(finding.severity)}>{finding.severity}</Chip>
       </p>
       <p>{finding.message}</p>
+      {/* Where the finding itself is, said where it leads nowhere: under its message, above its
+          related lines, where it can be read as nothing but the finding's own place - drawn below
+          them, it read as the last one's (16:I8). */}
+      {link === null && place !== null && <p className="path">{place}</p>}
       {finding.notes.length > 0 && (
         <ul className="panel-notes">
           {finding.notes.map((note) => (
@@ -79,7 +83,6 @@ export function FindingPanelView(props: FindingPanelViewProps) {
           ))}
         </ul>
       )}
-      {link === null && place !== null && <p className="path">{place}</p>}
       {link === null && <p className="quiet">{reason}</p>}
       {/* What this finding offers, read in one line: where it leads, and each fix it carries.
           What a chosen fix reveals stays below them, at the panel's own width. */}

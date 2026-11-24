@@ -544,6 +544,10 @@ test("the baseline's own findings are named as the baseline's and lead nowhere, 
   await expect(panel.locator(".panel-notes li")).toHaveText(
     "reference declaration the baseline's sensor_hub.ddd.json",
   );
+  // The finding's own place stands under its message and above its related line, where it reads
+  // as the finding's: drawn below that line, it read as the line's place (16:I8).
+  await expect(panel.locator(".path")).toHaveText(/^component\.interface\[\d+\]\.definition$/);
+  await expect(panel.locator("p.path + ul.panel-notes")).toHaveCount(1);
 });
 
 test("a finding's panel is closed by its Close button, the comparison standing", async ({

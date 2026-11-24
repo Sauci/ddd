@@ -4,6 +4,7 @@ import type { Locator, Page } from "@playwright/test";
 import {
   CONTROLLER,
   chooseUnit,
+  drift,
   driftDatatypeIn,
   driftFactor,
   driftIn,
@@ -19,6 +20,11 @@ import { expect, test } from "./fixtures";
 
 /** What the panel says while a chooser's text is not the value settled on. */
 const UNSETTLED = "Press Enter to take what you typed, or pick it from the list.";
+
+/** What a variable's panel says when a settle is refused because a file changed under its plan:
+ * `VariablePanel.tsx`'s own sentence, held until the reader's next choice. */
+const STALE =
+  "A file changed on disk, so nothing was written. The panel now shows the files as they are.";
 
 /** BlockA made a uint64 stating limits up to the most a uint64 holds, written as text: as a
  * number here the maximum would already be the double nearest it. */
@@ -246,6 +252,63 @@ test("a change refused as stale can be applied again once the analysis has caugh
   expect(valueA(gui.directory, SENSOR_HUB).limits).toEqual({ min: 0, max: 60 });
   expect(valueA(gui.directory, CONTROLLER).limits).toEqual({ min: 0, max: 60 });
 });
+
+// The refusal's answer reaches the page before the revision of the analysis it asks for, as it
+// mostly does, or after it: the Apply carries the key it was pressed for, so either way the
+// refusal is that key's, and its row comes back where the revision had moved the panel on.
+for (const late of [false, true]) {
+  test(`a key the panel opened by itself, refused because a file changed on disk, stays open with its sentence once the analysis makes it agree (the refusal answered ${late ? "after" : "before"} the analysis)`, async ({
+    page,
+    gui,
+  }) => {
+    // Controller's own reading of ValueA drifted to rpm: its unit is the one key that disagrees,
+    // and the panel, opened from the variable's row rather than from its unit, opens on it by
+    // itself, settling on SensorHub's % - a plan that writes Controller alone.
+    const before = drift(gui.directory);
+    await page.goto(gui.address);
+    await page.getByRole("button", { name: "Controller", exact: true }).click();
+    await page.getByRole("row", { name: "ValueA", exact: true }).click();
+    const panel = page.getByRole("complementary", { name: "ValueA" });
+    const unit = panel.getByRole("combobox", { name: "Unit of ValueA" });
+    await expect(unit).toHaveValue("%");
+    // The drift's own analysis has landed once the panel lists the disagreement it finds: the
+    // plan is asked again of that revision, and made over the drifted bytes.
+    const disagreement = panel.getByText("is declared differently by component 'Controller'");
+    await expect(disagreement).toBeVisible();
+    const settle = panel.getByRole("region", { name: "Settle the key" });
+    const apply = settle.getByRole("button", { name: "Apply to 1 file" });
+    await expect(apply).toBeEnabled();
+
+    // Controller put back as it was from outside as the Apply goes out, before the server reads
+    // it: the plan was made over its drifted bytes, so the Apply is refused as stale, and the
+    // analysis the refusal asks for finds ValueA's declarations agreeing - no key disagrees any
+    // more. Late, the refusal's answer is handed to the page only once that analysis has.
+    await page.route(
+      "**/api/edit",
+      async (route) => {
+        writeFileSync(join(gui.directory, CONTROLLER), before);
+        if (!late) {
+          await route.continue();
+          return;
+        }
+        const response = await route.fetch();
+        await expect(disagreement).toHaveCount(0);
+        await route.fulfill({ response });
+      },
+      { times: 1 },
+    );
+    await apply.click();
+    const refused = settle.getByRole("status");
+    await expect(refused).toHaveText(STALE);
+    // That analysis landed once the panel lists the disagreement no longer.
+    await expect(disagreement).toHaveCount(0);
+    // The unit's row, which the panel had opened by itself, stays open, and the sentence held of
+    // it with it: the panel did not move to the first row that disagrees, which is none.
+    await expect(refused).toHaveText(STALE);
+    await expect(unit).toBeVisible();
+    await expect(panel.getByText("Select a key to settle it on every declaration.")).toHaveCount(0);
+  });
+}
 
 test("a float variable's range takes any number a double holds, and is written as floats", async ({
   page,

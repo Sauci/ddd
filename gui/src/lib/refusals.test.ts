@@ -8,6 +8,7 @@ import {
   type PanelShows,
   panelReads,
   panelShows,
+  pickedOnRefusal,
   type Refused,
   refusalOf,
   refusalOfOffer,
@@ -280,5 +281,17 @@ describe("what a panel shows once it reads the project's units beside its entity
 
   test("its entity's answer, the units' read failed over an answer the query still holds, it draws from that", () => {
     expect(panelReads(reply, { data: UNITS, error: failed })).toEqual(reply);
+  });
+});
+
+describe("the key a variable's panel shows once a key's Apply was refused", () => {
+  test("the key the panel opened by itself becomes its choice, so that a revision moving the rows leaves it open", () => {
+    // The first row that disagrees, which the analysis the refusal asks for can make agree.
+    expect(pickedOnRefusal(undefined, "unit")).toBe("unit");
+  });
+
+  test("the reader's own choice stays theirs", () => {
+    expect(pickedOnRefusal("limits", "unit")).toBe("limits");
+    expect(pickedOnRefusal(null, "unit")).toBeNull();
   });
 });

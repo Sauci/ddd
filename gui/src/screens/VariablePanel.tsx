@@ -28,6 +28,7 @@ import {
   offerShown,
   panelReads,
   panelShows,
+  pickedOnRefusal,
   type Refused,
   refusalSentence,
 } from "../lib/refusals";
@@ -322,12 +323,10 @@ export function VariablePanel({
     hold({ range: { ...next, typed: true }, typed: undefined });
     setRefused(null);
   };
+  // Pressed for the key on screen, which the refusal, if any, is of (`pickedOnRefusal`).
   const apply = useMutation({
-    mutationFn: () => {
-      const edit =
-        preview.data === undefined || selected === undefined
-          ? null
-          : editOf(preview.data, settleLabel(name, selected));
+    mutationFn: (key: string) => {
+      const edit = preview.data === undefined ? null : editOf(preview.data, settleLabel(name, key));
       if (edit === null) throw new Error("there is nothing to change");
       return postEdit(edit);
     },
@@ -348,11 +347,13 @@ export function VariablePanel({
       hold({ typed: undefined, changesShown: false });
       setRefused(null);
     },
-    onError: (error) =>
-      setRefused({
-        about: selected,
-        text: refusalSentence(error, STALE),
-      }),
+    // Held of the key pressed for, whose row stays open where the panel had opened it by itself
+    // (`pickedOnRefusal`): the analysis a stale refusal asks for can make that row agree, and the
+    // panel would move on to another, the sentence going out of view with the row.
+    onError: (error, key) => {
+      setRefused({ about: key, text: refusalSentence(error, STALE) });
+      setPicked((current) => pickedOnRefusal(current, key));
+    },
     // An Apply changes this variable's declarations, the units the project uses and the preview
     // it was made from, whose fingerprints the edit spent: those are asked for again, and Apply
     // stays unavailable until they answer. It changes the same file the removal offer beside it
@@ -531,7 +532,9 @@ export function VariablePanel({
       refusal={unsettledText ? null : settleOffer.refusal}
       changesShown={changesShown}
       onChangesShown={(shown) => hold({ changesShown: shown })}
-      onApply={() => apply.mutate()}
+      onApply={() => {
+        if (selected !== undefined) apply.mutate(selected);
+      }}
       // Left out on the project screen's own panel (`file` is `undefined` there, and so is
       // `from`, since nothing in `variable.declarations` can match a file that names none):
       // Task 7's optional prop then draws no offer at all.

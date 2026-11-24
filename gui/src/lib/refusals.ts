@@ -198,3 +198,15 @@ export function panelReads<T>(
     ? { shown: "reading" }
     : { shown: "refusal", refusal: units.error.message };
 }
+
+/**
+ * The key a variable's panel shows once the Apply of `key` was refused: the reader's own choice
+ * where they made one (`picked`, `null` for a row let go), else that key, which the panel had
+ * opened by itself as the first row that disagrees. The refusal is held of the key it was refused
+ * for, and the analysis the refusal asks for can make that row agree: left to the panel's own
+ * choice, the panel then moved on to another row, or none, and the sentence went out of view
+ * with the row. Picked, the row stays open until the reader's next choice, as the sentence does.
+ */
+export function pickedOnRefusal<K>(picked: K | null | undefined, key: K): K | null {
+  return picked === undefined ? key : picked;
+}

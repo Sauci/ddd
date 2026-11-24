@@ -23,7 +23,7 @@ import {
   descriptionShown,
 } from "../lib/description";
 import { planEdit } from "../lib/projectUnits";
-import { panelShows, type Refused, refusalSentence, refusalShown } from "../lib/refusals";
+import { heldOf, offerShown, panelShows, type Refused, refusalSentence } from "../lib/refusals";
 import { planShown, unsettled } from "../lib/typing";
 import { removeLabel, settleLabel } from "../lib/undo";
 import { editOf, outsideVocabulary, planning, textOf } from "../lib/units";
@@ -281,6 +281,15 @@ export function VariablePanel({
   // separate `pending` flag of its own (unlike `UnitPanel`'s `Offer`), so `preview`/`refusal`
   // below read `shownSettle` directly.
   const shownSettle = planShown(askedSettle, settleRequest, preview);
+  // What the settle offers beside a refusal, the one rule every panel follows (`offerShown`): a
+  // refusal of its Apply, held for the key it was refused for, said over the plan asked again,
+  // and nothing to apply beside its plan's own refusal. While the fields make no value, nothing
+  // was asked, and the note is the whole of what the panel has to say of the plan.
+  const settleOffer = offerShown(heldOf(refused, selected), {
+    plan: shownSettle.plan,
+    refusal: broken !== null ? null : shownSettle.refusal,
+    pending: shownSettle.pending,
+  });
   // Selecting a row starts that key afresh - what was chosen for the last one means nothing for
   // this one. Letting a row go is a choice too, not a blank: it must show the table alone even
   // while a row still disagrees, not hand the reader straight back to it.
@@ -502,17 +511,13 @@ export function VariablePanel({
       // previewed on before: the query is not asked, and an answer it kept is not shown. Nor is
       // the debounced request's own answer, while it is not yet what `target` now says
       // (`shownSettle.plan`) - that answer is an earlier target's, same as while any plan loads.
-      preview={broken === null && !unsettledText ? shownSettle.plan : null}
+      preview={broken === null && !unsettledText ? settleOffer.plan : null}
       // Said while that plan is on its way, as long as nothing is said in its place instead.
-      planning={broken === null && !unsettledText && planning(shownSettle)}
+      planning={broken === null && !unsettledText && planning(settleOffer)}
       // A settlement refused is about the value that was asked for; while the fields make no
       // value, nothing was asked, and the note is the whole of what the panel has to say - nor
       // once the fields have moved past the target this refusal was about (`shownSettle.refusal`).
-      refusal={
-        unsettledText
-          ? null
-          : refusalShown(refused, broken !== null ? null : shownSettle.refusal, selected)
-      }
+      refusal={unsettledText ? null : settleOffer.refusal}
       changesShown={changesShown}
       onChangesShown={(shown) => hold({ changesShown: shown })}
       onApply={() => apply.mutate()}
@@ -541,11 +546,7 @@ export function VariablePanel({
                 setTypedDescription(text);
                 setDescriptionRefused(null);
               },
-              offer: {
-                plan: shownDescription.plan,
-                refusal: descriptionRefused ?? shownDescription.refusal,
-                pending: shownDescription.pending,
-              },
+              offer: offerShown(descriptionRefused, shownDescription),
               shown: descriptionShownDiff,
               onShown: setDescriptionShownDiff,
               onApply: () => {

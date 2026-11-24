@@ -241,13 +241,11 @@ export function planning(offer: {
 
 /** What a settlement's plan says of the files it would leave unable to load, as the panel draws it
  * beside the plan, before Apply: the server's own sentences, in its words and its order. The
- * reader chose the value, so they warn and stand in no way of applying it. Nothing for no plan, and
- * nothing while the panel says why the plan cannot be applied instead of drawing it. */
-export function unloadableOf(
-  preview: SettleReply | null,
-  refusal: string | null,
-): readonly string[] {
-  return preview === null || refusal !== null ? [] : preview.unloadable;
+ * reader chose the value, so they warn and stand in no way of applying it. Nothing for no plan. A
+ * plan the panel is given is drawn under a refusal of its Apply too, and says them there: it is
+ * never one its own ask refused (`offerShown`, lib/refusals.ts). */
+export function unloadableOf(preview: SettleReply | null): readonly string[] {
+  return preview === null ? [] : preview.unloadable;
 }
 
 /** `sentences` each with a key of its own: the words, and for a sentence the list holds again, how

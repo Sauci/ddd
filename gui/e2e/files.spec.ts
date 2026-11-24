@@ -1181,6 +1181,35 @@ test("an Apply the server fails on is sent once, and refused in the Remove panel
   expect(readFileSync(join(vocabularyGui.directory, PROJECT))).toEqual(description);
 });
 
+test("a Remove whose plan the server fails on when asked again, once its apply was refused, offers nothing to press beside the refusal", async ({
+  page,
+  vocabularyGui,
+}) => {
+  await page.goto(vocabularyGui.address);
+  await page.getByRole("link", { name: "Files", exact: true }).click();
+  await page.getByRole("row", { name: UNITS, exact: true }).click();
+  const removing = page
+    .getByRole("complementary", { name: UNITS, exact: true })
+    .getByRole("region", { name: "Remove from the includes" });
+  const plan = removing.getByText("Changes 1 file: project.ddd.json", { exact: true });
+  await expect(plan).toBeVisible();
+
+  // From here on the server fails the Apply, and the plan the tab asks again once the Apply is
+  // answered: the query keeps the plan it had, whose fingerprints the server would refuse.
+  const edits = await failing(page, "/api/edit", "http");
+  const plans = await failing(page, "/api/files-plan", "http");
+  const remove = removing.getByRole("button", { name: "Remove from the includes" });
+  await remove.click();
+  await expect(removing.getByRole("status")).toHaveText(`The change was refused: ${SERVER_FAILED}`);
+  await expect.poll(plans).toBeGreaterThanOrEqual(1);
+  // Beside its plan's own refusal, a write offers nothing to apply (`offerShown`), the refusal of
+  // the Apply said over it.
+  await expect(remove).toHaveCount(0);
+  await expect(plan).toHaveCount(0);
+  await expect(removing.getByRole("status")).toHaveText(`The change was refused: ${SERVER_FAILED}`);
+  expect(edits()).toBe(1);
+});
+
 test("a removal or an add the server could not judge says so in its words, and is still offered", async ({
   page,
   copiedGui,

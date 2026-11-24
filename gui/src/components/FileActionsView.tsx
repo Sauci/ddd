@@ -42,10 +42,11 @@ export function FileActionsView({ onNewFile, onAddFile }: FileActionsViewProps) 
  */
 export interface FileOffer {
   /** The plan; `null` while it is being asked for, when it was refused, and while the form does
-   * not yet hold what the request needs (`fileCreate`, `fileAdd`). */
+   * not yet hold what the request needs (`fileCreate`, `fileAdd`). Drawn under a refusal of its
+   * Apply too (`offerShown`, `lib/refusals.ts`). */
   plan: FilesPlanReply | null;
   /** Why the plan was refused when asked for - the server's own sentence - or why applying it
-   * was; `null` when neither was (`refusalShown`, `lib/refusals.ts`, chose which). */
+   * was; `null` when neither was (`offerShown`, `lib/refusals.ts`, chose which). */
   refusal: string | null;
   /** Whether the plan is asked for and has not come: the preview then says `PLANNING` where its
    * consequence stands, while it says no refusal (`planning`, lib/units.ts). */

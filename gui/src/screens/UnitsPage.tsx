@@ -12,7 +12,7 @@ import {
   planEdit,
   tabTitle,
 } from "../lib/projectUnits";
-import { refusalOf, refusalOfOffer } from "../lib/refusals";
+import { offerShown, refusalOf, refusalOfOffer } from "../lib/refusals";
 import type { Route } from "../lib/route";
 import { unitLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
@@ -85,6 +85,14 @@ export function UnitsPage({ state, unit, stopped, onUnit, onOpen }: Props) {
   const offered = answer !== undefined && adoptionOffered(answer);
   const kept = refusalOfOffer(refused, offered);
   if (kept !== refused) setRefused(kept);
+  // What the banner offers beside a refusal, the one rule every panel follows (`offerShown`): a
+  // refused adopt said over the plan asked again, and nothing to adopt beside the plan's own
+  // refusal - nor a preview of a plan so refused.
+  const adopting = offerShown(refused, {
+    plan: adoption.data ?? null,
+    refusal: adoption.error?.message ?? null,
+    pending: false,
+  });
 
   if (answer === undefined) {
     if (units.isError) return <Banner tone="error">{units.error.message}</Banner>;
@@ -95,7 +103,7 @@ export function UnitsPage({ state, unit, stopped, onUnit, onOpen }: Props) {
     setPreviewing(false);
     onUnit(next);
   };
-  const preview = unit === undefined && previewing ? (adoption.data ?? null) : null;
+  const preview = unit === undefined && previewing ? adopting.plan : null;
   return (
     <>
       <p className="summary">{tabTitle(answer.units, hasUnitsFile(answer))}</p>
@@ -108,8 +116,8 @@ export function UnitsPage({ state, unit, stopped, onUnit, onOpen }: Props) {
         <AdoptBannerView
           adoptable={answer.adoptable}
           hasUnitsFile={hasUnitsFile(answer)}
-          plan={adoption.data ?? null}
-          refusal={refused ?? adoption.error?.message ?? null}
+          plan={adopting.plan}
+          refusal={adopting.refusal}
           onShowChanges={() => {
             select(undefined);
             setPreviewing(true);

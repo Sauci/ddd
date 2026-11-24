@@ -9,7 +9,7 @@ import { useWritten } from "../app/useWritten";
 import { ValuesGridView } from "../components/ValuesGridView";
 import { drawable, pasted, type TypedCell } from "../lib/objectValues";
 import { planEdit } from "../lib/projectUnits";
-import { refusalOf } from "../lib/refusals";
+import { offerShown, refusalOf } from "../lib/refusals";
 import { planOffered, typedOffer, typedPlan, withComma, withTyped } from "../lib/typedCells";
 import { gated, planShown } from "../lib/typing";
 import { pasteLabel, valuesLabel } from "../lib/undo";
@@ -184,28 +184,34 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   // was never a cell to begin with - driving it through a real browser (`values.spec.ts`'s own
   // "a block of the wrong shape is refused and nothing is written") is what actually found this.
   const pasting = pastedRows !== null || pasteRefusal !== null;
-  // Never the cell's plan while it is an earlier keystroke's (`shownCell.plan`, already `null`
-  // then): that plan is for text the reader has since typed past, and is dropped exactly as one
-  // still loading would be.
-  // A plan that changes nothing is no offer at all (`planOffered`): the server answers one with no
-  // file to change (15:M4).
-  const shownPlan = planOffered(pasting ? (table.data ?? null) : shownCell.plan);
-  // Whether the offer's plan is on its way (`planning`, lib/units.ts): a pasted table's is asked
-  // at once, as `table` is keyed, and a typed cell's once its debounce and its gate let it.
+  // Whether a pasted table's plan is on its way (`planning`, lib/units.ts): asked at once, as
+  // `table` is keyed; a typed cell's is on its way once its debounce and its gate let it.
   const shownTable = planShown(
     pastedRows === null || !current ? null : pastedRows,
     pastedRows,
     table,
   );
-  const offerPlanning = planning(pasting ? shownTable : shownCell);
-  // The pre-apply refusal each offer can find for itself - a pasted block's own sentence, or the
-  // server's, for the one thing the parser cannot check - ahead of an apply refused either way.
-  // A typed cell's own refusal is `ValuesGridView`'s to find, from the cells directly
-  // (`typedOffer`), so it is not repeated here - repeating it would only recompute the same
-  // sentence a second time for no reader to see any sooner.
-  const shownSentence = pasting
-    ? (pasteRefusal ?? failed ?? (table.isError ? table.error.message : null))
-    : (failed ?? shownCell.refusal);
+  // What the offer is, the one rule every panel follows (`offerShown`): a refused apply said over
+  // the plan its revision answers, and nothing to apply beside the plan's own refusal. The refusal
+  // each offer can find for itself is its plan's: a pasted block's own sentence, which asks for no
+  // plan at all, or the server's, for the one thing the parser cannot check. A typed cell's own
+  // refusal is `ValuesGridView`'s to find, from the cells directly (`typedOffer`), so it is not
+  // repeated here - repeating it would only recompute the same sentence a second time for no
+  // reader to see any sooner. Never the cell's plan while it is an earlier keystroke's
+  // (`shownCell.plan`, already `null` then): that plan is for text the reader has since typed
+  // past, and is dropped exactly as one still loading would be.
+  const offer = pasting
+    ? offerShown(failed, {
+        plan: table.data ?? null,
+        refusal: pasteRefusal ?? (table.isError ? table.error.message : null),
+        pending: shownTable.pending,
+      })
+    : offerShown(failed, shownCell);
+  // A plan that changes nothing is no offer at all (`planOffered`): the server answers one with no
+  // file to change (15:M4).
+  const shownPlan = planOffered(offer.plan);
+  const offerPlanning = planning(offer);
+  const shownSentence = offer.refusal;
   // What either offer's own edit is called, for the undo stack: the whole object for a paste,
   // the element or the elements the typed cells set - `pasteLabel`'s and `valuesLabel`'s own
   // difference.

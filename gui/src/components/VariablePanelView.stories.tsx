@@ -326,8 +326,8 @@ export const ValueThatLeavesAFileUnableToLoad = () => (
   />
 );
 
-/** The same plan once applying it was refused: the panel says why, and draws neither the plan nor
- * what it said of the files - they describe a change that was not written. */
+/** The same plan, asked for again once applying it was refused: the panel says why, then the plan
+ * of the files as they now are, what it says of them and Apply, one press away (`offerShown`). */
 export const StaleAfterAValueThatLeavesAFileUnableToLoad = () => (
   <View
     variable={TEXT_READER}

@@ -207,23 +207,22 @@ export function DeclarePanelView(props: DeclarePanelViewProps) {
           {props.refusal}
         </p>
       )}
-      {props.refusal === null &&
-        !unsettledForm &&
-        props.plan !== null &&
-        props.plan.changes.length > 0 && (
-          <>
-            {props.changesShown && <Changes changes={shownChanges(props.plan.changes)} />}
-            <div className="panel-actions">
-              <Button variant="link" onPress={() => props.onChangesShown(!props.changesShown)}>
-                {props.changesShown ? "Hide changes" : "Show changes"}
-              </Button>
-              <Button variant="primary" isDisabled={props.busy} onPress={props.onApply}>
-                Apply to {props.plan.changes.length} file
-                {props.plan.changes.length === 1 ? "" : "s"}
-              </Button>
-            </div>
-          </>
-        )}
+      {/* Under a refusal too, the plan the panel is given, and its Apply: what it offers beside
+          one is the screen's rule (`offerShown`), which hands no plan its own ask refused. */}
+      {!unsettledForm && props.plan !== null && props.plan.changes.length > 0 && (
+        <>
+          {props.changesShown && <Changes changes={shownChanges(props.plan.changes)} />}
+          <div className="panel-actions">
+            <Button variant="link" onPress={() => props.onChangesShown(!props.changesShown)}>
+              {props.changesShown ? "Hide changes" : "Show changes"}
+            </Button>
+            <Button variant="primary" isDisabled={props.busy} onPress={props.onApply}>
+              Apply to {props.plan.changes.length} file
+              {props.plan.changes.length === 1 ? "" : "s"}
+            </Button>
+          </div>
+        </>
+      )}
     </Panel>
   );
 }

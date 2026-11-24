@@ -105,14 +105,16 @@ export function FindingPanelView(props: FindingPanelViewProps) {
         .filter((fix) => fix.title === chosen)
         .map((fix) => (
           <section key={fix.title} className="panel-offer" aria-label={fix.title}>
-            {refusal !== null ? (
+            {refusal !== null && (
               <p className="panel-refusal" role="status">
                 {refusal}
               </p>
-            ) : (
-              <p className="consequence">{consequence(fix.changes)}</p>
             )}
-            {refusal === null && fix.changes.length > 0 && (
+            {/* Under a refusal too, the fix the panel is given, and its Apply: what it offers
+                beside one is the screen's rule (`offerShown`), which hands no fix whose own ask
+                was refused. */}
+            <p className="consequence">{consequence(fix.changes)}</p>
+            {fix.changes.length > 0 && (
               <>
                 {props.changesShown && <Changes changes={shownChanges(fix.changes)} />}
                 <div className="panel-actions">

@@ -18,7 +18,7 @@ import {
   statedValues,
 } from "../lib/declarations";
 import { planEdit } from "../lib/projectUnits";
-import { refusalOf } from "../lib/refusals";
+import { offerShown, refusalOf } from "../lib/refusals";
 import { planShown } from "../lib/typing";
 import { declareLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
@@ -129,6 +129,10 @@ export function DeclarePanel({ file, component, revision, stopped, onClose, onDe
   // placeholder, nulls the plan and its own fetch refusal outright rather than disabling a
   // button.
   const shown = planShown(asked, request, plan);
+  // What the panel offers beside a refusal, the one rule every panel follows (`offerShown`): a
+  // refusal of its Apply said over the plan its revision answers, and nothing to apply beside its
+  // plan's own refusal.
+  const offer = offerShown(refusal, shown);
 
   const apply = useMutation({
     mutationFn: () => {
@@ -178,8 +182,8 @@ export function DeclarePanel({ file, component, revision, stopped, onClose, onDe
       values={values}
       typed_={typed_}
       dimensions={dimensions}
-      plan={shown.plan}
-      refusal={refusal ?? shown.refusal}
+      plan={offer.plan}
+      refusal={offer.refusal}
       changesShown={changesShown}
       busy={stopped || apply.isPending}
       onTyped={(text) => {

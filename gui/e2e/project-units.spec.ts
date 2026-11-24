@@ -357,6 +357,30 @@ test("an adopt refused because its units file now exists says so in the banner, 
   await expect(page.getByText("5 units · no units file")).toBeVisible();
 });
 
+test("an adopt whose plan the server fails on when asked again, once the adopt was refused, offers nothing to press", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Units" }).click();
+  const banner = page.getByRole("status").filter({ hasText: "This project has no units file" });
+  const adopt = banner.getByRole("button", { name: "Adopt 5 units" });
+  await expect(adopt).toBeEnabled();
+
+  // From here on the server fails the adopt, and the plan the tab asks again once it is answered:
+  // the query keeps the plan it had, whose fingerprints the server would refuse.
+  const edits = await failing(page, "/api/edit", "http");
+  const plans = await failing(page, "/api/unit-plan", "http");
+  await adopt.click();
+  await expect.poll(plans).toBeGreaterThanOrEqual(1);
+  // Beside its plan's own refusal, the banner offers nothing to press (`offerShown`), the refusal
+  // of the adopt said in it.
+  await expect(banner.getByText(`The change was refused: ${SERVER_FAILED}`)).toBeVisible();
+  await expect(adopt).toHaveCount(0);
+  await expect(banner.getByRole("button", { name: "Show changes" })).toHaveCount(0);
+  expect(edits()).toBe(1);
+});
+
 test("an adopt refused leaves no sentence behind it, and an adoption offered again starts with none", async ({
   page,
   gui,
@@ -615,6 +639,38 @@ test("a removal the server fails on says so in its words, is offered again, and 
   // The refusal does not take the removal away: it is offered again once the plan is.
   await expect(remove).toBeVisible();
   await expect(remove).toBeEnabled();
+});
+
+test("a removal whose plan the server fails on when asked again, once its apply was refused, offers nothing to press beside the refusal", async ({
+  page,
+  vocabularyGui,
+}) => {
+  await page.goto(vocabularyGui.address);
+  await page.getByRole("link", { name: "Units", exact: true }).click();
+  await page.getByRole("row", { name: "degC", exact: true }).click();
+  const panel = page.getByRole("complementary", { name: "degC", exact: true });
+  const removing = panel.getByRole("region", { name: "Remove from the vocabulary" });
+  const plan = removing.getByText("Changes 1 file: units.ddd.json", { exact: true });
+  await expect(plan).toBeVisible();
+
+  // From here on the server fails the Apply, and the plan the panel asks again once the Apply is
+  // answered: the query keeps the plan it had, whose fingerprints the server would refuse.
+  const edits = await failing(page, "/api/edit", "http");
+  const plans = await failing(page, "/api/unit-plan", "http");
+  const remove = removing.getByRole("button", { name: "Remove from the vocabulary" });
+  await remove.click();
+  await expect(removing.getByRole("status")).toHaveText(`The change was refused: ${SERVER_FAILED}`);
+  await expect.poll(plans).toBeGreaterThanOrEqual(1);
+  // Beside its plan's own refusal, a write offers nothing to apply (`offerShown`): neither the
+  // plan kept from before nor its button, the refusal of the Apply said over it.
+  await expect(remove).toHaveCount(0);
+  await expect(plan).toHaveCount(0);
+  // Once every query the Apply asked again has answered, the panel takes a choice again: still
+  // nothing to press, and still the one sentence.
+  await expect(panel.getByRole("textbox", { name: "Description" })).toBeEnabled();
+  await expect(remove).toHaveCount(0);
+  await expect(removing.getByRole("status")).toHaveText(`The change was refused: ${SERVER_FAILED}`);
+  expect(edits()).toBe(1);
 });
 
 test("a rename the plan refuses says why in the panel, and offers nothing to apply", async ({

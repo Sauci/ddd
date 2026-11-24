@@ -541,7 +541,7 @@ test("a page of findings still being read is drawn as rows saying so, which the 
   await expect(pending).toHaveCount(0);
 });
 
-test("a fix the server fails on shows its refusal in the panel in place of the fix, is sent once, and can be chosen again and applied", async ({
+test("a fix the server fails on shows its refusal in the panel over the fix asked again, is sent once, and can be chosen again and applied", async ({
   page,
   gui,
 }) => {
@@ -562,9 +562,11 @@ test("a fix the server fails on shows its refusal in the panel in place of the f
   await fixing.getByRole("button", { name: "Apply to 1 file" }).click();
 
   // It stays until the reader chooses again, as every refusal of the tab does, and the panel
-  // draws it in place of the consequence and the Apply.
+  // draws it over the fix asked again once the Apply was answered, and its Apply (`offerShown`).
   await expect(fixing.getByRole("status")).toHaveText(`The change was refused: ${SERVER_FAILED}`);
-  await expect(fixing.getByRole("button", { name: "Apply to 1 file" })).toHaveCount(0);
+  await expect(fixing.getByRole("button", { name: "Apply to 1 file" })).toBeEnabled();
+  await expect(fixing.getByText("Changes 1 file: controller.ddd.json")).toBeVisible();
+  await expect(fixing.getByRole("status")).toHaveText(`The change was refused: ${SERVER_FAILED}`);
   // The finding is still reported, and the panel still shows it.
   await expect(panel.getByText("'ValueH' has no 'id'")).toBeVisible();
   // A guard against a write by another path: the POST is answered by `failing`, not the server.
@@ -584,6 +586,37 @@ test("a fix the server fails on shows its refusal in the panel in place of the f
   await fixing.getByRole("button", { name: "Apply to 1 file" }).click();
   await expect(page.getByText("Nothing to report")).toBeVisible();
   expect(valueH(gui.directory).id).toMatch(/^[abcdefghjkmnpqrstvwxyz0-9]{12}$/);
+});
+
+test("a fix whose finding's fixes the server fails on when asked again, once its apply was refused, offers nothing to press", async ({
+  page,
+  gui,
+}) => {
+  unstamp(gui.directory, CONTROLLER, "ValueH");
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Findings", exact: true }).click();
+  await page.getByRole("row", { name: "missing-id" }).click();
+  const panel = page.getByRole("complementary", { name: "missing-id" });
+  const fix = panel.getByRole("button", { name: "Give 'ValueH' an id" });
+  await fix.click();
+  const fixing = panel.getByRole("region", { name: "Give 'ValueH' an id" });
+  const apply = fixing.getByRole("button", { name: "Apply to 1 file" });
+  await expect(apply).toBeVisible();
+
+  // From here on the server fails the Apply, and the fixes the tab asks again once the Apply is
+  // answered: the query keeps the fixes it had, whose fingerprints the server would refuse.
+  const edits = await failing(page, "/api/edit", "http");
+  const fixes = await failing(page, "/api/fix", "http");
+  await apply.click();
+  await expect.poll(fixes).toBeGreaterThanOrEqual(1);
+  // The fixes refused, the panel offers none of those kept from before, nor their Apply
+  // (`offerShown`): the alert over the panel says why.
+  await expect(page.getByRole("alert").and(page.locator(":above(.panel)"))).toHaveText(
+    SERVER_FAILED,
+  );
+  await expect(fix).toHaveCount(0);
+  await expect(apply).toHaveCount(0);
+  expect(edits()).toBe(1);
 });
 
 test("two files of one name are told apart by their paths, and the filter finds each by what its row says", async ({

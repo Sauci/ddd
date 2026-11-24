@@ -194,13 +194,13 @@ export function SharedAddView(props: SharedAddViewProps) {
           {props.refusal}
         </p>
       )}
-      {props.refusal === null && props.plan !== null && (
-        <p className="consequence">{consequence(props.plan.changes)}</p>
-      )}
+      {/* Under a refusal too, the plan the form is given, and its Apply: what it offers beside
+          one is the screen's rule (`offerShown`), which hands no plan its own ask refused. */}
+      {props.plan !== null && <p className="consequence">{consequence(props.plan.changes)}</p>}
       {props.refusal === null && props.plan === null && props.planning === true && (
         <p className="consequence">{PLANNING}</p>
       )}
-      {props.refusal === null && props.plan !== null && props.plan.changes.length > 0 && (
+      {props.plan !== null && props.plan.changes.length > 0 && (
         <>
           {props.changesShown && <Changes changes={shownChanges(props.plan.changes)} />}
           <div className="panel-actions">

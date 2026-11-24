@@ -53,9 +53,11 @@ export function refusalOf(error: Error): string {
 
 /**
  * The one refusal a panel of several writes shows beside its write `about`: the refusal it holds
- * of that write's Apply (`Refused`), else why the write's plan was refused when asked for, in the
- * server's own words - `asked`, read straight off `planShown`'s own `refusal` (`lib/typing.ts`) -
- * else none. A panel of one write shows the sentence it holds, else its plan's, the same way.
+ * of that write's Apply (`Refused`, `heldOf`), else why the write's plan was refused when asked
+ * for, in the server's own words - `asked`, read straight off `planShown`'s own `refusal`
+ * (`lib/typing.ts`) - else none. A panel of one write shows the sentence it holds, else its
+ * plan's, the same way. What a panel offers beside it is `offerShown`'s; the Undo strip, whose
+ * refusal is the whole of it, reads this alone.
  *
  * `asked` is the answer of the revision on screen, the plan being asked for again at every one, so
  * a revision landing moves it - none while the new plan is asked for, then that plan's own answer -
@@ -68,7 +70,52 @@ export function refusalShown<A>(
   asked: string | null,
   about: A,
 ): string | null {
-  return held !== null && held.about === about ? held.text : asked;
+  return heldOf(held, about) ?? asked;
+}
+
+/** The sentence a panel of several writes holds of the Apply of `about`, `null` where what it
+ * holds, if anything, is of another of its writes. */
+export function heldOf<A>(held: Refused<A> | null, about: A): string | null {
+  return held !== null && held.about === about ? held.text : null;
+}
+
+/** Where one write of a panel stands, as its view draws it: the plan it offers to apply, the one
+ * refusal it says, and whether the plan may still change - `planShown`'s three (`lib/typing.ts`),
+ * once a refusal held of its Apply is said with them (`offerShown`). */
+export interface Offered<P> {
+  plan: P | null;
+  refusal: string | null;
+  pending: boolean;
+}
+
+/**
+ * What a panel offers of one write beside the refusal it says: one rule, which every panel and
+ * tab that writes follows (15:M15), where each once drew its own.
+ *
+ * - **The refusal said** is the one the panel holds of the write's Apply (`held`, until the
+ *   reader's next choice), else why the write's plan was refused when asked for (`asked.refusal`).
+ * - **Beside a refusal held of its Apply**, the panel offers the plan the revision on screen
+ *   answers for the write as it stands, and so its Apply: the reader applies it with one press,
+ *   or makes another choice, and nothing waits for the panel to close. Refused because a file
+ *   changed on disk, the Apply asked for the analysis that reads it, whose revision reaches the
+ *   page within milliseconds, and its plan is then the plan of the files as they now are, which
+ *   the sentence says the panel shows. Most panels ask their plan again as soon as the Apply is
+ *   answered, as they always did; the declare panel, the Shared files tab's add form and the
+ *   values grid wait for that revision, and a press made before it is refused once more, saying
+ *   so again.
+ * - **Beside its plan's own refusal**, it offers nothing to apply. A plan asked for again and
+ *   refused leaves the answer before it in its query's hands, whose fingerprints are no longer the
+ *   files': an Apply drawn from it would only be refused as stale.
+ *
+ * The variable panel's removal alone draws nothing to press under any refusal: whether it should
+ * draw Remove under a held refusal's sentence is a question left with the maintainer (P19b-24).
+ */
+export function offerShown<P>(held: string | null, asked: Offered<P>): Offered<P> {
+  return {
+    plan: asked.refusal === null ? asked.plan : null,
+    refusal: held ?? asked.refusal,
+    pending: asked.pending,
+  };
 }
 
 /** What a page holds of the refusal of an offer it makes - adopting a vocabulary - once it has

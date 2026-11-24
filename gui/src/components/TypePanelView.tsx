@@ -168,21 +168,22 @@ export function TypePanelView(props: TypePanelViewProps) {
         </label>
         <p className="rename-note">Only the name changes; what the type fixes stays as it is.</p>
       </section>
-      {refusal !== null ? (
+      {refusal !== null && (
         <p className="panel-refusal" role="status">
           {refusal}
         </p>
-      ) : (
-        // As the variable panel's own consequence line stays with `selected !== undefined`: a
-        // stale preview says nothing once nothing is pending.
-        pending &&
+      )}
+      {/* Under a refusal too, the preview the panel is given and its Apply: what it offers beside
+          one is the screen's rule (`offerShown`), which hands no plan its own ask refused. As the
+          variable panel's own consequence line stays with `selected !== undefined`: a stale
+          preview says nothing once nothing is pending. */}
+      {pending &&
         (preview !== null ? (
           <p className="consequence">{consequence(preview.changes)}</p>
         ) : (
-          props.planning === true && <p className="consequence">{PLANNING}</p>
-        ))
-      )}
-      {refusal === null && pending && preview !== null && preview.changes.length > 0 && (
+          refusal === null && props.planning === true && <p className="consequence">{PLANNING}</p>
+        ))}
+      {pending && preview !== null && preview.changes.length > 0 && (
         <>
           {props.changesShown && <Changes changes={shownChanges(preview.changes)} />}
           <div className="panel-actions">

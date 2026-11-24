@@ -788,6 +788,37 @@ test("a type's panel says it is reading the type until it is read", async ({
   await expect(reading).toHaveCount(0);
 });
 
+test("an apply made from a type's panel whose plan the server fails on when asked again offers nothing to press beside the refusal", async ({
+  page,
+  structuresGui,
+}) => {
+  await page.goto(structuresGui.address);
+  await page.getByRole("link", { name: "Types", exact: true }).click();
+  await page.getByRole("row", { name: "Temperature_t", exact: true }).click();
+  const panel = page.getByRole("complementary", { name: "Temperature_t", exact: true });
+  const field = panel
+    .getByRole("region", { name: "Description" })
+    .getByRole("textbox", { name: "Description" });
+  await field.fill("A temperature the server will not plan again");
+  const plan = panel.getByText("Changes 1 file: types.ddd.json", { exact: true });
+  await expect(plan).toBeVisible();
+
+  // From here on the server fails the Apply, and the plan the panel asks again once the Apply is
+  // answered: the query keeps the plan it had, whose fingerprints the server would refuse.
+  const edits = await failing(page, "/api/edit", "http");
+  const plans = await failing(page, "/api/type-plan", "http");
+  await panel.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect(panel.getByRole("status")).toHaveText(`The change was refused: ${SERVER_FAILED}`);
+  await expect.poll(plans).toBeGreaterThanOrEqual(1);
+  // Beside its plan's own refusal, a write offers nothing to apply (`offerShown`), the refusal of
+  // the Apply said over it - once every query the Apply asked again has answered too.
+  await expect(panel.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+  await expect(plan).toHaveCount(0);
+  await expect(field).toBeEnabled();
+  await expect(panel.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+  expect(edits()).toBe(1);
+});
+
 test("a type's panel whose type fails to load says why, beside the table", async ({
   page,
   structuresGui,
@@ -995,7 +1026,7 @@ test("a finding in a type's panel leads to the unit it names, on the Units tab",
   );
 });
 
-test("an apply made from a type's panel that the server fails on says so in its words, is withdrawn with what was typed kept, and is sent once", async ({
+test("an apply made from a type's panel that the server fails on says so in its words, over the plan asked again, with what was typed kept, and is sent once", async ({
   page,
   structuresGui,
 }) => {
@@ -1015,10 +1046,13 @@ test("an apply made from a type's panel that the server fails on says so in its 
   const failed = await failing(page, "/api/edit", "http");
   await panel.getByRole("button", { name: "Apply to 1 file" }).click();
   // The server's own words behind `refusalOf`'s prefix (`panel-refusal`, TypePanelView).
-  await expect(panel.getByRole("status")).toHaveText(`The change was refused: ${SERVER_FAILED}`);
-  // The refusal stands where the plan was: nothing is offered to apply until the reader chooses
-  // again, and what was typed is kept.
-  await expect(panel.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+  const refused = panel.getByRole("status");
+  await expect(refused).toHaveText(`The change was refused: ${SERVER_FAILED}`);
+  // Under the sentence, held until the reader chooses again, the plan asked again once the Apply
+  // was answered, and its Apply (`offerShown`), as every panel offers it; what was typed is kept.
+  await expect(panel.getByText("Changes 1 file: types.ddd.json", { exact: true })).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Apply to 1 file" })).toBeEnabled();
+  await expect(refused).toHaveText(`The change was refused: ${SERVER_FAILED}`);
   await expect(field).toHaveValue(description);
   // A guard against a write by another path: the POST is answered by `failing`, not the server.
   expect(entryOf(structuresGui.directory, "Temperature_t")).toEqual(before);

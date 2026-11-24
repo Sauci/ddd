@@ -44,7 +44,7 @@ import {
   windowRows,
 } from "../lib/findingsWindow";
 import { fileNames } from "../lib/paths";
-import { refusalSentence } from "../lib/refusals";
+import { offerShown, refusalSentence } from "../lib/refusals";
 import type { Route } from "../lib/route";
 import { fixLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
@@ -245,6 +245,14 @@ export function FindingsPage({ state, text, onText, place, onPlace, stopped, onO
         ? skipToken
         : () => getFix(finding.file, finding.pointer, finding.check),
   });
+  // What the panel offers of the finding's fixes beside a refusal, the one rule every panel follows
+  // (`offerShown`): a refusal of a fix's Apply said over the fixes asked again, and nothing to
+  // apply where the fixes themselves were refused, which the banner over the panel says.
+  const offer = offerShown(refused, {
+    plan: fixes.data ?? null,
+    refusal: fixes.isError ? fixes.error.message : null,
+    pending: false,
+  });
   const apply = useMutation({
     mutationFn: () => {
       const edit =
@@ -333,7 +341,7 @@ export function FindingsPage({ state, text, onText, place, onPlace, stopped, onO
                 const route = routeOf(finding);
                 if (route !== null) onOpen(route);
               }}
-              fixes={fixes.data ?? null}
+              fixes={offer.plan}
               chosen={chosen}
               onChoose={choose}
               changesShown={changesShown}

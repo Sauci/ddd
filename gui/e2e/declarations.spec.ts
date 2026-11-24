@@ -343,7 +343,7 @@ test("a declaration is removed and put back", async ({ page, gui }) => {
   await expect.poll(() => readFileSync(join(gui.directory, CONTROLLER)).equals(before)).toBe(true);
 });
 
-test("a declaration made from a file that changed on disk is refused, and made once the page has caught up", async ({
+test("a declaration made from a file that changed on disk is refused, and made from the plan offered under the sentence once the page has caught up", async ({
   page,
   gui,
 }) => {
@@ -368,7 +368,6 @@ test("a declaration made from a file that changed on disk is refused, and made o
   const stale =
     "A file changed on disk, so nothing was written. The page now shows the files as they are.";
   await expect(refused).toHaveText(stale);
-  await expect(apply).toHaveCount(0);
   expect(readFileSync(path).equals(drifted)).toBe(true);
 
   // The watcher never notices the drift, and nothing needs it to: refusing the declaration as
@@ -383,11 +382,10 @@ test("a declaration made from a file that changed on disk is refused, and made o
   ).toBeVisible({ timeout: 15000 });
   await expect(refused).toHaveText(stale);
 
-  // Asked again, against the files as they are now: the refusal goes with the edit, and the
-  // declaration is made.
-  await name.fill("ValueC");
-  await name.press("Enter");
-  await adding.getByRole("button", { name: "Apply to 1 file" }).click();
+  // Under the sentence, the plan of the files as they are now, and its Apply (`offerShown`):
+  // pressed, the refusal goes with it, and the declaration is made.
+  await expect(apply).toBeEnabled();
+  await apply.click();
   await expect(page.getByRole("complementary", { name: "ValueC" })).toBeVisible();
   expect(declarationOf(gui.directory, CONTROLLER, "ValueC").unit).toBe("degC");
 });
@@ -962,7 +960,7 @@ test("a value block's dimension is picked from the project's constants", async (
     .toContain('"dimensions": ["TREND_SAMPLES"]');
 });
 
-test("a key's apply the server fails on says so in its words, is withdrawn with the unit still chosen, and is sent once", async ({
+test("a key's apply the server fails on says so in its words, the plan asked again offered under it with the unit still chosen, and is sent once a press", async ({
   page,
   gui,
 }) => {
@@ -984,15 +982,53 @@ test("a key's apply the server fails on says so in its words, is withdrawn with 
   await apply.click();
 
   // `VariablePanel` words this refusal itself, as `refusalOf` words the other panels'.
-  await expect(settle.getByRole("status")).toHaveText(`The change was refused: ${SERVER_FAILED}`);
-  // The panel withdraws its Apply until the reader chooses again (P19b-24); the choice stays.
-  await expect(settle.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+  const refused = settle.getByRole("status");
+  await expect(refused).toHaveText(`The change was refused: ${SERVER_FAILED}`);
+  // Under the sentence, held until the reader's next choice, the plan asked again once the Apply
+  // was answered, and its Apply, one press away, as every panel offers it (`offerShown`); the
+  // choice stays.
+  await expect(apply).toBeEnabled();
+  await expect(refused).toHaveText(`The change was refused: ${SERVER_FAILED}`);
   await expect(panel.getByRole("combobox", { name: "Unit of ValueA" })).toHaveValue("rpm");
   // A guard against a write by another path: the POST is answered by `failing`, not the server.
   expect(readFileSync(join(gui.directory, CONTROLLER)).equals(controller)).toBe(true);
   expect(readFileSync(join(gui.directory, SENSOR_HUB)).equals(hub)).toBe(true);
-  // A POST is never sent again.
+  // A POST is never sent again by itself: only a press sends one, the Apply drawn under the
+  // sentence among them.
   expect(failed()).toBe(1);
+  await apply.click();
+  await expect.poll(failed).toBe(2);
+  await expect(refused).toHaveText(`The change was refused: ${SERVER_FAILED}`);
+  await expect(apply).toBeEnabled();
+});
+
+test("a key's apply whose plan the server fails on when asked again offers nothing to press beside the refusal", async ({
+  page,
+  gui,
+}) => {
+  const panel = await openPanel(page, gui.address, "ValueA");
+  await chooseUnit(page, "rpm");
+  const settle = panel.getByRole("region", { name: "Settle the key" });
+  const plan = settle.getByText(
+    "Changes 2 files: controller.ddd.json, sensor_hub.ddd.json (the code of the readers is not touched)",
+    { exact: true },
+  );
+  await expect(plan).toBeVisible();
+
+  // From here on the server fails the Apply, and the plan the panel asks again once the Apply is
+  // answered: the query keeps the plan it had, whose fingerprints the server would refuse.
+  const edits = await failing(page, "/api/edit", "http");
+  const plans = await failing(page, "/api/settle", "http");
+  await settle.getByRole("button", { name: "Apply to 2 files" }).click();
+  await expect(settle.getByRole("status")).toHaveText(`The change was refused: ${SERVER_FAILED}`);
+  await expect.poll(plans).toBeGreaterThanOrEqual(1);
+  // Beside its plan's own refusal, a write offers nothing to apply (`offerShown`), the refusal of
+  // the Apply said over it - once every query the Apply asked again has answered too.
+  await expect(settle.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+  await expect(plan).toHaveCount(0);
+  await expect(panel.getByRole("combobox", { name: "Unit of ValueA" })).toBeEnabled();
+  await expect(settle.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+  expect(edits()).toBe(1);
 });
 
 test("a removal the server fails on says so in its words, and the declaration stays", async ({
@@ -1041,10 +1077,14 @@ test("a declaration the server fails on says so in its words, and nothing is dec
   await apply.click();
 
   // `refusalOf`, through the panel's `onError`.
-  await expect(adding.getByRole("status")).toHaveText(`The change was refused: ${SERVER_FAILED}`);
-  // Withdrawn until the next edit of the form (P19b-24); what was typed stays, and nothing was
-  // declared, so no panel of ValueC opens.
-  await expect(adding.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+  const refused = adding.getByRole("status");
+  await expect(refused).toHaveText(`The change was refused: ${SERVER_FAILED}`);
+  // Under the sentence, held until the next edit of the form, the plan asked again once the Apply
+  // was answered, and its Apply (`offerShown`); what was typed stays, and nothing was declared, so
+  // no panel of ValueC opens.
+  await expect(adding.getByText("Reads ValueC as SensorHub declares it.")).toBeVisible();
+  await expect(apply).toBeEnabled();
+  await expect(refused).toHaveText(`The change was refused: ${SERVER_FAILED}`);
   await expect(name).toHaveValue("ValueC");
   await expect(page.getByRole("complementary", { name: "ValueC", exact: true })).toHaveCount(0);
   expect(readFileSync(join(gui.directory, CONTROLLER)).equals(controller)).toBe(true);

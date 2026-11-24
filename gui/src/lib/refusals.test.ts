@@ -1,7 +1,9 @@
 import { describe, expect, test } from "vitest";
 import { ApiError, ServerUnreachable } from "../api/client";
 import {
+  heldOf,
   isStale,
+  offerShown,
   STALE as PAGE_STALE,
   panelShows,
   type Refused,
@@ -75,6 +77,63 @@ test("a refusal of an offer is held while the offer is made, and goes with it", 
 
 test("nothing held and no plan refused, nothing is shown", () => {
   expect(refusalShown(null, null, "rename")).toBeNull();
+});
+
+test("a panel of several writes holds the sentence of the write it was refused for, and of no other", () => {
+  const held: Refused<string> = { about: "rename", text: STALE };
+  expect(heldOf(held, "rename")).toBe(STALE);
+  expect(heldOf(held, "remove")).toBeNull();
+  expect(heldOf(null, "rename")).toBeNull();
+});
+
+describe("what a panel offers of one write beside the refusal it says", () => {
+  /** A plan as `planShown` hands it over: the revision's answer for the write as it stands. */
+  const PLAN = { changes: [{ file: "units.ddd.json" }] };
+  const PLAN_REFUSED = "units.ddd.json changed since the project was analysed";
+
+  test("nothing refused, the plan is offered", () => {
+    expect(offerShown(null, { plan: PLAN, refusal: null, pending: false })).toEqual({
+      plan: PLAN,
+      refusal: null,
+      pending: false,
+    });
+  });
+
+  test("beside a refusal held of its Apply, the plan asked for again is offered under the sentence", () => {
+    // The plan of the files as they now are, which a stale refusal's sentence says the panel shows:
+    // one press away, never withdrawn until the reader chooses again.
+    expect(offerShown(STALE, { plan: PLAN, refusal: null, pending: false })).toEqual({
+      plan: PLAN,
+      refusal: STALE,
+      pending: false,
+    });
+  });
+
+  test("beside its plan's own refusal, nothing is offered to apply, not even an answer kept from before", () => {
+    // A plan asked for again and refused leaves the answer before it in the query's hands, its
+    // fingerprints no longer the files': an Apply drawn from it would only be refused.
+    expect(offerShown(null, { plan: PLAN, refusal: PLAN_REFUSED, pending: false })).toEqual({
+      plan: null,
+      refusal: PLAN_REFUSED,
+      pending: false,
+    });
+  });
+
+  test("a refusal held of its Apply is said over its plan's own, and nothing is offered while that stands", () => {
+    expect(offerShown(STALE, { plan: PLAN, refusal: PLAN_REFUSED, pending: false })).toEqual({
+      plan: null,
+      refusal: STALE,
+      pending: false,
+    });
+  });
+
+  test("whether the plan may still change is the plan's own", () => {
+    expect(offerShown(STALE, { plan: null, refusal: null, pending: true })).toEqual({
+      plan: null,
+      refusal: STALE,
+      pending: true,
+    });
+  });
 });
 
 describe("a refusal held of a write, over each answer a new revision brings its plan", () => {

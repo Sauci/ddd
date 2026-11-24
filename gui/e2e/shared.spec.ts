@@ -1014,7 +1014,7 @@ test("a constant declared inside a component leads to that component's page, whe
   await expect(page.getByRole("complementary")).toHaveCount(0);
 });
 
-test("the add form's apply that is out of date is refused, and nothing is written", async ({
+test("the add form's apply that is out of date is refused, nothing is written, and the plan of the file as it is is offered under the sentence", async ({
   page,
   vocabularyGui,
 }) => {
@@ -1026,20 +1026,38 @@ test("the add form's apply that is out of date is refused, and nothing is writte
   await expect(apply).toBeEnabled();
 
   // The file changes under the page, between the preview it holds and the press that sends it, as
-  // the constant's save journey above has it: its description, one word for another as long,
-  // written where the session's own watcher does not see it (`writeUnseen`).
+  // the constant's save journey above has it: TREND_SAMPLES' description, one word for another as
+  // long, and its value, 16 to 17, written where the session's own watcher does not see it
+  // (`writeUnseen`).
   const before = readFileSync(path, "utf8");
-  const changed = before.replace("sample slots", "sample cells");
-  if (changed === before) throw new Error(`TREND_SAMPLES describes no sample slots in ${path}`);
+  const changed = before
+    .replace("sample slots", "sample cells")
+    .replace('"value": 16', '"value": 17');
+  if (!changed.includes("sample cells") || !changed.includes('"value": 17')) {
+    throw new Error(`TREND_SAMPLES no longer reads as this journey expects in ${path}`);
+  }
   writeUnseen(vocabularyGui.directory, FILES.constants.file, changed);
   await apply.click();
 
-  // Refused, in the form: the plan and its Apply are drawn only under no refusal (`SharedAddView`),
-  // so none is left to press while it stands.
-  await expect(form.getByRole("status")).toHaveText(STALE);
-  await expect(form.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+  // Refused, in the form, and held there until the next edit of the form.
+  const refused = form.getByRole("status");
+  await expect(refused).toHaveText(STALE);
   // Nothing was written: the file is as the change from outside left it, and declares no SPARE.
   expect(readFileSync(path, "utf8")).toBe(changed);
+
+  // The analysis the refusal asks for has landed once the table, made once a revision, states 17.
+  // The sentence is still there, and under it the plan of the file as it now is, and its Apply
+  // (`offerShown`): pressed, SPARE is declared beside the change from outside.
+  await expect(
+    page.getByRole("row", { name: "TREND_SAMPLES", exact: true }).getByRole("gridcell").nth(1),
+  ).toHaveText("17");
+  await expect(refused).toHaveText(STALE);
+  await expect(apply).toBeEnabled();
+  await apply.click();
+  await expect(page.getByRole("complementary", { name: "SPARE", exact: true })).toBeVisible();
+  const declared = readFileSync(path, "utf8");
+  expect(declared).toContain("sample cells");
+  expect(declared).toContain('"SPARE"');
 });
 
 /** One save from each vocabulary's panel: the entry, the region whose field is saved and what is
@@ -1075,6 +1093,36 @@ for (const { kind, vocabulary, name, region, text } of SAVES) {
     expect(failed()).toBe(1);
     // A guard against a write by another path: the POST is answered by `failing`, not the server.
     expect(entryOf(vocabularyGui.directory, vocabulary, name)).toEqual(before);
+  });
+
+  test(`a save made from a ${kind}'s panel whose plan the server fails on when asked again offers nothing to press beside the refusal`, async ({
+    page,
+    vocabularyGui,
+  }) => {
+    const panel = await openEntry(page, vocabularyGui, name);
+    const saving = panel.getByRole("region", { name: region });
+    const field = saving.getByRole("textbox", { name: region });
+    await field.fill(text);
+    const plan = saving.getByText(`Changes 1 file: ${FILES[vocabulary].file}`, { exact: true });
+    await expect(plan).toBeVisible();
+
+    // From here on the server fails the Apply, and the plan the panel asks again once the Apply
+    // is answered: the query keeps the plan it had, whose fingerprints the server would refuse.
+    const edits = await failing(page, "/api/edit", "http");
+    const plans = await failing(page, `/api/${kind}-plan`, "http");
+    const save = saving.getByRole("button", { name: "Save" });
+    await save.click();
+    await expect(saving.getByRole("status")).toHaveText(`The change was refused: ${SERVER_FAILED}`);
+    await expect.poll(plans).toBeGreaterThanOrEqual(1);
+    // Beside its plan's own refusal, a write offers nothing to apply (`offerShown`): neither the
+    // plan kept from before nor its Save, the refusal of the Apply said over it - once every query
+    // the Apply asked again has answered, the field taking what is typed again.
+    await expect(save).toHaveCount(0);
+    await expect(plan).toHaveCount(0);
+    await expect(field).toBeEnabled();
+    await expect(save).toHaveCount(0);
+    await expect(saving.getByRole("status")).toHaveText(`The change was refused: ${SERVER_FAILED}`);
+    expect(edits()).toBe(1);
   });
 }
 

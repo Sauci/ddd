@@ -148,27 +148,27 @@ export function VariablePanelView(props: VariablePanelViewProps) {
           section exists so a reader - and a locator - can tell this block's "Show changes" from
           the removal offer's own, below. */}
       <section aria-label="Settle the key">
-        {refusal !== null ? (
+        {refusal !== null && (
           <p className="panel-refusal" role="status">
             {refusal}
           </p>
-        ) : (
-          selected !== undefined &&
+        )}
+        {/* Under a refusal too, the plan the panel is given, and its Apply: what it offers beside
+            one is the screen's rule (`offerShown`), which hands no plan its own ask refused. */}
+        {selected !== undefined &&
           (preview !== null ? (
             <p className="consequence">{settleConsequence(changes)}</p>
           ) : (
-            props.planning === true && <p className="consequence">{PLANNING}</p>
-          ))
-        )}
+            refusal === null && props.planning === true && <p className="consequence">{PLANNING}</p>
+          ))}
         {/* What the server says of the files this plan would leave unable to load, in its words:
-            drawn with the plan, above Apply, which stays - the value is the reader's to write.
-            `unloadableOf` says which sentences: none where a refusal stands in the plan's place. */}
-        {sentenceKeys(unloadableOf(preview, refusal)).map(({ key, text }) => (
+            drawn with the plan, above Apply, which stays - the value is the reader's to write. */}
+        {sentenceKeys(unloadableOf(preview)).map(({ key, text }) => (
           <p key={key} className="panel-unloadable" role="status">
             {text}
           </p>
         ))}
-        {refusal === null && changes.length > 0 && (
+        {changes.length > 0 && (
           <>
             {props.changesShown && <Changes changes={shownChanges(changes)} />}
             <div className="panel-actions">
@@ -199,34 +199,35 @@ export function VariablePanelView(props: VariablePanelViewProps) {
             </p>
           )}
           {planning(description.offer) && <p className="consequence">{PLANNING}</p>}
-          {description.offer.refusal === null &&
-            description.offer.plan !== null &&
-            description.offer.plan.changes.length > 0 && (
-              <>
-                <p className="consequence">
-                  {describeSentence(variable.name, description.from, description.value)}.{" "}
-                  {consequence(description.offer.plan.changes)}
-                </p>
-                {description.shown && (
-                  <Changes changes={shownChanges(description.offer.plan.changes)} />
-                )}
-                <div className="panel-actions">
-                  <Button variant="link" onPress={() => description.onShown(!description.shown)}>
-                    {description.shown ? "Hide changes" : "Show changes"}
-                  </Button>
-                  <Button
-                    variant="primary"
-                    isDisabled={props.busy || description.offer.pending}
-                    onPress={description.onApply}
-                  >
-                    Apply to {description.offer.plan.changes.length} file
-                    {description.offer.plan.changes.length === 1 ? "" : "s"}
-                  </Button>
-                </div>
-              </>
-            )}
+          {description.offer.plan !== null && description.offer.plan.changes.length > 0 && (
+            <>
+              <p className="consequence">
+                {describeSentence(variable.name, description.from, description.value)}.{" "}
+                {consequence(description.offer.plan.changes)}
+              </p>
+              {description.shown && (
+                <Changes changes={shownChanges(description.offer.plan.changes)} />
+              )}
+              <div className="panel-actions">
+                <Button variant="link" onPress={() => description.onShown(!description.shown)}>
+                  {description.shown ? "Hide changes" : "Show changes"}
+                </Button>
+                <Button
+                  variant="primary"
+                  isDisabled={props.busy || description.offer.pending}
+                  onPress={description.onApply}
+                >
+                  Apply to {description.offer.plan.changes.length} file
+                  {description.offer.plan.changes.length === 1 ? "" : "s"}
+                </Button>
+              </div>
+            </>
+          )}
         </section>
       )}
+      {/* The one offer that draws nothing to press under any refusal, its own plan's or one held of
+          Remove: whether it should draw Remove under a held refusal's sentence, as every other
+          offer draws its Apply, is a question left with the maintainer (P19b-24). */}
       {removal !== undefined && (
         <section className="panel-offer" aria-label="Remove the declaration">
           <p className="consequence">{removalSentence(variable, removal.from, removal.unread)}</p>

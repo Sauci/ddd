@@ -2200,6 +2200,78 @@ test("a declaration's description is read in its panel, written, put back, and t
 // that an auto-retrying assertion cannot otherwise see.
 /** A description's plan on its way (16:M17): the panel says so where its consequence will stand,
  * and says the consequence once the plan has come, held until then. */
+test("a description the server fails on says so in its words over the plan asked again, which a press sends again", async ({
+  page,
+  gui,
+}) => {
+  const before = readFileSync(join(gui.directory, CONTROLLER));
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("row", { name: /ParameterA/ }).click();
+  const panel = page.getByRole("complementary", { name: "ParameterA" });
+  const field = panel.getByRole("textbox", { name: "Description in Controller" });
+  await field.fill("Engine speed gain");
+  const describing = panel.getByRole("region", { name: "Describe the declaration" });
+  const apply = describing.getByRole("button", { name: "Apply to 1 file" });
+  await expect(apply).toBeEnabled();
+
+  // The page's only request to `/api/edit` is an Apply's POST, failed from here on.
+  const failed = await failing(page, "/api/edit", "http");
+  await apply.click();
+  const refused = describing.getByRole("status");
+  await expect(refused).toHaveText(`The change was refused: ${SERVER_FAILED}`);
+  // Under the sentence, held until the reader's next choice, the plan asked again once the Apply
+  // was answered, and its Apply (`offerShown`), as every panel offers it; what was typed stays.
+  await expect(
+    describing.getByText(
+      "Sets the description of ParameterA in Controller. Changes 1 file: controller.ddd.json",
+    ),
+  ).toBeVisible();
+  await expect(apply).toBeEnabled();
+  await expect(refused).toHaveText(`The change was refused: ${SERVER_FAILED}`);
+  await expect(field).toHaveValue("Engine speed gain");
+  expect(readFileSync(join(gui.directory, CONTROLLER)).equals(before)).toBe(true);
+  expect(failed()).toBe(1);
+  // Pressed, it is sent again, and refused again.
+  await apply.click();
+  await expect.poll(failed).toBe(2);
+  await expect(refused).toHaveText(`The change was refused: ${SERVER_FAILED}`);
+});
+
+test("a description whose plan the server fails on when asked again offers nothing to press beside the refusal", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("row", { name: /ParameterA/ }).click();
+  const panel = page.getByRole("complementary", { name: "ParameterA" });
+  const field = panel.getByRole("textbox", { name: "Description in Controller" });
+  await field.fill("Engine speed gain");
+  const describing = panel.getByRole("region", { name: "Describe the declaration" });
+  const plan = describing.getByText(
+    "Sets the description of ParameterA in Controller. Changes 1 file: controller.ddd.json",
+  );
+  await expect(plan).toBeVisible();
+
+  // From here on the server fails the Apply, and the plan the panel asks again once the Apply is
+  // answered: the query keeps the plan it had, whose fingerprints the server would refuse.
+  const edits = await failing(page, "/api/edit", "http");
+  const plans = await failing(page, "/api/description-plan", "http");
+  await describing.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect(describing.getByRole("status")).toHaveText(
+    `The change was refused: ${SERVER_FAILED}`,
+  );
+  await expect.poll(plans).toBeGreaterThanOrEqual(1);
+  // Beside its plan's own refusal, a write offers nothing to apply (`offerShown`), the refusal of
+  // the Apply said over it - once every query the Apply asked again has answered too.
+  await expect(describing.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+  await expect(plan).toHaveCount(0);
+  await expect(field).toBeEnabled();
+  await expect(describing.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+  expect(edits()).toBe(1);
+});
+
 test("a description typed says it is planning while its plan is on its way", async ({
   page,
   gui,

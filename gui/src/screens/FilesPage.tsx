@@ -26,7 +26,7 @@ import {
   rowsOf,
 } from "../lib/files";
 import { type FilesHold, filesHoldAfter, filesHoldOf, filesShown } from "../lib/filesHold";
-import { refusalOf } from "../lib/refusals";
+import { offerShown, refusalOf } from "../lib/refusals";
 import type { Route } from "../lib/route";
 import { planEdit } from "../lib/shared";
 import { planShown } from "../lib/typing";
@@ -229,15 +229,18 @@ function useFilesApply(
         queries.invalidateQueries({ queryKey: ["files-plan"] }),
       ]),
   });
+  // What the panel offers beside a refusal, the one rule every panel follows (`offerShown`): an
+  // Apply refused said over the plan asked again - it is about an Apply already made, not a plan
+  // still loading, so it is not affected by `shown` - and nothing to apply beside the plan's own
+  // refusal.
+  const offer = offerShown(refused, shown);
   return {
     apply,
-    plan: shown.plan,
-    // An Apply refused takes precedence, as it always did - it is about an Apply already made,
-    // not a plan still loading, so it is not affected by `shown`.
-    refusal: refused ?? shown.refusal,
+    plan: offer.plan,
+    refusal: offer.refusal,
     /** Whether the plan is on its way (`planning`, lib/units.ts). A removal waiting for the
      * reader's press draws the press in place of its preview, and says nothing of it. */
-    planning: planning(shown),
+    planning: planning(offer),
     /** The reader chose again: what an earlier Apply was refused for says nothing of this plan. */
     chose: () => setRefused(null),
   };

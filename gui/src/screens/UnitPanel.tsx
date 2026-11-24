@@ -12,7 +12,7 @@ import { useUpdating } from "../app/updating";
 import { useDebounced } from "../app/useDebounced";
 import { type Offer, type UnitAction, UnitPanelView } from "../components/UnitPanelView";
 import { offers, planEdit } from "../lib/projectUnits";
-import { panelShows, type Refused, refusalOf, refusalShown } from "../lib/refusals";
+import { heldOf, offerShown, panelShows, type Refused, refusalOf } from "../lib/refusals";
 import type { Route } from "../lib/route";
 import { planShown, unsettled } from "../lib/typing";
 import { unitLabel } from "../lib/undo";
@@ -174,17 +174,13 @@ export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved, o
    * `plan`/`refusal`/`pending` are `planShown`'s own, `lib/typing.ts` (review fix round 1):
    * `null`/`null`/pending while the debounced request has not caught up with what the fields now
    * say, or while the answer is an earlier request's kept as a placeholder - never a plan, nor
-   * its own fetch refusal, for text the reader has since typed past. A refusal of its Apply takes
-   * precedence, as it always did (`refusalShown`). Never held back for `add`/`remove`/`rename`
-   * beyond their own query settling, whose `asked` entries are never behind `requests`'. */
-  const offer = (action: UnitAction): Offer => {
-    const shown = planShown(asked[action], requests[action], plans[action]);
-    return {
-      plan: shown.plan,
-      refusal: refusalShown(failed, shown.refusal, action),
-      pending: shown.pending,
-    };
-  };
+   * its own fetch refusal, for text the reader has since typed past. What it offers beside a
+   * refusal is the one rule every panel follows (`offerShown`): a refusal of its Apply said over
+   * the plan asked again, and nothing to apply beside its plan's own refusal. Never held back for
+   * `add`/`remove`/`rename` beyond their own query settling, whose `asked` entries are never
+   * behind `requests`'. */
+  const offer = (action: UnitAction): Offer =>
+    offerShown(heldOf(failed, action), planShown(asked[action], requests[action], plans[action]));
 
   if (gone) return null;
   if (answer.shown === "refusal") {

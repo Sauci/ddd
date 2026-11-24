@@ -12,7 +12,7 @@ import { useUpdating } from "../app/updating";
 import { useDebounced } from "../app/useDebounced";
 import { TypePanelView } from "../components/TypePanelView";
 import { planEdit } from "../lib/projectUnits";
-import { panelShows, type Refused, refusalOf, refusalShown } from "../lib/refusals";
+import { heldOf, offerShown, panelShows, type Refused, refusalOf } from "../lib/refusals";
 import type { Route } from "../lib/route";
 import { planShown, unsettled } from "../lib/typing";
 import { typeLabel } from "../lib/undo";
@@ -213,11 +213,16 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
   // `UnitPanel`'s `Offer`):
   // `TypePanelView`'s own gate (`pending && preview !== null`) draws neither a consequence nor an
   // Apply once `preview` below is `null` - its plan pending, or none asked for - and says
-  // `PLANNING` in their place while the plan is on its way (`planning`, lib/units.ts).
+  // `PLANNING` in their place while the plan is on its way (`planning`, lib/units.ts). What it
+  // offers beside a refusal is the one rule every panel follows (`offerShown`): a refusal of the
+  // path's Apply said over the plan asked again, and nothing to apply beside its plan's own.
   const shown =
     active === null
       ? { plan: null, refusal: null, pending: false }
-      : planShown(asked[active], requests[active], plans[active]);
+      : offerShown(
+          heldOf(refused, active),
+          planShown(asked[active], requests[active], plans[active]),
+        );
   // What the chooser's field reads while nothing is being typed (`settledLabel`, the rule a
   // variable's panel reads its own by), and whether what is typed is not that: text typed and left
   // is no choice yet (decision 15.3), so while it stands no plan is drawn for the value before it
@@ -379,9 +384,7 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
         if (active !== null) apply.mutate(active);
       }}
       onOpen={onOpen}
-      refusal={
-        active === null || unsettledText ? null : refusalShown(refused, shown.refusal, active)
-      }
+      refusal={active === null || unsettledText ? null : shown.refusal}
       busy={stopped || apply.isPending}
       onClose={onClose}
     />

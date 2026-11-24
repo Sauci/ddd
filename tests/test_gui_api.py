@@ -10444,6 +10444,34 @@ class TestTwoFilesOfOneNameInTheFindingsFilter:
         assert self.files_of(api, "b.ddd.json") == ["x/b.ddd.json", "y/b.ddd.json"]
         assert self.files_of(api, tmp_path.name) == []
 
+    def test_the_column_names_a_file_among_every_file_of_the_project_one_that_did_not_load_too(
+        self, tmp_path: Path
+    ) -> None:
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "x/b.ddd.json", "y/b.ddd.json"),
+                "x/b.ddd.json": component("B1", declare("output", "Pace", typename="Speed_t")),
+                "y/b.ddd.json": '{"component": {"name": "B2"',
+            },
+        )
+        # The one that did not load files its own error, and is named by its path as its
+        # neighbour of the same name is, which no finding was filed on while it was unread.
+        assert self.files_of(api, "y/b.ddd.json") == ["y/b.ddd.json"]
+        assert self.files_of(api, "x/b.ddd.json") == []
+
+    def test_a_file_the_revision_does_not_list_is_named_by_its_own_name(self) -> None:
+        from ddd.diagnostics import Diagnostic, Severity
+        from ddd.gui.api import _holds
+        from ddd.gui.session import Filed
+
+        filed = Filed(
+            Path("/w/z/unlisted.ddd.json"), Diagnostic("schema", Severity.ERROR, "m", None, ())
+        )
+        assert _holds(filed, "unlisted.ddd", {})
+        assert not _holds(filed, "z/unlisted", {})
+        assert _holds(filed, "z/unlisted", {filed.file: "z/unlisted.ddd.json"})
+
 
 class TestAPlanOfWhatNoFileThatLoadedDeclares:
     """A name only a file that did not load declares is in no index, and a plan asked about it

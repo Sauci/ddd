@@ -12,6 +12,8 @@ import {
   returnPlace,
   selectsPanel,
   showsAgain,
+  stillWaits,
+  WAITS_AT_MOST_MS,
 } from "./focus";
 import type { Route } from "./route";
 
@@ -157,6 +159,22 @@ describe("whether a focus moved by no key and no pointer lets what a change of p
 
   test("not moved onto a heading, the change's own doing, or a panel's drawn anew", () => {
     expect(letsWaitGo(true)).toBe(false);
+  });
+});
+
+describe("whether what a change of page leaves waiting still waits", () => {
+  test("a short time: three seconds", () => {
+    expect(WAITS_AT_MOST_MS).toBe(3000);
+  });
+
+  test("within that time of its start", () => {
+    expect(stillWaits(1000, 1000)).toBe(true);
+    expect(stillWaits(1000, 3999)).toBe(true);
+  });
+
+  test("not once that time has passed", () => {
+    expect(stillWaits(1000, 4000)).toBe(false);
+    expect(stillWaits(1000, 60_000)).toBe(false);
   });
 });
 

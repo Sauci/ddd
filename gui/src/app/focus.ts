@@ -9,6 +9,7 @@ import {
   outOfView,
   returnPlace,
   showsAgain,
+  stillWaits,
 } from "../lib/focus";
 import { selectedRowFocus } from "../ui/Table";
 
@@ -49,8 +50,14 @@ function controlOf(target: EventTarget | null): Control | null {
 
 /** What a change of page waits to give the focus to (`askHeading`, `headingTaking`): nothing
  * once given, or once the reader presses a key or the pointer, or the focus is moved elsewhere
- * (`letsWaitGo`). */
+ * (`letsWaitGo`), or a short time after the page's heading took it to hold it for a panel
+ * (`holdingSince`). */
 let headingWanted: HeadingWanted | null = null;
+
+/** When the page's heading took the focus to hold it for the panel a change of page opens, until
+ * that panel is drawn: `null` while it holds none. Past `WAITS_AT_MOST_MS` from then
+ * (`stillWaits`), the change asks no heading for the focus any more. */
+let holdingSince: number | null = null;
 
 /** Whether the panel a change of page, a following or a page loaded anew opens waits to be drawn,
  * to be scrolled into view once its page has settled (`askHeading`, `showWhenSettled`): no longer
@@ -185,6 +192,7 @@ function letGo(): void {
 export function askHeading(asked: Asked): void {
   headingWanted = asked.heading;
   showWanted = asked.shown;
+  holdingSince = null;
   giveHeading(pageHeading(), panelHeading());
 }
 
@@ -192,6 +200,7 @@ export function askHeading(asked: Asked): void {
  * control the page took away leaves it nowhere else to go (`landing`). */
 function askPageHeading(): void {
   headingWanted = "page";
+  holdingSince = null;
   giveHeading(pageHeading(), panelHeading());
 }
 
@@ -201,17 +210,21 @@ export function takePageHeading(heading: HTMLElement): void {
 }
 
 /** Gives the focus a change of page asked for, where it waits, to the heading `headingTaking`
- * names of those drawn: the page's (`page`), or the panel's (`panel`); and scrolls the panel drawn
- * into view once the page it stands in has settled (`showWhenSettled`), where it waits to be
- * shown. */
+ * names of those drawn: the page's (`page`), holding it for a panel no longer than a short time
+ * (`holdingSince`), or the panel's (`panel`); and scrolls the panel drawn into view once the page it
+ * stands in has settled (`showWhenSettled`), where it waits to be shown. */
 function giveHeading(page: HTMLElement | null, panel: HTMLElement | null): void {
+  if (holdingSince !== null && !stillWaits(holdingSince, performance.now())) headingWanted = null;
   if (headingWanted !== null) {
     const { takes, waits } = headingTaking(headingWanted, {
       page: page !== null,
       panel: panel !== null,
     });
     if (!waits) headingWanted = null;
-    if (takes === "page") page?.focus();
+    if (takes === "page") {
+      page?.focus();
+      if (waits) holdingSince ??= performance.now();
+    }
     if (takes === "panel") panel?.focus({ preventScroll: true });
   }
   if (!showWanted || panel === null) return;
@@ -228,14 +241,16 @@ function giveHeading(page: HTMLElement | null, panel: HTMLElement | null): void 
  * the size of the slot it stands in (`slot`), the panel drawn there is scrolled into view as soon as
  * it stands out of it (`scrollShown`); the watch ends then, once no panel is drawn there, or once
  * the reader presses a key or the pointer, or scrolls the page by a wheel or a touch, or the focus
- * is moved elsewhere (`letsWaitGo`).
+ * is moved elsewhere (`letsWaitGo`), or a short time after it began (`stillWaits`): the page has
+ * settled by then, and what it does next is no longer the change's.
  */
 function showWhenSettled(slot: HTMLElement): void {
   settling?.();
+  const since = performance.now();
   const watch = new ResizeObserver(() => {
     const panel = slot.querySelector<HTMLElement>(".panel");
     const heading = panel?.querySelector<HTMLElement>('[data-heading="panel"]') ?? null;
-    if (panel === null || heading === null) stop();
+    if (panel === null || heading === null || !stillWaits(since, performance.now())) stop();
     else if (outOfView(heading.getBoundingClientRect(), window.innerHeight)) {
       stop();
       scrollShown(panel, heading);

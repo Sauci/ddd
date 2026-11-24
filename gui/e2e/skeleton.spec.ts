@@ -530,6 +530,73 @@ test("a focus moved by no key and no pointer while a type a panel links to is re
   await expect(units).toBeFocused();
 });
 
+/** Longer than what a change of page leaves waiting waits at most, 3 s (`WAITS_AT_MOST_MS`,
+ * lib/focus.ts). */
+const PAST_THE_WAITS = 4000;
+
+/**
+ * A change of page whose panel is drawn past a short wait (16:I13, ruling B11-45): GainA's link
+ * to Gain_t opens the Types tab, the project's types held back longer than the page waits for
+ * them, the page's heading holding the focus meanwhile. The type's panel, drawn at last, leaves the
+ * focus there: what the change asked for is over, and nothing gives the focus again once the
+ * reader may be reading on.
+ */
+test("a type a panel links to, drawn past a short wait, leaves the focus on the page's heading that held it", async ({
+  page,
+  copiedGui,
+}) => {
+  const gui = await copiedGui("demo", namingAScalarType);
+  const link = await gainLink(page, gui.address);
+  const heading = page.getByRole("heading", { name: "DemoDevice", level: 1 });
+  const release = await held(page, "/api/types");
+  try {
+    await link.click();
+    await expect(page.getByText("Reading the project's types…")).toBeVisible();
+    await expect(heading).toBeFocused();
+    await page.waitForTimeout(PAST_THE_WAITS);
+  } finally {
+    release();
+  }
+  await expect(
+    page
+      .getByRole("complementary", { name: "Gain_t" })
+      .getByRole("heading", { name: "Gain_t", level: 2 }),
+  ).toBeVisible();
+  await twoFrames(page);
+  await expect(heading).toBeFocused();
+});
+
+/**
+ * The page scrolled by no wheel, no key and no pointer past a short wait after a change of page's
+ * panel has read (16:M9, ruling B11-45): the go-to opens ParameterA beside Controller's
+ * declarations in a window 1000 by 420, its heading in view. Later, as a screen reader's own
+ * cursor carries the page on, the page is scrolled past the panel's heading, and the window then
+ * narrows. The page stays where it was scrolled: the watch that scrolls the panel into view as its
+ * page settles is over.
+ */
+test("a page scrolled by no wheel, key or pointer past a short wait after a change of page's panel has read stays where it is scrolled", async ({
+  page,
+  gui,
+}) => {
+  await page.setViewportSize({ width: 1000, height: 420 });
+  await page.goto(gui.address);
+  const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+  await goTo.pressSequentially("ParameterA");
+  await expect(page.getByRole("option", { name: "ParameterA" })).toBeVisible();
+  await goTo.press("Enter");
+  const panel = page.getByRole("complementary", { name: "ParameterA" });
+  const heading = panel.getByRole("heading", { name: "ParameterA", level: 2 });
+  await expect(panel.getByRole("grid", { name: "Keys of ParameterA" })).toBeVisible();
+  await expect(heading).toBeFocused();
+  await expect(heading).toBeInViewport();
+  await page.waitForTimeout(PAST_THE_WAITS);
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect(heading).not.toBeInViewport();
+  await page.setViewportSize({ width: 960, height: 420 });
+  await twoFrames(page);
+  await expect(heading).not.toBeInViewport();
+});
+
 /** What the Graph and the Table say of a project that includes no component (16:M13). */
 const NEW_FILE =
   "This project includes no component yet: New file, on the Files tab, writes one and includes it.";

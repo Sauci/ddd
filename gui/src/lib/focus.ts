@@ -116,6 +116,19 @@ export function headingTaking(
   return { takes: null, waits: true };
 }
 
+/** How long, in ms, what a change of page leaves waiting waits at most (16:I13, 16:M9, ruling
+ * B11-45): the page's heading holding the focus for the panel the change opens, and the watch
+ * scrolling a panel into view as its page settles. A panel is drawn, and its page has settled,
+ * well within it - the long table above a panel sizes its box a frame after it is drawn - and past
+ * it the reader may be reading on, whom nothing the change asked for then moves. */
+export const WAITS_AT_MOST_MS = 3000;
+
+/** Whether a wait begun at `since` still waits at `now`, both in ms on one clock: until
+ * `WAITS_AT_MOST_MS` have passed. */
+export function stillWaits(since: number, now: number): boolean {
+  return now - since < WAITS_AT_MOST_MS;
+}
+
 /**
  * Whether a focus moved while a change of page or a page loaded anew waits - to give a heading the
  * focus, or to show the panel its address opens - lets what it waits for go (16:I13, ruling

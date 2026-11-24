@@ -11,6 +11,7 @@ import {
   fileNameIn,
   heldFor,
   nextAsk,
+  ownErrorsLine,
   typedIn,
   verdictLine,
 } from "./compare";
@@ -277,4 +278,34 @@ test("typing is held without asking, and asking asks for what the field holds", 
   const retyped = typedIn(asked, "other.json");
   expect(retyped.asked).toBe(asked.asked);
   expect(askedIn(retyped).asked).toEqual({ baseline: "other.json", number: 2 });
+});
+
+test("a project with no error of its own is said nothing of under the verdict", () => {
+  expect(ownErrorsLine(reply({ own_errors: 0 }), STATE)).toBeNull();
+});
+
+test("a project's own errors are said under the verdict, counted as the Findings tab counts them", () => {
+  // One disagreement of the project's own, filed on each of the two files it concerns: two rows,
+  // which `own_errors` counts, and one statement, which the Findings tab's line and `ddd compare`
+  // count (14:I1).
+  const one = { ...STATE, statements: { error: 1, warning: 0, info: 0 } };
+  expect(ownErrorsLine(reply({ revision: 7, own_errors: 2 }), one)).toBe(
+    "This project has 1 error of its own, and the verdict counts it as ddd compare does: the " +
+      "Findings tab lists it.",
+  );
+  const three = { ...STATE, statements: { error: 3, warning: 1, info: 0 } };
+  expect(ownErrorsLine(reply({ revision: 7, own_errors: 3 }), three)).toBe(
+    "This project has 3 errors of its own, and the verdict counts them as ddd compare does: the " +
+      "Findings tab lists them.",
+  );
+});
+
+test("a reply of another revision than the state drawn says the project's own errors without a count", () => {
+  // The server answered from a revision the page has not followed yet, or no longer shows: the
+  // state's count is of another revision than the verdict's.
+  const one = { ...STATE, statements: { error: 1, warning: 0, info: 0 } };
+  expect(ownErrorsLine(reply({ revision: 8, own_errors: 2 }), one)).toBe(
+    "This project has errors of its own, and the verdict counts them as ddd compare does: the " +
+      "Findings tab lists them.",
+  );
 });

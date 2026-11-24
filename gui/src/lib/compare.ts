@@ -1,5 +1,5 @@
 import type { CompareReply, Finding, State } from "../api/types";
-import { type FindingRow, findingCounts, keyedFindings, noRouteReason } from "./findings";
+import { counted, type FindingRow, findingCounts, keyedFindings, noRouteReason } from "./findings";
 import { baseName } from "./units";
 
 /**
@@ -77,6 +77,30 @@ export function compareRows(reply: CompareReply): CompareRow[] {
  * not the revision. */
 export function compareLine(reply: CompareReply): string {
   return findingCounts(reply.statements, false);
+}
+
+/**
+ * What the Compare tab says under a verdict that counts the open project's own errors (14:I1): that
+ * the project has some, how many, that the verdict counts them as `ddd compare`'s exit code does,
+ * and where they are listed - the comparison's table lists none of them, and a project whose every
+ * error is its own was told it cannot replace the baseline above a line saying there was nothing to
+ * report. `null` for a project with none (`CompareReply.own_errors` at 0).
+ *
+ * Counted as the Findings tab's line counts them, each once (`State.statements`, decision 14.3),
+ * where `state` is of the revision the reply was read from: `own_errors` counts a disagreement on
+ * each file it concerns, two where that line says one, and so says only whether there are any. Of
+ * another revision - the server answered from one the page has not followed yet - the line says the
+ * project has errors of its own, and no count.
+ */
+export function ownErrorsLine(reply: CompareReply, state: State): string | null {
+  if (reply.own_errors === 0) return null;
+  const count = reply.revision === state.revision ? state.statements.error : null;
+  const errors = count === null ? "errors" : counted(count, "error", "errors");
+  const them = count === 1 ? "it" : "them";
+  return (
+    `This project has ${errors} of its own, and the verdict counts ${them} as ddd compare ` +
+    `does: the Findings tab lists ${them}.`
+  );
 }
 
 /**

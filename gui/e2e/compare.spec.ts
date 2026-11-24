@@ -82,6 +82,35 @@ test("a comparison is kept, its field and its verdict, while another tab is show
   }
 });
 
+test("a project with errors of its own is told so under its verdict, the comparison having nothing to report", async ({
+  page,
+  copiedGui,
+}) => {
+  // The copy dumped clean, and then one reader's unit changed: a disagreement of the project's own,
+  // which the comparison does not see - the producer states what the delivery holds - and which
+  // the verdict counts, as `ddd compare`'s exit code does (14:I1).
+  const gui = await copiedGui("demo", (directory) => {
+    dump(directory, "demo.ddd.json", "baseline.json");
+    drift(directory);
+  });
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Compare" }).click();
+  await page.getByRole("textbox", { name: "Baseline" }).fill("baseline.json");
+  await page.getByRole("button", { name: "Compare", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "replace the baseline" })).toHaveText(
+    "This project cannot replace the baseline 'baseline.json'.",
+  );
+  // One disagreement, filed on both files it concerns, counted once as the Findings tab counts it.
+  await expect(
+    page.getByText(
+      "This project has 1 error of its own, and the verdict counts it as ddd compare does: the " +
+        "Findings tab lists it.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(page.getByText("Nothing to report", { exact: true })).toBeVisible();
+});
+
 test("a verdict names the baseline it answers, while the field holds another typed since", async ({
   page,
   gui,

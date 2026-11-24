@@ -5,6 +5,7 @@ import {
   compareRouteReason,
   compareRows,
   fileNameIn,
+  ownErrorsLine,
   verdictLine,
 } from "../lib/compare";
 import { placeOf, routeHref, routeLabel, routeOf } from "../lib/findings";
@@ -70,6 +71,7 @@ export function CompareView(props: CompareViewProps) {
   const { reply, refusal, busy } = props;
   const rows = reply === null ? [] : compareRows(reply);
   const row = rows.find((entry) => entry.key === props.selected);
+  const own = reply === null ? null : ownErrorsLine(reply, props.state);
   return (
     <>
       <div className="compare-field">
@@ -110,6 +112,9 @@ export function CompareView(props: CompareViewProps) {
           <p className={reply.verdict ? "verdict pass" : "verdict fail"} role="status">
             {verdictLine(reply.verdict, props.asked)}
           </p>
+          {/* The project's own errors, which the verdict counts and the table below lists none of
+              (14:I1). */}
+          {own !== null && <p>{own}</p>}
           <p className="summary">{compareLine(reply)}</p>
           {/* No table where the line says there is nothing to report: a long table draws the rows
               in view, and with none its box is nothing high - the header cut away, and still in

@@ -5,6 +5,7 @@ import {
   BASELINE_ROOT,
   CAN_REPLACE,
   CANNOT_REPLACE,
+  CANNOT_REPLACE_FOR_ITS_OWN_ERRORS,
   PROJECT_FINDINGS,
   REFUSED_OUTSIDE_ROOT,
 } from "../stories/fixtures";
@@ -76,6 +77,13 @@ export const CanReplaceTheBaseline = () => (
  * which name that file as the baseline's too (`fileNameIn`), are all on screen at once. */
 export const CannotReplaceTheBaseline = () => (
   <View baseline={`${BASELINE_ROOT}/demo.ddd.json`} reply={CANNOT_REPLACE} openBaseline />
+);
+
+/** A delivery the open project cannot replace for its own errors alone (14:I1): the comparison
+ * finds nothing to report, and the line under the verdict says why it refuses all the same - the
+ * project's own errors, which the verdict counts and the Findings tab lists. */
+export const CannotReplaceForItsOwnErrors = () => (
+  <View baseline={`${BASELINE_ROOT}/demo.ddd.json`} reply={CANNOT_REPLACE_FOR_ITS_OWN_ERRORS} />
 );
 
 /** A baseline named outside the directory `ddd gui` was started in: the reason said plainly, in

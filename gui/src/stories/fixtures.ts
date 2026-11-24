@@ -2504,6 +2504,20 @@ export const CANNOT_REPLACE: CompareReply = {
   renames: [RENAME_ROW],
 };
 
+/** A delivery the comparison finds nothing against, which the open project still cannot replace:
+ * PROJECT_FINDINGS' own three errors, which the verdict counts as `ddd compare`'s exit code does
+ * (14:I1) - three rows, each its own statement there, so `own_errors` and the state's statements
+ * agree. */
+export const CANNOT_REPLACE_FOR_ITS_OWN_ERRORS: CompareReply = {
+  revision: 7,
+  verdict: false,
+  own_errors: 3,
+  findings: [],
+  baseline_findings: [],
+  statements: { error: 0, warning: 0, info: 0 },
+  renames: [],
+};
+
 /** A baseline typed outside the directory `ddd gui` was started in - one of the spec's own four
  * refusals (§6), settled before `read_baseline` is ever asked to read anything
  * (`ddd.gui.compare._resolved_baseline`), in the words the tab says its reach in (16:M3). */

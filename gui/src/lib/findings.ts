@@ -92,7 +92,7 @@ export function findingsTotal(counts: FindingCounts): number {
 const UPDATING = " · updating";
 
 /** A count and its noun, singular for one and plural otherwise - none included. */
-function counted(count: number, one: string, many: string): string {
+export function counted(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`;
 }
 

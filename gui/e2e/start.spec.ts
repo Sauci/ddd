@@ -352,7 +352,9 @@ test("a page whose token the server no longer holds says how to sign in again", 
   await page.evaluate(() => localStorage.setItem("ddd-gui-token", "not-the-token-it-was-given"));
   await page.reload();
   const view = page.getByRole("status").filter({ hasText: "printed in its terminal" });
-  await expect(view).toHaveText("Open the address ddd gui printed in its terminal.");
+  await expect(view).toHaveText(
+    "Open the address ddd gui printed in its terminal, or, if that address was opened already, stop ddd gui (Ctrl+C), start it again and open the address it prints then.",
+  );
   await expect(page.getByRole("button", { name: "Controller", exact: true })).toHaveCount(0);
 });
 
@@ -476,7 +478,9 @@ test("the address ddd gui opens its own browser with signs the page in by a one-
     await stranger.goto(address);
     await expect(
       stranger.getByRole("status").filter({ hasText: "printed in its terminal" }),
-    ).toHaveText("Open the address ddd gui printed in its terminal.");
+    ).toHaveText(
+      "Open the address ddd gui printed in its terminal, or, if that address was opened already, stop ddd gui (Ctrl+C), start it again and open the address it prints then.",
+    );
     await expect(stranger.getByRole("button", { name: "Controller", exact: true })).toHaveCount(0);
   } finally {
     await stranger.close();

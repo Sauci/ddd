@@ -1,7 +1,17 @@
 import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { draggedAcross, drift, failing, held, SERVER_FAILED, UNITS, writeUnseen } from "./demo";
+import {
+  draggedAcross,
+  drift,
+  failing,
+  held,
+  PUMP,
+  restamp,
+  SERVER_FAILED,
+  UNITS,
+  writeUnseen,
+} from "./demo";
 import { expect, type Gui, test } from "./fixtures";
 
 /** A component the project does not include yet, declaring nothing - written into the copy
@@ -453,6 +463,43 @@ test("a Remove applied while the description changed on disk is refused, and goe
   ]);
 });
 
+test("a Remove pressed while a revision reaches the page is taken, the plan on screen applied", async ({
+  page,
+  vocabularyGui,
+}) => {
+  const project = join(vocabularyGui.directory, PROJECT);
+  await page.goto(vocabularyGui.address);
+  await page.getByRole("link", { name: "Files", exact: true }).click();
+  await page.getByRole("row", { name: UNITS }).click();
+  const removing = page
+    .getByRole("complementary", { name: UNITS })
+    .getByRole("region", { name: "Remove from the includes" });
+  const remove = removing.getByRole("button", { name: "Remove from the includes" });
+  await expect(removing.getByText("Changes 1 file: project.ddd.json")).toBeVisible();
+  await expect(remove).toBeEnabled();
+
+  // A revision reaches the page - a file of the project restamped, its bytes as they were - and
+  // the tab asks Remove's plan again for it: that ask is held, so that the moment the plan is on
+  // its way lasts. The plan on screen, the same removal's at the revision before, stays, and so
+  // does its Remove, where the tab took it away until the plan came, losing a press made then.
+  const release = await held(page, "/api/files-plan");
+  try {
+    const asked = page.waitForRequest(
+      (request) => new URL(request.url()).pathname === "/api/files-plan",
+    );
+    restamp(vocabularyGui.directory, PUMP);
+    await asked;
+    await expect(remove).toBeEnabled();
+    // Pressed then, the press is taken: the plan on screen is posted, and its files are as it read
+    // them, so the entry goes.
+    await remove.click();
+    await expect(page.getByRole("row", { name: UNITS })).toHaveCount(0);
+  } finally {
+    release();
+  }
+  expect(JSON.parse(readFileSync(project, "utf8")).project.includes).not.toContain(UNITS);
+});
+
 /** A component the project does not include yet, reading a variable no component writes: adding
  * it brings an error. Written into the copy `vocabularyGui` hands the journey, before the page
  * opens, as `EXTRA` is - which brings none. */
@@ -483,6 +530,46 @@ test("an Add a file says it is planning while its plan is on its way", async ({
   }
   await expect(adding.getByText("Changes 1 file: project.ddd.json")).toBeVisible();
   await expect(adding.getByText("Planning…")).toHaveCount(0);
+});
+
+test("an Add of another path offers nothing of the path before while its own plan is on its way", async ({
+  page,
+  vocabularyGui,
+}) => {
+  for (const name of [EXTRA, "spare.ddd.json"]) {
+    writeFileSync(
+      join(vocabularyGui.directory, name),
+      JSON.stringify({ component: { name: name === EXTRA ? "Extra" : "Spare", interface: [] } }),
+      "utf8",
+    );
+  }
+  await page.goto(vocabularyGui.address);
+  await page.getByRole("link", { name: "Files", exact: true }).click();
+  await page.getByRole("button", { name: "Add a file" }).click();
+  const adding = page.getByRole("complementary", { name: "Add a file" });
+  const path = adding.getByRole("textbox", { name: "Path" });
+  await path.fill(EXTRA);
+  await expect(adding.getByText("Changes 1 file: project.ddd.json")).toBeVisible();
+  const add = adding.getByRole("button", { name: /^Apply to/ });
+  await expect(add).toBeEnabled();
+
+  // Another path typed, its plan held: what the tab keeps on screen while a revision's plan is
+  // asked is the same request's alone, so nothing of the first path's plan is offered meanwhile.
+  const release = await held(page, "/api/files-plan");
+  try {
+    // Once typing has paused, the new path's plan is asked: the page asks for what it now shows.
+    const asked = page.waitForRequest(
+      (request) =>
+        new URL(request.url()).pathname === "/api/files-plan" && request.url().includes("spare"),
+    );
+    await path.fill("spare.ddd.json");
+    await asked;
+    await expect(adding.getByText("Planning…", { exact: true })).toBeVisible();
+    await expect(add).toHaveCount(0);
+  } finally {
+    release();
+  }
+  await expect(adding.getByText("Changes 1 file: project.ddd.json")).toBeVisible();
 });
 
 test("the errors a file would bring are listed in the Add a file preview, which still offers to add it", async ({

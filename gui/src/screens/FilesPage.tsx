@@ -197,17 +197,23 @@ function useFilesApply(
 ) {
   const queries = useQueryClient();
   const [refused, setRefused] = useState<string | null>(null);
+  // The plan on screen: the query's own, or, while a revision's is asked, the one the revision
+  // before answered for the same request (`useKept`, the request its question). A revision
+  // reaching the page asks every plan again, and the tab drew no Apply until the plan came, so a
+  // press made in that moment was lost, with no request and no sentence: it is taken now, the plan
+  // on screen posted, applied where its files are as it read them and refused as stale where they
+  // are not. None of a request typed past, nor any once a plan was refused.
+  const onScreen = useKept(plan, JSON.stringify(asked));
   // The plan to offer, and why its own fetch was refused if it was - `planShown`'s own,
   // `lib/typing.ts` (review fix round 1): `null`/`null` while `asked` has not caught up with
-  // `request`, or while `plan`'s answer is an earlier request's kept as a placeholder - never a
-  // plan, nor its own fetch refusal, for text the reader has since typed past.
-  const shown = planShown(asked, request, plan);
+  // `request` - never a plan, nor its own fetch refusal, for text the reader has since typed past.
+  const shown = planShown(asked, request, { ...plan, data: onScreen });
   const apply = useMutation({
     // Answers the plan it posted, and the request it was asked with, beside the edit's own
     // answer: what the tab holds is read off the very plan applied, whatever the query holds by
     // the time the answer comes.
     mutationFn: async () => {
-      const applied = plan.data;
+      const applied = onScreen;
       const edit =
         request === null || applied === undefined
           ? null

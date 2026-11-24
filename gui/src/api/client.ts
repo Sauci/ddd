@@ -63,8 +63,8 @@ import type {
 export type Fetch = (path: string, init?: RequestInit) => Promise<Response>;
 
 /** A refusal or a failure the server answered with, carrying its code for the page to act on - or
- * the refusal `request` makes itself of an address too long to send, `414` and `too-long`, as the
- * server would have answered it. */
+ * a refusal `request` makes itself, as the server would have answered it: of an address too long
+ * to send, `414` and `too-long`, and of a body too large, `413` and `too-large`. */
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
@@ -108,8 +108,14 @@ export function askedAgain(error: unknown): error is ApiError | ServerUnreachabl
 }
 
 /** What `request` is asked with: a `RequestInit` whose headers are a plain record, as every
- * caller here builds them, so that the token's header is added beside them. */
-export type Ask = Omit<RequestInit, "headers"> & { headers?: Record<string, string> };
+ * caller here builds them, so that the token's header is added beside them; whose body is text,
+ * as `post` makes it, so that `request` measures what is sent; and, where it is `named`, what a
+ * refusal `request` makes of it calls it - an edit by its label - in place of its route. */
+export type Ask = Omit<RequestInit, "headers" | "body"> & {
+  headers?: Record<string, string>;
+  body?: string;
+  named?: string;
+};
 
 /** Whether a request whose fetch was rejected is sent once more (spec 2026-10-08 §6): a GET,
  * which asks and changes nothing, whose fetch got no answer at all. Never an abort, which the
@@ -148,6 +154,31 @@ function tooLong(address: string, limit: number): ApiError {
   );
 }
 
+/** The most `ddd gui`'s server reads of a request's body: an edit's, `POST /api/edit`'s
+ * (`EDIT_BODY`, gui/server.py), 8 MiB, where it reads 1 MiB of any other's. */
+export const EDIT_BODY = 8 * 1024 * 1024;
+
+/** The code of a refusal of a body too large to send (`tooLarge`), the server's own for it. */
+const TOO_LARGE = "too-large";
+
+/** What is said of an ask whose body is larger than ddd gui reads, as `request` refuses it, by what
+ * it is (`named`): sent, it was refused before the server read it, and the connection closed with
+ * the rest of the body unread - on Windows a reset, which can lose the refusal, and the page then
+ * read the server as not answering. */
+function tooLarge(named: string, size: number): ApiError {
+  return new ApiError(
+    413,
+    TOO_LARGE,
+    `${named} cannot be sent in one request: its body needs ${size} bytes, and ddd gui reads ` +
+      `at most ${EDIT_BODY}`,
+  );
+}
+
+/** How many bytes `body` is sent as: its UTF-8, which `fetch` sends a string body in. */
+function bytesOf(body: string | undefined): number {
+  return body === undefined ? 0 : new TextEncoder().encode(body).byteLength;
+}
+
 export async function request<T>(
   path: string,
   init: Ask = {},
@@ -155,17 +186,21 @@ export async function request<T>(
   kept: Keeper = token,
   out: SignedOut = signedOut,
 ): Promise<T> {
-  // Refused before it is sent, as the server would refuse it: no line past its limit is sent.
+  // Refused before it is sent, as the server would refuse it: no line past its limit is sent, and
+  // no body past the most the server reads of one.
   const limit = addressLimit(init.method);
   if (path.length > limit) throw tooLong(path, limit);
+  const { named, ...sent } = init;
+  const size = bytesOf(sent.body);
+  if (size > EDIT_BODY) throw tooLarge(named ?? pathOf(path), size);
   // The token goes as a header, and no cookie goes at all: a browser sends a cookie to every
   // port of 127.0.0.1, so to every other server there too (part 18b).
   const held = kept.get();
   const headers =
-    held === null ? init.headers : { ...init.headers, Authorization: `Bearer ${held}` };
+    held === null ? sent.headers : { ...sent.headers, Authorization: `Bearer ${held}` };
   const send = () =>
     fetchImpl(path, {
-      ...init,
+      ...sent,
       credentials: "omit",
       ...(headers === undefined ? {} : { headers }),
     });
@@ -395,13 +430,18 @@ export const getDescriptionPlan = (plan: DescriptionPlanRequest, fetchImpl: Fetc
 
 /** An edit, answered once written: its number is noted into `edits`, the page's own by default, as
  * soon as the answer arrives, with its label and the files it wrote, for the heading to say - a
- * refused edit notes nothing. */
+ * refused edit notes nothing. One whose body is larger than ddd gui reads is refused unsent, by
+ * its label (`request`). */
 export const postEdit = async (
   changes: Changes,
   fetchImpl: Fetch = fetch,
   edits: OwnEdits = ownEdits,
 ): Promise<EditReply> => {
-  const reply = await request<EditReply>("/api/edit", post(changes), fetchImpl);
+  const reply = await request<EditReply>(
+    "/api/edit",
+    { ...post(changes), named: changes.label },
+    fetchImpl,
+  );
   edits.wrote(reply.edit, {
     kind: "wrote",
     label: changes.label,

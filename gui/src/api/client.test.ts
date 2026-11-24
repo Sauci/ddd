@@ -3,6 +3,7 @@ import { OwnEdits, ownEdits } from "../state/edits";
 import {
   ApiError,
   askedAgain,
+  EDIT_BODY,
   getCellsPlan,
   getCompare,
   getConstant,
@@ -607,6 +608,97 @@ describe("requests to the server", () => {
         "ddd gui reads at most 65520",
     });
     expect(calls.urls).toEqual([]);
+  });
+});
+
+describe("an edit's body", () => {
+  /** The most ddd gui reads of `POST /api/edit`'s body: `EDIT_BODY`, gui/server.py, 8 MiB. */
+  const LIMIT = 8_388_608;
+
+  /** What the rename of a unit stated in many files is called, as the units panel labels it. */
+  const LABEL = "the rename of 'Nm' to 'N·m'";
+
+  /** An edit whose body, as `postEdit` sends it, is `bytes` bytes long, its one file's path
+   * spelled with `filler` - one byte in UTF-8, or `·`, two - as far as it takes. */
+  function editOf(bytes: number, filler = "x"): Changes {
+    const of = (path: string): Changes => ({
+      changes: [{ file: path, fingerprint: "x", operations: [{ op: "remove", pointer: "a" }] }],
+      label: LABEL,
+    });
+    const rest = new TextEncoder().encode(JSON.stringify(of(""))).length;
+    const each = new TextEncoder().encode(filler).length;
+    return of(filler.repeat((bytes - rest) / each));
+  }
+
+  /** An edit's body as `postEdit` sends it, in UTF-8 bytes. */
+  const sent = (changes: Changes) => new TextEncoder().encode(JSON.stringify(changes)).length;
+
+  /** A fetch answering an edit as the server answers one it wrote. */
+  const written = () => answering(200, '{"edit": 4, "files": []}');
+
+  test("is at most what ddd gui reads of one", () => {
+    expect(EDIT_BODY).toBe(LIMIT);
+  });
+
+  test("past that is refused before it is sent, naming the edit", async () => {
+    // Sent, it was refused before the server read it, and the connection closed with the rest of
+    // the body unread: on Windows a reset, which can lose the refusal, and the page read the
+    // server as not answering.
+    const fetch = written();
+    const edit = editOf(LIMIT + 1);
+    expect(sent(edit)).toBe(8_388_609);
+    const refused = postEdit(edit, fetch, new OwnEdits());
+    await expect(refused).rejects.toBeInstanceOf(ApiError);
+    await expect(refused).rejects.toMatchObject({
+      status: 413,
+      code: "too-large",
+      message:
+        "the rename of 'Nm' to 'N·m' cannot be sent in one request: its body needs 8388609 " +
+        "bytes, and ddd gui reads at most 8388608",
+    });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  test("of the limit's own size is sent, as written", async () => {
+    const fetch = written();
+    const edit = editOf(LIMIT);
+    expect(sent(edit)).toBe(LIMIT);
+    await postEdit(edit, fetch, new OwnEdits());
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch.mock.calls[0]?.[1]).toEqual({
+      credentials: "omit",
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(edit),
+    });
+  });
+
+  test("is measured in the bytes it is sent in, where its characters are fewer", async () => {
+    // A path of two-byte characters, past the limit only as UTF-8 bytes.
+    const fetch = written();
+    const edit = editOf(LIMIT + 1, "·");
+    expect(sent(edit)).toBe(8_388_609);
+    expect(JSON.stringify(edit).length).toBeLessThan(LIMIT);
+    await expect(postEdit(edit, fetch, new OwnEdits())).rejects.toMatchObject({
+      status: 413,
+      message:
+        "the rename of 'Nm' to 'N·m' cannot be sent in one request: its body needs 8388609 " +
+        "bytes, and ddd gui reads at most 8388608",
+    });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  test("any other ask's body past it is refused the same way, naming its route", async () => {
+    const fetch = written();
+    const body = "x".repeat(LIMIT + 1);
+    await expect(request("/api/undo", { method: "POST", body }, fetch)).rejects.toMatchObject({
+      status: 413,
+      code: "too-large",
+      message:
+        "/api/undo cannot be sent in one request: its body needs 8388609 bytes, and ddd gui " +
+        "reads at most 8388608",
+    });
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
 

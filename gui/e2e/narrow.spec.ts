@@ -254,3 +254,27 @@ test("a variable's address loaded anew, the focus moved meanwhile by no key and 
   await expect(goTo).toBeInViewport();
   await expect(panel.getByRole("heading", { name: "ParameterA", level: 2 })).not.toBeInViewport();
 });
+
+/**
+ * A tab of the project, its address naming a selection, loaded anew (16:M9, ruling B11-44): the
+ * Graph's address of ValueA, in a window 800 by 600. ValueA's panel stands under the canvas, out of
+ * view, and is drawn once the tab has drawn its canvas, after the page's heading: it is scrolled
+ * into view as it is drawn, and the focus is left where the browser starts a page it loads.
+ */
+test("the Graph loaded anew at a variable's address, in a window 800 by 600, has its panel in view and moves no focus", async ({
+  page,
+  gui,
+}) => {
+  await page.setViewportSize({ width: 800, height: 600 });
+  await page.goto(gui.address);
+  await expect(page.getByRole("region", { name: "Modules" })).toBeVisible();
+  const graph = new URL(page.url());
+  graph.pathname = "/project";
+  graph.search = "?variable=ValueA";
+  await page.goto(graph.href);
+  const panel = page.getByRole("complementary", { name: "ValueA" });
+  await expect(panel.getByRole("grid", { name: "Keys of ValueA" })).toBeVisible();
+  await twoFrames(page);
+  await expect(panel.getByRole("heading", { name: "ValueA", level: 2 })).toBeInViewport();
+  expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+});

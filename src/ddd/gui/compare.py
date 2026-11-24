@@ -447,13 +447,14 @@ def _resolved_baseline(
         # `RuntimeError` and a chain of about a thousand `RecursionError` (a `RuntimeError`
         # already, named for the reader). None is one of the three below, and unanswered here
         # each left a traceback in the terminal and a 500 telling the reader to go and read it.
-        # Named as typed, because there is no resolved spelling of a path that would not resolve.
-        raise BaselineRefusedError(
-            f"the baseline '{path.as_posix()}' is unreadable: {error}"
-        ) from error
+        # Named as typed, because there is no resolved spelling of a path that would not resolve,
+        # and no more said of it than that, as `_read` says no more (16:M3).
+        raise BaselineRefusedError(f"the baseline '{path.as_posix()}' is unreadable") from error
     if not resolved.is_relative_to(root):
+        # In the words the tab says its reach in, naming that directory (16:M3).
         raise BaselineRefusedError(
-            f"the baseline '{resolved.as_posix()}' is outside the session root '{root.as_posix()}'"
+            f"the baseline '{resolved.as_posix()}' is outside the directory ddd gui was started "
+            f"in, '{root.as_posix()}'"
         )
     hit = cache.get(resolved)
     if (
@@ -489,6 +490,9 @@ def _read(path: Path, relaxed: dict[str, Severity], known: tuple[Path, ...]) -> 
     The open is a probe and reads nothing: it answers *unreadable* - a file that is not there,
     a directory, one whose permissions refuse, a path no file can bear - before
     ``read_baseline`` is asked for a reading that would report it as something else entirely.
+    It says *unreadable* and no more (16:M3): what the system answers the open is its own, an
+    error's number and the path again as python quotes a string, every backslash of a Windows path
+    doubled, and differs between systems for one and the same file.
     ``open`` raises ``ValueError`` rather than ``OSError`` for a path holding a NUL, which
     resolving hands back as it is on Windows from python 3.13 on, where elsewhere it raises
     (:func:`_resolved_baseline`): refused here as unreadable all the same, the route's ``400``
@@ -501,9 +505,7 @@ def _read(path: Path, relaxed: dict[str, Severity], known: tuple[Path, ...]) -> 
         with path.open("rb"):
             pass
     except (OSError, ValueError) as error:
-        raise BaselineRefusedError(
-            f"the baseline '{path.as_posix()}' is unreadable: {error}"
-        ) from (error)
+        raise BaselineRefusedError(f"the baseline '{path.as_posix()}' is unreadable") from error
     before = stamped((path, *known))
     # The bag the carried errors are forwarded into, graded by the project's relaxations as
     # ``ddd compare``'s own bag is: that is where `read_baseline` takes them from.

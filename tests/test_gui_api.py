@@ -946,17 +946,30 @@ class TestPathsAreReadAgainstWhatIsServed:
             400,
             {
                 "error": "bad-request",
-                "message": "the baseline '//server/share/q/baseline.json' is outside the session "
-                f"root '{tmp_path.resolve().as_posix()}'",
+                "message": "the baseline '//server/share/q/baseline.json' is outside the directory "
+                f"ddd gui was started in, '{tmp_path.resolve().as_posix()}'",
             },
         )
 
     @pytest.mark.parametrize(
-        "baseline", ["//server/share/baseline.json", "\\\\server\\share\\baseline.json"]
+        ("baseline", "named"),
+        [
+            ("//server/share/baseline.json", "//server/share/baseline.json"),
+            ("\\\\server\\share\\baseline.json", "\\\\server\\share\\baseline.json"),
+            ('"\\\\server\\share\\baseline.json"', "\\\\server\\share\\baseline.json"),
+        ],
+        ids=["forward", "backward", "in-quotes"],
     )
     def test_a_network_baseline_outside_is_refused_in_compare_s_words_before_it_is_resolved(
-        self, api: Api, root: Path, baseline: str, monkeypatch: pytest.MonkeyPatch
+        self,
+        api: Api,
+        root: Path,
+        baseline: str,
+        named: str,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        """Named without the quotes it was copied with, which come off first (16:M3)."""
+
         def resolving(self: Path, *args: object, **kwargs: object) -> Path:
             raise AssertionError(f"{self} was resolved")
 
@@ -965,8 +978,8 @@ class TestPathsAreReadAgainstWhatIsServed:
             400,
             {
                 "error": "bad-request",
-                "message": f"the baseline '{baseline}' is outside the session root "
-                f"'{api.session.root.as_posix()}'",
+                "message": f"the baseline '{named}' is outside the directory ddd gui was started "
+                f"in, '{api.session.root.as_posix()}'",
             },
         )
 
@@ -1076,17 +1089,17 @@ def unresolvable(
 
 def unreadable_baseline(baseline: str) -> str:
     """``GET /api/compare``'s refusal of ``baseline``, a path through :func:`unresolvable`'s
-    directory, in the words this python gives it: where ``resolve`` raises, the path as given
-    and the error; where it walks past the loop, the path it resolved to and the error opening
-    it raises - the operating system's own words, which this suite has no business spelling."""
+    directory, as this python names it: where ``resolve`` raises, the path as given; where it walks
+    past the loop, the path it resolved to, which opening then refuses. Neither says the error
+    after it, the system's own words (16:M3)."""
     path = Path(baseline)
     try:
         resolved = path.resolve()
-    except RuntimeError as error:
-        return f"the baseline '{path.as_posix()}' is unreadable: {error}"
-    with pytest.raises(OSError) as refused:
+    except RuntimeError:
+        return f"the baseline '{path.as_posix()}' is unreadable"
+    with pytest.raises(OSError):
         resolved.open("rb")
-    return f"the baseline '{resolved.as_posix()}' is unreadable: {refused.value}"
+    return f"the baseline '{resolved.as_posix()}' is unreadable"
 
 
 class TestAPathThatWillNotResolve:
@@ -6238,6 +6251,88 @@ class TestCompare:
         assert reply.status == 400
         assert "unreadable" in reply.body["message"]
 
+    @pytest.mark.parametrize("named", ["nothing.json", "folder"])
+    def test_a_baseline_not_there_or_a_directory_is_refused_as_unreadable_and_no_more(
+        self, api: Api, root: Path, monkeypatch: pytest.MonkeyPatch, named: str
+    ) -> None:
+        """16:M3: named from the directory ``ddd gui`` was started in, as it is started there, a
+        baseline that is not there and one that is a directory are both unreadable, and the
+        refusal says that much: the system's own error after it - its number, and the path again
+        as python quotes a string, every backslash of a Windows path doubled - is no reader's."""
+        monkeypatch.chdir(root)
+        (root / "folder").mkdir()
+        assert get(api, "/api/compare", baseline=named) == Reply(
+            400,
+            {
+                "error": "bad-request",
+                "message": f"the baseline '{posix(root, named)}' is unreadable",
+            },
+        )
+
+    def test_a_baseline_outside_is_refused_in_the_words_the_tab_says_its_reach_in(
+        self, api: Api, root: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """16:M3: the tab says a baseline is read under "the directory ddd gui was started in",
+        and a baseline outside it is refused in those words, naming that directory."""
+        monkeypatch.chdir(root)
+        outside = (root / ".." / "elsewhere.json").resolve().as_posix()
+        assert get(api, "/api/compare", baseline="../elsewhere.json") == Reply(
+            400,
+            {
+                "error": "bad-request",
+                "message": f"the baseline '{outside}' is outside the directory ddd gui was "
+                f"started in, '{api.session.root.as_posix()}'",
+            },
+        )
+
+    @pytest.mark.parametrize("quote", ['"', "'"], ids=["double", "single"])
+    def test_a_baseline_in_quotes_is_the_path_between_them(
+        self, api: Api, root: Path, monkeypatch: pytest.MonkeyPatch, quote: str
+    ) -> None:
+        """16:M3: a path copied with the quotes around it - Windows' Copy as path writes double
+        ones, a shell's quoting single ones - is read as the path between them, absolute or
+        relative: kept, the quotes made it a path relative to the root, the first quote its first
+        character, and refused as unreadable, naming the root and the path one after the other."""
+        monkeypatch.chdir(root)
+        dumped(root / "p.ddd.json", root / "baseline.json")
+        for baseline in (posix(root, "baseline.json"), "baseline.json"):
+            reply = get(api, "/api/compare", baseline=f"{quote}{baseline}{quote}")
+            assert reply.status == 200, reply.body
+            assert reply.body["verdict"] is True, baseline
+        assert get(api, "/api/compare", baseline=f"{quote}nothing.json{quote}") == Reply(
+            400,
+            {
+                "error": "bad-request",
+                "message": f"the baseline '{posix(root, 'nothing.json')}' is unreadable",
+            },
+        )
+
+    @pytest.mark.parametrize("quotes", ['""', "''"], ids=["double", "single"])
+    def test_quotes_around_nothing_are_no_baseline(self, api: Api, quotes: str) -> None:
+        """Nothing between them, the quotes name no file: refused as no path is."""
+        assert get(api, "/api/compare", baseline=quotes) == Reply(
+            400, {"error": "bad-request", "message": "compare takes ?baseline= as a file's path"}
+        )
+
+    @pytest.mark.parametrize(
+        "named",
+        ['"nothing.json', "nothing.json'", "\"nothing.json'", '"'],
+        ids=["opening-alone", "closing-alone", "two-unlike", "one-alone"],
+    )
+    def test_a_quote_that_is_not_one_of_a_pair_around_the_path_is_the_path_s_own(
+        self, api: Api, root: Path, monkeypatch: pytest.MonkeyPatch, named: str
+    ) -> None:
+        """Only a pair of like quotes at its two ends is taken off a baseline: any other quote is
+        one of its own characters, as a file's name may hold one."""
+        monkeypatch.chdir(root)
+        assert get(api, "/api/compare", baseline=named) == Reply(
+            400,
+            {
+                "error": "bad-request",
+                "message": f"the baseline '{posix(root, named)}' is unreadable",
+            },
+        )
+
     def test_a_baseline_path_with_a_nul_byte_is_refused(self, api: Api) -> None:
         """Reader input over the wire: ``parse_qs`` decodes ``%00`` into a real NUL. Before this
         was caught, that reached ``Path.resolve`` unguarded and left the terminal holding a
@@ -6314,7 +6409,7 @@ class TestCompare:
             400,
             {
                 "error": "bad-request",
-                "message": f"the baseline 'whatever.json' is unreadable: {error}",
+                "message": "the baseline 'whatever.json' is unreadable",
             },
         )
 

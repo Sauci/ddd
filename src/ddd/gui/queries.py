@@ -16,9 +16,10 @@ request hands its models: a network path is a path like any other under one of t
 anywhere else before anything resolves it.
 
 A compared baseline is the one path read as the reader typed it, relative to the directory
-``ddd gui`` was started in or absolute: its model refuses only what must not reach
-:mod:`ddd.gui.compare`, and compare.py refuses the rest in its own words, as it always has - a
-NUL in it, a path outside that directory, a file it cannot read.
+``ddd gui`` was started in or absolute, and without the quotes it may have been copied with: its
+model refuses only what must not reach :mod:`ddd.gui.compare`, and compare.py refuses the rest in
+its own words, as it always has - a NUL in it, a path outside that directory, a file it cannot
+read.
 """
 
 from __future__ import annotations
@@ -575,22 +576,41 @@ class DeclarableQuery(QueryModel):
 
 _BASELINE: Final = "compare takes ?baseline= as a file's path"
 
+_QUOTES: Final = frozenset({'"', "'"})
+"""The quotes a path is copied with: Windows' Copy as path writes double ones around it, and a
+shell quotes in single ones."""
+
+
+def _unquoted(value: str) -> str:
+    """``value`` without the pair of like quotes around it, where it has one (:data:`_QUOTES`), and
+    otherwise as it is: one quote alone, or two unlike, are a path's own characters, as a file's
+    name may hold one (16:M3). Kept, the pair made a path relative to the root, its first quote
+    the path's first character, and a refusal named the root and the path one after the other."""
+    if len(value) > 1 and value[0] == value[-1] and value[0] in _QUOTES:
+        return value[1:-1]
+    return value
+
 
 def _baseline(value: object, info: ValidationInfo) -> str:
-    """A baseline as the reader typed it, for :mod:`ddd.gui.compare` to read, refused here only
-    where it must not reach compare.py: nothing at all; a lone surrogate; where the system opens
-    a device for its name (:data:`_OPENS_DEVICES`), a path holding such a name, which resolving
-    would open; and a network or device form naming no path under a directory served, which
-    resolving would open on Windows. That one lies outside the root as written, and is refused
-    in the words compare.py refuses a path outside it with, before anything resolves it."""
-    if not isinstance(value, str) or not value or not _encodable(value):
+    """A baseline as the reader typed it, without the quotes it was copied with (:func:`_unquoted`),
+    for :mod:`ddd.gui.compare` to read, refused here only where it must not reach compare.py:
+    nothing at all, quotes around nothing among it; a lone surrogate; where the system opens a
+    device for its name (:data:`_OPENS_DEVICES`), a path holding such a name, which resolving would
+    open; and a network or device form naming no path under a directory served, which resolving
+    would open on Windows. That one lies outside the root as written, and is refused in the words
+    compare.py refuses a path outside it with, before anything resolves it."""
+    path = _unquoted(value) if isinstance(value, str) else ""
+    if not path or not _encodable(path):
         raise refusal(_BASELINE)
-    if _names_a_device(value):
+    if _names_a_device(path):
         raise refusal(_BASELINE)
     serving = _serving(info)
-    if _NETWORK.match(value) and not _under(value, serving.served):
-        raise refusal(f"the baseline '{value}' is outside the session root '{serving.root}'")
-    return value
+    if _NETWORK.match(path) and not _under(path, serving.served):
+        raise refusal(
+            f"the baseline '{path}' is outside the directory ddd gui was started in, "
+            f"'{serving.root}'"
+        )
+    return path
 
 
 class CompareQuery(QueryModel):

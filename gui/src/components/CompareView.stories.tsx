@@ -76,8 +76,9 @@ export const CannotReplaceTheBaseline = () => (
   <View baseline={`${BASELINE_ROOT}/demo.ddd.json`} reply={CANNOT_REPLACE} openBaseline />
 );
 
-/** A baseline named outside the session root: the reason said plainly, and no verdict beneath
- * it - one of the spec's own four refusals (§6). */
+/** A baseline named outside the directory `ddd gui` was started in: the reason said plainly, in
+ * the words of the sentence under the field, and no verdict beneath it - one of the spec's own
+ * four refusals (§6). */
 export const BaselineRefused = () => (
   <View baseline="C:/archives/demo.ddd.json" refusal={REFUSED_OUTSIDE_ROOT} />
 );

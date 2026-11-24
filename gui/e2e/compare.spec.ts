@@ -56,10 +56,10 @@ function posixOf(path: string): string {
   return path.replaceAll("\\", "/");
 }
 
-/** A whole sentence's start, as a pattern: the page's own words, up to where the system's own
- * begin - an OSError's text or the json parser's, which differ between Linux and Windows - and
- * then at least a character of theirs, on as many lines as they take: a refusal that dropped
- * them all fails. */
+/** A whole sentence's start, as a pattern: the page's own words, up to where the reading's own
+ * begin - the json parser's, or the first error the baseline's reading reported - and then at
+ * least a character of theirs, on as many lines as they take: a refusal that dropped them all
+ * fails. */
 function startingWith(words: string): RegExp {
   return new RegExp(`^${words.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[\\s\\S]+`);
 }
@@ -76,11 +76,13 @@ test("a baseline missing, not json, of the wrong shape or outside the root is re
   const compare = page.getByRole("button", { name: "Compare" });
   const refusal = page.getByRole("alert");
 
+  // Unreadable, and no more said of it: the system's own error is no reader's (16:M3).
   await baseline.fill("missing.json");
   await compare.click();
-  await expect(refusal).toHaveText(
-    startingWith(`the baseline '${root}/missing.json' is unreadable: `),
-  );
+  await expect(refusal).toHaveText(`the baseline '${root}/missing.json' is unreadable`);
+  await baseline.fill("include");
+  await compare.click();
+  await expect(refusal).toHaveText(`the baseline '${root}/include' is unreadable`);
 
   await baseline.fill("include/sensor_hub_driver.h");
   await compare.click();
@@ -94,12 +96,39 @@ test("a baseline missing, not json, of the wrong shape or outside the root is re
     startingWith(`the baseline '${root}/shape.json' is neither a dictionary nor a description: `),
   );
 
-  // Confinement is checked before anything is read: the file need not exist.
+  // Confinement is checked before anything is read: the file need not exist. Said in the words the
+  // tab says its reach in, under the field (16:M3).
   await baseline.fill("../outside.json");
   await compare.click();
   const outside = posixOf(join(gui.directory, "..", "outside.json"));
   await expect(refusal).toHaveText(
-    `the baseline '${outside}' is outside the session root '${root}'`,
+    `the baseline '${outside}' is outside the directory ddd gui was started in, '${root}'`,
+  );
+});
+
+test("a baseline pasted with the quotes it was copied with is compared as the path between them", async ({
+  page,
+  gui,
+}) => {
+  // Windows' Copy as path writes the path between double quotes, a shell between single ones.
+  dump(gui.directory, "demo.ddd.json", "baseline.json");
+  const root = posixOf(gui.directory);
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Compare" }).click();
+  const baseline = page.getByRole("textbox", { name: "Baseline" });
+  const compare = page.getByRole("button", { name: "Compare", exact: true });
+  const verdict = page.getByRole("status").filter({ hasText: "replace the baseline" });
+
+  await baseline.fill(`"${join(gui.directory, "baseline.json")}"`);
+  await compare.click();
+  await expect(verdict).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+
+  // A file that is not there is named once, as the reader meant it, not joined to the root.
+  await baseline.fill("'nothing.json'");
+  await compare.click();
+  await expect(page.getByRole("alert")).toHaveText(
+    `the baseline '${root}/nothing.json' is unreadable`,
   );
 });
 
@@ -417,7 +446,7 @@ test("a baseline refused, and then made, is asked for again by the same press", 
   await page.getByRole("textbox", { name: "Baseline" }).fill("later.json");
   await compare.click();
   await expect(page.getByRole("alert")).toHaveText(
-    startingWith(`the baseline '${root}/later.json' is unreadable: `),
+    `the baseline '${root}/later.json' is unreadable`,
   );
 
   // The file the refusal names now exists. Neither the field nor the project changed, so no

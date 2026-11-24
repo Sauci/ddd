@@ -518,7 +518,7 @@ def test_a_baseline_no_file_can_bear_is_refused_400_from_the_directory_served(
         thread.join()
     assert (status, body["error"]) == (400, "bad-request"), body
     assert body["message"].startswith("the baseline '"), body
-    assert " is unreadable: " in body["message"], body
+    assert body["message"].endswith("' is unreadable"), body
     assert capsys.readouterr().err == ""
 
 

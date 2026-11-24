@@ -2504,11 +2504,12 @@ export const CANNOT_REPLACE: CompareReply = {
   renames: [RENAME_ROW],
 };
 
-/** A baseline typed outside the session root - one of the spec's own four refusals (§6), settled
- * before `read_baseline` is ever asked to read anything (`ddd.gui.compare._resolved_baseline`).
- */
+/** A baseline typed outside the directory `ddd gui` was started in - one of the spec's own four
+ * refusals (§6), settled before `read_baseline` is ever asked to read anything
+ * (`ddd.gui.compare._resolved_baseline`), in the words the tab says its reach in (16:M3). */
 export const REFUSED_OUTSIDE_ROOT =
-  "the baseline 'C:/archives/demo.ddd.json' is outside the session root 'C:/work/demo'";
+  "the baseline 'C:/archives/demo.ddd.json' is outside the directory ddd gui was started in, " +
+  "'C:/work/demo'";
 
 // examples/vocabulary's own two constants (spec 5.1): TREND_SAMPLES in constants.ddd.json,
 // PRESSURE_CELLS declared inline in pump.ddd.json - modelled on it, not transcribed, as

@@ -278,3 +278,37 @@ test("the Graph loaded anew at a variable's address, in a window 800 by 600, has
   await expect(panel.getByRole("heading", { name: "ValueA", level: 2 })).toBeInViewport();
   expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
 });
+
+/**
+ * The wheel turned before the panel a change of page opens is drawn (16:M9, 16:I13, ruling
+ * B11-46): the go-to from the Graph opens ParameterA on Controller's page, in a window 800 by 600,
+ * Controller's file held back, and the reader turns the wheel once over the page as it reads - a
+ * page still too short to scroll. The focus and the view go together: the panel's heading takes
+ * the focus, and the panel is scrolled into view with it.
+ */
+test("a wheel turned as the go-to's change of page reads its file, in a window 800 by 600, leaves the panel's heading focused in view", async ({
+  page,
+  gui,
+}) => {
+  await page.setViewportSize({ width: 800, height: 600 });
+  await page.goto(gui.address);
+  const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+  await goTo.pressSequentially("ParameterA");
+  await expect(page.getByRole("option", { name: "ParameterA" })).toBeVisible();
+  const release = await held(page, "/api/file");
+  try {
+    await goTo.press("Enter");
+    await expect(page.getByText("Reading the file…")).toBeVisible();
+    await page.mouse.move(400, 400);
+    await page.mouse.wheel(0, 200);
+  } finally {
+    release();
+  }
+  const panel = page.getByRole("complementary", { name: "ParameterA" });
+  const heading = panel.getByRole("heading", { name: "ParameterA", level: 2 });
+  await expect(panel.getByRole("grid", { name: "Keys of ParameterA" })).toBeInViewport({
+    ratio: 0.5,
+  });
+  await expect(heading).toBeFocused();
+  await expect(heading).toBeInViewport();
+});

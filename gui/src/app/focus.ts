@@ -58,7 +58,8 @@ let headingWanted: { heading: HeadingWanted; holding: number | null } | null = n
 /** Whether the panel a change of page, a following or a page loaded anew opens waits to be drawn,
  * to be scrolled into view once its page has settled (`askHeading`, `showWhenSettled`): no longer
  * once drawn, or once the reader presses a key or the pointer, or scrolls by a wheel or a touch, or
- * the focus is moved elsewhere (`letsWaitGo`). */
+ * the focus is moved elsewhere (`letsWaitGo`). A panel whose heading the change gives the focus to
+ * is shown with it all the same (`giveHeading`). */
 let showWanted = false;
 
 /** The slot whose panel was scrolled into view as it opened, and the window's scroll that scroll
@@ -125,7 +126,8 @@ export function watchFocus(): () => void {
     if (letsWaitGo(to instanceof Element && to.matches("[data-heading]"))) letGo();
   };
   // A wheel or a touch scrolls the page as the reader would have it: the panel a change of page
-  // opened is no longer to be scrolled to.
+  // opened is no longer to be scrolled to as its page settles, nor one a page loaded anew opens. A
+  // panel whose heading the change gives the focus to later is shown with it all the same.
   const scrolled = () => letShowGo();
   const out = (event: FocusEvent) => {
     const from = event.target;
@@ -206,8 +208,11 @@ export function takePageHeading(heading: HTMLElement): void {
 /** Gives the focus a change of page asked for, where it waits, to the heading `headingTaking`
  * names of those drawn: the page's (`page`), holding it for a panel no longer than a short time,
  * or the panel's (`panel`); and scrolls the panel drawn into view once the page it stands in has
- * settled (`showWhenSettled`), where it waits to be shown. */
+ * settled (`showWhenSettled`), where it waits to be shown, or where its heading takes the focus -
+ * the focus and the view go together (ruling B11-46): a heading focused is never left out of view,
+ * the page's being scrolled to as it takes it, the panel's with its panel. */
 function giveHeading(page: HTMLElement | null, panel: HTMLElement | null): void {
+  let shows = showWanted;
   const wanted = headingWanted;
   const holding = wanted?.holding ?? null;
   if (holding !== null && !stillWaits(holding, performance.now())) {
@@ -222,9 +227,12 @@ function giveHeading(page: HTMLElement | null, panel: HTMLElement | null): void 
       page?.focus();
       if (waits) wanted.holding ??= performance.now();
     }
-    if (takes === "panel") panel?.focus({ preventScroll: true });
+    if (takes === "panel") {
+      panel?.focus({ preventScroll: true });
+      shows = true;
+    }
   }
-  if (!showWanted || panel === null) return;
+  if (!shows || panel === null) return;
   showWanted = false;
   const shown = panel.closest<HTMLElement>(".panel");
   const slot = shown === null ? null : slotOf(shown);

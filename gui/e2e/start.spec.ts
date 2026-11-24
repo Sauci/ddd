@@ -186,6 +186,18 @@ function placeOf(node: Locator): Promise<string> {
   return node.evaluate((element) => (element as HTMLElement).style.transform);
 }
 
+/** Waits for the masthead of a page of the open project to settle, before a press of its controls
+ * (15:I3, ruling B11-43): the go-to, the last control to join it, comes once the project's first
+ * analysis has landed, after the heading, which the session's answer brings. The masthead aligns
+ * its controls to its right, the go-to last, so the go-to's coming moves Projects and the project's
+ * own button to the left by its whole width - the same buttons, moved: a press aimed at Projects
+ * just before lands on the go-to's field. */
+async function settled(page: Page): Promise<void> {
+  await expect(
+    page.getByRole("banner").getByRole("combobox", { name: "Go to a variable" }),
+  ).toBeVisible();
+}
+
 test("an empty directory finds no project, and the start page says so", async ({
   page,
   copiedGui,
@@ -871,6 +883,8 @@ test("a project a second page opens is the one the first names over what it draw
   const other = await page.context().newPage();
   try {
     await other.goto(started.address);
+    await expect(other.getByRole("heading", { level: 1 })).toHaveText("DemoDevice");
+    await settled(other);
     await other.getByRole("button", { name: "Projects", exact: true }).click();
     await other.getByRole("button", { name: /^SecondDevice/ }).click();
     await expect(other.getByRole("heading", { level: 1 })).toHaveText("SecondDevice");
@@ -942,6 +956,9 @@ test("a project a second page opens is the one the first names, on a component's
   const hold = join(started.directory, SECOND, HELD);
   try {
     await other.goto(started.address);
+    // The second page's own heading, then its masthead settled, before Projects is pressed.
+    await expect(other.getByRole("heading", { level: 1 })).toHaveText("DemoDevice");
+    await settled(other);
     await other.getByRole("button", { name: "Projects", exact: true }).click();
     const second = other.getByRole("button", { name: /^SecondDevice/ });
     await expect(second).toBeVisible();
@@ -970,7 +987,8 @@ test("a project a second page opens is the one the first names, on a component's
     await other.close();
   }
   // The session answered: the masthead names the project as its description does, and leads to
-  // it.
+  // it, pressed once the analysis taken away above has landed and the masthead has settled.
+  await settled(page);
   await page.getByRole("banner").getByRole("button", { name: "SecondDevice", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("SecondDevice");
   await expect(
@@ -1024,13 +1042,17 @@ test("a project a second page opens while the first page's ask of the session is
   const other = await page.context().newPage();
   try {
     await other.goto(started.address);
+    await expect(other.getByRole("heading", { level: 1 })).toHaveText("DemoDevice");
+    await settled(other);
     const projects = other.getByRole("button", { name: "Projects", exact: true });
     await projects.click();
     await other.getByRole("button", { name: /^SecondDevice/ }).click();
     await expect(other.getByRole("heading", { level: 1 })).toHaveText("SecondDevice");
     // The first page asked which project is open once its state was SecondDevice's, and the
-    // server has answered SecondDevice; then the second page opens a third project.
+    // server has answered SecondDevice; then the second page opens a third project, once the
+    // first analysis of SecondDevice it draws has landed and its masthead has settled again.
     await expect.poll(() => answered).toBe(true);
+    await settled(other);
     await projects.click();
     await other.getByRole("button", { name: /^ThirdDevice/ }).click();
     await expect(other.getByRole("heading", { level: 1 })).toHaveText("ThirdDevice");

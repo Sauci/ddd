@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
-import { crowd, dump, held } from "./demo";
+import { crowd, dump, held, restamp } from "./demo";
 import { expect, test } from "./fixtures";
 
 /**
@@ -269,6 +269,46 @@ test("Back from a finding followed finds the Findings tab as it was left: its fi
   await expect(panel).toBeVisible();
   await expect(row).toHaveAttribute("aria-selected", "true");
   await expect.poll(() => box.evaluate((node) => node.scrollTop)).toBe(PLACE);
+});
+
+/**
+ * The place kept until its listing's size has come (16:M16): a file saved again while the reader is
+ * on the finding's component, none of its bytes changed, lands a revision whose findings are the
+ * same, and Back asks the filter's first page of it afresh. Until that page comes the box holds no
+ * rows to stand where it was left, and is drawn at its top, which it does not take for the place:
+ * once the page has come, it stands where it was left.
+ */
+test("Back after a revision landed finds the Findings tab's box where it was left, once its listing's first page has come", async ({
+  page,
+  generatedGui,
+}) => {
+  await page.goto(generatedGui.address);
+  const { box, filter, row, panel } = await placedInTheFindings(page);
+  await panel.getByRole("link", { name: /^Open / }).click();
+  await expect(page).toHaveURL(/\/component\?file=.*&variable=/);
+  await expect(page.getByRole("grid", { name: /^Declarations of / })).toBeVisible();
+  // The component's page reads its file again for the revision the save lands.
+  const landed = page.waitForRequest((request) => new URL(request.url()).pathname === "/api/file");
+  restamp(generatedGui.directory, "units.ddd.json");
+  await landed;
+  const firstPage = await held(
+    page,
+    (url) =>
+      url.pathname === "/api/findings" &&
+      url.searchParams.get("text") === "missing-id" &&
+      url.searchParams.get("offset") === "0",
+  );
+  const asked = page.waitForRequest(
+    (request) => new URL(request.url()).searchParams.get("text") === "missing-id",
+  );
+  await page.goBack();
+  await expect(filter).toHaveValue("missing-id");
+  await asked;
+  await expect.poll(() => box.evaluate((node) => node.scrollTop)).toBe(0);
+  firstPage();
+  await expect.poll(() => box.evaluate((node) => node.scrollTop)).toBe(PLACE);
+  await expect(panel).toBeVisible();
+  await expect(row).toHaveAttribute("aria-selected", "true");
 });
 
 /**

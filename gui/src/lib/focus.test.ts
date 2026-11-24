@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { PROJECT_VIEWS } from "./announcing";
 import {
+  headingAsked,
   headingTaking,
   landing,
   opensAnew,
@@ -86,6 +87,49 @@ describe("whether a change of page opens a panel, whose heading then takes the f
       expect(selectsPanel({ page: "project", view } as Route)).toBe(false);
     }
     expect(selectsPanel({ page: "project", view: "findings", text: "rpm" })).toBe(false);
+  });
+});
+
+describe("which heading the page asks to take the focus as its route moves on", () => {
+  const controller = "/p/controller.ddd.json";
+  const page: Route = { page: "component", file: controller };
+  const parameter: Route = { ...page, variable: "ParameterA" };
+  const shown = (route: Route, followings: number) => ({ route, followings });
+
+  test("a change of page: its page's heading, or the panel's its address opens", () => {
+    expect(headingAsked(shown({ page: "project", view: "table" }, 1), shown(page, 2))).toBe("page");
+    expect(headingAsked(shown({ page: "project", view: "graph" }, 1), shown(parameter, 2))).toBe(
+      "panel",
+    );
+  });
+
+  test("a following on the page it was on, to an address naming a selection: that panel's", () => {
+    // The masthead's go-to used on the component's page it opens on, with no panel open, with
+    // another open, or with that very one open; Forward back to it.
+    expect(headingAsked(shown(page, 1), shown(parameter, 2))).toBe("panel");
+    expect(headingAsked(shown({ ...page, variable: "ValueA" }, 1), shown(parameter, 2))).toBe(
+      "panel",
+    );
+    expect(headingAsked(shown(parameter, 1), shown(parameter, 2))).toBe("panel");
+  });
+
+  test("none for a selection made in the page, nor for a following that opens no panel", () => {
+    // A row selected, or a filter's text typed, replaces the address: no following.
+    expect(headingAsked(shown(page, 1), shown(parameter, 1))).toBeNull();
+    expect(
+      headingAsked(
+        shown({ page: "project", view: "findings" }, 1),
+        shown({ page: "project", view: "findings", text: "rpm" }, 1),
+      ),
+    ).toBeNull();
+    // Back to the page with no panel, or a link followed to the page already shown.
+    expect(headingAsked(shown(parameter, 1), shown(page, 2))).toBeNull();
+    expect(
+      headingAsked(
+        shown({ page: "project", view: "findings", text: "a" }, 1),
+        shown({ page: "project", view: "findings", text: "b" }, 2),
+      ),
+    ).toBeNull();
   });
 });
 

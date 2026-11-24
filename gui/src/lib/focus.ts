@@ -29,7 +29,8 @@ export function pageChanged(before: Route, after: Route): boolean {
  * shared files, a file - not a variable's values, a page of their own, nor the text of the Findings
  * tab's filter. A change of page to it, the masthead's go-to, a finding's link or an address naming
  * a selection, gives the focus to that panel's heading, the panel being what the reader asked for,
- * and the page's heading meanwhile (16:I13, ruling B11-41).
+ * and the page's heading meanwhile (16:I13, ruling B11-41); so does the go-to used on the page it
+ * opens on (`headingAsked`, ruling B11-44).
  */
 export function selectsPanel(route: Route): boolean {
   if (route.page === "start") return false;
@@ -57,6 +58,32 @@ export function showsAgain(left: number, now: number, top: number): boolean {
 /** What a change of page waits to give the focus to: the page's heading, or the heading of the
  * panel its address opens (`selectsPanel`). */
 export type HeadingWanted = "page" | "panel";
+
+/** The route the page shows, and how many followings led there (`useRoute`): a link followed or
+ * the masthead's go-to used, Back or Forward - not a selection made in the page, which replaces its
+ * address. */
+export interface Shown {
+  route: Route;
+  followings: number;
+}
+
+/**
+ * Which heading the page asks to take the focus as what it shows moves from `before` to `now`
+ * (16:I13, rulings B11-41 and B11-44), `null` where it asks none:
+ * - on a change of page (`pageChanged`), the new page's heading, or the heading of the panel its
+ *   address opens (`selectsPanel`);
+ * - on a following that stays on its page, to an address naming such a panel, that panel's
+ *   heading: the masthead's go-to used on the component's page it opens on - the reader asked for
+ *   that panel by name, as from another page - or Forward back to it;
+ * - none for a selection made in the page, a row or a filter's text, which replaces its address and
+ *   leaves the focus on what made it, nor for a following that opens no panel on the page it was
+ *   on.
+ */
+export function headingAsked(before: Shown, now: Shown): HeadingWanted | null {
+  const panel = selectsPanel(now.route);
+  if (pageChanged(before.route, now.route)) return panel ? "panel" : "page";
+  return panel && now.followings !== before.followings ? "panel" : null;
+}
 
 /**
  * Which heading takes the focus a change of page asked for (`wanted`), of the headings drawn, and

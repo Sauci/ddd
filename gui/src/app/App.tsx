@@ -6,7 +6,7 @@ import { LoadBannerView } from "../components/LoadBannerView";
 import { SignedOutView } from "../components/SignedOutView";
 import { UndrawnView } from "../components/UndrawnView";
 import { PROJECT_VIEWS, pageTitle, VIEW_NAMES } from "../lib/announcing";
-import { pageChanged, pageOf, selectsPanel } from "../lib/focus";
+import { headingAsked, pageOf } from "../lib/focus";
 import { type ProjectView, type Route, tabHref } from "../lib/route";
 import { projectName, sessionAskedFor } from "../lib/session";
 import type { SharedKind } from "../lib/shared";
@@ -74,12 +74,15 @@ export function App() {
   // heading, as a page loaded starts at its top: the control that held it is gone with the page
   // before, or names it no longer (16:I13). What a page selects in itself is no change of page;
   // one whose address names such a selection puts it on the heading of the panel the page draws for
-  // it, the panel being what the reader asked for (ruling B11-41).
-  const shownRoute = useRef(route);
+  // it, the panel being what the reader asked for (ruling B11-41) - and so does a following to such
+  // an address on the page already shown, the masthead's go-to used on the component's page it
+  // opens on (ruling B11-44). `headingAsked` decides.
+  const shown = useRef({ route, followings });
   useEffect(() => {
-    if (pageChanged(shownRoute.current, route)) askPageHeading(selectsPanel(route));
-    shownRoute.current = route;
-  }, [route]);
+    const wanted = headingAsked(shown.current, { route, followings });
+    if (wanted !== null) askPageHeading(wanted === "panel");
+    shown.current = { route, followings };
+  }, [route, followings]);
   const out = useSyncExternalStore(signedOut.subscribe, signedOut.current);
   const session = useQuery({ queryKey: ["session"], queryFn: () => getSession() });
   const opened = session.data?.project ?? null;

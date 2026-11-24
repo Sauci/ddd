@@ -148,11 +148,12 @@ export function focusCameByTab(): boolean {
   return tabbed;
 }
 
-/** Puts the focus on the page's heading after a change of page (`pageChanged`, 16:I13): at once
+/** Puts the focus on the page's heading after a change of page (`headingAsked`, 16:I13): at once
  * where the new page draws it, else as it is drawn (`takePageHeading`) - a component's page, its
  * file read - unless the reader presses a key or the pointer meanwhile. Where the change of page
- * opens a panel (`panel`, `selectsPanel`), the focus goes on to that panel's heading as the panel
- * is drawn (`panelDrawn`), at once where it is drawn already. */
+ * opens a panel (`panel`, `selectsPanel`), or a following opens one on the page already shown, the
+ * focus goes on to that panel's heading as the panel is drawn (`panelDrawn`), at once where it is
+ * drawn already. */
 export function askPageHeading(panel = false): void {
   headingWanted = panel ? "panel" : "page";
   giveHeading(pageHeading(), panelHeading());

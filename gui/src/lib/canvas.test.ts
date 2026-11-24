@@ -8,6 +8,7 @@ import {
   flightOf,
   flowTitle,
   insideBox,
+  isFittedView,
   MIN_ZOOM,
   modulesCut,
   noDictionary,
@@ -376,6 +377,18 @@ test("an arrow is bright only while both of its ends are, and open only while it
 // constant against itself the way passing it as openingViewport's own minZoom argument would.
 test("MIN_ZOOM is React Flow's own default, 0.5", () => {
   expect(MIN_ZOOM).toBe(0.5);
+});
+
+test("a view is the fitted one only while it is, to within an animation's last frame", () => {
+  const fitted = { x: 10, y: 20, zoom: 0.8 };
+  expect(isFittedView({ x: 10, y: 20, zoom: 0.8 }, fitted)).toBe(true);
+  expect(isFittedView({ x: 10.4, y: 19.6, zoom: 0.8004 }, fitted)).toBe(true);
+  // Panned, or zoomed, by the reader.
+  expect(isFittedView({ x: 11, y: 20, zoom: 0.8 }, fitted)).toBe(false);
+  expect(isFittedView({ x: 10, y: 21, zoom: 0.8 }, fitted)).toBe(false);
+  expect(isFittedView({ x: 10, y: 20, zoom: 0.81 }, fitted)).toBe(false);
+  // Nothing was ever fitted: no view is the fitted one.
+  expect(isFittedView(fitted, null)).toBe(false);
 });
 
 test("modules are cut where a module's box reaches past the canvas, whichever edge", () => {

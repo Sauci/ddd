@@ -9,6 +9,7 @@ import {
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
+  type Viewport,
 } from "@xyflow/react";
 import {
   type KeyboardEvent,
@@ -33,6 +34,7 @@ import {
   firstMatch,
   flightOf,
   flowTitle,
+  isFittedView,
   MIN_ZOOM,
   type ModuleNodeType,
   modulesCut,
@@ -297,13 +299,18 @@ function Canvas({
    * `fitView` always re-measured this way too, and this keeps that part of its behaviour even
    * though it is no longer what calls it.
    */
+  /** The view last fitted: Fit's own, or the opening one until Fit is used. */
+  const fitted = useRef<Viewport | null>(null);
   const onFit = useCallback(() => {
     const node = containerRef.current;
     const placement = drawnPlacement();
     if (node === null || placement === null) return;
     const size = { width: node.clientWidth, height: node.clientHeight };
     const view = openingViewport(placement, size, MIN_ZOOM);
-    if (view !== null) void flow.setViewport(view, { duration: flightOf(reducedMotion) });
+    if (view !== null) {
+      fitted.current = view;
+      void flow.setViewport(view, { duration: flightOf(reducedMotion) });
+    }
   }, [flow, drawnPlacement, reducedMotion]);
   // A panel opening beside the canvas narrows the box React Flow draws in under the view it had,
   // and the far modules are cut until Fit (16:M22): the view is fitted again when the box resizes
@@ -318,11 +325,18 @@ function Canvas({
       width = node.clientWidth;
       const placement = drawnPlacement();
       const size = { width: node.clientWidth, height: node.clientHeight };
-      if (placement !== null && modulesCut(placement, flow.getViewport(), size)) onFit();
+      const view = flow.getViewport();
+      if (
+        placement !== null &&
+        isFittedView(view, fitted.current ?? opening) &&
+        modulesCut(placement, view, size)
+      ) {
+        onFit();
+      }
     });
     observer.observe(node);
     return () => observer.disconnect();
-  }, [sized, drawnPlacement, flow, onFit]);
+  }, [sized, drawnPlacement, flow, onFit, opening]);
   const onSearchKey = useCallback(
     (event: KeyboardEvent<HTMLInputElement>) => {
       if (event.key !== "Enter") return;

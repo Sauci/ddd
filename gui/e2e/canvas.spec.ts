@@ -11,6 +11,7 @@ import {
   includesNothing,
   renameValueA,
   restamp,
+  twoFrames,
 } from "./demo";
 import { expect, test } from "./fixtures";
 
@@ -910,4 +911,40 @@ test("a panel opened beside the canvas leaves no module cut, without Fit", async
   await expect(page.getByRole("complementary", { name: "ValueA" })).toBeVisible();
   // The box narrowed under the panel: the view follows it, as Fit would have it.
   await expect.poll(cut).toBe(0);
+});
+
+test("a view the reader zoomed by hand is kept as a panel opens beside the canvas", async ({
+  page,
+  gui,
+}) => {
+  drift(gui.directory);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(gui.address);
+  const label = page.locator(".flow-label.error");
+  await expect(label).toBeVisible();
+  const opened = await viewportOf(page);
+  await page.getByRole("button", { name: "Zoom In", exact: true }).click();
+  await expect.poll(async () => (await viewportOf(page)).zoom).toBeGreaterThan(opened.zoom);
+  // The reader's own view, once it has stopped moving.
+  let held = await viewportOf(page);
+  await expect
+    .poll(async () => {
+      const [before, after] = [held, await viewportOf(page)];
+      held = after;
+      return JSON.stringify(before) === JSON.stringify(after);
+    })
+    .toBe(true);
+  const reader = held;
+  await label.click();
+  await expect(page.getByRole("complementary", { name: "ValueA" })).toBeVisible();
+  await twoFrames(page);
+  expect(await viewportOf(page)).toEqual(reader);
+  // And closing it, which widens the box again, leaves the view as it is too.
+  await page
+    .getByRole("complementary", { name: "ValueA" })
+    .getByRole("button", { name: /^Close/ })
+    .click();
+  await expect(page.getByRole("complementary", { name: "ValueA" })).toHaveCount(0);
+  await twoFrames(page);
+  expect(await viewportOf(page)).toEqual(reader);
 });

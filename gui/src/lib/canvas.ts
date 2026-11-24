@@ -220,6 +220,19 @@ function boundsOf(placed: readonly Placed[]): {
   return { x: left, y: top, width: right - left, height: bottom - top };
 }
 
+/** Whether the canvas's view is still the one last fitted (the opening view, or what `Fit` set it
+ * to) and not one the reader made by panning or zooming: the same to within half a pixel and a
+ * thousandth of a zoom, the slack of an animation's last frame. A panel opening beside the canvas
+ * fits it again only while this holds; a view the reader chose is theirs (16:M22). */
+export function isFittedView(viewport: Viewport, fitted: Viewport | null): boolean {
+  return (
+    fitted !== null &&
+    Math.abs(viewport.x - fitted.x) <= 0.5 &&
+    Math.abs(viewport.y - fitted.y) <= 0.5 &&
+    Math.abs(viewport.zoom - fitted.zoom) <= 0.001
+  );
+}
+
 /** Whether a view of the canvas, at `viewport` in a box of `size`, leaves any placed module's box
  * partly or wholly past the box's edge: what a panel opening beside the canvas does to the view it
  * had, narrowing the box under it, so that the far modules are cut until `Fit` (16:M22). */

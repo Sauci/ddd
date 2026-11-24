@@ -47,6 +47,9 @@ body {
   margin-left: auto;
   display: flex;
   gap: var(--space-3);
+  /* A project's name of the 128 characters the specification allows breaks where it must,
+     within the masthead rather than past the window's edge (16:M18). */
+  min-width: 0;
 }
 .brand {
   font-weight: 600;
@@ -58,6 +61,7 @@ body {
   letter-spacing: 0.06em;
 }
 h1 {
+  overflow-wrap: anywhere;
   font-size: var(--text-title);
   margin: var(--space-6) 0 var(--space-2);
 }
@@ -346,4 +350,12 @@ input:focus-visible,
 }
 .flow-tooltip.warning .flow-check {
   color: var(--warning);
+}
+
+/* A project's name of the 128 characters the specification allows, in the masthead's button, breaks
+   where it must (16:M18). */
+.masthead nav button {
+  min-width: 0;
+  text-align: left;
+  overflow-wrap: anywhere;
 }

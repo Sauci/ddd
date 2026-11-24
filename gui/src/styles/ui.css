@@ -113,6 +113,7 @@ a.button.link:hover {
    14px ("spacing: … gaps | … 14 px and 8 px"), which names a bare pixel value rather than a
    token, as the chosen mockup's own .split { gap: 14px } does. */
 .panel {
+  overflow-wrap: anywhere;
   background: var(--surface);
   border: 1px solid var(--rule);
   border-radius: var(--radius-frame);
@@ -128,6 +129,13 @@ a.button.link:hover {
   margin: 0;
   font-size: var(--text-body);
   font-weight: 600;
+  /* A name of the 128 characters the specification allows has no place to break: broken anywhere,
+     it wraps inside the panel, and Close stays beside it in view (16:M18). */
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.panel-header > button {
+  flex: none;
 }
 .panel-meta {
   margin: 0 0 var(--space-2);

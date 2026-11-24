@@ -1,4 +1,4 @@
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import {
@@ -10,6 +10,7 @@ import {
   moreScalarTypes,
   namingAScalarType,
   PAST_THE_WAITS,
+  renameValueA,
   twoFrames,
   wheeled,
   wheelFromFocus,
@@ -462,4 +463,32 @@ test("a page loaded anew at a variable's address while its project is analysed s
     ratio: 0.5,
   });
   expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+});
+
+test("a long name keeps Close in view and the page no wider than the window (16:M18)", async ({
+  page,
+  copiedGui,
+}) => {
+  // A variable of 86 characters, in a project named with the 128 the specification allows.
+  const variable = "V".repeat(86);
+  const gui = await copiedGui("demo", (directory) => {
+    renameValueA(directory, variable);
+    const description = join(directory, "demo.ddd.json");
+    const data = JSON.parse(readFileSync(description, "utf8"));
+    data.project.name = "P".repeat(128);
+    writeFileSync(description, `${JSON.stringify(data, null, 2)}\n`);
+  });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(gui.address);
+  await expect(page.getByRole("button", { name: "P".repeat(128) })).toBeVisible();
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("button", { name: `Set the unit of ${variable}` }).click();
+  const panel = page.getByRole("complementary", { name: variable });
+  const close = panel.getByRole("button", { name: `Close ${variable}` });
+  await expect(close).toBeVisible();
+  const [frame, button] = [await panel.boundingBox(), await close.boundingBox()];
+  expect((button?.x ?? 0) + (button?.width ?? 0)).toBeLessThanOrEqual(
+    (frame?.x ?? 0) + (frame?.width ?? 0),
+  );
+  expect(await sideways(page)).toBe(0);
 });

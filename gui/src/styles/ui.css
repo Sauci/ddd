@@ -264,6 +264,13 @@ tr.changing td {
   gap: var(--space-3);
   margin-top: var(--space-2);
 }
+.undo-label {
+  display: block;
+  max-width: min(36em, calc(100vw - 6em));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .undo-open {
   flex-basis: 100%;
   margin-bottom: var(--space-3);

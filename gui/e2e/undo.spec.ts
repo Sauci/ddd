@@ -9,6 +9,7 @@ import {
   failing,
   held,
   openPanel,
+  renameValueA,
   SERVER_FAILED,
   UNITS,
 } from "./demo";
@@ -258,4 +259,31 @@ test("a preview the server fails on is refused in the strip, before any undo was
   await expect(strip(page).getByRole("button", { name: /^Put back/ })).toHaveCount(0);
   expect(unitOfValueA(gui)).toBe("%");
   expect(failed()).toBe(1);
+});
+
+test("an Undo button of a long label appearing moves neither Add a declaration nor the table", async ({
+  page,
+  copiedGui,
+}) => {
+  // A variable of 86 characters: the label of its unit's undo is 100 characters long.
+  const variable = "V".repeat(86);
+  const gui = await copiedGui("demo", (directory) => renameValueA(directory, variable));
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  const add = page.getByRole("button", { name: "Add a declaration" });
+  const table = page.getByRole("grid").first();
+  await expect(add).toBeVisible();
+  const [addBefore, tableBefore] = [await add.boundingBox(), await table.boundingBox()];
+  await page.getByRole("button", { name: `Set the unit of ${variable}` }).click();
+  const panel = page.getByRole("complementary", { name: variable });
+  const picker = panel.getByRole("combobox", { name: `Unit of ${variable}` });
+  await picker.fill("rpm");
+  await page.getByRole("option", { name: "rpm", exact: true }).first().click();
+  await panel.getByRole("button", { name: /^Apply to/ }).click();
+  const undo = page.getByRole("button", { name: /^Undo / });
+  await expect(undo).toBeVisible();
+  await panel.getByRole("button", { name: /^Close/ }).click();
+  expect((await add.boundingBox())?.y).toBe(addBefore?.y);
+  expect((await table.boundingBox())?.y).toBe(tableBefore?.y);
 });

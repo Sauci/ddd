@@ -36,7 +36,11 @@ export function UndoStripView(props: UndoStripViewProps) {
         aria-expanded={open}
         onPress={() => props.onOpen(!open)}
       >
-        {label}
+        {/* On one line, cut with an ellipsis past a measure: the 120 characters a label can have
+            would otherwise wrap the heading's row and push the table down (16:M22). */}
+        <span className="undo-label" title={label}>
+          {label}
+        </span>
       </Button>
       {open && (
         <section className="undo-open" aria-label="Undo">

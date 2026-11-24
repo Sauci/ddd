@@ -12,7 +12,7 @@ import { useUpdating } from "../app/updating";
 import { useDebounced } from "../app/useDebounced";
 import { TypePanelView } from "../components/TypePanelView";
 import { planEdit } from "../lib/projectUnits";
-import { panelShows, type Refused, refusalShown } from "../lib/refusals";
+import { panelShows, type Refused, refusalOf, refusalShown } from "../lib/refusals";
 import type { Route } from "../lib/route";
 import { planShown, unsettled } from "../lib/typing";
 import { typeLabel } from "../lib/undo";
@@ -41,14 +41,6 @@ interface Props {
   onMoved: (name: string) => void;
   /** Following a use, a member's type or a finding, without a reload. */
   onOpen: (route: Route) => void;
-}
-
-/** What the tab says when an edit it posted was refused: stale, as part 1's panel says it, or the
- * server's own reason. */
-export function refusalOf(error: Error): string {
-  return error instanceof ApiError && error.code === "stale"
-    ? "A file changed on disk, so nothing was written. The page now shows the files as they are."
-    : `The change was refused: ${error.message}`;
 }
 
 /**

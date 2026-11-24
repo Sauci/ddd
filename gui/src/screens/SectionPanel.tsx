@@ -10,7 +10,7 @@ import {
 import { useUpdating } from "../app/updating";
 import { useDebounced } from "../app/useDebounced";
 import { type Offer, type SectionAction, SectionPanelView } from "../components/SectionPanelView";
-import { panelShows, type Refused, refusalShown } from "../lib/refusals";
+import { panelShows, type Refused, refusalOf, refusalShown } from "../lib/refusals";
 import type { Route } from "../lib/route";
 import { planEdit, requestOf, sectionSet } from "../lib/shared";
 import { planShown } from "../lib/typing";
@@ -18,7 +18,6 @@ import { sectionLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
 import { UpdatingNote } from "../ui/UpdatingNote";
-import { refusalOf } from "./UnitPanel";
 
 interface Props {
   name: string;

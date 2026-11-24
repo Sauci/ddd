@@ -1,25 +1,17 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { ApiError, getUndo, postUndo } from "../api/client";
+import { getUndo, postUndo } from "../api/client";
 import type { State } from "../api/types";
 import { UndoStripView } from "../components/UndoStripView";
 import { putBackOf, type Write } from "../lib/announcing";
 import { type Refused, refusalShown } from "../lib/refusals";
-import { askedAgainAfterUndo, undoButton } from "../lib/undo";
+import { askedAgainAfterUndo, undoButton, undoRefusal } from "../lib/undo";
 import { ownEdits } from "../state/edits";
 
 interface Props {
   state: State | null;
   /** The server stopped answering: nothing can be written. */
   stopped: boolean;
-}
-
-/** What the strip says when a preview or an undo was refused. A stale refusal is the server's
- * own sentence, which names the file that changed, and what it means for the reader. */
-function refusalOf(error: Error): string {
-  return error instanceof ApiError && error.code === "stale"
-    ? `${error.message}. Nothing was put back; the page shows the files as they are.`
-    : `The undo was refused: ${error.message}`;
 }
 
 /**
@@ -60,7 +52,7 @@ export function UndoStrip({ state, stopped }: Props) {
       setOpen(false);
       setChangesShown(false);
     },
-    onError: (error, { at }) => setRefused({ about: at, text: refusalOf(error) }),
+    onError: (error, { at }) => setRefused({ about: at, text: undoRefusal(error) }),
     // An undo is answered once its files are back, its analysis following: whatever on screen
     // draws what it put back asks again now, rather than when the revision moves.
     onSettled: () =>
@@ -94,7 +86,7 @@ export function UndoStrip({ state, stopped }: Props) {
       }}
       refusal={refusalShown(
         refused,
-        preview.isError ? refusalOf(preview.error) : null,
+        preview.isError ? undoRefusal(preview.error) : null,
         undoable?.at,
       )}
       busy={stopped || undo.isPending}

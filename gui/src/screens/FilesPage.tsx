@@ -26,6 +26,7 @@ import {
   rowsOf,
 } from "../lib/files";
 import { type FilesHold, filesHoldAfter, filesHoldOf, filesShown } from "../lib/filesHold";
+import { refusalOf } from "../lib/refusals";
 import type { Route } from "../lib/route";
 import { planEdit } from "../lib/shared";
 import { planShown } from "../lib/typing";
@@ -33,7 +34,6 @@ import { filesLabel } from "../lib/undo";
 import { planning } from "../lib/units";
 import { ownEdits } from "../state/edits";
 import { Banner } from "../ui/Banner";
-import { refusalOf } from "./UnitPanel";
 
 interface Props {
   state: State | null;

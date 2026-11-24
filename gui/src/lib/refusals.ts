@@ -37,6 +37,20 @@ export function refusalSentence(error: Error, stale: string): string {
   return isStale(error) ? stale : `The change was refused: ${error.message}`;
 }
 
+/** The page's own sentence for an Apply refused because a file changed on disk: said by every
+ * panel but the variable panel and the Findings tab, which say what they now show in words of
+ * their own. */
+export const STALE =
+  "A file changed on disk, so nothing was written. The page now shows the files as they are.";
+
+/** What a panel says of an Apply refused, in the page's own sentence for a file changed on disk
+ * (`STALE`, through `refusalSentence`): the Units, Types and Shared files tabs' panels, the
+ * adoption, the Files tab, the values grid and the declare panel. The Units and Types tabs once
+ * chose it each for itself, and the others borrowed the Units tab's. */
+export function refusalOf(error: Error): string {
+  return refusalSentence(error, STALE);
+}
+
 /**
  * The one refusal a panel of several writes shows beside its write `about`: the refusal it holds
  * of that write's Apply (`Refused`), else why the write's plan was refused when asked for, in the

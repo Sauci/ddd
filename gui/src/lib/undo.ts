@@ -10,6 +10,7 @@ import type { Finding, PlanReply, State, UndoneChange } from "../api/types";
 import type { Mode } from "./declarations";
 import { relativeToProject } from "./findings";
 import { elementLabel } from "./objectValues";
+import { isStale } from "./refusals";
 import { changedNames, type ShownChange } from "./units";
 
 /** The longest label `POST /api/edit` takes; see `Changes.label` in src/ddd/gui/contract.py. */
@@ -168,6 +169,15 @@ function fitted(label: string): string {
  * is named as removed. */
 export function shownUndo(changes: readonly UndoneChange[]): ShownChange[] {
   return changes.map(({ file, gone, hunks }) => ({ file, hunks, note: gone ? "removed" : null }));
+}
+
+/** What the Undo strip says when its preview or its undo was refused: where a file changed on
+ * disk (`isStale`), the server's own sentence, which names the file, and what that means for the
+ * reader; else the server's own reason. */
+export function undoRefusal(error: Error): string {
+  return isStale(error)
+    ? `${error.message}. Nothing was put back; the page shows the files as they are.`
+    : `The undo was refused: ${error.message}`;
 }
 
 /** What the Undo button says, or `null` when there is nothing to undo: no project open yet, no

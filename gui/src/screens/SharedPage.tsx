@@ -7,6 +7,7 @@ import { useKept } from "../app/useKept";
 import { SharedAddView } from "../components/SharedAddView";
 import { SharedTableView } from "../components/SharedTableView";
 import { unreadable } from "../lib/findings";
+import { refusalOf } from "../lib/refusals";
 import type { Route } from "../lib/route";
 import {
   addFormRefusal,
@@ -28,7 +29,6 @@ import { Banner } from "../ui/Banner";
 import { ConstantPanel, useConstantPlan } from "./ConstantPanel";
 import { RasterPanel, useRasterPlan } from "./RasterPanel";
 import { SectionPanel, useSectionPlan } from "./SectionPanel";
-import { refusalOf } from "./UnitPanel";
 
 interface Props {
   state: State | null;

@@ -14,7 +14,7 @@ import {
   ConstantPanelView,
   type Offer,
 } from "../components/ConstantPanelView";
-import { panelShows, type Refused, refusalShown } from "../lib/refusals";
+import { panelShows, type Refused, refusalOf, refusalShown } from "../lib/refusals";
 import type { Route } from "../lib/route";
 import { constantValue, planEdit } from "../lib/shared";
 import { planShown } from "../lib/typing";
@@ -22,7 +22,6 @@ import { constantLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
 import { UpdatingNote } from "../ui/UpdatingNote";
-import { refusalOf } from "./UnitPanel";
 
 interface Props {
   name: string;

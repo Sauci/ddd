@@ -9,6 +9,7 @@ import { useWritten } from "../app/useWritten";
 import { ValuesGridView } from "../components/ValuesGridView";
 import { drawable, pasted, type TypedCell } from "../lib/objectValues";
 import { planEdit } from "../lib/projectUnits";
+import { refusalOf } from "../lib/refusals";
 import { planOffered, typedOffer, typedPlan, withComma, withTyped } from "../lib/typedCells";
 import { gated, planShown } from "../lib/typing";
 import { pasteLabel, valuesLabel } from "../lib/undo";
@@ -28,7 +29,6 @@ import { Button } from "../ui/Button";
 import { PageHeading } from "../ui/PageHeading";
 import { UpdatingStatus } from "../ui/UpdatingNote";
 import { UndoStrip } from "./UndoStrip";
-import { refusalOf } from "./UnitPanel";
 
 interface Props {
   /** The object whose values this grid shows - the route's own `variable`. */

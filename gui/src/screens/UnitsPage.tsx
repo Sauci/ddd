@@ -12,11 +12,11 @@ import {
   planEdit,
   tabTitle,
 } from "../lib/projectUnits";
-import { refusalOfOffer } from "../lib/refusals";
+import { refusalOf, refusalOfOffer } from "../lib/refusals";
 import type { Route } from "../lib/route";
 import { unitLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
-import { refusalOf, UnitPanel, usePlan } from "./UnitPanel";
+import { UnitPanel, usePlan } from "./UnitPanel";
 
 interface Props {
   state: State | null;

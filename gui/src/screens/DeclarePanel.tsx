@@ -18,11 +18,11 @@ import {
   statedValues,
 } from "../lib/declarations";
 import { planEdit } from "../lib/projectUnits";
+import { refusalOf } from "../lib/refusals";
 import { planShown } from "../lib/typing";
 import { declareLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
-import { refusalOf } from "./UnitPanel";
 
 interface Props {
   /** The component being added to: its absolute, posix-separated path. */

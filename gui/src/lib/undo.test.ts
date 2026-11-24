@@ -1,4 +1,5 @@
 import { describe, expect, it, test } from "vitest";
+import { ApiError, ServerUnreachable } from "../api/client";
 import type { Finding, PlanReply, UndoneChange } from "../api/types";
 import {
   askedAgainAfterUndo,
@@ -16,6 +17,7 @@ import {
   undoAction,
   undoButton,
   undoConsequence,
+  undoRefusal,
   unitLabel,
   valueLabel,
   valuesLabel,
@@ -269,6 +271,28 @@ describe("the undo control", () => {
   it("is not there with nothing to undo", () => {
     expect(undoButton(null)).toBeNull();
     expect(undoButton({ ...STATE, undoable: null })).toBeNull();
+  });
+
+  it("says an undo refused because a file changed on disk in the server's sentence, and what it means", () => {
+    // The server's own sentence names the file that changed.
+    const stale = new ApiError(
+      409,
+      "stale",
+      "controller.ddd.json changed on disk since it was read",
+    );
+    expect(undoRefusal(stale)).toBe(
+      "controller.ddd.json changed on disk since it was read. Nothing was put back; the page " +
+        "shows the files as they are.",
+    );
+  });
+
+  it("says any other refusal of an undo in the server's words", () => {
+    expect(undoRefusal(new ApiError(409, "unwritable", "controller.ddd.json is read-only"))).toBe(
+      "The undo was refused: controller.ddd.json is read-only",
+    );
+    expect(undoRefusal(new ServerUnreachable(new Error("refused")))).toBe(
+      "The undo was refused: ddd gui is not answering",
+    );
   });
 
   it("says which files it puts back, and how many", () => {

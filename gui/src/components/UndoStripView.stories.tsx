@@ -7,8 +7,8 @@ import { UndoStripView } from "./UndoStripView";
 
 export default { title: "Components / UndoStripView" };
 
-// What UndoStrip's `refusalOf` builds from the api's own "stale" message (UndoStrip.tsx),
-// now that the api names the file by its own name rather than its full path.
+// What the strip says of the api's own "stale" message (`undoRefusal`, lib/undo.ts), now that
+// the api names the file by its own name rather than its full path.
 const REFUSED =
   "demo.ddd.json changed on disk since it was written. " +
   "Nothing was put back; the page shows the files as they are.";

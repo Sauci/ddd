@@ -2,8 +2,10 @@ import { describe, expect, test } from "vitest";
 import { ApiError, ServerUnreachable } from "../api/client";
 import {
   isStale,
+  STALE as PAGE_STALE,
   panelShows,
   type Refused,
+  refusalOf,
   refusalOfOffer,
   refusalSentence,
   refusalShown,
@@ -12,6 +14,23 @@ import {
 /** What a panel says when its Apply is refused because a file changed under its preview. */
 const STALE =
   "A file changed on disk, so nothing was written. The page now shows the files as they are.";
+
+test("the page's own sentence for an Apply refused because a file changed on disk", () => {
+  // Said by every panel but the variable panel and the Findings tab, which say what they show in
+  // words of their own: the Units, Types and Shared files tabs' panels, the Files tab, the values
+  // grid and the declare panel.
+  expect(PAGE_STALE).toBe(STALE);
+});
+
+test("an Apply refused is said in the page's own sentence where a file changed on disk, else in the server's words", () => {
+  expect(refusalOf(new ApiError(409, "stale", "a.ddd.json changed on disk"))).toBe(STALE);
+  expect(refusalOf(new ApiError(409, "invalid", "'rpm' is no unit"))).toBe(
+    "The change was refused: 'rpm' is no unit",
+  );
+  expect(refusalOf(new ServerUnreachable(new Error("refused")))).toBe(
+    "The change was refused: ddd gui is not answering",
+  );
+});
 
 test("an Apply refused for a file changed on disk is stale, and no other refusal is", () => {
   expect(isStale(new ApiError(409, "stale", "a.ddd.json changed on disk"))).toBe(true);

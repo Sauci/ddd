@@ -494,9 +494,22 @@ test("a long name keeps Close in view and the page no wider than the window (16:
   expect((button?.x ?? 0) + (button?.width ?? 0)).toBeLessThanOrEqual(
     (frame?.x ?? 0) + (frame?.width ?? 0),
   );
-  // Close whole, its word on one line: shrunk by the long title's pressure, a button breaks it.
-  expect(button?.height ?? 99).toBeLessThan(30);
-  expect(button?.width ?? 0).toBeGreaterThan(30);
+  // Close whole, its word on one line and not cut: shrunk by the long title's pressure, a button
+  // breaks it. Measured by what the fonts do not move: how many lines its text lays out in, and
+  // whether the text's box stays inside the button's.
+  const word = await close.evaluate((node) => {
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    const lines = new Set([...range.getClientRects()].map((box) => Math.round(box.top)));
+    const text = range.getBoundingClientRect();
+    const frame = node.getBoundingClientRect();
+    return {
+      lines: lines.size,
+      inside: text.left >= frame.left && text.right <= frame.right,
+      cut: node.scrollWidth > node.clientWidth,
+    };
+  });
+  expect(word).toEqual({ lines: 1, inside: true, cut: false });
   expect(await sideways(page)).toBe(0);
 });
 

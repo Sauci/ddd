@@ -128,7 +128,9 @@ export function sentAgain(method: string | undefined, error: unknown): boolean {
 
 /** The longest request line `ddd gui`'s server reads, its CRLF included: `BaseHTTPRequestHandler`
  * reads the line with `readline(65537)` and answers **414** to anything longer than 65536 bytes,
- * and `ddd gui`'s own server is one of those (`GuiServer`, a `ThreadingHTTPServer`). */
+ * and `ddd gui`'s own server is one of those (`GuiServer`, a `ThreadingHTTPServer`). This and the
+ * two limits of a body below are copies, each held to the server's by a test of its own suite
+ * (`TestThePageHoldsThisServersLimits`, tests/test_gui_server.py). */
 const LINE_LIMIT = 65536;
 
 /** What one address may carry, asked with `method`: the line is the method, a space, the address,
@@ -154,27 +156,40 @@ function tooLong(address: string, limit: number): ApiError {
   );
 }
 
-/** The most `ddd gui`'s server reads of a request's body: an edit's, `POST /api/edit`'s
- * (`EDIT_BODY`, gui/server.py), 8 MiB, where it reads 1 MiB of any other's. */
+/** The most `ddd gui`'s server reads of an edit's body, `POST /api/edit`'s: `EDIT_BODY`
+ * (gui/server.py), 8 MiB, since an Apply posts every change of its plan. */
 export const EDIT_BODY = 8 * 1024 * 1024;
+
+/** The most it reads of the body of any other route: `MAX_BODY` (gui/server.py), 1 MiB. */
+export const MAX_BODY = 1024 * 1024;
+
+/** The route whose body the server reads up to `EDIT_BODY`, and not `MAX_BODY`. */
+const EDIT_ROUTE = "/api/edit";
+
+/** The most the server reads of a body sent to `address`: chosen, as the server chooses it
+ * (`_route`, gui/server.py), by the address's path alone, whatever its query. */
+function bodyLimit(address: string): number {
+  return pathOf(address) === EDIT_ROUTE ? EDIT_BODY : MAX_BODY;
+}
 
 /** The code of a refusal of a body too large to send (`tooLarge`), the server's own for it. */
 const TOO_LARGE = "too-large";
 
-/** What is said of an ask whose body is larger than ddd gui reads, as `request` refuses it, by what
- * it is (`named`): sent, it was refused before the server read it, and the connection closed with
- * the rest of the body unread - on Windows a reset, which can lose the refusal, and the page then
- * read the server as not answering. */
-function tooLarge(named: string, size: number): ApiError {
+/** What is said of an ask whose body is larger than its route's `limit`, as `request` refuses it,
+ * by what it is (`named`): sent, it was refused before the server read it, and the connection
+ * closed with the rest of the body unread - on Windows a reset, which can lose the refusal, and
+ * the page then read the server as not answering. */
+function tooLarge(named: string, size: number, limit: number): ApiError {
   return new ApiError(
     413,
     TOO_LARGE,
     `${named} cannot be sent in one request: its body needs ${size} bytes, and ddd gui reads ` +
-      `at most ${EDIT_BODY}`,
+      `at most ${limit}`,
   );
 }
 
-/** How many bytes `body` is sent as: its UTF-8, which `fetch` sends a string body in. */
+/** How many bytes `body` is sent as: its UTF-8, which `fetch` sends a string body in - what its
+ * `Content-Length` counts, and what the server measures against its limit. */
 function bytesOf(body: string | undefined): number {
   return body === undefined ? 0 : new TextEncoder().encode(body).byteLength;
 }
@@ -187,12 +202,13 @@ export async function request<T>(
   out: SignedOut = signedOut,
 ): Promise<T> {
   // Refused before it is sent, as the server would refuse it: no line past its limit is sent, and
-  // no body past the most the server reads of one.
+  // no body past the most the server reads of one sent to its route.
   const limit = addressLimit(init.method);
   if (path.length > limit) throw tooLong(path, limit);
   const { named, ...sent } = init;
   const size = bytesOf(sent.body);
-  if (size > EDIT_BODY) throw tooLarge(named ?? pathOf(path), size);
+  const most = bodyLimit(path);
+  if (size > most) throw tooLarge(named ?? pathOf(path), size, most);
   // The token goes as a header, and no cookie goes at all: a browser sends a cookie to every
   // port of 127.0.0.1, so to every other server there too (part 18b).
   const held = kept.get();

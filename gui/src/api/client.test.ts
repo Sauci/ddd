@@ -38,6 +38,7 @@ import {
   getValues,
   getValuesPlan,
   getVariable,
+  MAX_BODY,
   openProject,
   postEdit,
   postUndo,
@@ -687,18 +688,48 @@ describe("an edit's body", () => {
     });
     expect(fetch).not.toHaveBeenCalled();
   });
+});
 
-  test("any other ask's body past it is refused the same way, naming its route", async () => {
-    const fetch = written();
+describe("any other ask's body", () => {
+  /** The most ddd gui reads of the body of any route but an edit's: `MAX_BODY`, gui/server.py,
+   * 1 MiB. */
+  const LIMIT = 1_048_576;
+
+  test("is at most what ddd gui reads of one", () => {
+    expect(MAX_BODY).toBe(LIMIT);
+  });
+
+  test("past that is refused before it is sent, naming its route and that route's own limit", async () => {
+    // Sent, it was refused 413 before the server read it, as an edit past its own was: the edit's
+    // 8 MiB is that route's alone, and every other reads 1 MiB.
+    const fetch = answering(200, '{"edit": 3, "files": []}');
     const body = "x".repeat(LIMIT + 1);
     await expect(request("/api/undo", { method: "POST", body }, fetch)).rejects.toMatchObject({
       status: 413,
       code: "too-large",
       message:
-        "/api/undo cannot be sent in one request: its body needs 8388609 bytes, and ddd gui " +
-        "reads at most 8388608",
+        "/api/undo cannot be sent in one request: its body needs 1048577 bytes, and ddd gui " +
+        "reads at most 1048576",
     });
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  test("of that limit's own size is sent", async () => {
+    const fetch = answering(200, '{"edit": 3, "files": []}');
+    const body = "x".repeat(LIMIT);
+    await request("/api/undo", { method: "POST", body }, fetch);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  test("is held to its route's limit whatever its query, the edit's alone being larger", async () => {
+    // The server chooses the limit by the address's path, never its query.
+    const fetch = answering(200, '{"edit": 3, "files": []}');
+    const body = "x".repeat(LIMIT + 1);
+    await expect(
+      request("/api/undo?at=/api/edit", { method: "POST", body }, fetch),
+    ).rejects.toMatchObject({ status: 413 });
+    await request("/api/edit?x=1", { method: "POST", body }, fetch);
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 });
 

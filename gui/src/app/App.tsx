@@ -1,11 +1,19 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { type ReactNode, useCallback, useEffect, useRef, useSyncExternalStore } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { getSession } from "../api/client";
 import { signedOut } from "../api/token";
 import { LoadBannerView } from "../components/LoadBannerView";
 import { SignedOutView } from "../components/SignedOutView";
 import { UndrawnView } from "../components/UndrawnView";
 import { PROJECT_VIEWS, pageTitle, VIEW_NAMES } from "../lib/announcing";
+import type { CompareHeld } from "../lib/compare";
 import { headingAsked, pageOf, type Shown } from "../lib/focus";
 import { type ProjectView, type Route, tabHref } from "../lib/route";
 import { projectName, sessionAskedFor } from "../lib/session";
@@ -122,6 +130,10 @@ export function App() {
   }, [title]);
   // What the project screen's heading says the page last wrote, on the tab it was written on.
   const written = useWritten(pageOf(route));
+  // What the Compare tab holds - its field, and the comparison last asked for, whose answer is its
+  // verdict - kept here, above the tab, while another tab is shown (16:M2): in the page's memory,
+  // never in the address, and of the project it was asked of (`heldFor`).
+  const [compareHeld, setCompareHeld] = useState<CompareHeld | null>(null);
   // One identity for the whole life of the page: the canvas hands this to every module it draws,
   // and a new function each render would lay the canvas out again each render.
   const openComponent = useCallback(
@@ -316,7 +328,13 @@ export function App() {
             onOpen={navigate}
           />
         ) : route.view === "compare" ? (
-          <ComparePage state={state} stopped={stopped} onOpen={navigate} />
+          <ComparePage
+            state={state}
+            stopped={stopped}
+            held={compareHeld}
+            onHeld={setCompareHeld}
+            onOpen={navigate}
+          />
         ) : (
           <ProjectPage state={state} onComponent={openComponent} onOpen={navigate} />
         )}

@@ -1,12 +1,18 @@
 import { expect, test } from "vitest";
 import type { CompareReply, Finding, State } from "../api/types";
 import {
+  askedIn,
+  asksNothing,
+  baselineOf,
   type CompareRow,
   compareLine,
   compareRouteReason,
   compareRows,
   fileNameIn,
+  heldFor,
   nextAsk,
+  typedIn,
+  verdictLine,
 } from "./compare";
 
 function finding(fields: Partial<Finding> = {}): Finding {
@@ -207,4 +213,68 @@ test("no ask repeats an earlier one, even when its baseline comes back", () => {
   const third = nextAsk(second, "a.json");
   expect(third.baseline).toBe(first.baseline);
   expect(new Set([first.number, second.number, third.number]).size).toBe(3);
+});
+
+test("a baseline pasted in a pair of like quotes is asked for as the path between them", () => {
+  // Windows' Copy as path writes double quotes round a path, a shell's quoting single ones; the
+  // server takes them off as well (16:M3), and the verdict names what was asked (16:M2).
+  expect(baselineOf('"C:\\work\\demo\\baseline.json"')).toBe("C:\\work\\demo\\baseline.json");
+  expect(baselineOf("'baseline.json'")).toBe("baseline.json");
+  expect(baselineOf('  "baseline.json"  ')).toBe("baseline.json");
+  expect(nextAsk(null, '"baseline.json"').baseline).toBe("baseline.json");
+});
+
+test("a quote alone, or two unlike, are the path's own characters", () => {
+  expect(baselineOf('"baseline.json')).toBe('"baseline.json');
+  expect(baselineOf("baseline.json'")).toBe("baseline.json'");
+  expect(baselineOf("\"baseline.json'")).toBe("\"baseline.json'");
+  expect(baselineOf('"')).toBe('"');
+});
+
+test("nothing but spaces, or quotes round nothing, ask for nothing", () => {
+  expect(asksNothing("   ")).toBe(true);
+  expect(asksNothing(' "" ')).toBe(true);
+  expect(asksNothing("''")).toBe(true);
+  expect(asksNothing('"')).toBe(false);
+  expect(asksNothing("baseline.json")).toBe(false);
+});
+
+test("the verdict names the baseline it was asked for", () => {
+  expect(verdictLine(true, "baseline.json")).toBe(
+    "This project can replace the baseline 'baseline.json'.",
+  );
+  expect(verdictLine(false, "C:/work/demo/deliveries/released/demo.ddd.json")).toBe(
+    "This project cannot replace the baseline 'C:/work/demo/deliveries/released/demo.ddd.json'.",
+  );
+});
+
+test("the tab holds nothing typed and nothing asked for a project it held nothing of", () => {
+  expect(heldFor(null, "C:/work/demo/demo.ddd.json")).toEqual({
+    project: "C:/work/demo/demo.ddd.json",
+    typed: "",
+    asked: null,
+  });
+});
+
+test("what the tab holds is kept for its project, and another project starts with nothing", () => {
+  const demo = askedIn(typedIn(heldFor(null, "C:/work/demo/demo.ddd.json"), "baseline.json"));
+  expect(heldFor(demo, "C:/work/demo/demo.ddd.json")).toBe(demo);
+  expect(heldFor(demo, "C:/work/second/second.ddd.json")).toEqual({
+    project: "C:/work/second/second.ddd.json",
+    typed: "",
+    asked: null,
+  });
+});
+
+test("typing is held without asking, and asking asks for what the field holds", () => {
+  const typed = typedIn(heldFor(null, "C:/work/demo/demo.ddd.json"), " baseline.json ");
+  expect(typed.typed).toBe(" baseline.json ");
+  expect(typed.asked).toBeNull();
+  const asked = askedIn(typed);
+  expect(asked.asked).toEqual({ baseline: "baseline.json", number: 1 });
+  expect(asked.typed).toBe(" baseline.json ");
+  // Typed again and not asked: the ask held is still the one before, which the verdict names.
+  const retyped = typedIn(asked, "other.json");
+  expect(retyped.asked).toBe(asked.asked);
+  expect(askedIn(retyped).asked).toEqual({ baseline: "other.json", number: 2 });
 });

@@ -1,4 +1,4 @@
-import { cpSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import {
@@ -30,7 +30,7 @@ test("a reader can ask whether this delivery replaces the last", async ({ page, 
   // says so in its own words, not merely by showing no rows. Picked out by its words: the
   // heading's own status region, which says when the findings are updating, is a status too.
   const verdict = page.getByRole("status").filter({ hasText: "replace the baseline" });
-  await expect(verdict).toHaveText("This project can replace the baseline.");
+  await expect(verdict).toHaveText("This project can replace the baseline 'baseline.json'.");
   await expect(page.getByText("Nothing to report")).toBeVisible();
   // No table of findings stands under it, empty: the line says there is nothing to list (16:M1).
   await expect(page.getByRole("grid", { name: "Findings" })).toHaveCount(0);
@@ -44,11 +44,105 @@ test("a reader can ask whether this delivery replaces the last", async ({ page, 
 
   // The verdict turns, in the same words a reader sees it in, and a `changed-interface` finding
   // says what changed - not just that some row now exists.
-  await expect(verdict).toHaveText("This project cannot replace the baseline.");
+  await expect(verdict).toHaveText("This project cannot replace the baseline 'baseline.json'.");
   await expect(page.getByText("1 finding · 1 error")).toBeVisible();
   const row = page.getByRole("row", { name: "changed-interface" });
   await expect(row).toContainText("'ValueA' is not the same object any more");
   await expect(row).toContainText("datatype: uint16 != uint8");
+});
+
+test("a comparison is kept, its field and its verdict, while another tab is shown, and coming back asks nothing", async ({
+  page,
+  gui,
+}) => {
+  dump(gui.directory, "demo.ddd.json", "baseline.json");
+  const asked = comparesAsked(page);
+  await page.goto(gui.address);
+  const tab = page.getByRole("link", { name: "Compare" });
+  await tab.click();
+  const baseline = page.getByRole("textbox", { name: "Baseline" });
+  const verdict = page.getByRole("status").filter({ hasText: "replace the baseline" });
+  await baseline.fill("baseline.json");
+  await page.getByRole("button", { name: "Compare", exact: true }).click();
+  await expect(verdict).toHaveText("This project can replace the baseline 'baseline.json'.");
+
+  // The Units tab, and back: the field as it was typed and the verdict as it was answered, held
+  // above the tab (16:M2). An ask made on coming back would be held here, its field disabled.
+  await page.getByRole("link", { name: "Units" }).click();
+  await expect(baseline).toHaveCount(0);
+  const release = await held(page, "/api/compare");
+  try {
+    await tab.click();
+    await expect(verdict).toHaveText("This project can replace the baseline 'baseline.json'.");
+    await expect(baseline).toHaveValue("baseline.json");
+    await expect(baseline).toBeEnabled();
+    expect(asked).toEqual(["?baseline=baseline.json"]);
+  } finally {
+    release();
+  }
+});
+
+test("a verdict names the baseline it answers, while the field holds another typed since", async ({
+  page,
+  gui,
+}) => {
+  dump(gui.directory, "demo.ddd.json", "baseline.json");
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Compare" }).click();
+  const baseline = page.getByRole("textbox", { name: "Baseline" });
+  const verdict = page.getByRole("status").filter({ hasText: "replace the baseline" });
+  await baseline.fill("baseline.json");
+  await page.getByRole("button", { name: "Compare", exact: true }).click();
+  await expect(verdict).toHaveText("This project can replace the baseline 'baseline.json'.");
+  // Typed and not asked: the verdict still says which baseline it is about (16:M2).
+  await baseline.fill("other.json");
+  await expect(verdict).toHaveText("This project can replace the baseline 'baseline.json'.");
+});
+
+/** A second project in the copy, beside the demo's: SecondDevice, of one component, Pump, in a
+ * directory of its own, which the start page offers beside DemoDevice. */
+function secondProject(directory: string): void {
+  const where = join(directory, "second");
+  mkdirSync(where);
+  writeFileSync(
+    join(where, "pump.ddd.json"),
+    `${JSON.stringify({ component: { name: "Pump", interface: [] } }, null, 2)}\n`,
+  );
+  writeFileSync(
+    join(where, "second.ddd.json"),
+    `${JSON.stringify({ project: { name: "SecondDevice", includes: ["pump.ddd.json"] } }, null, 2)}\n`,
+  );
+}
+
+test("another project's Compare tab starts with nothing typed and nothing asked", async ({
+  page,
+  copiedGui,
+}) => {
+  const gui = await copiedGui(
+    "demo",
+    (directory) => {
+      dump(directory, "demo.ddd.json", "baseline.json");
+      secondProject(directory);
+    },
+    { named: false },
+  );
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: /^DemoDevice/ }).click();
+  const tab = page.getByRole("link", { name: "Compare" });
+  await tab.click();
+  const baseline = page.getByRole("textbox", { name: "Baseline" });
+  const verdict = page.getByRole("status").filter({ hasText: "replace the baseline" });
+  await baseline.fill("baseline.json");
+  await page.getByRole("button", { name: "Compare", exact: true }).click();
+  await expect(verdict).toHaveText("This project can replace the baseline 'baseline.json'.");
+
+  // What the tab holds is DemoDevice's: SecondDevice's own tab has nothing of it.
+  await page.getByRole("banner").getByRole("button", { name: "Projects", exact: true }).click();
+  await page.getByRole("button", { name: /^SecondDevice/ }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("SecondDevice");
+  await tab.click();
+  await expect(baseline).toHaveValue("");
+  await expect(verdict).toHaveCount(0);
 });
 
 /** `path` as the server writes a path into a refusal: absolute, with forward slashes. */
@@ -121,7 +215,10 @@ test("a baseline pasted with the quotes it was copied with is compared as the pa
 
   await baseline.fill(`"${join(gui.directory, "baseline.json")}"`);
   await compare.click();
-  await expect(verdict).toBeVisible();
+  // Named as the path between the quotes, as it was asked for (16:M2).
+  await expect(verdict).toHaveText(
+    `This project can replace the baseline '${join(gui.directory, "baseline.json")}'.`,
+  );
   await expect(page.getByRole("alert")).toHaveCount(0);
 
   // A file that is not there is named once, as the reader meant it, not joined to the root.
@@ -239,7 +336,7 @@ test("while a comparison is awaited the field and the button are disabled and th
   const verdict = page.getByRole("status").filter({ hasText: "replace the baseline" });
   await baseline.fill("baseline.json");
   await compare.click();
-  await expect(verdict).toHaveText("This project can replace the baseline.");
+  await expect(verdict).toHaveText("This project can replace the baseline 'baseline.json'.");
 
   // The answer for the next baseline is held until the page has been seen waiting for it. Once
   // only: nothing else asks for a comparison here, the project not changing.
@@ -255,7 +352,7 @@ test("while a comparison is awaited the field and the button are disabled and th
   } finally {
     release();
   }
-  await expect(verdict).toHaveText("This project can replace the baseline.");
+  await expect(verdict).toHaveText("This project can replace the baseline 'other.json'.");
   await expect(baseline).toBeEnabled();
   await expect(compare).toBeEnabled();
 });
@@ -290,7 +387,7 @@ test("a baseline typed is asked for with Enter, once, and a field with nothing b
   await baseline.fill("baseline.json");
   await baseline.press("Enter");
   await expect(page.getByRole("status").filter({ hasText: "replace the baseline" })).toHaveText(
-    "This project can replace the baseline.",
+    "This project can replace the baseline 'baseline.json'.",
   );
   // The spaces' Enter went before the ask that drew the verdict, and asked nothing.
   expect(asked).toEqual(["?baseline=baseline.json"]);
@@ -333,7 +430,7 @@ test("the baseline's own findings are named as the baseline's and lead nowhere, 
   await page.getByRole("textbox", { name: "Baseline" }).fill("demo.ddd.json");
   await page.getByRole("button", { name: "Compare", exact: true }).click();
   await expect(page.getByRole("status").filter({ hasText: "replace the baseline" })).toHaveText(
-    "This project cannot replace the baseline.",
+    "This project cannot replace the baseline 'demo.ddd.json'.",
   );
   // One statement of the baseline's, filed on both of the files it concerns: the line above the
   // table counts it once, as `ddd compare` prints it, over its two rows.
@@ -390,7 +487,7 @@ test("a finding's panel is closed by its Close button, the comparison standing",
   await expect(row).toHaveAttribute("aria-selected", "false");
   // Closing a panel asks nothing again: the verdict and the table are still drawn.
   await expect(page.getByRole("status").filter({ hasText: "replace the baseline" })).toHaveText(
-    "This project cannot replace the baseline.",
+    "This project cannot replace the baseline 'baseline.json'.",
   );
   await expect(row).toBeVisible();
 
@@ -414,7 +511,7 @@ test("a finding's panel closes by itself once a comparison no longer reports the
   await page.getByRole("textbox", { name: "Baseline" }).fill("baseline.json");
   await page.getByRole("button", { name: "Compare", exact: true }).click();
   const verdict = page.getByRole("status").filter({ hasText: "replace the baseline" });
-  await expect(verdict).toHaveText("This project cannot replace the baseline.");
+  await expect(verdict).toHaveText("This project cannot replace the baseline 'baseline.json'.");
   const row = page.getByRole("row", { name: "changed-interface" });
   await row.click();
   const panel = page.getByRole("complementary", { name: "changed-interface" });
@@ -424,13 +521,13 @@ test("a finding's panel closes by itself once a comparison no longer reports the
   // comparison again, it no longer reports the finding, and the panel of a finding it does not
   // hold is gone.
   writeFileSync(join(gui.directory, SENSOR_HUB), shipped.bytes);
-  await expect(verdict).toHaveText("This project can replace the baseline.");
+  await expect(verdict).toHaveText("This project can replace the baseline 'baseline.json'.");
   await expect(panel).toHaveCount(0);
 
   // Widened again, the very same finding comes back - a finding's key is its severity, check,
   // pointer and message - and its panel does not: nobody asked for it.
   driftDatatypeIn(gui.directory, SENSOR_HUB, "ValueA", "uint16");
-  await expect(verdict).toHaveText("This project cannot replace the baseline.");
+  await expect(verdict).toHaveText("This project cannot replace the baseline 'baseline.json'.");
   await expect(row).toBeVisible();
   await expect(panel).toHaveCount(0);
 });
@@ -454,7 +551,7 @@ test("a baseline refused, and then made, is asked for again by the same press", 
   dump(gui.directory, "demo.ddd.json", "later.json");
   await compare.click();
   await expect(page.getByRole("status").filter({ hasText: "replace the baseline" })).toHaveText(
-    "This project can replace the baseline.",
+    "This project can replace the baseline 'later.json'.",
   );
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
@@ -477,11 +574,11 @@ test("a baseline written over is asked for again by the same press, and the verd
   const verdict = page.getByRole("status").filter({ hasText: "replace the baseline" });
   await page.getByRole("textbox", { name: "Baseline" }).fill("baseline.json");
   await compare.click();
-  await expect(verdict).toHaveText("This project can replace the baseline.");
+  await expect(verdict).toHaveText("This project can replace the baseline 'baseline.json'.");
 
   // The other delivery lands over the baseline's file. The open project is not touched, so no
   // revision comes to ask again: only the press can, or the verdict above stands, stale.
   dump(other, "demo.ddd.json", join(gui.directory, "baseline.json"));
   await compare.click();
-  await expect(verdict).toHaveText("This project cannot replace the baseline.");
+  await expect(verdict).toHaveText("This project cannot replace the baseline 'baseline.json'.");
 });

@@ -27,7 +27,8 @@ interface Props {
 /** The Compare tab over one scenario's fixtures, with its own baseline field and selection -
  * `CompareView`'s own props, exactly as the tab itself supplies them (`ComparePage`). `state` is
  * the Findings tab's own fixture, which is what a row naming a place in the open project is
- * routed against; `onOpen` is where the app would navigate, and a story navigates nowhere. */
+ * routed against; `onOpen` is where the app would navigate, and a story navigates nowhere. The
+ * baseline the field shows at first is the one `reply` was asked for, which its verdict names. */
 function View({
   baseline: typedAtFirst = "",
   reply = null,
@@ -47,6 +48,7 @@ function View({
       baseline={baseline}
       onBaseline={setBaseline}
       onAsk={() => undefined}
+      asked={typedAtFirst}
       reply={reply}
       refusal={refusal}
       busy={busy}

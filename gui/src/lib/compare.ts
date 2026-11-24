@@ -90,9 +90,8 @@ export interface Ask {
 }
 
 /**
- * The ask a press of Compare, or an Enter, makes after `previous`: `typed`, trimmed - a path with a
- * stray space at either end is not a path under the root the server would find - and numbered one
- * more than the ask before it, whatever either baseline is.
+ * The ask a press of Compare, or an Enter, makes after `previous`: the path `typed` names
+ * (`baselineOf`), numbered one more than the ask before it, whatever either baseline is.
  *
  * A baseline asked for again is therefore a new query, sent again, and the server reads the file as
  * it now stands: a query keyed on the path alone was served from the answer the page held, and a
@@ -101,5 +100,64 @@ export interface Ask {
  * exception: no number repeats, so nothing is answered from an older ask.
  */
 export function nextAsk(previous: Ask | null, typed: string): Ask {
-  return { baseline: typed.trim(), number: (previous?.number ?? 0) + 1 };
+  return { baseline: baselineOf(typed), number: (previous?.number ?? 0) + 1 };
+}
+
+/**
+ * The path a baseline typed names: trimmed - a path with a stray space at either end is not a path
+ * under the root the server would find - and without the pair of like quotes round it, double or
+ * single, that it may have been copied with: Windows' Copy as path writes double ones, a shell's
+ * quoting single ones. A quote alone, or two unlike, are the path's own characters. The server
+ * reads a baseline so too (`_unquoted`, src/ddd/gui/queries.py, 16:M3); this is the path asked for,
+ * which the verdict names (`verdictLine`).
+ */
+export function baselineOf(typed: string): string {
+  const trimmed = typed.trim();
+  const first = trimmed.charAt(0);
+  const quoted = trimmed.length > 1 && (first === '"' || first === "'") && trimmed.endsWith(first);
+  return quoted ? trimmed.slice(1, -1) : trimmed;
+}
+
+/** Whether `typed` asks for nothing, the field's Compare and its Enter then doing nothing: it names
+ * no path (`baselineOf`) - nothing but spaces, or quotes round nothing. */
+export function asksNothing(typed: string): boolean {
+  return baselineOf(typed) === "";
+}
+
+/** The verdict drawn of a comparison, naming the baseline it was asked for (16:M2): the field may
+ * hold another typed since and not asked, whose verdict this is not. `verdict` is the reply's,
+ * whether the open project can replace that baseline, as `ddd compare` exits on. */
+export function verdictLine(verdict: boolean, baseline: string): string {
+  return `This project ${verdict ? "can" : "cannot"} replace the baseline '${baseline}'.`;
+}
+
+/**
+ * What the Compare tab holds while another tab is shown (16:M2): what its field holds and the
+ * comparison last asked for - the verdict being that ask's answer, keyed by it - so that leaving
+ * the tab and coming back finds both as they were left. Held in the page's memory, above the tab,
+ * and never in the address, which a link or a bookmark would carry to another page; and of one
+ * project, `project`, its description's path as the state names it: another project's tab starts
+ * with nothing (`heldFor`), the verdict being about this one.
+ */
+export interface CompareHeld {
+  readonly project: string;
+  readonly typed: string;
+  readonly asked: Ask | null;
+}
+
+/** What the Compare tab of `project` holds: `held` where that is of `project`, and otherwise
+ * nothing typed and nothing asked - before the tab was first shown (`null`), or where what it held
+ * is another project's. */
+export function heldFor(held: CompareHeld | null, project: string): CompareHeld {
+  return held !== null && held.project === project ? held : { project, typed: "", asked: null };
+}
+
+/** `held` with `typed` in its field, and the ask it holds untouched: typing asks nothing. */
+export function typedIn(held: CompareHeld, typed: string): CompareHeld {
+  return { ...held, typed };
+}
+
+/** `held` asking for what its field holds (`nextAsk`): the comparison its verdict will answer. */
+export function askedIn(held: CompareHeld): CompareHeld {
+  return { ...held, asked: nextAsk(held.asked, held.typed) };
 }

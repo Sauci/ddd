@@ -235,7 +235,9 @@ export function ComponentPage({
   const selected = new Set(rows.filter((row) => row.name === variable).map((row) => row.id));
 
   return (
-    <section className={variable === undefined && !adding ? undefined : "with-panel"}>
+    <section
+      className={variable === undefined && !adding ? undefined : "with-panel from-the-masthead"}
+    >
       <div>
         <div className="heading">
           <PageHeading>{name}</PageHeading>

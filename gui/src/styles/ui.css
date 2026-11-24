@@ -160,6 +160,12 @@ a.button.link:hover {
   gap: 14px;
   align-items: start;
 }
+/* A component's page has its heading in the grid's first column and no heading above the grid: its
+   panel is let down by the heading's own top margin, so that its border does not stand on the
+   masthead's rule (16:M22). */
+.with-panel.from-the-masthead > .panel {
+  margin-top: var(--space-6);
+}
 /* One column, no wider than the window: a plain `1fr` grows to its widest content - a long table's
    inner width, which its own box scrolls - and with it the panel, past the window's edge (16:M9). */
 @media (max-width: 899.98px) {

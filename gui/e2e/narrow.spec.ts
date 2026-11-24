@@ -499,3 +499,28 @@ test("a long name keeps Close in view and the page no wider than the window (16:
   expect(button?.width ?? 0).toBeGreaterThan(30);
   expect(await sideways(page)).toBe(0);
 });
+
+test("a panel's top border stands clear of the masthead's rule, on the Graph and on a component", async ({
+  page,
+  gui,
+}) => {
+  drift(gui.directory);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(gui.address);
+  const masthead = page.locator(".masthead");
+  /** The distance from the masthead's rule down to the panel's top border, in px. */
+  const clearance = async () => {
+    const [rule, panel] = [
+      await masthead.boundingBox(),
+      await page.locator("aside.panel").boundingBox(),
+    ];
+    return (panel?.y ?? 0) - ((rule?.y ?? 0) + (rule?.height ?? 0));
+  };
+  await page.locator(".flow-label.error").click();
+  await expect(page.getByRole("complementary", { name: "ValueA" })).toBeVisible();
+  expect(await clearance()).toBeGreaterThanOrEqual(16);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("button", { name: "Set the unit of ValueA" }).click();
+  await expect(page.getByRole("complementary", { name: "ValueA" })).toBeVisible();
+  expect(await clearance()).toBeGreaterThanOrEqual(16);
+});

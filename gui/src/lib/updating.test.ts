@@ -9,13 +9,20 @@ test("a state holds an analysed revision from the first on, and none at 0", () =
 
 test("before the first analysis the page says the project is being analysed", () => {
   expect(ANALYSING).toBe("Analysing the project…");
-  expect(beforeAnalysis(null)).toBe(ANALYSING);
+  expect(beforeAnalysis(null, false)).toBe(ANALYSING);
 });
 
 test("but says nothing in a tab's place once that analysis failed: the banner says why", () => {
   // The next poll asks for another analysis, which may run as this is drawn: said to be under way,
   // a failure asked again at every poll read as an analysis that never ends.
-  expect(beforeAnalysis("boom")).toBeNull();
+  expect(beforeAnalysis("boom", false)).toBeNull();
+});
+
+test("nor once ddd gui has stopped before the first analysis landed: its banner says so", () => {
+  // Under "ddd gui has stopped", no analysis is on its way: the page promises none, as the banner
+  // of a failed one promises no other once stopped.
+  expect(beforeAnalysis(null, true)).toBeNull();
+  expect(beforeAnalysis("boom", true)).toBeNull();
 });
 
 test("the findings are updating while an analysis is asked for or running", () => {

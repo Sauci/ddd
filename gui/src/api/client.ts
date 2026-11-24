@@ -88,6 +88,25 @@ export class ServerUnreachable extends Error {
 /** What a body that does not parse reads as, told apart from a body that is json's own `null`. */
 const NOT_JSON = Symbol("not json");
 
+/** The code of a success whose body does not parse (`request`): one that is not json at all, or one
+ * cut on its way, which the browser reads as far as it came. */
+const UNPARSED = "not-json";
+
+/**
+ * Whether the page asks again, after a delay, an ask that failed so (decision 15.4): one that got
+ * no answer at all (`ServerUnreachable`); one the server failed on, a 5xx - its own failure on the
+ * request, or a connection past the most it answers at once, refused `503` with words saying to ask
+ * again in a moment (`BUSY`, gui/server.py); and one whose answer does not parse, cut on its way.
+ * Ended there, the page's long poll followed nothing more, and a page whose ask of the session
+ * failed as it loaded drew nothing, until it was reloaded. Never a refusal, a 4xx - one `request`
+ * makes itself, as the server would answer it, among them - which is the server's answer to what
+ * was asked, and is answered again; nor an abort, which the page asked for itself.
+ */
+export function askedAgain(error: unknown): error is ApiError | ServerUnreachable {
+  if (error instanceof ServerUnreachable) return true;
+  return error instanceof ApiError && (error.status >= 500 || error.code === UNPARSED);
+}
+
 /** What `request` is asked with: a `RequestInit` whose headers are a plain record, as every
  * caller here builds them, so that the token's header is added beside them. */
 export type Ask = Omit<RequestInit, "headers"> & { headers?: Record<string, string> };
@@ -185,7 +204,7 @@ export async function request<T>(
   if (body === NOT_JSON) {
     throw new ApiError(
       response.status,
-      "not-json",
+      UNPARSED,
       `ddd gui's answer to ${pathOf(path)} is not json`,
     );
   }

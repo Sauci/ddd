@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import { OwnEdits, ownEdits } from "../state/edits";
 import {
   ApiError,
+  askedAgain,
   getCellsPlan,
   getCompare,
   getConstant,
@@ -606,6 +607,64 @@ describe("requests to the server", () => {
         "ddd gui reads at most 65520",
     });
     expect(calls.urls).toEqual([]);
+  });
+});
+
+describe("askedAgain", () => {
+  /** What `request` answers `body` with, at `status`: the error it throws. */
+  async function failedWith(status: number, body: string): Promise<unknown> {
+    return request("/api/state", {}, answering(status, body)).catch((error: unknown) => error);
+  }
+
+  test("a 503 carrying the server's own busy sentence is asked again", async () => {
+    // A connection past the most ddd gui answers at once (`BUSY`, gui/server.py), whose words say
+    // to ask again in a moment.
+    const error = await failedWith(
+      503,
+      JSON.stringify({
+        error: "busy",
+        message:
+          "ddd gui is answering as many connections as it takes at once; ask again in a moment",
+      }),
+    );
+    expect(error).toMatchObject({ status: 503, code: "busy" });
+    expect(askedAgain(error)).toBe(true);
+  });
+
+  test("any 5xx is asked again, the server's own error shape or none", async () => {
+    expect(askedAgain(await failedWith(500, '{"error": "internal", "message": "failed"}'))).toBe(
+      true,
+    );
+    expect(askedAgain(await failedWith(502, "Bad Gateway"))).toBe(true);
+  });
+
+  test("an answer cut half way, whose body does not parse, is asked again", async () => {
+    const error = await failedWith(200, '{"revision": 3, "vers');
+    expect(error).toMatchObject({ status: 200, code: "not-json" });
+    expect(askedAgain(error)).toBe(true);
+  });
+
+  test("no answer at all is asked again", () => {
+    expect(askedAgain(new ServerUnreachable(new TypeError("fetch failed")))).toBe(true);
+  });
+
+  test("a refusal, a 4xx, is not: asked again, it is answered again", async () => {
+    expect(askedAgain(await failedWith(409, '{"error": "no-project", "message": "no"}'))).toBe(
+      false,
+    );
+    expect(askedAgain(await failedWith(404, '{"error": "not-found", "message": "no"}'))).toBe(
+      false,
+    );
+    // Cut or not json, a refusal is still one: its status says so.
+    expect(askedAgain(await failedWith(400, "Bad Request"))).toBe(false);
+    // Nor what `request` refuses itself, as the server would have answered it.
+    expect(askedAgain(new ApiError(414, "too-long", "too long"))).toBe(false);
+  });
+
+  test("nor an abort, which the page asked for itself, nor anything else thrown", () => {
+    expect(askedAgain(new DOMException("aborted", "AbortError"))).toBe(false);
+    expect(askedAgain(new TypeError("x is undefined"))).toBe(false);
+    expect(askedAgain("failed")).toBe(false);
   });
 });
 

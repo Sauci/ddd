@@ -13,6 +13,7 @@ import { LoadBannerView } from "../components/LoadBannerView";
 import { SignedOutView } from "../components/SignedOutView";
 import { UndrawnView } from "../components/UndrawnView";
 import { PROJECT_VIEWS, pageTitle, VIEW_NAMES, wayBack } from "../lib/announcing";
+import { askingAgain, failureSaid } from "../lib/asking";
 import type { CompareHeld } from "../lib/compare";
 import type { FindingsPlace } from "../lib/findingsWindow";
 import { headingAsked, pageOf, type Shown } from "../lib/focus";
@@ -104,7 +105,13 @@ export function App() {
     shown.current = { route, followings };
   }, [route, followings]);
   const out = useSyncExternalStore(signedOut.subscribe, signedOut.current);
-  const session = useQuery({ queryKey: ["session"], queryFn: () => getSession() });
+  // Asked again after a delay where an ask gets no answer, the server fails it or its answer is cut
+  // (decision 15.4), as the long poll is: one such ask as the page loaded drew nothing for good.
+  const session = useQuery({
+    queryKey: ["session"],
+    queryFn: () => getSession(),
+    ...askingAgain,
+  });
   const opened = session.data?.project ?? null;
   const { state, project, failed, refused, updating, stopped, failure } = useProjectState(
     opened !== null,
@@ -252,8 +259,11 @@ export function App() {
       </div>
     );
   // What the tabs' place says before the first analysis has landed: that it is on its way, or
-  // nothing once it failed, which the banner under the masthead says.
-  const waiting = beforeAnalysis(failed);
+  // nothing once it failed or ddd gui has stopped, which a banner under the masthead says.
+  const waiting = beforeAnalysis(failed, stopped);
+  // Why the long poll, or else the session asked again, fails: one banner, lifted at the next
+  // answer (`failureSaid`).
+  const missed = failureSaid(failure, session);
   // The banner is the open project's, under the masthead of each of its pages - its tabs, a
   // component's and its values - and of no other: the start page lists the projects to open.
   // Once the server has stopped, it promises nothing ddd gui would do.
@@ -461,7 +471,7 @@ export function App() {
           ddd gui has stopped. Start it again and open the address it prints.
         </Banner>
       )}
-      {failure !== null && <Banner tone="error">{failure}</Banner>}
+      {missed !== null && <Banner tone="error">{missed}</Banner>}
       {/* Every page of the open project, a component's among them, says what of it did not load,
           why its last analysis failed and which build records cannot be used (16:I9): drawn from
           the files that did load, a page alone said none of it. Outside the boundary, as the

@@ -24,6 +24,45 @@ import { expect, test } from "./fixtures";
 /** What the page says while its long poll goes unanswered: `App.tsx`'s `stopped` banner. */
 const STOPPED = "ddd gui has stopped. Start it again and open the address it prints.";
 
+/** What ddd gui answers a connection past the most it answers at once, with a `503` (`BUSY`,
+ * gui/server.py). */
+const BUSY = "ddd gui is answering as many connections as it takes at once; ask again in a moment";
+
+/** Two answers of the long poll that carry no state, as the page meets them: the server's own
+ * `503` to a connection past its cap, its error body and `Retry-After` as the server writes them,
+ * and a body cut half way, which does not parse. */
+const FAILED_ANSWERS = {
+  "the server's own 503 to a connection past its cap": {
+    status: 503,
+    contentType: "application/json",
+    headers: { "Retry-After": "1" },
+    body: JSON.stringify({ error: "busy", message: BUSY }),
+  },
+  "a body cut half way": {
+    status: 200,
+    contentType: "application/json",
+    body: '{"revision": 1, "vers',
+  },
+} as const;
+
+/** Answers the page's next ask of the long poll with `answer`, and lets every later one through
+ * to the server. Answers how many it has answered so, one at most. */
+async function answeredOnce(
+  page: Page,
+  answer: (typeof FAILED_ANSWERS)[keyof typeof FAILED_ANSWERS],
+): Promise<() => number> {
+  let answered = 0;
+  await page.route(
+    (url) => url.pathname === "/api/state",
+    async (route) => {
+      answered += 1;
+      await route.fulfill(answer);
+    },
+    { times: 1 },
+  );
+  return () => answered;
+}
+
 /** What a component's page says in its own place once its findings come in a reply it cannot draw
  * (`routesLeftOut`): `undrawnSentence`'s line (lib/undrawn.ts), ending in the words of what was
  * thrown - V8's, for `kind` read off a route the reply left out, which every leg's browser says
@@ -358,7 +397,30 @@ test("a page whose token the server no longer holds says how to sign in again", 
   await expect(page.getByRole("button", { name: "Controller", exact: true })).toHaveCount(0);
 });
 
-test("an http failure of the long poll raises its own banner, and leaves the page drawn", async ({
+for (const [what, answer] of Object.entries(FAILED_ANSWERS)) {
+  test(`an ask of the long poll answered with ${what} is asked again, and the page follows the project on`, async ({
+    page,
+    gui,
+  }) => {
+    await page.goto(gui.address);
+    await expect(page.getByRole("region", { name: "Modules" })).toBeVisible();
+    const drifted = page.getByLabel("SensorHub to Controller: 2 variables, error");
+    await expect(drifted).toHaveCount(0);
+    const answered = await answeredOnce(page, answer);
+    // The ask in flight as the route is made is past it: a stamp moved, no byte changed, answers
+    // it at once (ruling P19b-9), so that the page's next ask is the one answered so.
+    restamp(gui.directory, CONTROLLER);
+    await expect.poll(answered).toBe(1);
+    // Asked again, the page goes on following the project: a change saved from outside reaches
+    // the canvas. Once the follow ended there, nothing asked the server again but a reload.
+    drift(gui.directory);
+    await expect(drifted).toBeVisible();
+    // One answer asked again at once, and answered, is said nowhere: neither banner shows.
+    await expect(page.getByRole("alert")).toHaveCount(0);
+  });
+}
+
+test("an http failure of the long poll raises its own banner, asks again, and the banner lifts at the next answer", async ({
   page,
   gui,
 }) => {
@@ -372,12 +434,39 @@ test("an http failure of the long poll raises its own banner, and leaves the pag
   // once with a new version (`stamped`/`poll`, session.py, compare `(st_mtime_ns, st_size)`
   // alone, so no byte need change): the ask the page sends *after* that is the one this fails.
   restamp(gui.directory, CONTROLLER);
-  await expect(page.getByRole("alert")).toHaveText(SERVER_FAILED);
+  // Said once a second ask in a row has failed too (`followStates`, state/revisions.ts).
+  const banner = page.getByRole("alert");
+  await expect(banner).toHaveText(SERVER_FAILED);
   // The page stays drawn: the canvas is still the one up, not replaced by anything else.
   await expect(canvas).toBeVisible();
   // An HTTP answer is no stopped server: that banner is a different one, and does not show.
   await expect(page.getByText("ddd gui has stopped", { exact: false })).toHaveCount(0);
-  expect(failed()).toBeGreaterThan(0);
+  // And the page asks again, at the follow's own pace, while the server fails it.
+  await expect.poll(failed).toBeGreaterThanOrEqual(3);
+
+  // The server answering again: the next ask is answered at once, the stamp's own analysis having
+  // published a version newer than the one the page holds, and the banner lifts.
+  await page.unrouteAll({ behavior: "wait" });
+  await expect(banner).toHaveCount(0);
+  // And the page follows the project again: a change saved from outside reaches the canvas.
+  drift(gui.directory);
+  await expect(page.getByLabel("SensorHub to Controller: 2 variables, error")).toBeVisible();
+});
+
+test("a project whose first analysis has not landed promises none once ddd gui has stopped", async ({
+  page,
+  gui,
+}) => {
+  // Every ask of the long poll dropped on the network from the first, as a stopped server drops
+  // it: the page never reads a state, and the project's first analysis never lands for it.
+  await failing(page, "/api/state", "network");
+  await page.goto(gui.address);
+  await expect(page.getByRole("alert").filter({ hasText: "has stopped" })).toHaveText(STOPPED);
+  await expect(page.getByRole("heading", { name: "DemoDevice", level: 1 })).toBeVisible();
+  // Under "ddd gui has stopped", no analysis is on its way: nothing stands in a tab's place, as
+  // nothing does once a first analysis failed.
+  await expect(page.getByText("Analysing the project…", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Modules" })).toHaveCount(0);
 });
 
 test("a project is listed with the images its build records name", async ({ page, copiedGui }) => {
@@ -510,19 +599,32 @@ test("the page says it is connecting until the session answers", async ({ page, 
   await expect(page.getByText("Connecting…", { exact: true })).toHaveCount(0);
 });
 
-test("the session failing shows the server's own error, and no page", async ({ page, gui }) => {
+test("the session failing is asked again, the server's own error said meanwhile over no page, until it answers", async ({
+  page,
+  gui,
+}) => {
   await page.goto(gui.address);
   const controller = page.getByRole("button", { name: "Controller", exact: true });
   await expect(controller).toBeVisible();
-  // Registered after the sign-in, whose own ask of the session would be failed as well. An HTTP
-  // answer is not asked for again (`sentAgain`, client.ts, and `retry: false`, main.tsx), so the
-  // page's one ask is the one failure.
+  // Registered after the sign-in, whose own ask of the session would be failed as well. Every ask
+  // of the session answered as the server answers a request it failed on, a `500`.
   const failed = await failing(page, "/api/session", "http");
   await page.reload();
-  await expect(page.getByRole("alert")).toHaveText(SERVER_FAILED);
+  // Said once a second ask in a row has failed too, as the long poll says it
+  // (`failureSaid`, lib/asking.ts), and the page is still connecting under it.
+  const banner = page.getByRole("alert");
+  await expect(banner).toHaveText(SERVER_FAILED);
+  await expect(page.getByText("Connecting…", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Open a project" })).toHaveCount(0);
   await expect(controller).toHaveCount(0);
-  expect(failed()).toBe(1);
+  // Asked again at the follow's pace: once, a moment after the first, then every two seconds.
+  await expect.poll(failed).toBeGreaterThanOrEqual(3);
+
+  // The server answering again: the next ask lifts the banner, and the page is drawn.
+  await page.unrouteAll({ behavior: "wait" });
+  await expect(controller).toBeVisible();
+  await expect(banner).toHaveCount(0);
+  await expect(page.getByText("Connecting…", { exact: true })).toHaveCount(0);
 });
 
 test("a project opened is analysed before its tabs show anything, and the page says so", async ({

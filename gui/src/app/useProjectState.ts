@@ -20,7 +20,9 @@ const NONE: readonly RefusedBuild[] = [];
  * records this DDD cannot use - so that the banner under the masthead says a first analysis that
  * failed, which no analysed state carries (`loadBanner`, lib/unloaded.ts). `updating` says the
  * findings on screen may be about to change, from the last state followed and the page's own last
- * edit.
+ * edit. `stopped` is whether ddd gui has stopped answering, and `failure` why it fails the follow
+ * while it is asked again - each lifted at its next answer (`followStates`) - or the refusal that
+ * ended the follow, which nothing lifts.
  */
 export function useProjectState(open: boolean): {
   state: State | null;
@@ -42,6 +44,7 @@ export function useProjectState(open: boolean): {
       getState: (after, signal) => getState(after, signal),
       onState: setLatest,
       onStopped: setStopped,
+      onFailed: setFailure,
       signal: controller.signal,
     }).catch((error: unknown) =>
       setFailure(error instanceof Error ? error.message : String(error)),

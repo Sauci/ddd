@@ -829,8 +829,9 @@ The commands
        open at a time, and every page names the new one from then on, by its description's
        file until the server has said its name; until the first analysis lands, ``Analysing
        the project…`` stands where the tab's own content goes, and nothing does once one has
-       failed, which the banner under the masthead says, and every answer needing a revision
-       is refused, in the same words - ``the open project has not been analysed yet``. An
+       failed or ``ddd gui`` has stopped, which a banner under the masthead says, and every
+       answer needing a revision is refused, in the same words - ``the open project has not
+       been analysed yet``. An
        analysis
        that raises - a plugin failing while the project is read, say - is printed in the
        terminal ``ddd gui`` runs in, ``ddd gui: analysing the project failed:`` and its reason,

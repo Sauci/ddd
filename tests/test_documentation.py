@@ -11615,14 +11615,17 @@ class TestEveryPageSaysWhatItCannotShow:
         assert "that the next change of a file it reads asks for another" not in said
 
     def test_the_command_page_says_nothing_stands_in_a_tab_s_place_once_it_failed(self) -> None:
+        """15:M1: nor once ``ddd gui`` has stopped before the first analysis landed, which its own
+        banner says: no analysis is on its way then."""
         said = flattened(COMMAND_LINE_INTERFACE)
         assert (
             "until the first analysis lands, ``Analysing the project…`` stands where the tab's own "
-            "content goes, and nothing does once one has failed, which the banner under the "
-            "masthead says, and every answer needing a revision is refused, in the same words - "
-            "``the open project has not been analysed yet``."
+            "content goes, and nothing does once one has failed or ``ddd gui`` has stopped, which "
+            "a banner under the masthead says, and every answer needing a revision is refused, in "
+            "the same words - ``the open project has not been analysed yet``."
         ) in said
         assert "stands where the tab's own content goes, until the first analysis lands" not in said
+        assert "nothing does once one has failed, which the banner under the masthead" not in said
 
 
 class TestLimitsAreOneValueExactly:

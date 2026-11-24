@@ -5,6 +5,7 @@ import {
   CONTROLLER,
   chooseUnit,
   failing,
+  held,
   openPanel,
   openValues,
   restamp,
@@ -143,6 +144,48 @@ test("a component's file failing on a new revision keeps the parse error it last
   const failed = await failing(page, "/api/file", "http");
   restamp(gui.directory, CONTROLLER);
   await expect(page.getByRole("alert")).toHaveText([SERVER_FAILED, parsed]);
+  expect(failed()).toBeGreaterThanOrEqual(1);
+});
+
+test("the values refused on one revision show nothing from before the refusal on the next, while it is read nor once it fails", async ({
+  page,
+  gui,
+}) => {
+  await openValues(page, gui.address, "CurveA");
+  const grid = page.getByRole("grid", { name: "Values of CurveA" });
+  await expect(grid).toBeVisible();
+
+  // CurveA renamed from outside, as an editor saving its file would: the next revision's read of
+  // its values is refused, and the page says so in the grid's place.
+  const path = join(gui.directory, CONTROLLER);
+  writeFileSync(path, readFileSync(path, "utf8").replaceAll('"CurveA"', '"CurveZ"'));
+  const refusal = page.getByRole("alert");
+  await expect(refusal).toContainText("CurveA");
+  await expect(grid).toHaveCount(0);
+
+  // The next revision's read held: while it is asked, nothing from before the refusal is drawn,
+  // the placeholder React Query would carry among it - its last answer, the grid before the
+  // rename.
+  const release = await held(page, "/api/values");
+  try {
+    const asked = page.waitForRequest(
+      (request) => new URL(request.url()).pathname === "/api/values",
+    );
+    restamp(gui.directory, CONTROLLER);
+    await asked;
+    await expect(page.getByText("Reading the values…")).toBeVisible();
+    await expect(grid).toHaveCount(0);
+  } finally {
+    release();
+  }
+  await expect(refusal).toContainText("CurveA");
+
+  // And the read after that failing outright: the failure alone, never the grid kept from before
+  // the refusal under it (P19c-15).
+  const failed = await failing(page, "/api/values", "http");
+  restamp(gui.directory, CONTROLLER);
+  await expect(refusal).toHaveText(SERVER_FAILED);
+  await expect(grid).toHaveCount(0);
   expect(failed()).toBeGreaterThanOrEqual(1);
 });
 

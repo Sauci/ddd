@@ -11563,6 +11563,28 @@ class TestEveryPageNamesTheProjectOpen:
         assert "kept in the heading from then on" not in said
 
 
+class TestTwoFilesOfOneNameAreToldApartOnThePage:
+    """16:M15. Two components of one name in two folders were two rows of one name in the Findings
+    tab's File column, one name in a plan's consequence and in the lines a change prints, and the
+    filter and the banner's links led to the findings of both. The command page says that each is
+    named by as much of its path as tells it apart, and that the filter matches the name drawn."""
+
+    def test_the_command_page_says_where_they_are_told_apart_and_that_the_filter_matches(
+        self,
+    ) -> None:
+        said = flattened(COMMAND_LINE_INTERFACE)
+        assert (
+            "a finding, asked of the server, by its check, its words or its file's name as the "
+            "File column draws it - by its own name, and by as much of its path as tells it apart "
+            "from another file of that name - and says how many rows it leaves of how many."
+        ) in said
+        assert (
+            "The Findings tab's File column, a plan's consequence and the lines a change prints "
+            "name two files of one name in different folders by as much of their paths as tells "
+            "them apart."
+        ) in said
+
+
 class TestEveryPageSaysWhatItCannotShow:
     """16:I9. While a file did not load, every page was drawn from the files that did, and only the
     Findings tab said so: the Graph read "no dictionary" over modules with no arrow, naming neither
@@ -11579,8 +11601,9 @@ class TestEveryPageSaysWhatItCannotShow:
             "Every page of the open project, a component's among them, says under its masthead "
             "why the last analysis failed, and, while ``ddd gui`` runs, that it tries again about "
             "every second until one succeeds; the files that did not load, each named as a "
-            "refusal names it and leading to the Findings tab filtered by its name, where the "
-            "finding saying why is listed - past four, three of them and a count of the rest, "
+            "refusal names it and leading to the Findings tab filtered by the name its File column "
+            "draws it by, where the finding saying why is listed - past four, three of them and a "
+            "count of the rest, "
             "which leads to the Files tab; and each build record this DDD cannot use, by its path "
             "from the project's directory, with its reason. While a file did not load, the "
             "Graph's line on a project with no dictionary names it as the cause."

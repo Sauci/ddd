@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   CONTROLLER,
@@ -544,4 +544,36 @@ test("a fix the server fails on shows its refusal in the panel in place of the f
   await fixing.getByRole("button", { name: "Apply to 1 file" }).click();
   await expect(page.getByText("Nothing to report")).toBeVisible();
   expect(valueH(gui.directory).id).toMatch(/^[abcdefghjkmnpqrstvwxyz0-9]{12}$/);
+});
+
+test("two files of one name are told apart by their paths, and the filter finds each by what its row says", async ({
+  page,
+  copiedGui,
+}) => {
+  // Two components of one name in two folders, each saved half way: each files an error, and the
+  // banner under the masthead names the pair. The File column draws each by its path from the
+  // first folder that differs, and the banner leads each of them to its own findings (16:M15).
+  const gui = await copiedGui("demo", (directory) => {
+    const description = join(directory, "demo.ddd.json");
+    const data = JSON.parse(readFileSync(description, "utf8"));
+    data.project.includes.push("left/gauge.ddd.json", "right/gauge.ddd.json");
+    writeFileSync(description, `${JSON.stringify(data, null, 2)}\n`);
+    for (const folder of ["left", "right"]) {
+      mkdirSync(join(directory, folder));
+      writeFileSync(join(directory, folder, "gauge.ddd.json"), '{"component": {"name": "Gauge"');
+    }
+  });
+  await page.goto(gui.address);
+  const banner = page.getByRole("status").filter({ hasText: "did not load" });
+  await banner.getByRole("link", { name: "left/gauge.ddd.json" }).click();
+  await expect(page.getByRole("textbox", { name: "Filter findings" })).toHaveValue(
+    "left/gauge.ddd.json",
+  );
+  const rows = page.getByRole("grid", { name: "Findings" }).getByRole("row");
+  await expect(rows.filter({ hasText: "left/gauge.ddd.json" })).not.toHaveCount(0);
+  await expect(rows.filter({ hasText: "right/gauge.ddd.json" })).toHaveCount(0);
+
+  await page.getByRole("textbox", { name: "Filter findings" }).fill("right/gauge.ddd.json");
+  await expect(rows.filter({ hasText: "right/gauge.ddd.json" })).not.toHaveCount(0);
+  await expect(rows.filter({ hasText: "left/gauge.ddd.json" })).toHaveCount(0);
 });

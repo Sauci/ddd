@@ -848,7 +848,11 @@ The commands
        places and the Findings tab each take a filter, which leaves the rows holding the text
        typed, whatever its case - a component by its name or its file, a declaration by its
        name, a place by its name or its file's, and a finding, asked of the server, by its
-       check, its words or its file's name - and says how many rows it leaves of how many. The
+       check, its words or its file's name as the File column draws it - by its own name, and
+       by as much of its path as tells it apart from another file of that name - and says how
+       many rows it leaves of how many. The Findings tab's File column, a plan's consequence
+       and the lines a change prints name two files of one name in different folders by as
+       much of their paths as tells them apart. The
        masthead goes to a variable by a part of its name, listing at most fifty of the names
        holding it, and opens its panel on the page of the component producing it, or of the
        first declaring it where none does.
@@ -862,8 +866,8 @@ The commands
        Every page of the open project, a component's among them, says under its masthead why
        the last analysis failed, and, while ``ddd gui`` runs, that it tries again about every
        second until one succeeds; the files that did not load, each named as a refusal names it
-       and leading to the Findings tab filtered by its name, where the finding saying why is
-       listed - past four, three of them and a count of the rest, which leads to the Files tab;
+       and leading to the Findings tab filtered by the name its File column draws it by, where
+       the finding saying why is listed - past four, three of them and a count of the rest, which leads to the Files tab;
        and each build record this DDD cannot use, by its path from the project's directory, with
        its reason.
        While a file did not load, the Graph's line on a project with no dictionary names it as

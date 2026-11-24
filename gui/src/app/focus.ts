@@ -186,10 +186,11 @@ function letGo(): void {
 
 /** Asks what `headingAsked` answers as the page's route moves on (16:I13, 16:M9): the focus on the
  * page's heading at once where the new page draws it, else as it is drawn (`takePageHeading`) - a
- * component's page, its file read - unless the reader presses a key or the pointer meanwhile; on
- * the heading of the panel the address opens (`panel`, `selectsPanel`) as the panel is drawn
- * (`panelDrawn`), at once where it is drawn already; and that panel, where it is to be `shown`,
- * scrolled into view once its page has settled - on a page loaded anew, with no focus moved. */
+ * component's page, its file read - unless the reader presses a key or the pointer, turns the wheel
+ * or touches the page meanwhile; on the heading of the panel the address opens (`panel`,
+ * `selectsPanel`) as the panel is drawn (`panelDrawn`), at once where it is drawn already; and that
+ * panel, where it is to be `shown`, scrolled into view once its page has settled - on a page loaded
+ * anew, with no focus moved. */
 export function askHeading(asked: Asked): void {
   headingWanted = asked.heading === null ? null : { heading: asked.heading, holding: null };
   showWanted = asked.shown ? { since: null } : null;
@@ -200,8 +201,8 @@ export function askHeading(asked: Asked): void {
  * waits `WAITS_AT_MOST_MS` from now at most (ruling B11-47). Before the landing, no page draws what
  * it shows - only the project's heading, with its tabs on a tab of the project, and a line saying
  * the analysis is on its way - so the time the analysis took is left out of it. What a page reads
- * of its own once the analysis has landed is counted in: a tab's own answer, the Graph's layout, a
- * component's file, while which that page draws its line saying so alone. */
+ * of its own once the analysis has landed is counted in - a tab's own answer, the Graph's layout, a
+ * component's file - the page drawing meanwhile a line saying so, in place of what it shows. */
 export function analysisLanded(): void {
   if (showWanted !== null) showWanted.since ??= performance.now();
 }

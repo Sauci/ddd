@@ -224,9 +224,11 @@ describe("plotted", () => {
     const plot = plotted(tenths, true);
     expect(plot.high).toBe(1.235);
     expect(plot.low).toBe(0.465);
-    // The figures beside the frame are the cells' own, with the same tail taken off: 12 counts of
-    // a tenth is 1.2000000000000002 as a float.
+    // The figures beside the frame are the cells' own, with the same tail taken off at either end:
+    // 12 counts of a tenth is 1.2000000000000002 as a float, and 3 of them 0.30000000000000004.
     expect(plot.readings.map((reading) => reading.text)).toEqual(["1.2", "0.5"]);
+    const tails: ValuesReply = { ...tenths, rows: [[3, 5, 6, 8, 9, 12]] };
+    expect(plotted(tails, true).readings.map((reading) => reading.text)).toEqual(["1.2", "0.3"]);
   });
 
   test("a flat line at zero is ruled by its own lower limit", () => {

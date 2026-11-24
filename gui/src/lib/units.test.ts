@@ -14,6 +14,7 @@ import {
   pickerSections,
   planning,
   rawOf,
+  sentenceKeys,
   shownChanges,
   textOf,
   unitLabel,
@@ -359,6 +360,16 @@ group("what a preview says and sends", () => {
       "the declaration of 'ValueA' in sensor_hub.ddd.json would not load with that datatype: enum conversion 'Mode_t' requires an integer datatype, got 'uint16'",
     ];
     expect(unloadableOf({ ...ONE_FILE, unloadable: said }, null)).toEqual(said);
+  });
+
+  test("each sentence of a plan has a key of its own, two alike told apart by which they are", () => {
+    // Two files of one name would not load for one reason: the same words twice, and a panel
+    // keying each sentence by its words alone drew one of them twice under one key.
+    const same = "the declaration of 'ValueA' in b.ddd.json would not load with that dimensions";
+    const keyed = sentenceKeys([same, "another", same]);
+    expect(keyed.map((each) => each.text)).toEqual([same, "another", same]);
+    expect(new Set(keyed.map((each) => each.key)).size).toBe(3);
+    expect(sentenceKeys([])).toEqual([]);
   });
 
   test("a plan every file of which still loads says nothing of it, and neither does no plan", () => {

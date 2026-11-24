@@ -7,6 +7,7 @@ import {
   declaredUnits,
   PLANNING,
   planning,
+  sentenceKeys,
   shownChanges,
   unloadableOf,
 } from "../lib/units";
@@ -161,9 +162,9 @@ export function VariablePanelView(props: VariablePanelViewProps) {
         {/* What the server says of the files this plan would leave unable to load, in its words:
             drawn with the plan, above Apply, which stays - the value is the reader's to write.
             `unloadableOf` says which sentences: none where a refusal stands in the plan's place. */}
-        {unloadableOf(preview, refusal).map((sentence) => (
-          <p key={sentence} className="panel-unloadable" role="status">
-            {sentence}
+        {sentenceKeys(unloadableOf(preview, refusal)).map(({ key, text }) => (
+          <p key={key} className="panel-unloadable" role="status">
+            {text}
           </p>
         ))}
         {refusal === null && changes.length > 0 && (

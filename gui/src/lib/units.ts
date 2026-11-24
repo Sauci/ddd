@@ -238,6 +238,21 @@ export function unloadableOf(
   return preview === null || refusal !== null ? [] : preview.unloadable;
 }
 
+/** `sentences` each with a key of its own: the words, and for a sentence the list holds again, how
+ * many of its words came before it. The server's sentences name the file by its name, so two files
+ * of one name say the same words; a list keyed by its words alone drew one of the two under a key
+ * the other had. */
+export function sentenceKeys(
+  sentences: readonly string[],
+): readonly { key: string; text: string }[] {
+  const seen = new Map<string, number>();
+  return sentences.map((text) => {
+    const before = seen.get(text) ?? 0;
+    seen.set(text, before + 1);
+    return { key: `${before} ${text}`, text };
+  });
+}
+
 /** One file's lines as `Changes` prints them: what it changes, and the word standing where its
  * line number would when it has none of its own - a file that is about to appear or go. */
 export interface ShownChange {

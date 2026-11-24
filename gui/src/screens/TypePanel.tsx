@@ -313,10 +313,6 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
         // The panel shows one preview at a time: selecting a row dirties this path, so whichever
         // of the other two was previewed stops being - a deselection (key undefined) is the
         // opposite, ending this path, and must touch neither.
-        if (key !== undefined) {
-          setRenameTo(null);
-          setDescription(undefined);
-        }
       }}
       typed={typed ?? shownLabel}
       unsettled={unsettledText}

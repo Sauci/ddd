@@ -283,6 +283,28 @@ test("a type's range that is no range says so under the chooser, and offers no A
   await expect(panel.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
 });
 
+for (const typed of ["Description", "Rename Temperature_t to"]) {
+  test(`a type's ${typed === "Description" ? "description" : "new name"} typed stays in its field when a key row is chosen`, async ({
+    page,
+    structuresGui,
+  }) => {
+    // 16:M4: the words were dropped without a sound, nothing written, so no undo could bring them
+    // back.
+    const before = entryOf(structuresGui.directory, "Temperature_t");
+    const words = "Warmth_t";
+    await page.goto(structuresGui.address);
+    await page.getByRole("link", { name: "Types" }).click();
+    await page.getByRole("row", { name: "Temperature_t", exact: true }).click();
+    const panel = page.getByRole("complementary", { name: "Temperature_t" });
+    const field = panel.getByRole("textbox", { name: typed, exact: true });
+    await field.fill(words);
+    await panel.getByRole("row", { name: "Unit", exact: true }).click();
+    await expect(panel.getByRole("combobox", { name: "Unit of Temperature_t" })).toBeVisible();
+    await expect(field).toHaveValue(words);
+    expect(entryOf(structuresGui.directory, "Temperature_t")).toEqual(before);
+  });
+}
+
 /** Temperature_t made a uint64 read as it is stored, its limits up to the most a uint64 holds,
  * written as text: as a number here the maximum would already be the double nearest it. */
 function wideTemperature(directory: string): void {

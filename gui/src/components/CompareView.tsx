@@ -75,8 +75,11 @@ export function CompareView(props: CompareViewProps) {
       <div className="compare-field">
         <label className="panel-field">
           Baseline
+          {/* A field that asks: disabled while its answer comes, it is given the focus back once the
+              answer has come, where the reader asked from (`landing`, ruling B11-40). */}
           <input
             type="text"
+            data-asks
             value={props.baseline}
             disabled={busy}
             onChange={(event) => props.onBaseline(event.target.value)}

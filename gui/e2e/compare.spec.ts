@@ -393,6 +393,56 @@ test("a baseline typed is asked for with Enter, once, and a field with nothing b
   expect(asked).toEqual(["?baseline=baseline.json"]);
 });
 
+test("an Enter in the Baseline field gives the field the focus back once its comparison has answered", async ({
+  page,
+  gui,
+}) => {
+  dump(gui.directory, "demo.ddd.json", "baseline.json");
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Compare" }).click();
+  const baseline = page.getByRole("textbox", { name: "Baseline" });
+  const verdict = page.getByRole("status").filter({ hasText: "replace the baseline" });
+  const release = await held(page, "/api/compare");
+  try {
+    await baseline.fill("baseline.json");
+    await baseline.press("Enter");
+    // While it is asked the field is disabled, and the page's heading holds the focus it lost.
+    await expect(baseline).toBeDisabled();
+    await expect(page.getByRole("heading", { level: 1 })).toBeFocused();
+  } finally {
+    release();
+  }
+  // Answered: the field takes the focus back, where the reader asked from (16:I13).
+  await expect(verdict).toHaveText("This project can replace the baseline 'baseline.json'.");
+  await expect(baseline).toBeFocused();
+});
+
+test("a key pressed while a comparison an Enter asked is answered leaves the focus where it is", async ({
+  page,
+  gui,
+}) => {
+  dump(gui.directory, "demo.ddd.json", "baseline.json");
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Compare" }).click();
+  const baseline = page.getByRole("textbox", { name: "Baseline" });
+  const heading = page.getByRole("heading", { level: 1 });
+  const release = await held(page, "/api/compare");
+  try {
+    await baseline.fill("baseline.json");
+    await baseline.press("Enter");
+    await expect(heading).toBeFocused();
+    // The reader takes the page: a key, here one that moves nothing.
+    await page.keyboard.press("Shift");
+  } finally {
+    release();
+  }
+  await expect(page.getByRole("status").filter({ hasText: "replace the baseline" })).toHaveText(
+    "This project can replace the baseline 'baseline.json'.",
+  );
+  await expect(baseline).toBeEnabled();
+  await expect(heading).toBeFocused();
+});
+
 test("a finding about the whole delivery says why it leads nowhere", async ({
   page,
   copiedGui,

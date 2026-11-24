@@ -74,6 +74,12 @@ let showing: { slot: HTMLElement; left: number } | null = null;
 /** What stops the watch on the panel a change of page opened (`showWhenSettled`), while it runs. */
 let settling: (() => void) | null = null;
 
+/** The field that asked (`landing`'s `held`), while the page has it disabled, and what stops the
+ * watch for it to be enabled again (`giveBackWhenEnabled`, ruling B11-40): `null` once it has the
+ * focus back, once the reader has taken the page meanwhile (`letGo`), or once the page has changed
+ * (`askHeading`). */
+let asking: { field: Control; stop: () => void } | null = null;
+
 /** Whether the key last pressed is Tab, until the focus moves or the key's own task is over
  * (`watchFocus`). */
 let tabbing = false;
@@ -95,6 +101,8 @@ let tabbed = false;
  * - gives a place to the focus the page takes away with a control, never leaving it to the page's
  *   body (`landing`): the browser moves it there, its `focusout` naming nothing it moves to, as a
  *   control is removed, disabled - Apply, Put back, while their edit is written - or no longer drawn;
+ *   and gives it back to a field that asked, disabled while its answer comes, once the page enables
+ *   it again, unless the reader has taken the page meanwhile (`giveBackWhenEnabled`, ruling B11-40);
  * - notes whether each move of the focus came by Tab (`focusCameByTab`), which a grid's field asks
  *   as it takes the focus (16:C1).
  *
@@ -177,11 +185,13 @@ export function focusCameByTab(): boolean {
 
 /** Lets go of all that a change of page or a page loaded anew waits for: the heading to give the
  * focus to, the panel to show, and what the watch on a panel shown would still move
- * (`showWhenSettled`). */
+ * (`showWhenSettled`); and of the field that asked, waiting to be given the focus back
+ * (`giveBackWhenEnabled`). */
 function letGo(): void {
   headingWanted = null;
   showWanted = null;
   settling?.();
+  asking?.stop();
 }
 
 /** Asks what `headingAsked` answers as the page's route moves on (16:I13, 16:M9): the focus on the
@@ -190,8 +200,10 @@ function letGo(): void {
  * or touches the page meanwhile; on the heading of the panel the address opens (`panel`,
  * `selectsPanel`) as the panel is drawn (`panelDrawn`), at once where it is drawn already; and that
  * panel, where it is to be `shown`, scrolled into view once its page has settled - on a page loaded
- * anew, with no focus moved. */
+ * anew, with no focus moved. A field that asked on the page before is no longer waited on: it went
+ * with its page. */
 export function askHeading(asked: Asked): void {
+  asking?.stop();
   headingWanted = asked.heading === null ? null : { heading: asked.heading, holding: null };
   showWanted = asked.shown ? { since: null } : null;
   giveHeading(pageHeading(), panelHeading());
@@ -426,6 +438,24 @@ function panelAfter(panel: HTMLElement | null, replaced: HTMLElement | null): Fa
   return replaced === null ? "closed" : "replaced";
 }
 
+/** Gives `field`, a field that asked and stands disabled while its answer comes, the focus back once
+ * the page enables it again (`landing`'s `held`, ruling B11-40), the page's heading holding the focus
+ * meanwhile: watched by its `disabled` attribute, which the page takes off as the answer comes. */
+function giveBackWhenEnabled(field: Control): void {
+  asking?.stop();
+  const watch = new MutationObserver(() => {
+    if (field.matches(":disabled")) return;
+    stop();
+    if (field.isConnected) field.focus();
+  });
+  const stop = () => {
+    watch.disconnect();
+    if (asking?.field === field) asking = null;
+  };
+  asking = { field, stop };
+  watch.observe(field, { attributes: true, attributeFilter: ["disabled"] });
+}
+
 /** Whether the page took `control` away: removed it, disabled it, or stopped drawing it. */
 function takenAway(control: Control): boolean {
   return (
@@ -452,6 +482,8 @@ function landFrom(
     taken: takenAway(from),
     table: grid?.isConnected ?? false,
     panel: panelAfter(panel, replaced),
+    // A field marked as one that asks (`data-asks`), disabled while its answer comes.
+    asks: from.isConnected && from.matches("[data-asks]:disabled"),
   });
   if (place === "table") grid?.focus();
   else if (place === "panel") {
@@ -462,4 +494,8 @@ function landFrom(
     heading?.focus({ preventScroll: standing !== panel });
   } else if (place === "return" && panel !== null) returnTo(slot, panel, opener);
   else if (place === "page") askPageHeading();
+  else if (place === "held") {
+    askPageHeading();
+    giveBackWhenEnabled(from);
+  }
 }

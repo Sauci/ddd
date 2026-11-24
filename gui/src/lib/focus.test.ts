@@ -250,26 +250,36 @@ describe("whether a panel opened stands out of view", () => {
 
 describe("where the focus goes that a control took with it", () => {
   test("nowhere where the reader moved it on", () => {
-    expect(landing({ taken: false, table: true, panel: "drawn" })).toBe("none");
-    expect(landing({ taken: false, table: false, panel: "none" })).toBe("none");
+    expect(landing({ taken: false, table: true, panel: "drawn", asks: false })).toBe("none");
+    expect(landing({ taken: false, table: false, panel: "none", asks: false })).toBe("none");
   });
 
   test("to the table it stood in, still drawn", () => {
-    expect(landing({ taken: true, table: true, panel: "none" })).toBe("table");
-    expect(landing({ taken: true, table: true, panel: "drawn" })).toBe("table");
+    expect(landing({ taken: true, table: true, panel: "none", asks: false })).toBe("table");
+    expect(landing({ taken: true, table: true, panel: "drawn", asks: false })).toBe("table");
   });
 
   test("to its panel's heading, the panel still drawn or drawn anew", () => {
-    expect(landing({ taken: true, table: false, panel: "drawn" })).toBe("panel");
-    expect(landing({ taken: true, table: false, panel: "replaced" })).toBe("panel");
+    expect(landing({ taken: true, table: false, panel: "drawn", asks: false })).toBe("panel");
+    expect(landing({ taken: true, table: false, panel: "replaced", asks: false })).toBe("panel");
   });
 
   test("back to where its panel was opened from, the panel closed", () => {
-    expect(landing({ taken: true, table: false, panel: "closed" })).toBe("return");
+    expect(landing({ taken: true, table: false, panel: "closed", asks: false })).toBe("return");
   });
 
   test("to the page's heading, in no table and no panel", () => {
-    expect(landing({ taken: true, table: false, panel: "none" })).toBe("page");
+    expect(landing({ taken: true, table: false, panel: "none", asks: false })).toBe("page");
+  });
+
+  test("to the page's heading until it is enabled again, a field that asked and stands disabled", () => {
+    // Compare's Baseline, its Enter asking and the page disabling the field until the answer comes:
+    // given the focus back then (ruling B11-40).
+    expect(landing({ taken: true, table: false, panel: "none", asks: true })).toBe("held");
+  });
+
+  test("nowhere where the reader moved it on, a field that asked as any other control", () => {
+    expect(landing({ taken: false, table: false, panel: "none", asks: true })).toBe("none");
   });
 });
 

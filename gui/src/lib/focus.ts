@@ -181,24 +181,30 @@ export interface Fallen {
    * drawn anew, a variable's going from its keys to "Updating the findings…" and back - or none left
    * there, the panel closed. */
   panel: "none" | "drawn" | "replaced" | "closed";
+  /** It is a field that asked, still drawn, which the page disables until the answer comes:
+   * Compare's Baseline, its Enter sending what it holds (ruling B11-40). */
+  asks: boolean;
 }
 
 /** Where a fallen focus goes. */
-export type Landing = "none" | "table" | "panel" | "return" | "page";
+export type Landing = "none" | "table" | "panel" | "return" | "page" | "held";
 
 /**
  * Where the focus goes that a control took with it as the page took the control away (16:I13): to
  * the table it stood in, which gives it to the row nearest the one gone; else to its panel's
  * heading, the panel still drawn or drawn anew - "the panel after Apply" - else back to where the
  * panel was opened from, the panel closed (`returnPlace`); else to the page's heading - after Put
- * back, the Undo control beside it disabled while the files are put back. Nowhere where the reader
- * moved it on.
+ * back, the Undo control beside it disabled while the files are put back - and, from a field that
+ * asked, held there only until the page enables the field again, which then takes it back: the
+ * reader asked from it, and waits there for the answer (`held`, ruling B11-40). Nowhere where the
+ * reader moved it on.
  */
 export function landing(fallen: Fallen): Landing {
   if (!fallen.taken) return "none";
   if (fallen.table) return "table";
   if (fallen.panel === "drawn" || fallen.panel === "replaced") return "panel";
   if (fallen.panel === "closed") return "return";
+  if (fallen.asks) return "held";
   return "page";
 }
 

@@ -490,5 +490,8 @@ test("a long name keeps Close in view and the page no wider than the window (16:
   expect((button?.x ?? 0) + (button?.width ?? 0)).toBeLessThanOrEqual(
     (frame?.x ?? 0) + (frame?.width ?? 0),
   );
+  // Close whole, its word on one line: shrunk by the long title's pressure, a button breaks it.
+  expect(button?.height ?? 99).toBeLessThan(30);
+  expect(button?.width ?? 0).toBeGreaterThan(30);
   expect(await sideways(page)).toBe(0);
 });

@@ -113,6 +113,9 @@ a.button.link:hover {
    14px ("spacing: … gaps | … 14 px and 8 px"), which names a bare pixel value rather than a
    token, as the chosen mockup's own .split { gap: 14px } does. */
 .panel {
+  /* A name of the 128 characters the specification allows has no place to break: broken anywhere,
+     it wraps inside the panel, in its title, its notes and its sentences, and Close stays beside
+     it in view (16:M18). */
   overflow-wrap: anywhere;
   background: var(--surface);
   border: 1px solid var(--rule);
@@ -129,11 +132,10 @@ a.button.link:hover {
   margin: 0;
   font-size: var(--text-body);
   font-weight: 600;
-  /* A name of the 128 characters the specification allows has no place to break: broken anywhere,
-     it wraps inside the panel, and Close stays beside it in view (16:M18). */
-  min-width: 0;
-  overflow-wrap: anywhere;
 }
+/* Close keeps its width, as its title wraps where it must (`.panel`'s `overflow-wrap`): the
+   button inherits that, and shrunk under the title's pressure it would break inside its word
+   (16:M18). */
 .panel-header > button {
   flex: none;
 }

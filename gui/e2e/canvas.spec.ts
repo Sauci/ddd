@@ -639,6 +639,113 @@ test("an arrow's tooltip sits above its label's middle, while the pointer is on 
   await expect(tooltip).toHaveCount(0);
 });
 
+/** The arrow SensorHub to Controller, reached the way a keyboard reaches it, so that its tooltip
+ * is up while the canvas is moved under it. */
+async function reachArrow(page: Page): Promise<Locator> {
+  const arrow = page.getByRole("button", { name: "SensorHub to Controller: 2 variables, error" });
+  await expect(arrow).toBeVisible();
+  for (let stop = 0; stop < 50; stop += 1) {
+    if (await arrow.evaluate((element) => element === document.activeElement)) break;
+    await page.keyboard.press("Tab");
+  }
+  await expect(arrow).toBeFocused();
+  await expect(page.getByRole("tooltip")).toBeVisible();
+  return arrow;
+}
+
+/** How far the tooltip's middle is from the arrow's label's, along x, in px. */
+async function offLabel(page: Page): Promise<number> {
+  const [said, on] = await Promise.all([
+    page.getByRole("tooltip").boundingBox(),
+    page.locator(".flow-label.error").boundingBox(),
+  ]);
+  if (said === null || on === null) throw new Error("the tooltip or its label draws no box");
+  return Math.abs(said.x + said.width / 2 - (on.x + on.width / 2));
+}
+
+test("an arrow's tooltip follows its label as the canvas is zoomed with the arrow reached", async ({
+  page,
+  gui,
+}) => {
+  drift(gui.directory);
+  await page.goto(gui.address);
+  await reachArrow(page);
+  const tooltip = page.getByRole("tooltip");
+  await expect.poll(() => offLabel(page)).toBeLessThanOrEqual(1);
+  const before = await tooltip.boundingBox();
+  const canvas = await page.getByRole("region", { name: "Modules" }).boundingBox();
+  if (canvas === null) throw new Error("the canvas draws no box");
+  // The wheel over the canvas's own top left corner zooms about it, moving the label with the
+  // arrow, and the focus stays where it is.
+  await page.mouse.move(canvas.x + 4, canvas.y + 4);
+  await page.mouse.wheel(0, -200);
+  await expect.poll(async () => (await viewportOf(page)).zoom).toBeGreaterThan(1.3);
+  await expect.poll(async () => (await tooltip.boundingBox())?.x).not.toBe(before?.x);
+  await expect.poll(() => offLabel(page)).toBeLessThanOrEqual(1);
+});
+
+test("an arrow's tooltip follows its label as the page is scrolled, and the window resized", async ({
+  page,
+  gui,
+}) => {
+  drift(gui.directory);
+  await page.setViewportSize({ width: 1280, height: 500 });
+  await page.goto(gui.address);
+  await reachArrow(page);
+  const tooltip = page.getByRole("tooltip");
+  await expect.poll(() => offLabel(page)).toBeLessThanOrEqual(1);
+  // The page scrolled by a script, as a key or the scrollbar would, the arrow keeping its focus.
+  const labelAt = async () => (await page.locator(".flow-label.error").boundingBox())?.y ?? 0;
+  const was = await labelAt();
+  await page.evaluate(() => window.scrollBy(0, 40));
+  await expect.poll(labelAt).toBeLessThan(was);
+  const at = async () => {
+    const [said, on] = await Promise.all([
+      tooltip.boundingBox(),
+      page.locator(".flow-label.error").boundingBox(),
+    ]);
+    return said !== null && on !== null ? said.y + said.height - (on.y + on.height / 2) : NaN;
+  };
+  // Where it stands against its label is what it stood at before, once drawn again.
+  await expect.poll(at).toBeCloseTo(-12, 0);
+  // A window made too short for the place it stood in: it is kept in view, drawn again.
+  await page.setViewportSize({ width: 1280, height: 300 });
+  await expect
+    .poll(async () => {
+      const box = await tooltip.boundingBox();
+      return box !== null && box.y + box.height <= 300;
+    })
+    .toBe(true);
+});
+
+test("an arrow's tooltip is not drawn while its arrow is panned out of the canvas", async ({
+  page,
+  gui,
+}) => {
+  drift(gui.directory);
+  await page.goto(gui.address);
+  const arrow = await reachArrow(page);
+  const canvas = await page.getByRole("region", { name: "Modules" }).boundingBox();
+  if (canvas === null) throw new Error("the canvas draws no box");
+  // The pane dragged by its empty corner, past the label's own distance from it, which takes the
+  // focus off the arrow: reached again once the label is out.
+  await page.mouse.move(canvas.x + 6, canvas.y + 6);
+  await page.mouse.down();
+  await page.mouse.move(canvas.x + 6 + canvas.width, canvas.y + 6 + canvas.height, { steps: 8 });
+  await page.mouse.up();
+  await arrow.focus();
+  await expect(arrow).toBeFocused();
+  const label = await page.locator(".flow-label.error").boundingBox();
+  const outside =
+    label !== null &&
+    (label.x > canvas.x + canvas.width ||
+      label.y > canvas.y + canvas.height ||
+      label.x + label.width < canvas.x ||
+      label.y + label.height < canvas.y);
+  expect(outside).toBe(true);
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
+});
+
 test("the canvas's own buttons zoom it in and out, and stop zooming out at its least zoom", async ({
   page,
   gui,

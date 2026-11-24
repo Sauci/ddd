@@ -7,6 +7,7 @@ import {
   firstMatch,
   flightOf,
   flowTitle,
+  insideBox,
   MIN_ZOOM,
   noDictionary,
   nodesOf,
@@ -472,4 +473,14 @@ test("a tooltip is moved in from the window's edges, and never above or left of 
     x: 8,
     y: 8,
   });
+});
+
+test("a point is inside a box up to its edges, and outside past them", () => {
+  const box = { x: 10, y: 20, width: 100, height: 50 };
+  expect(insideBox({ x: 10, y: 20 }, box)).toBe(true);
+  expect(insideBox({ x: 110, y: 70 }, box)).toBe(true);
+  expect(insideBox({ x: 9, y: 40 }, box)).toBe(false);
+  expect(insideBox({ x: 111, y: 40 }, box)).toBe(false);
+  expect(insideBox({ x: 50, y: 19 }, box)).toBe(false);
+  expect(insideBox({ x: 50, y: 71 }, box)).toBe(false);
 });

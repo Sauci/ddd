@@ -10,6 +10,7 @@ import { useLayoutEffect, useReducer, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   type FlowData,
+  insideBox,
   type Point,
   type Size,
   STROKE,
@@ -113,14 +114,16 @@ function Tooltip({ data, state, anchor }: { data: FlowData; state: string; ancho
         : measured,
     );
   });
-  const corner = canvas === null ? { x: 0, y: 0 } : canvas.getBoundingClientRect();
+  const corner =
+    canvas === null ? { x: 0, y: 0, width: 0, height: 0 } : canvas.getBoundingClientRect();
+  const middle = windowPointOf(anchor, transform, { x: corner.x, y: corner.y });
+  // Not drawn while the arrow's middle is out of the canvas, panned or scrolled away: it would
+  // float over the page, pointing at nothing.
+  if (!insideBox(middle, corner)) return null;
   const spot =
     size === null
       ? { x: 0, y: 0 }
-      : tooltipSpot(windowPointOf(anchor, transform, { x: corner.x, y: corner.y }), size, {
-          width: window.innerWidth,
-          height: window.innerHeight,
-        });
+      : tooltipSpot(middle, size, { width: window.innerWidth, height: window.innerHeight });
   return createPortal(
     <div
       ref={box}

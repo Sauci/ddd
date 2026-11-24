@@ -514,6 +514,18 @@ export function windowPointOf(
   return { x: corner.x + x + point.x * zoom, y: corner.y + y + point.y * zoom };
 }
 
+/** Whether `point` lies within `box`, edges included. An arrow's tooltip is drawn only while the
+ * arrow's middle is within the canvas: one scrolled or panned out of it points at nothing, and
+ * would float over the page (16:M11). */
+export function insideBox(point: Point, box: Point & Size): boolean {
+  return (
+    point.x >= box.x &&
+    point.x <= box.x + box.width &&
+    point.y >= box.y &&
+    point.y <= box.y + box.height
+  );
+}
+
 /** The room a tooltip keeps from the window's edge and from the arrow's middle it points at. */
 export const TOOLTIP_EDGE = 8;
 export const TOOLTIP_GAP = 12;

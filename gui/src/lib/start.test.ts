@@ -1,5 +1,13 @@
 import { expect, test } from "vitest";
-import { listHeld, noProjectSentence, UNREAD_HEADING, unreadLine, unreadShown } from "./start";
+import {
+  ALREADY_OPEN,
+  isOpen,
+  listHeld,
+  noProjectSentence,
+  UNREAD_HEADING,
+  unreadLine,
+  unreadShown,
+} from "./start";
 
 test("the list takes a press before any project was asked to open", () => {
   expect(listHeld("idle")).toBe(false);
@@ -41,4 +49,17 @@ test("a start page with no project says none could be read where the walk met so
     "No project description found here could be read. Each is listed below with why.",
   );
   expect(noProjectSentence(3)).toBe(noProjectSentence(1));
+});
+
+test("the project the page has open is the one the list marks, and pressed, is gone to", () => {
+  // Opened again, it was analysed anew and its undo list emptied, nothing said.
+  expect(isOpen("/work/demo/demo.ddd.json", "/work/demo/demo.ddd.json")).toBe(true);
+  expect(ALREADY_OPEN).toBe("Already open");
+});
+
+test("every other project the list offers is opened, and none is while none is open", () => {
+  expect(isOpen("/work/demo/subsystems/logging/logging.ddd.json", "/work/demo/demo.ddd.json")).toBe(
+    false,
+  );
+  expect(isOpen("/work/demo/demo.ddd.json", null)).toBe(false);
 });

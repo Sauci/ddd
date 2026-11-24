@@ -27,7 +27,7 @@ import {
   tabHref,
   takesWindow,
 } from "../lib/route";
-import { projectName, sessionAskedFor } from "../lib/session";
+import { openPath, projectName, sessionAskedFor } from "../lib/session";
 import type { SharedKind } from "../lib/shared";
 import { undrawnSentence } from "../lib/undrawn";
 import { loadBanner, unloadedNames } from "../lib/unloaded";
@@ -277,12 +277,16 @@ export function App() {
   } else if (session.isError) {
     page = <Banner tone="error">{session.error.message}</Banner>;
   } else if (opened === null || route.page === "start") {
+    // The project open is gone to, as the masthead's button goes to it, and not opened again: its
+    // undo list and its analysis are kept (15:M11).
     page = (
       <StartPage
+        open={openPath(opened, project)}
         onOpened={() => {
           void queries.invalidateQueries({ queryKey: ["session"] });
           navigate({ page: "project", view: "graph" });
         }}
+        onGo={() => navigate({ page: "project", view: "graph" })}
       />
     );
   } else if (route.page === "project") {

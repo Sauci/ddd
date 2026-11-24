@@ -132,6 +132,15 @@ input:focus-visible,
 .projects .name {
   font-weight: 600;
 }
+/* The project open (15:M11): pressed, it is gone to rather than opened again, and its words say
+   so beside the border a selected entry has. */
+.projects button[aria-current="true"] {
+  border-color: var(--accent);
+}
+.projects .open {
+  color: var(--accent);
+  font-size: var(--text-small);
+}
 /* A project's path breaks where it must, in a window too narrow for it whole (16:M9). */
 .projects .path {
   overflow-wrap: anywhere;

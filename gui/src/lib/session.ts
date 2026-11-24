@@ -22,6 +22,19 @@ export function projectName(opened: Opened, project: string | null): string {
 }
 
 /**
+ * The path of the project the page holds open, or `null` while the session names none: the one the
+ * state it follows is of (`project`), which the page names (`projectName`), and the session's
+ * before it has followed a state - the server has one project open at a time, and the state says
+ * so first where another page opens another. What the start page judges the project open by
+ * (`isOpen`, lib/start.ts). A state followed while the session names none is older than the
+ * session's answer, as for `sessionAskedFor`.
+ */
+export function openPath(opened: Opened | null, project: string | null): string | null {
+  if (opened === null) return null;
+  return project ?? opened.path;
+}
+
+/**
  * What the page asks the server again which project is open for (`["session"]`): the project the
  * state it follows is of, while the session it holds names another - `null` while the two agree,
  * before any state, and while the session names no project open. The page asks once as it loads,

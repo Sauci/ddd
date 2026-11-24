@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { projectName, sessionAskedFor } from "./session";
+import { openPath, projectName, sessionAskedFor } from "./session";
 
 /** The session's open project, as `GET /api/session` names it. */
 const DEMO = { path: "/work/demo/demo.ddd.json", name: "DemoDevice" };
@@ -60,4 +60,20 @@ test("an answer naming another project than the state's asks nothing more for th
   expect(sessionAskedFor({ path: SECOND, name: "SecondDevice" }, THIRD)).toBe(
     sessionAskedFor(DEMO, THIRD),
   );
+});
+
+test("the project open is the one the state followed is of, as the page names it", () => {
+  expect(openPath(DEMO, DEMO.path)).toBe(DEMO.path);
+  // Another page of the same server opened another, and the session asked again has not answered.
+  expect(openPath(DEMO, SECOND)).toBe(SECOND);
+});
+
+test("the project open is the session's before the page has followed a state", () => {
+  expect(openPath(DEMO, null)).toBe(DEMO.path);
+  expect(openPath(UNNAMED, null)).toBe(DEMO.path);
+});
+
+test("no project is open while the session names none, whatever state was followed last", () => {
+  expect(openPath(null, null)).toBeNull();
+  expect(openPath(null, SECOND)).toBeNull();
 });

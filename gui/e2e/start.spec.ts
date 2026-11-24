@@ -545,6 +545,100 @@ test("a project opening holds every button of the list, until the start page goe
   await expect(page.getByRole("button", { name: "Controller", exact: true })).toBeVisible();
 });
 
+test("the start page goes to the project open, its undo kept, never opening it again, and marks it", async ({
+  page,
+  gui,
+}) => {
+  // ValueB read in another unit than its producer states, so that settling it is an edit to undo;
+  // its analysis landed before anything is planned.
+  drift(gui.directory, "ValueB", "mV");
+  await page.goto(gui.address);
+  await expect(page.getByLabel("SensorHub to Controller: 2 variables, error")).toBeVisible();
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("button", { name: "Set the unit of ValueB" }).click();
+  const settled = page.getByRole("complementary", { name: "ValueB" });
+  await settled.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect(settled.getByText("Nothing to change")).toBeVisible();
+  const undo = page.getByRole("button", { name: "Undo the unit of ValueB" });
+  await expect(undo).toBeVisible();
+  const opened: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/open") opened.push(request.method());
+  });
+
+  // DemoDevice is the project open: pressed, it is gone to as it stands. Opened again, it was
+  // analysed anew and its undo list emptied, the edit above out of reach, and nothing said so.
+  const projects = page.getByRole("button", { name: "Projects", exact: true });
+  await projects.click();
+  // The list's own buttons: the masthead names the project open by a button of its own.
+  const demo = page.getByRole("main").getByRole("button", { name: /^DemoDevice/ });
+  const logging = page.getByRole("main").getByRole("button", { name: /^Logging/ });
+  await demo.click();
+  await expect(page.getByRole("heading", { name: "DemoDevice", level: 1 })).toBeVisible();
+  // The edit is still in reach: the server previews its undo, where an undo list emptied has none
+  // to preview.
+  await undo.click();
+  const strip = page.getByRole("region", { name: "Undo" });
+  await expect(strip.getByRole("button", { name: "Put back 1 file" })).toBeVisible();
+  expect(opened).toEqual([]);
+
+  // The list says which project is open, and of no other, in words and to a screen reader.
+  await projects.click();
+  await expect(demo.getByText("Already open", { exact: true })).toBeVisible();
+  await expect(demo).toHaveAttribute("aria-current", "true");
+  await expect(logging.getByText("Already open", { exact: true })).toHaveCount(0);
+  await expect(logging).not.toHaveAttribute("aria-current");
+  // Another project is opened as it always was, and is then the one the list marks.
+  await logging.click();
+  await expect(page.getByRole("heading", { name: "Logging", level: 1 })).toBeVisible();
+  expect(opened).toEqual(["POST"]);
+  await projects.click();
+  await expect(logging.getByText("Already open", { exact: true })).toBeVisible();
+  await expect(demo.getByText("Already open", { exact: true })).toHaveCount(0);
+});
+
+test("the start page marks the project another page opened, by the state, before the session says so, and goes to it", async ({
+  page,
+  copiedGui,
+}) => {
+  const started = await copiedGui("demo", secondProject, { named: false });
+  await page.goto(started.address);
+  await page.getByRole("button", { name: /^DemoDevice/ }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("DemoDevice");
+  const opened: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/open") opened.push(request.method());
+  });
+  // This page's next ask of the session is held: the one it makes once the state it follows is of
+  // another project, which the server has open from then on, the session still naming DemoDevice.
+  const releaseSession = await held(page, "/api/session");
+  const other = await page.context().newPage();
+  try {
+    await other.goto(started.address);
+    await expect(other.getByRole("heading", { level: 1 })).toHaveText("DemoDevice");
+    await settled(other);
+    await other.getByRole("button", { name: "Projects", exact: true }).click();
+    await other.getByRole("button", { name: /^SecondDevice/ }).click();
+    await expect(other.getByRole("heading", { level: 1 })).toHaveText("SecondDevice");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(SECOND_DESCRIPTION);
+
+    // The list marks the project open as the page names it, by the state, and goes to it.
+    await page.getByRole("button", { name: "Projects", exact: true }).click();
+    const list = page.getByRole("main");
+    const second = list.getByRole("button", { name: /^SecondDevice/ });
+    await expect(second.getByText("Already open", { exact: true })).toBeVisible();
+    await expect(
+      list.getByRole("button", { name: /^DemoDevice/ }).getByText("Already open", { exact: true }),
+    ).toHaveCount(0);
+    await second.click();
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(SECOND_DESCRIPTION);
+    expect(opened).toEqual([]);
+  } finally {
+    releaseSession();
+    await other.close();
+  }
+});
+
 test("the address ddd gui opens its own browser with signs the page in by a one-time code, spent once used", async ({
   browser,
   page,

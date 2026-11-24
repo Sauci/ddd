@@ -17,6 +17,20 @@ export function listHeld(opening: Opening): boolean {
   return opening === "pending" || opening === "success";
 }
 
+/**
+ * Whether the project the start page lists at `listed`, its path, is the one open - `open`, the
+ * path the page holds open (`openPath`, lib/session.ts), or `null` while none is: pressed, it is
+ * gone to as it stands, and asked of the server to open no more (15:M11). Opened again, it was
+ * analysed anew and its undo list emptied, every edit the pages made out of reach, nothing said.
+ */
+export function isOpen(listed: string, open: string | null): boolean {
+  return listed === open;
+}
+
+/** What the start page says of the project open, beside its name: the reader is on that project
+ * already, and pressing it goes back to it. */
+export const ALREADY_OPEN = "Already open";
+
 /** The heading over the descriptions the walk found and could not read (16:M13): a file left off
  * the list above in silence, a reader looking for it would take for not there. */
 export const UNREAD_HEADING = "Project descriptions that could not be read";

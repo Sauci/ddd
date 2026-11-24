@@ -19,7 +19,8 @@ import { FindingPanelView } from "./FindingPanelView";
 export interface CompareViewProps {
   /** The open project as the session last published it: what a finding that names a place in it
    * is routed against, exactly as the Findings tab routes its own (`routeLabel`,
-   * `noRouteReason`). */
+   * `noRouteReason`), and what counts the project's own errors under the verdict, as that tab's
+   * line counts them (`ownErrorsLine`). */
   state: State;
   /** Following a finding that names a place in the open project, which the app navigates to. */
   onOpen: (route: Route) => void;

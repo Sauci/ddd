@@ -32,7 +32,7 @@ import { LinkTabs } from "../ui/LinkTabs";
 import { PageHeading } from "../ui/PageHeading";
 import { UpdatingStatus } from "../ui/UpdatingNote";
 import { ErrorBoundary } from "./ErrorBoundary";
-import { askHeading, pageShown, watchFocus } from "./focus";
+import { analysisLanded, askHeading, watchFocus } from "./focus";
 import { UpdatingContext } from "./updating";
 import { useProjectState } from "./useProjectState";
 import { useRoute } from "./useRoute";
@@ -91,12 +91,15 @@ export function App() {
   const { state, project, failed, refused, updating, stopped, failure } = useProjectState(
     opened !== null,
   );
-  // What a page loaded anew waits to show waits the short time from when the page first draws its
-  // own content: every page draws its own once the project's first analysis has landed, and before
-  // it its heading alone, so that a slow analysis takes none of that time (ruling B11-47).
+  // What a page loaded anew waits to show waits the short time from the landing of the project's
+  // first analysis (ruling B11-47). Before it, a page draws no more than the project's heading -
+  // with its tabs, on a tab of the project - and the line saying the analysis is on its way, so that
+  // a slow analysis takes none of that time. What a page reads of its own once it has landed is
+  // counted in: a tab's answer, the Graph's layout, a component's file, the page drawing the line
+  // that says so meanwhile - a component's page, "Reading the file…" alone.
   const analysed = state !== null;
   useEffect(() => {
-    if (analysed) pageShown();
+    if (analysed) analysisLanded();
   }, [analysed]);
   // Asked again for each project the state followed comes to be of while the session names
   // another: another page of the same server opened it (`sessionAskedFor`, lib/session.ts). Keyed

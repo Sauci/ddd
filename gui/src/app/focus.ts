@@ -58,13 +58,13 @@ let headingWanted: { heading: HeadingWanted; holding: number | null } | null = n
 
 /** What a page loaded anew waits to show: the panel its address opens, to be scrolled into view
  * once drawn and its page settled, with no heading taking the focus (`askHeading`,
- * `showWhenSettled`); and since when the page has drawn what it shows (`pageShown`), `null` until
- * then. No longer once drawn, or once the reader presses a key or the pointer, turns the wheel or
- * touches the page, or the focus is moved elsewhere (`letsWaitGo`), or `WAITS_AT_MOST_MS` after the
- * page first drew what it shows (`stillWaits`, ruling B11-47): a slow first analysis spends none of
- * that time. The panel a change of page opens waits for nothing of its own: it is shown with its
- * heading as that takes the focus (`giveHeading`), and so no later than the page's heading holds
- * the focus for it. */
+ * `showWhenSettled`); and since when the project's first analysis has landed (`analysisLanded`),
+ * `null` until then. No longer once drawn, or once the reader presses a key or the pointer, turns
+ * the wheel or touches the page, or the focus is moved elsewhere (`letsWaitGo`), or
+ * `WAITS_AT_MOST_MS` after that landing (`stillWaits`, ruling B11-47): a slow first analysis spends
+ * none of that time, what the page then reads of its own does. The panel a change of page opens
+ * waits for nothing of its own: it is shown with its heading as that takes the focus
+ * (`giveHeading`), and so no later than the page's heading holds the focus for it. */
 let showWanted: { since: number | null } | null = null;
 
 /** The slot whose panel was scrolled into view as it opened, and the window's scroll that scroll
@@ -196,11 +196,13 @@ export function askHeading(asked: Asked): void {
   giveHeading(pageHeading(), panelHeading());
 }
 
-/** Notes that the page draws what it shows, its project's first analysis having landed (`App`):
- * what a page loaded anew waits to show waits `WAITS_AT_MOST_MS` from now at most (ruling B11-47),
- * the time the analysis took left out of it - before, a page draws its heading alone, and says the
- * analysis is on its way. */
-export function pageShown(): void {
+/** Notes that the project's first analysis has landed (`App`): what a page loaded anew waits to show
+ * waits `WAITS_AT_MOST_MS` from now at most (ruling B11-47). Before the landing, no page draws what
+ * it shows - only the project's heading, with its tabs on a tab of the project, and a line saying
+ * the analysis is on its way - so the time the analysis took is left out of it. What a page reads
+ * of its own once the analysis has landed is counted in: a tab's own answer, the Graph's layout, a
+ * component's file, while which that page draws its line saying so alone. */
+export function analysisLanded(): void {
   if (showWanted !== null) showWanted.since ??= performance.now();
 }
 

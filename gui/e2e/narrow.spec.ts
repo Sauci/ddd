@@ -438,7 +438,7 @@ test("a Files address whose row comes past a short wait after the tab loaded ane
 /**
  * A page loaded anew whose project is slow to analyse (16:M9, ruling B11-47): Controller's address
  * on ParameterA, in a window 800 by 600, the page's first state held back longer than the short
- * time. The short time counts from when the page first draws its own content, not from the load:
+ * time. The short time counts from the landing of the project's first analysis, not from the load:
  * ParameterA's panel, drawn once the analysis has landed, is scrolled into view all the same.
  */
 test("a page loaded anew at a variable's address while its project is analysed slowly has its panel in view", async ({

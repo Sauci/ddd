@@ -78,12 +78,14 @@ const STALE =
   "A file changed on disk, so nothing was written. The tab now shows the findings as they are.";
 
 /** The open project's Findings tab (spec 5.1): every finding, worst first, and the panel of the
- * one selected - its route, its notes, and the one fix the tab offers where it carries one
- * (spec 5.2). The table is a window: the rows in view and a margin, each page of them asked for
- * as the box scrolls to it (spec 6), how many there are in all being the state's own count - a
- * disagreement on each of its files - where the line above it counts the statements, each once as
- * `ddd check` counts them (decision 14.3). When an analysis lands, the window keeps drawing the
- * revision it drew whole until the new one's pages for its rows have all come (`drawnWindow`).
+ * one selected - its route, its notes, and the fixes it carries, of which the reader chooses one
+ * to apply (spec 5.2): a `missing-id` finding's identity, and a `definition-mismatch` finding's
+ * reconciliation of each key it disagrees on. The table is a window: the rows in view and a
+ * margin, each page of them asked for as the box scrolls to it (spec 6), how many there are in
+ * all being the state's own count - a disagreement on each of its files - where the line above it
+ * counts the statements, each once as `ddd check` counts them (decision 14.3). When an analysis
+ * lands, the window keeps drawing the revision it drew whole until the new one's pages for its
+ * rows have all come (`drawnWindow`).
  *
  * The filter above the table (16:I14) asks the server for the findings whose check, words or
  * file's name hold its text, once typing pauses: the rows are the server's pages, which the page

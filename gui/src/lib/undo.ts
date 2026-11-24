@@ -143,9 +143,11 @@ export function valuesLabel(
 /**
  * What a fix applied from the Findings tab is called.
  *
- * The one fix the tab offers is `missing-id`, whose route names the declaration it stamps, so
- * the sentence can name it too. Any other fix is named by its own title, which is the best the
- * page has, said as a fix: a title is a sentence of its own, and after "Undo" it ran on as one.
+ * The tab offers the fixes `ddd.finding_fixes` plans: a `missing-id` finding's identity, and a
+ * `definition-mismatch` finding's reconciliations, one for each key it disagrees on. An
+ * identity's route names the declaration it stamps, so the sentence names it too. Any other fix
+ * is named by its own title, which is the best the page has, said as a fix: a title is a sentence
+ * of its own, and after "Undo" it ran on as one.
  */
 export function fixLabel(finding: Finding, title: string): string {
   const named = finding.route === null ? null : finding.route.name;

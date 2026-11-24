@@ -1232,7 +1232,7 @@ export const EMPTIED_FINDINGS: State = {
   statements: { error: 3, warning: 1, info: 2 },
 };
 
-/** The one fix the tab offers: `missing-id`, previewed onto SensorHub's ValueA. */
+/** A `missing-id` finding's one fix, its identity, previewed onto SensorHub's ValueA. */
 export const ID_FIX: FixReply = {
   revision: 7,
   fixes: [

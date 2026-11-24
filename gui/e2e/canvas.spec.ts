@@ -948,3 +948,32 @@ test("a view the reader zoomed by hand is kept as a panel opens beside the canva
   await twoFrames(page);
   expect(await viewportOf(page)).toEqual(reader);
 });
+
+test("a canvas fitted again after the window narrowed is fitted again as a panel opens", async ({
+  page,
+  gui,
+}) => {
+  drift(gui.directory);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(gui.address);
+  const canvas = page.getByRole("region", { name: "Modules" });
+  const nodes = page.locator(".react-flow__node");
+  const cut = async () => {
+    const frame = await canvas.boundingBox();
+    const [left, right] = [frame?.x ?? 0, (frame?.x ?? 0) + (frame?.width ?? 0)];
+    const boxes = await nodes.evaluateAll((all) =>
+      all.map((node) => {
+        const box = node.getBoundingClientRect();
+        return { left: box.left, right: box.right };
+      }),
+    );
+    return Math.max(0, ...boxes.map((box) => Math.max(left - box.left, box.right - right)));
+  };
+  await expect(nodes).toHaveCount(4);
+  // The window narrowed: the view fitted to it, as Fit would have it, so the fitted view moved.
+  await page.setViewportSize({ width: 1000, height: 900 });
+  await expect.poll(cut).toBe(0);
+  await page.locator(".flow-label.error").click();
+  await expect(page.getByRole("complementary", { name: "ValueA" })).toBeVisible();
+  await expect.poll(cut).toBe(0);
+});

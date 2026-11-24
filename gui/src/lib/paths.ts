@@ -71,14 +71,27 @@ export function toldApart(path: string, among: readonly string[]): string {
  * project whose every component failed took seconds to name.
  */
 export function toldApartAll(paths: readonly string[]): string[] {
-  const named = paths.map((path) => ({ path, ends: endsOf(path) }));
+  return namedAmong(paths, (path) => path).map((each) => each.name);
+}
+
+/** Each of `items` with the name `toldApartAll` gives its path among all of them, in their order:
+ * for a caller that holds more than the path of each, and would otherwise look a name up by
+ * position or by path. */
+export function namedAmong<T>(
+  items: readonly T[],
+  pathOf: (item: T) => string,
+): { item: T; name: string }[] {
+  const named = items.map((item) => {
+    const path = pathOf(item);
+    return { item, path, ends: endsOf(path) };
+  });
   const ending = new Map<string, number>();
   const listed = new Map<string, number>();
   for (const { path, ends } of named) {
     for (const end of ends) ending.set(end, counted(ending, end) + 1);
     listed.set(path, counted(listed, path) + 1);
   }
-  return named.map(({ path, ends }) => {
+  return named.map(({ item, path, ends }) => {
     const itself = counted(listed, path);
     // The whole path, the last of its ends, is one no other path ends in: found at the latest.
     let name = path;
@@ -88,8 +101,18 @@ export function toldApartAll(paths: readonly string[]): string[] {
         break;
       }
     }
-    return name;
+    return { item, name };
   });
+}
+
+/**
+ * The names the Findings tab's File column draws, by path: each of `paths` as `toldApartAll` names
+ * it among them all. A file the project does not list is named by `baseName` where it is drawn;
+ * what the server's text filter matches is the same (`_file_names`, gui/api.py), so that a reader
+ * typing a name as the column shows it finds the row (16:M15).
+ */
+export function fileNames(paths: readonly string[]): ReadonlyMap<string, string> {
+  return new Map(namedAmong(paths, (path) => path).map((each) => [each.item, each.name] as const));
 }
 
 /** The runs of parts a path ends in, joined: its last part, then its last two, up to the whole of

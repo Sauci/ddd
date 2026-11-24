@@ -7,7 +7,7 @@ import type {
   ListedFinding,
   State,
 } from "../api/types";
-import { toldApart } from "./paths";
+import { namedAmong } from "./paths";
 import { hrefOf, type Route } from "./route";
 import { baseName } from "./units";
 
@@ -245,7 +245,7 @@ export function namesThisVariable(finding: Finding, name: string): boolean {
 
 /** The files a tab's table cannot show the contents of, by name: those of the tab's own kinds
  * that did not load, and those that did not load without saying what kind they are. Two of one
- * name are told apart by their paths (`toldApart`) among every file that did not load, whichever
+ * name are told apart by their paths (`namedAmong`) among every file that did not load, whichever
  * list each is in, as the server's refusals name them: one file, one name on the page.
  *
  * Two lists because the tab can only speak for the first. `ddd.gui.session.kind_of` reads a file's
@@ -269,14 +269,12 @@ export function unreadable(
   kinds: readonly string[],
 ): { own: string[]; untold: string[] } {
   const missing = (state?.files ?? []).filter((file) => !file.loaded);
-  const paths = missing.map((file) => file.path);
+  // Named all at once (`toldApartAll`), never one against all the others: 3,334 files that did not
+  // load took about two seconds to name, on each render of the tabs that ask.
+  const named = namedAmong(missing, (file) => file.path);
   return {
-    own: missing
-      .filter((file) => kinds.includes(file.kind))
-      .map((file) => toldApart(file.path, paths)),
-    untold: missing
-      .filter((file) => file.kind === "unknown")
-      .map((file) => toldApart(file.path, paths)),
+    own: named.filter(({ item }) => kinds.includes(item.kind)).map(({ name }) => name),
+    untold: named.filter(({ item }) => item.kind === "unknown").map(({ name }) => name),
   };
 }
 

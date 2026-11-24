@@ -162,7 +162,7 @@ function Remove({
   waiting,
 }: Scene & { selected: string; waiting?: () => void }) {
   const [changesShown, setChangesShown] = useState(shown);
-  const removal = fileRemoval(rowsOf(reply, files), selected, reply.project);
+  const removal = fileRemoval(rowsOf(reply, files), selected, reply.project, files);
   return (
     <Tab reply={reply} files={files} selected={selected}>
       {removal !== null && (

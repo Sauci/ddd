@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { shownPath, toldApart, toldApartAll } from "./paths";
+import { fileNames, shownPath, toldApart, toldApartAll } from "./paths";
 
 // Every expected path below is what Python's own `relpath` answers for the same two paths
 // (`posixpath.relpath`, and `ntpath.relpath` for the Windows ones), checked when these were
@@ -132,5 +132,18 @@ describe("every file of a list as a sentence naming them all names it", () => {
       (_, at) => `/p/${at % 3}/${at % 5}/${at % 7}/c${at % 11}.ddd.json`,
     );
     expect(toldApartAll(many)).toEqual(one(many));
+  });
+});
+
+describe("the names the File column draws, by path", () => {
+  test("each file by the name `toldApartAll` gives it among them all, found by its path", () => {
+    const paths = ["C:/w/left/gauge.ddd.json", "C:/w/right/gauge.ddd.json", "C:/w/hub.ddd.json"];
+    const names = fileNames(paths);
+    expect(paths.map((path) => names.get(path))).toEqual([
+      "left/gauge.ddd.json",
+      "right/gauge.ddd.json",
+      "hub.ddd.json",
+    ]);
+    expect(fileNames([]).size).toBe(0);
   });
 });

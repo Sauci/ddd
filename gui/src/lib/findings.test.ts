@@ -687,6 +687,26 @@ describe("why a finding leads nowhere", () => {
       expect(unreadable(withFiles, ["types"])).toEqual({ own: ["y/b.ddd.json"], untold: [] });
     });
 
+    test("thousands of them are named in one pass, never compared pair by pair", () => {
+      // Every component of a large project failing at once: named pairwise, 3,334 files took
+      // about two seconds on each render of the Types and Shared files tabs (B11-35).
+      const one = finding({});
+      const withFiles = state([one]);
+      withFiles.files = Array.from({ length: 3334 }, (_, at) =>
+        fileRow(
+          `C:/work/demo/c${at % 50}/c${at}.ddd.json`,
+          at % 2 === 0 ? "types" : "unknown",
+          false,
+        ),
+      );
+      const started = performance.now();
+      const named = unreadable(withFiles, ["types"]);
+      expect(performance.now() - started).toBeLessThan(500);
+      expect(named.own).toHaveLength(1667);
+      expect(named.untold).toHaveLength(1667);
+      expect(named.own[0]).toBe("c0.ddd.json");
+    });
+
     test("a file of a name no other has is named by its name alone beside them", () => {
       const one = finding({});
       const withFiles = state([one]);

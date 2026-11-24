@@ -7,6 +7,7 @@ import type {
   UnitsReply,
   VariableDeclaration,
 } from "../api/types";
+import { toldApartAll } from "./paths";
 
 /** One unit the picker offers: its section, the unit it sets, and what the list says of it. */
 export interface UnitChoice {
@@ -192,7 +193,7 @@ export const FILES_NAMED = 3;
  * Its counts are written as the Apply under it writes its own, so that the two read alike. */
 export function consequence(changes: readonly PlannedChange[]): string {
   if (changes.length === 0) return "Nothing to change";
-  const files = fileNames(changes);
+  const files = changedNames(changes);
   const named =
     files.length <= FILES_NAMED + 1
       ? files.join(", ")
@@ -200,11 +201,13 @@ export function consequence(changes: readonly PlannedChange[]): string {
   return `Changes ${files.length} file${files.length === 1 ? "" : "s"}: ${named}`;
 }
 
-/** The names a consequence gives the files a preview changes, in its order: the one place they are
- * made, all of them, before `consequence` keeps the first few - so that a name telling two files
- * of one name apart is made here, among every file the change writes. */
-function fileNames(changes: readonly PlannedChange[]): string[] {
-  return changes.map((change) => baseName(change.file));
+/** The names a change gives the files it writes, in its order: the one place they are made, all of
+ * them, before `consequence` keeps the first few - each by its own name, and two files of one name
+ * in different folders by as much of their paths as tells them apart (`toldApartAll`), among every
+ * file the change writes (16:M15). Counted in one pass: a rename of a unit stated in a project's
+ * every file changes thousands. */
+export function changedNames(changes: readonly { file: string }[]): string[] {
+  return toldApartAll(changes.map((change) => change.file));
 }
 
 /** What a panel says in place of a plan's consequence while the plan is asked for and has not come

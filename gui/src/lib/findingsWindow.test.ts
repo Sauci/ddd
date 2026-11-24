@@ -24,8 +24,13 @@ import {
   windowLine,
   windowRows,
 } from "./findingsWindow";
+import { fileNames } from "./paths";
 
 const HUB = "C:/work/demo/components/sensor_hub.ddd.json";
+
+/** The names the File column draws for the project's files, by path (`fileNames`): the hub's alone
+ * is the only file of its name here. */
+const NAMES = fileNames([HUB]);
 
 /** The finding at `index` of a long table, its key the server's own shape. */
 function listed(index: number): ListedFinding {
@@ -181,7 +186,7 @@ describe("the pages a span covers", () => {
 
 describe("the rows the window draws", () => {
   test("from a page that has arrived: each finding with its key and its file's own name", () => {
-    const rows = windowRows({ first: 0, last: 2 }, new Map([[0, page(0)]]));
+    const rows = windowRows({ first: 0, last: 2 }, new Map([[0, page(0)]]), NAMES);
     expect(rows).toEqual([
       { index: 0, key: listed(0).key, finding: listed(0), file: "sensor_hub.ddd.json" },
       { index: 1, key: listed(1).key, finding: listed(1), file: "sensor_hub.ddd.json" },
@@ -189,7 +194,7 @@ describe("the rows the window draws", () => {
   });
 
   test("a row whose page has not arrived is a placeholder, keyed by its place", () => {
-    const rows = windowRows({ first: 98, last: 102 }, new Map([[0, page(0)]]));
+    const rows = windowRows({ first: 98, last: 102 }, new Map([[0, page(0)]]), NAMES);
     expect(rows.map((row) => [row.index, row.key, row.finding === null, row.file])).toEqual([
       [98, listed(98).key, false, "sensor_hub.ddd.json"],
       [99, listed(99).key, false, "sensor_hub.ddd.json"],
@@ -199,20 +204,42 @@ describe("the rows the window draws", () => {
   });
 
   test("the rows of a later page are read from where that page starts", () => {
-    const rows = windowRows({ first: 205, last: 207 }, new Map([[2, page(2)]]));
+    const rows = windowRows({ first: 205, last: 207 }, new Map([[2, page(2)]]), NAMES);
     expect(rows.map((row) => row.finding)).toEqual([listed(205), listed(206)]);
   });
 
+  test("a file told apart from another of its name by its path, as the column draws it", () => {
+    // `left/gauge.ddd.json` and `right/gauge.ddd.json` are two rows of one name otherwise
+    // (16:M15). A file the project does not list keeps its own name.
+    const left = "C:/work/demo/left/gauge.ddd.json";
+    const right = "C:/work/demo/right/gauge.ddd.json";
+    const elsewhere = { ...listed(2), file: "C:/other/unlisted.ddd.json" };
+    const reply: FindingsReply = {
+      revision: 7,
+      total: 3,
+      offset: 0,
+      findings: [{ ...listed(0), file: left }, { ...listed(1), file: right }, elsewhere],
+    };
+    const rows = windowRows({ first: 0, last: 3 }, new Map([[0, reply]]), fileNames([left, right]));
+    expect(rows.map((row) => row.file)).toEqual([
+      "left/gauge.ddd.json",
+      "right/gauge.ddd.json",
+      "unlisted.ddd.json",
+    ]);
+  });
+
   test("none, for a span with no row", () => {
-    expect(windowRows({ first: 0, last: 0 }, new Map())).toEqual([]);
+    expect(windowRows({ first: 0, last: 0 }, new Map(), NAMES)).toEqual([]);
   });
 });
 
 describe("the rows nobody can select", () => {
   test("each placeholder, by its key, and no row whose finding has arrived", () => {
-    const rows = windowRows({ first: 98, last: 102 }, new Map([[0, page(0)]]));
+    const rows = windowRows({ first: 98, last: 102 }, new Map([[0, page(0)]]), NAMES);
     expect(pendingKeys(rows)).toEqual(["pending-100", "pending-101"]);
-    expect(pendingKeys(windowRows({ first: 0, last: 3 }, new Map([[0, page(0)]])))).toEqual([]);
+    expect(pendingKeys(windowRows({ first: 0, last: 3 }, new Map([[0, page(0)]]), NAMES))).toEqual(
+      [],
+    );
   });
 });
 
@@ -374,7 +401,7 @@ describe("which revision's rows the window draws", () => {
     // it was on: a finding that stays keeps its key into the next revision.
     const newest = windowOf(8, 990, []);
     expect(drawnWindow(newest, last)).toBe(last);
-    expect(pendingKeys(windowRows(last.span, last.pages))).toEqual([]);
+    expect(pendingKeys(windowRows(last.span, last.pages, NAMES))).toEqual([]);
   });
 
   test("the newest, placeholders and all, where the last's pages for the span are not all there", () => {

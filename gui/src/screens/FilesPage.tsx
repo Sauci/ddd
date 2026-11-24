@@ -90,7 +90,7 @@ export function FilesPage({ state, path, arrived, onPath, stopped, onOpen }: Pro
   }
   const reply = filesShown(holding, answer);
   const read = state?.files ?? [];
-  const removal = fileRemoval(rowsOf(reply, read), path, reply.project);
+  const removal = fileRemoval(rowsOf(reply, read), path, reply.project, read);
   const open = (next: "create" | "add") => {
     onPath(undefined);
     setForm(next);

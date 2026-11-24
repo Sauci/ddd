@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import type { RefusedBuild, SourceFile } from "../api/types";
 import {
   descriptionAlone,
+  fileFindings,
   loadBanner,
   namedFiles,
   type Part,
@@ -36,6 +37,22 @@ const STOPPED = true;
 /** A line of the banner as a reader reads it: its words, a link's among them. */
 const wordsOf = (line: readonly Part[]) =>
   line.map((part) => (typeof part === "string" ? part : part.text)).join("");
+
+describe("where a file's findings are", () => {
+  test("the Findings tab asked for the name the column draws it by, its own where none is listed", () => {
+    const names = new Map([["C:/work/demo/a/pump.ddd.json", "a/pump.ddd.json"]]);
+    expect(fileFindings("C:/work/demo/a/pump.ddd.json", names)).toEqual({
+      page: "project",
+      view: "findings",
+      text: "a/pump.ddd.json",
+    });
+    expect(fileFindings("C:/work/demo/b/pump.ddd.json", names)).toEqual({
+      page: "project",
+      view: "findings",
+      text: "pump.ddd.json",
+    });
+  });
+});
 
 describe("the files that did not load, as a sentence names them", () => {
   test("each by its own name, in the state's order, and none that loaded", () => {
@@ -177,12 +194,12 @@ describe("the banner under the masthead", () => {
       [
         {
           text: "a/pump.ddd.json",
-          to: { page: "project", view: "findings", text: "pump.ddd.json" },
+          to: { page: "project", view: "findings", text: "a/pump.ddd.json" },
         },
         " and ",
         {
           text: "b/pump.ddd.json",
-          to: { page: "project", view: "findings", text: "pump.ddd.json" },
+          to: { page: "project", view: "findings", text: "b/pump.ddd.json" },
         },
         " did not load, so the project's checks wait until they do, and the pages show what the " +
           "files that loaded declare.",
@@ -214,6 +231,27 @@ describe("the banner under the masthead", () => {
     // Four are each named: a count standing for one file is no shorter than its name.
     const four = loadBanner(PROJECT, analysed(...five.slice(0, 4)), null, [], RUNNING);
     expect(four?.lines[0]?.filter((part) => typeof part !== "string")).toHaveLength(4);
+  });
+
+  test("leads each to the name the Findings tab's File column draws it by, among every file", () => {
+    // The one pump that did not load is named `pump.ddd.json` in the banner, among the files that
+    // did not load; the column names it among every file of the project, the one that loaded
+    // beside it included, and the filter matches that name (16:M15).
+    const banner = loadBanner(
+      PROJECT,
+      analysed(
+        file("C:/work/demo/a/pump.ddd.json", false),
+        file("C:/work/demo/b/pump.ddd.json"),
+        file(SENSOR_HUB),
+      ),
+      null,
+      [],
+      RUNNING,
+    );
+    expect(banner?.lines[0]?.[0]).toEqual({
+      text: "pump.ddd.json",
+      to: { page: "project", view: "findings", text: "a/pump.ddd.json" },
+    });
   });
 
   test("counts the rest as every count of the page is written, past a thousand", () => {

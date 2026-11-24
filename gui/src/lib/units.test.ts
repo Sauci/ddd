@@ -2,6 +2,7 @@ import { expect, describe as group, test } from "vitest";
 import type { PlannedChange, SettleReply, UnitsReply, VariableDeclaration } from "../api/types";
 import {
   baseName,
+  changedNames,
   consequence,
   declaredUnits,
   editOf,
@@ -285,6 +286,30 @@ group("what a preview says and sends", () => {
     const two = [...ONE_FILE.changes, { ...ONE_FILE_CHANGE, file: HUB }];
     expect(consequence(two)).toBe("Changes 2 files: controller.ddd.json, sensor_hub.ddd.json");
     expect(baseName("a.ddd.json")).toBe("a.ddd.json");
+  });
+
+  test("two files of one name are told apart by their paths, among every file the change writes", () => {
+    // `left/gauge.ddd.json` and `right/gauge.ddd.json` read `gauge.ddd.json` twice (16:M15).
+    const files = (...paths: string[]) => paths.map((file) => ({ ...ONE_FILE_CHANGE, file }));
+    expect(consequence(files("/p/left/gauge.ddd.json", "/p/right/gauge.ddd.json"))).toBe(
+      "Changes 2 files: left/gauge.ddd.json, right/gauge.ddd.json",
+    );
+    // Among all of them, not only the three named: the fourth file of the name tells the first
+    // two apart too.
+    expect(
+      consequence(
+        files(
+          "/p/a/s.ddd.json",
+          "/p/b/c.ddd.json",
+          "/p/d/e.ddd.json",
+          "/p/b/s.ddd.json",
+          "/p/f.ddd.json",
+        ),
+      ),
+    ).toBe("Changes 5 files: a/s.ddd.json, c.ddd.json, e.ddd.json and 2 more");
+    expect(
+      changedNames(files("/p/left/s.ddd.json", "/p/right/s.ddd.json", "/p/t.ddd.json")),
+    ).toEqual(["left/s.ddd.json", "right/s.ddd.json", "t.ddd.json"]);
   });
 
   // Pinned by the literal, not by the constant, which a test comparing against it would follow.

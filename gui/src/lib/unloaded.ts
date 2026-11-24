@@ -1,6 +1,6 @@
 import type { RefusedBuild, SourceFile } from "../api/types";
 import { countText } from "./numbers";
-import { shownPath, toldApartAll } from "./paths";
+import { fileNames, namedAmong, shownPath, toldApartAll } from "./paths";
 import type { Route } from "./route";
 import { baseName, FILES_NAMED } from "./units";
 
@@ -120,22 +120,30 @@ export function loadBanner(
   // one (`_unloaded`, gui/session.py): every other file it includes was read then.
   const listed = state?.files ?? [];
   const unloaded = listed.filter((file) => !file.loaded);
-  const names = toldApartAll(unloaded.map((file) => file.path));
+  const named = namedAmong(unloaded, (file) => file.path);
+  // Each led to the findings of the name the Findings tab's File column draws it by, among every
+  // file of the project and not only those that did not load (16:M15).
+  const drawn = fileNames(listed.map((file) => file.path));
   const alone = listed.length === 1;
   const described = unloaded.map((file) => alone && file.path === project);
-  for (const name of names.filter((_, at) => described[at])) {
+  const leads = named.map(({ item, name }) => findingsOf(name, item.path, drawn));
+  for (const lead of leads.filter((_, at) => described[at])) {
     lines.push([
-      findingsOf(name),
+      lead,
       ` did not load, so ${checksLeft(1, stopped)}, and no file it includes is read.`,
     ]);
   }
-  const others = names.filter((_, at) => !described[at]);
+  const others = leads.filter((_, at) => !described[at]);
   if (others.length > 0) {
     lines.push([
-      ...listedParts(others, findingsOf, (count) => ({
-        text: `${countText(count)} more`,
-        to: { page: "project", view: "files" },
-      })),
+      ...listedParts(
+        others,
+        (lead) => lead,
+        (count) => ({
+          text: `${countText(count)} more`,
+          to: { page: "project", view: "files" },
+        }),
+      ),
       ` did not load, so ${checksLeft(others.length, stopped)}, and the pages show what the files that loaded declare.`,
     ]);
   }
@@ -175,17 +183,19 @@ function checksLeft(count: number, stopped: boolean): string {
 }
 
 /** A file that did not load, by its name (`unloadedNames`), leading to its finding
- * (`fileFindings`). */
-function findingsOf(name: string): Lead {
-  return { text: name, to: fileFindings(name) };
+ * (`fileFindings`) by the name the column draws it by (`drawn`, `fileNames`). */
+function findingsOf(name: string, path: string, drawn: ReadonlyMap<string, string>): Lead {
+  return { text: name, to: fileFindings(path, drawn) };
 }
 
 /** Where a file's findings are: the Findings tab, asked for the findings that hold the file's own
  * name - its own, the one saying why it did not load among its errors where it did not, and one
- * filed at the entry naming a file that is not there, whose words name it. By the file's own name,
- * the last part of its path or of the name telling two apart, which a finding's file name does not
- * hold (`_holds`, gui/api.py): two of one name lead to the findings of both. Where the banner leads
- * a file that did not load, and a row of the Files tab its file (`fileRemoval`, lib/files.ts). */
-export function fileFindings(file: string): Route {
-  return { page: "project", view: "findings", text: baseName(file) };
+ * filed at the entry naming a file that is not there, whose words name it. By the name the File
+ * column draws the file by (`names`, `fileNames`), which the server's filter matches (`_holds`,
+ * gui/api.py): by its own name, and two files of one name by as much of their paths as tells them
+ * apart, so that each leads to its own findings (16:M15). A file the project does not list is
+ * asked for by the last part of its path. Where the banner leads a file that did not load, and a
+ * row of the Files tab its file (`fileRemoval`, lib/files.ts). */
+export function fileFindings(path: string, names: ReadonlyMap<string, string>): Route {
+  return { page: "project", view: "findings", text: names.get(path) ?? baseName(path) };
 }

@@ -1,6 +1,7 @@
 import type { FilesPlanRequest } from "../api/client";
 import type { FilesPlanReply, FilesReply, IncludedEntryReply, SourceFile } from "../api/types";
 import { relativeToProject } from "./findings";
+import { fileNames } from "./paths";
 import { baseName, consequence } from "./units";
 import { fileFindings, type Lead, type Part } from "./unloaded";
 
@@ -264,13 +265,14 @@ export function fileRemoval(
   rows: readonly FileRow[],
   selected: string | undefined,
   project: string,
+  files: readonly SourceFile[],
 ): FileRemoval | null {
   const row = rows.find((candidate) => candidate.key === selected);
   if (row === undefined) return null;
   return {
     title: cellsOf(row, project).entry,
     request: { action: "remove", path: row.key },
-    leads: leadsOf(row.file),
+    leads: leadsOf(row.file, fileNames(files.map((file) => file.path))),
   };
 }
 
@@ -287,9 +289,9 @@ export function fileRemoval(
  * A row of no file the analysis read - a pattern's own row, an entry naming nothing, a file not
  * read yet - leads nowhere: its panel offers its removal alone.
  */
-function leadsOf(file: SourceFile | null): Lead[] {
+function leadsOf(file: SourceFile | null, names: ReadonlyMap<string, string>): Lead[] {
   if (file === null) return [];
-  if (!file.loaded) return [{ text: "Why it did not load", to: fileFindings(file.path) }];
+  if (!file.loaded) return [{ text: "Why it did not load", to: fileFindings(file.path, names) }];
   const leads: Lead[] = [];
   if (file.kind === "component") {
     leads.push({
@@ -297,7 +299,8 @@ function leadsOf(file: SourceFile | null): Lead[] {
       to: { page: "component", file: file.path },
     });
   }
-  if (totalOf(file) > 0) leads.push({ text: "Show its findings", to: fileFindings(file.path) });
+  if (totalOf(file) > 0)
+    leads.push({ text: "Show its findings", to: fileFindings(file.path, names) });
   return leads;
 }
 

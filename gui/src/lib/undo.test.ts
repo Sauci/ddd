@@ -263,6 +263,14 @@ describe("the undo control", () => {
     expect(undoAction([CHANGED, CREATED])).toBe("Put back 2 files");
   });
 
+  it("tells two files of one name apart by their paths, among every file it puts back", () => {
+    const left = { ...CHANGED, file: "C:/work/demo/left/gauge.ddd.json" };
+    const right = { ...CREATED, file: "C:/work/demo/right/gauge.ddd.json" };
+    expect(undoConsequence([left, right])).toBe(
+      "Puts back 2 files: left/gauge.ddd.json, right/gauge.ddd.json",
+    );
+  });
+
   it("names a file it takes away by what happens to it", () => {
     expect(shownUndo([CHANGED, CREATED])).toEqual([
       { file: CHANGED.file, hunks: CHANGED.hunks, note: null },

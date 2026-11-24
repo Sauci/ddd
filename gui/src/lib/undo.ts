@@ -10,7 +10,7 @@ import type { Finding, PlanReply, State, UndoneChange } from "../api/types";
 import type { Mode } from "./declarations";
 import { relativeToProject } from "./findings";
 import { elementLabel } from "./objectValues";
-import { baseName, type ShownChange } from "./units";
+import { changedNames, type ShownChange } from "./units";
 
 /** The longest label `POST /api/edit` takes; see `Changes.label` in src/ddd/gui/contract.py. */
 const LIMIT = 120;
@@ -71,7 +71,7 @@ export function rasterLabel(plan: RasterPlanRequest): string {
  * of the project once its own entry is gone (`FilesPlanReply.kept_by`).
  *
  * A `create`'s new file by the name `answered` - the plan the server gave for it - creates it
- * under: the base name of its change that carries no fingerprint, as a created file's change alone
+ * under: the name of its change that carries no fingerprint, as a created file's change alone
  * does (`PlannedChange.fingerprint`). `ddd.file_plans.create_plan` makes that name from the one
  * typed and a suffix of its own, and the label takes it as made rather than making it again. An
  * `add`'s by `path` exactly as typed, relative to the description or absolute, since that text is
@@ -87,12 +87,12 @@ export function filesLabel(plan: FilesPlanRequest, answered: PlanReply, project:
   return fitted(`'${relativeToProject(plan.path, project)}' removed from the includes`);
 }
 
-/** Every file `answered` creates, quoted by its base name - one, for every plan `create_plan`
- * makes. */
+/** Every file `answered` creates, quoted by its name among the files the plan writes - one, for
+ * every plan `create_plan` makes. */
 function createdBy(answered: PlanReply): string {
+  const names = changedNames(answered.changes);
   return answered.changes
-    .filter((change) => change.fingerprint === null)
-    .map((change) => `'${baseName(change.file)}'`)
+    .flatMap((change, at) => (change.fingerprint === null ? [`'${names[at]}'`] : []))
     .join(", ");
 }
 
@@ -178,7 +178,7 @@ export function undoButton(state: State | null): string | null {
 /** What an undo would put back, in one sentence naming the files, as part 1's consequence line
  * names the files a change is applied to. */
 export function undoConsequence(changes: readonly UndoneChange[]): string {
-  const files = changes.map((change) => baseName(change.file));
+  const files = changedNames(changes);
   return `Puts back ${plural(files.length)}: ${files.join(", ")}`;
 }
 

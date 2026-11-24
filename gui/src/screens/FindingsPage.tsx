@@ -32,6 +32,7 @@ import {
   type KeptWindow,
   keptAfter,
   listingTotal,
+  namedBy,
   opensAt,
   pageQuery,
   pagesOf,
@@ -42,10 +43,10 @@ import {
   windowLine,
   windowRows,
 } from "../lib/findingsWindow";
+import { fileNames } from "../lib/paths";
 import { refusalSentence } from "../lib/refusals";
 import type { Route } from "../lib/route";
 import { fixLabel } from "../lib/undo";
-import { baseName } from "../lib/units";
 import { Banner } from "../ui/Banner";
 import { FilterField } from "../ui/FilterField";
 
@@ -190,7 +191,8 @@ export function FindingsPage({ state, text, onText, place, onPlace, stopped, onO
   );
   const keeping = keptAfter(drawn, kept);
   if (keeping !== kept) setKept(keeping);
-  const rows = windowRows(drawn.span, drawn.pages);
+  const names = fileNames(state.files.map((file) => file.path));
+  const rows = windowRows(drawn.span, drawn.pages, names);
   const unasked = head.error ?? asked.find((page) => page.isError)?.error ?? null;
   // The finding whose panel is open, kept whole - as it was selected, then as the newest reply
   // about it reported it: the window may have scrolled its row away. The place's, as the tab opens.
@@ -322,8 +324,8 @@ export function FindingsPage({ state, text, onText, place, onPlace, stopped, onO
               label={routeLabel(finding, state)}
               href={routeHref(finding)}
               reason={noRouteReason(finding, state)}
-              place={placeOf(finding, baseName)}
-              fileName={baseName}
+              place={placeOf(finding, namedBy(names))}
+              fileName={namedBy(names)}
               onOpen={() => {
                 const route = routeOf(finding);
                 if (route !== null) onOpen(route);

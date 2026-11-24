@@ -94,8 +94,19 @@ export interface WindowRow {
   file: string;
 }
 
-/** The rows of a span, from the pages that have arrived. */
-export function windowRows(span: Span, pages: ReadonlyMap<number, FindingsReply>): WindowRow[] {
+/** How the Findings tab names a file: by the name the column gives it among the project's files
+ * (`fileNames`, 16:M15), and by its own name where the project does not list it. */
+export function namedBy(names: ReadonlyMap<string, string>): (path: string) => string {
+  return (path) => names.get(path) ?? baseName(path);
+}
+
+/** The rows of a span, from the pages that have arrived, each finding's file drawn as the tab
+ * names it (`namedBy`). */
+export function windowRows(
+  span: Span,
+  pages: ReadonlyMap<number, FindingsReply>,
+  names: ReadonlyMap<string, string>,
+): WindowRow[] {
   const rows: WindowRow[] = [];
   for (let index = span.first; index < span.last; index += 1) {
     const finding = pages.get(Math.floor(index / PAGE_SIZE))?.findings[index % PAGE_SIZE] ?? null;
@@ -103,7 +114,7 @@ export function windowRows(span: Span, pages: ReadonlyMap<number, FindingsReply>
       index,
       key: finding?.key ?? `pending-${index}`,
       finding,
-      file: finding === null ? "" : baseName(finding.file),
+      file: finding === null ? "" : namedBy(names)(finding.file),
     });
   }
   return rows;

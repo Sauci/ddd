@@ -438,15 +438,15 @@ describe("fileRemoval", () => {
   const rows = rowsOf(reply([literal, pattern]), [sourceFile()]);
 
   test("no row selected asks nothing", () => {
-    expect(fileRemoval(rows, undefined, PROJECT)).toBeNull();
+    expect(fileRemoval(rows, undefined, PROJECT, [])).toBeNull();
   });
 
   test("a key no row carries asks nothing, and opens no panel", () => {
-    expect(fileRemoval(rows, "C:/work/demo/sub/nested.ddd.json", PROJECT)).toBeNull();
+    expect(fileRemoval(rows, "C:/work/demo/sub/nested.ddd.json", PROJECT, [])).toBeNull();
   });
 
   test("a literal entry's row is asked for by its key, and named as its entry is spelled", () => {
-    expect(fileRemoval(rows, A, PROJECT)).toEqual({
+    expect(fileRemoval(rows, A, PROJECT, [])).toEqual({
       title: "./a.ddd.json",
       request: { action: "remove", path: A },
       leads: [OPEN_A],
@@ -454,7 +454,7 @@ describe("fileRemoval", () => {
   });
 
   test("a pattern's own row is asked for by the pattern's key, to take it out whole", () => {
-    expect(fileRemoval(rows, "C:/work/demo/sensors/*.ddd.json", PROJECT)).toEqual({
+    expect(fileRemoval(rows, "C:/work/demo/sensors/*.ddd.json", PROJECT, [])).toEqual({
       title: "sensors/*.ddd.json",
       request: { action: "remove", path: "C:/work/demo/sensors/*.ddd.json" },
       leads: [],
@@ -464,7 +464,7 @@ describe("fileRemoval", () => {
   test("a pattern's matched file is asked for by its own path, for the server to refuse", () => {
     // `remove_plan` refuses a file no entry of its own names, naming the pattern: asked with the
     // child's own key, the refusal reaches the reader in the server's words.
-    expect(fileRemoval(rows, SENSORS_X, PROJECT)).toEqual({
+    expect(fileRemoval(rows, SENSORS_X, PROJECT, [])).toEqual({
       title: "sensors/x.ddd.json",
       request: { action: "remove", path: SENSORS_X },
       leads: [],
@@ -484,7 +484,7 @@ describe("fileRemoval", () => {
     });
     const shared = rowsOf(reply([literal, catchAll]), [sourceFile()]);
     expect(selectedIndices(shared, A)).toEqual([0, 2]);
-    expect(fileRemoval(shared, A, PROJECT)).toEqual({
+    expect(fileRemoval(shared, A, PROJECT, [sourceFile()])).toEqual({
       title: "./a.ddd.json",
       request: { action: "remove", path: A },
       leads: [OPEN_A],
@@ -504,7 +504,7 @@ describe("fileRemoval", () => {
     const later = entry({ index: 1, entry: "./a.ddd.json", names: true, key: A, files: [A] });
     const shared = rowsOf(reply([catchAll, later]), [sourceFile()]);
     expect(selectedIndices(shared, A)).toEqual([1, 2]);
-    expect(fileRemoval(shared, A, PROJECT)).toEqual({
+    expect(fileRemoval(shared, A, PROJECT, [sourceFile()])).toEqual({
       title: "a.ddd.json",
       request: { action: "remove", path: A },
       leads: [OPEN_A],
@@ -515,7 +515,7 @@ describe("fileRemoval", () => {
 describe("where a row's panel leads (16:M20)", () => {
   /** The panel of the row `a.ddd.json` names, its file as the state holds it. */
   const leadsOfA = (file: SourceFile) =>
-    fileRemoval(rowsOf(reply([entry()]), [file]), A, PROJECT)?.leads;
+    fileRemoval(rowsOf(reply([entry()]), [file]), A, PROJECT, [file])?.leads;
   /** The Findings tab, asking for the findings that hold a.ddd.json's own name. */
   const findingsOfA = { page: "project", view: "findings", text: "a.ddd.json" };
 
@@ -559,6 +559,20 @@ describe("where a row's panel leads (16:M20)", () => {
     ).toEqual({ text: "a.ddd.json", to: findingsOfA });
   });
 
+  test("to the name the File column draws its file by, where another of the project has its name", () => {
+    // Two files of one name lead to their own findings, not to both (16:M15).
+    const other = sourceFile({ path: "C:/work/demo/other/a.ddd.json" });
+    const broken = sourceFile({ loaded: false, findings: { error: 1, warning: 0, info: 0 } });
+    const files = [broken, other];
+    const asked = fileRemoval(rowsOf(reply([entry()]), files), A, PROJECT, files)?.leads;
+    expect(asked).toEqual([
+      {
+        text: "Why it did not load",
+        to: { page: "project", view: "findings", text: "demo/a.ddd.json" },
+      },
+    ]);
+  });
+
   test("nowhere, for a file that loaded with nothing filed on it and no page of its own", () => {
     expect(leadsOfA(sourceFile({ kind: "constants", name: null }))).toEqual([]);
   });
@@ -572,10 +586,11 @@ describe("where a row's panel leads (16:M20)", () => {
       findings: 1,
     });
     expect(
-      fileRemoval(rowsOf(reply([nothing]), []), "C:/work/demo/missing.ddd.json", PROJECT)?.leads,
+      fileRemoval(rowsOf(reply([nothing]), []), "C:/work/demo/missing.ddd.json", PROJECT, [])
+        ?.leads,
     ).toEqual([]);
     // A file the revision did not read: the row names it, and nothing is known of it yet.
-    expect(fileRemoval(rowsOf(reply([entry()]), []), A, PROJECT)?.leads).toEqual([]);
+    expect(fileRemoval(rowsOf(reply([entry()]), []), A, PROJECT, [])?.leads).toEqual([]);
   });
 });
 

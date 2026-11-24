@@ -48,16 +48,12 @@ function controlOf(target: EventTarget | null): Control | null {
   return control instanceof HTMLElement || control instanceof SVGElement ? control : null;
 }
 
-/** What a change of page waits to give the focus to (`askHeading`, `headingTaking`): nothing
- * once given, or once the reader presses a key or the pointer, or the focus is moved elsewhere
- * (`letsWaitGo`), or a short time after the page's heading took it to hold it for a panel
- * (`holdingSince`). */
-let headingWanted: HeadingWanted | null = null;
-
-/** When the page's heading took the focus to hold it for the panel a change of page opens, until
- * that panel is drawn: `null` while it holds none. Past `WAITS_AT_MOST_MS` from then
- * (`stillWaits`), the change asks no heading for the focus any more. */
-let holdingSince: number | null = null;
+/** What a change of page waits to give the focus to (`askHeading`, `headingTaking`), and since
+ * when the page's heading has held it for the panel the change opens - `null` until it holds it:
+ * nothing once given, or once the reader presses a key or the pointer, or the focus is moved
+ * elsewhere (`letsWaitGo`), or `WAITS_AT_MOST_MS` after the page's heading began holding it
+ * (`stillWaits`). Each ask is a want of its own, so that every change of page waits afresh. */
+let headingWanted: { heading: HeadingWanted; holding: number | null } | null = null;
 
 /** Whether the panel a change of page, a following or a page loaded anew opens waits to be drawn,
  * to be scrolled into view once its page has settled (`askHeading`, `showWhenSettled`): no longer
@@ -190,17 +186,15 @@ function letGo(): void {
  * (`panelDrawn`), at once where it is drawn already; and that panel, where it is to be `shown`,
  * scrolled into view once its page has settled - on a page loaded anew, with no focus moved. */
 export function askHeading(asked: Asked): void {
-  headingWanted = asked.heading;
+  headingWanted = asked.heading === null ? null : { heading: asked.heading, holding: null };
   showWanted = asked.shown;
-  holdingSince = null;
   giveHeading(pageHeading(), panelHeading());
 }
 
 /** Puts the focus on the page's heading, at once where it is drawn, else as it is drawn: where a
  * control the page took away leaves it nowhere else to go (`landing`). */
 function askPageHeading(): void {
-  headingWanted = "page";
-  holdingSince = null;
+  headingWanted = { heading: "page", holding: null };
   giveHeading(pageHeading(), panelHeading());
 }
 
@@ -210,20 +204,23 @@ export function takePageHeading(heading: HTMLElement): void {
 }
 
 /** Gives the focus a change of page asked for, where it waits, to the heading `headingTaking`
- * names of those drawn: the page's (`page`), holding it for a panel no longer than a short time
- * (`holdingSince`), or the panel's (`panel`); and scrolls the panel drawn into view once the page it
- * stands in has settled (`showWhenSettled`), where it waits to be shown. */
+ * names of those drawn: the page's (`page`), holding it for a panel no longer than a short time,
+ * or the panel's (`panel`); and scrolls the panel drawn into view once the page it stands in has
+ * settled (`showWhenSettled`), where it waits to be shown. */
 function giveHeading(page: HTMLElement | null, panel: HTMLElement | null): void {
-  if (holdingSince !== null && !stillWaits(holdingSince, performance.now())) headingWanted = null;
-  if (headingWanted !== null) {
-    const { takes, waits } = headingTaking(headingWanted, {
+  const wanted = headingWanted;
+  const holding = wanted?.holding ?? null;
+  if (holding !== null && !stillWaits(holding, performance.now())) {
+    headingWanted = null;
+  } else if (wanted !== null) {
+    const { takes, waits } = headingTaking(wanted.heading, {
       page: page !== null,
       panel: panel !== null,
     });
     if (!waits) headingWanted = null;
     if (takes === "page") {
       page?.focus();
-      if (waits) holdingSince ??= performance.now();
+      if (waits) wanted.holding ??= performance.now();
     }
     if (takes === "panel") panel?.focus({ preventScroll: true });
   }
@@ -306,7 +303,7 @@ export function panelDrawn(
   openers.set(slot, { title, opener: anew ? opener : (before?.opener ?? null) });
   const heading = panel.querySelector<HTMLElement>('[data-heading="panel"]');
   if (heading === null) return slot;
-  const waited = headingWanted === "panel" || showWanted;
+  const waited = headingWanted?.heading === "panel" || showWanted;
   if (waited && panel.closest("main") !== null) giveHeading(null, heading);
   else if (anew) scrollShown(panel, heading);
   else if (showing?.slot === slot) {

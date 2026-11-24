@@ -134,9 +134,9 @@ export function stillWaits(since: number, now: number): boolean {
  * focus, or to show the panel its address opens - lets what it waits for go (16:I13, ruling
  * B11-45). Moved with no key and no pointer - a screen reader or voice control taking it on, or
  * the page's own code - onto anything but a heading (`onHeading`), it is where the reader is now:
- * it is never taken back to a heading, nor the page scrolled away from it to the panel. A heading taking it is the change's own
- * doing: the page's while the panel is drawn, or the panel's drawn anew, from "Reading…" to its
- * keys.
+ * it is never taken back to a heading, nor the page scrolled away from it to the panel. A heading
+ * taking it is the change's own doing: the page's while the panel is drawn, or the panel's drawn
+ * anew, from "Reading…" to its keys.
  */
 export function letsWaitGo(onHeading: boolean): boolean {
   return !onHeading;

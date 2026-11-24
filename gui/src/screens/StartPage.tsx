@@ -26,6 +26,8 @@ export function StartPage({
   const found = useQuery({ queryKey: ["projects"], queryFn: () => getProjects() });
   const opening = useMutation({
     mutationFn: (path: string) => openProject(path),
+    // The project held open at the press, which the list waits to see replaced (`listHeld`).
+    onMutate: () => ({ before: open }),
     onSuccess: onOpened,
   });
 
@@ -45,7 +47,7 @@ export function StartPage({
               <li key={project.path}>
                 <button
                   type="button"
-                  disabled={listHeld(opening.status)}
+                  disabled={listHeld(opening.status, opening.context?.before ?? null, open)}
                   aria-current={here ? "true" : undefined}
                   onClick={() => (here ? onGo() : opening.mutate(project.path))}
                 >

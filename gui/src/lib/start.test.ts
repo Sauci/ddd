@@ -9,19 +9,35 @@ import {
   unreadShown,
 } from "./start";
 
+const DEMO = "/work/demo/demo.ddd.json";
+const LOGGING = "/work/demo/subsystems/logging/logging.ddd.json";
+
 test("the list takes a press before any project was asked to open", () => {
-  expect(listHeld("idle")).toBe(false);
+  expect(listHeld("idle", null, null)).toBe(false);
+  expect(listHeld("idle", null, DEMO)).toBe(false);
 });
 
-test("the list is held while a project is opening, and once it is open, until the page leaves it", () => {
-  expect(listHeld("pending")).toBe(true);
-  // Answered, the session not yet: the page is still the start page, and a press would open
-  // another project over the one just opened.
-  expect(listHeld("success")).toBe(true);
+test("the list is held while a project is opening", () => {
+  expect(listHeld("pending", null, null)).toBe(true);
+  expect(listHeld("pending", DEMO, DEMO)).toBe(true);
+});
+
+test("the list is held once a project is open, while the page holds open the project it held at the press", () => {
+  // Answered, the session not yet: a press would open another project over the one just opened.
+  expect(listHeld("success", null, null)).toBe(true);
+  expect(listHeld("success", DEMO, DEMO)).toBe(true);
+});
+
+test("the list is given back once the page holds the project opened open, wherever the reader went meanwhile", () => {
+  // The session answered: the start page drawn still - Projects pressed before that answer - lists
+  // the project opened as the one open, and every other to open.
+  expect(listHeld("success", null, DEMO)).toBe(false);
+  expect(listHeld("success", DEMO, LOGGING)).toBe(false);
 });
 
 test("an open the server refused gives the list back", () => {
-  expect(listHeld("error")).toBe(false);
+  expect(listHeld("error", null, null)).toBe(false);
+  expect(listHeld("error", DEMO, DEMO)).toBe(false);
 });
 
 test("a description that could not be read is listed as its path, a colon and the reason", () => {

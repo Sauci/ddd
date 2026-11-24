@@ -6,15 +6,20 @@ export type Opening = "idle" | "pending" | "success" | "error";
 
 /**
  * Whether the start page's list takes no press (`StartPage.tsx`): from the press that opens a
- * project until the page leaves the list.
+ * project until the page holds that project open. `before` is the path the page held open at the
+ * press (`openPath`, lib/session.ts), `open` the one it holds now, `null` for none.
  *
  * Not only while the open is asked (`pending`). Once it is answered the page asks the server who
  * has a project open and draws this list until that answer lands (`onOpened`, `App.tsx`), and a
- * press then would open another project in place of the one just opened. An open the server
- * refused (`error`) gives the list back, with the reason above it.
+ * press then would open another project in place of the one just opened. Once the answer has
+ * landed the page holds another project open than at the press, and the list is given back: where
+ * the reader went back to it meanwhile (Projects, pressed in the moment between the two answers),
+ * it is drawn on, and held for good it took no press until the page was left (15:M15). An open
+ * the server refused (`error`) gives the list back, with the reason above it.
  */
-export function listHeld(opening: Opening): boolean {
-  return opening === "pending" || opening === "success";
+export function listHeld(opening: Opening, before: string | null, open: string | null): boolean {
+  if (opening === "pending") return true;
+  return opening === "success" && open === before;
 }
 
 /**

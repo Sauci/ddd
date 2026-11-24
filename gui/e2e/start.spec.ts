@@ -604,6 +604,41 @@ test("a project opening holds every button of the list, until the start page goe
   await expect(page.getByRole("button", { name: "Controller", exact: true })).toBeVisible();
 });
 
+test("the list held while a project opens is given back once the session names it, Projects pressed before that", async ({
+  page,
+  bareGui,
+}) => {
+  await page.goto(bareGui.address);
+  // The list's own buttons: once the session names DemoDevice, the masthead has one of that name.
+  const main = page.getByRole("main");
+  const demo = main.getByRole("button", { name: /^DemoDevice/ });
+  const logging = main.getByRole("button", { name: /^Logging/ });
+  const list = page.getByRole("heading", { name: "Open a project" });
+  await expect(demo).toBeVisible();
+  // Once the open has answered, `onOpened` (App.tsx) asks for the session again without waiting
+  // for it: that ask is held, so that Projects is pressed before it lands.
+  const releaseSession = await held(page, "/api/session");
+  try {
+    await demo.click();
+    // The open answered: the address moves on to the project's, the start page is still drawn
+    // while no project is open, and its list is held.
+    await expect(page).toHaveURL(/\/project$/);
+    await expect(logging).toBeDisabled();
+    // Projects pressed: the address is the start page's, the list drawn as it was.
+    await page.getByRole("button", { name: "Projects", exact: true }).click();
+    await expect(page).toHaveURL(/\/$/);
+    await expect(list).toBeVisible();
+  } finally {
+    releaseSession();
+  }
+  // The session answered: the page holds DemoDevice open, the start page still drawn at its
+  // address, and the list is given back, DemoDevice marked as the one open.
+  await expect(demo).toContainText("Already open");
+  await expect(logging).toBeEnabled();
+  await expect(demo).toBeEnabled();
+  await expect(list).toBeVisible();
+});
+
 test("the start page goes to the project open, its undo kept, never opening it again, and marks it", async ({
   page,
   gui,

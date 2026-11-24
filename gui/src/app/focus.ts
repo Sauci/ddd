@@ -50,16 +50,17 @@ function controlOf(target: EventTarget | null): Control | null {
 
 /** What a change of page waits to give the focus to (`askHeading`, `headingTaking`), and since
  * when the page's heading has held it for the panel the change opens - `null` until it holds it:
- * nothing once given, or once the reader presses a key or the pointer, or the focus is moved
- * elsewhere (`letsWaitGo`), or `WAITS_AT_MOST_MS` after the page's heading began holding it
- * (`stillWaits`). Each ask is a want of its own, so that every change of page waits afresh. */
+ * nothing once given, or once the reader presses a key or the pointer, turns the wheel or touches
+ * the page (ruling B11-48), or the focus is moved elsewhere (`letsWaitGo`), or `WAITS_AT_MOST_MS`
+ * after the page's heading began holding it (`stillWaits`). Each ask is a want of its own, so that
+ * every change of page waits afresh. */
 let headingWanted: { heading: HeadingWanted; holding: number | null } | null = null;
 
 /** What a page loaded anew waits to show: the panel its address opens, to be scrolled into view
  * once drawn and its page settled, with no heading taking the focus (`askHeading`,
  * `showWhenSettled`); and since when the page has drawn what it shows (`pageShown`), `null` until
- * then. No longer once drawn, or once the reader presses a key or the pointer, or scrolls by a
- * wheel or a touch, or the focus is moved elsewhere (`letsWaitGo`), or `WAITS_AT_MOST_MS` after the
+ * then. No longer once drawn, or once the reader presses a key or the pointer, turns the wheel or
+ * touches the page, or the focus is moved elsewhere (`letsWaitGo`), or `WAITS_AT_MOST_MS` after the
  * page first drew what it shows (`stillWaits`, ruling B11-47): a slow first analysis spends none of
  * that time. The panel a change of page opens waits for nothing of its own: it is shown with its
  * heading as that takes the focus (`giveHeading`), and so no later than the page's heading holds
@@ -85,11 +86,12 @@ let tabbed = false;
  * - keeps the control each press of the pointer went down on until the press is over - React Aria
  *   selects a row as the pointer goes down, and the page draws the row's panel before the browser
  *   gives the focus to the cell pressed;
- * - lets a page's heading go that has not yet taken the focus a change of page asked it to, once
- *   the reader presses a key or the pointer meanwhile, and the panel the change opened that is not
- *   yet scrolled into view (`showWhenSettled`), once the reader scrolls by a wheel or a touch too;
- *   and both once the focus is moved anywhere but onto a heading, a screen reader's doing or the
- *   page's own (`letsWaitGo`, ruling B11-45);
+ * - lets go of what a change of page asked for and has not had yet, once the reader presses a key
+ *   or the pointer, turns the wheel or touches the page meanwhile (ruling B11-48): while the
+ *   panel's heading is still to take the focus, that focus and the panel's show, the focus staying
+ *   where the reader has it; once it has it, what the watch on the panel shown would still move
+ *   (`showWhenSettled`); and all of it once the focus is moved anywhere but onto a heading, a screen
+ *   reader's doing or the page's own (`letsWaitGo`, ruling B11-45);
  * - gives a place to the focus the page takes away with a control, never leaving it to the page's
  *   body (`landing`): the browser moves it there, its `focusout` naming nothing it moves to, as a
  *   control is removed, disabled - Apply, Put back, while their edit is written - or no longer drawn;
@@ -129,10 +131,12 @@ export function watchFocus(): () => void {
     const to = event.target;
     if (letsWaitGo(to instanceof Element && to.matches("[data-heading]"))) letGo();
   };
-  // A wheel or a touch scrolls the page as the reader would have it: the panel a change of page
-  // opened is no longer to be scrolled to as its page settles, nor one a page loaded anew opens. A
-  // panel whose heading the change gives the focus to later is shown with it all the same.
-  const scrolled = () => letShowGo();
+  // The wheel turned, or a touch, is the reader taking the page, as a key and the pointer are
+  // (ruling B11-48), whether it moves the page or not. Before a change of page's panel has its
+  // heading focused, nothing the change asked for is left - its focus nor its show, the focus
+  // staying where the reader has it - nor what a page loaded anew waits to show; after, nothing the
+  // watch on that panel would still move.
+  const taken = () => letGo();
   const out = (event: FocusEvent) => {
     const from = event.target;
     if (event.relatedTarget !== null) return;
@@ -149,8 +153,8 @@ export function watchFocus(): () => void {
   document.addEventListener("keydown", key, true);
   document.addEventListener("focusin", into, true);
   document.addEventListener("focusout", out, true);
-  document.addEventListener("wheel", scrolled, { capture: true, passive: true });
-  document.addEventListener("touchstart", scrolled, { capture: true, passive: true });
+  document.addEventListener("wheel", taken, { capture: true, passive: true });
+  document.addEventListener("touchstart", taken, { capture: true, passive: true });
   return () => {
     document.removeEventListener("pointerdown", down, true);
     document.removeEventListener("pointerup", over, true);
@@ -158,8 +162,8 @@ export function watchFocus(): () => void {
     document.removeEventListener("keydown", key, true);
     document.removeEventListener("focusin", into, true);
     document.removeEventListener("focusout", out, true);
-    document.removeEventListener("wheel", scrolled, true);
-    document.removeEventListener("touchstart", scrolled, true);
+    document.removeEventListener("wheel", taken, true);
+    document.removeEventListener("touchstart", taken, true);
   };
 }
 
@@ -171,18 +175,13 @@ export function focusCameByTab(): boolean {
   return tabbed;
 }
 
-/** Lets go of what the panel a change of page or a page loaded anew opens waits for to be shown:
- * its draw, or its page's settling (`showWhenSettled`). */
-function letShowGo(): void {
-  showWanted = null;
-  settling?.();
-}
-
 /** Lets go of all that a change of page or a page loaded anew waits for: the heading to give the
- * focus to, and the panel to show. */
+ * focus to, the panel to show, and what the watch on a panel shown would still move
+ * (`showWhenSettled`). */
 function letGo(): void {
   headingWanted = null;
-  letShowGo();
+  showWanted = null;
+  settling?.();
 }
 
 /** Asks what `headingAsked` answers as the page's route moves on (16:I13, 16:M9): the focus on the

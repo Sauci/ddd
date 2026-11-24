@@ -66,9 +66,10 @@ export function App() {
   const queries = useQueryClient();
   const [route, navigate, arrived, followings] = useRoute();
   // Which control a press of the pointer is on, for the panel it opens to give the focus back to;
-  // whether the reader pressed anything since a change of page asked for its heading; where the
-  // focus goes that the page takes away with a control, never to the page's body; and whether the
-  // focus came by Tab, which a grid's field asks as it takes it.
+  // whether the reader pressed a key or the pointer, turned the wheel or touched the page since a
+  // change of page asked for its heading; where the focus goes that the page takes away with a
+  // control, never to the page's body; and whether the focus came by Tab, which a grid's field asks
+  // as it takes it.
   useEffect(() => watchFocus(), []);
   // A change of page - a link or a row followed, Back or Forward - puts the focus on the new page's
   // heading, as a page loaded starts at its top: the control that held it is gone with the page

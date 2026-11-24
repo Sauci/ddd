@@ -789,6 +789,28 @@ export async function twoFrames(page: Page): Promise<void> {
 }
 
 /**
+ * Turns the mouse's wheel by `deltaX` and `deltaY` px where the pointer stands, and goes on only once
+ * the page has had the wheel's event: the browser hands a wheel to the page on its own timing - on
+ * Windows, after the turn has returned, and after what a journey does next - so a journey whose
+ * claim is about what the page does once the reader has turned the wheel waits for the page to have
+ * heard it.
+ */
+export async function wheeled(page: Page, deltaX: number, deltaY: number): Promise<void> {
+  const listening = await page.evaluateHandle(() => ({
+    heard: new Promise<void>((done) => {
+      document.addEventListener("wheel", () => done(), {
+        capture: true,
+        once: true,
+        passive: true,
+      });
+    }),
+  }));
+  await page.mouse.wheel(deltaX, deltaY);
+  await listening.evaluate(({ heard }) => heard);
+  await listening.dispose();
+}
+
+/**
  * A wheel the page turns itself from the moment the heading of the panel titled `title` takes the
  * focus: a wheel event at each of its next `frames` frames, dispatched in the frame's animation
  * callbacks - before the frame's layout and what watches the page's sizes, where the browser hands

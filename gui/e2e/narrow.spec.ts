@@ -11,6 +11,7 @@ import {
   namingAScalarType,
   PAST_THE_WAITS,
   twoFrames,
+  wheeled,
   wheelFromFocus,
 } from "./demo";
 import { expect, test } from "./fixtures";
@@ -293,13 +294,15 @@ test("the Graph loaded anew at a variable's address, in a window 800 by 600, has
 });
 
 /**
- * The wheel turned before the panel a change of page opens is drawn (16:M9, 16:I13, ruling
- * B11-46): the go-to from the Graph opens ParameterA on Controller's page, in a window 800 by 600,
+ * The wheel turned before the panel a change of page opens takes the focus (16:M9, 16:I13, ruling
+ * B11-48): the go-to from the Graph opens ParameterA on Controller's page, in a window 800 by 600,
  * Controller's file held back, and the reader turns the wheel once over the page as it reads - a
- * page still too short to scroll. The focus and the view go together: the panel's heading takes
- * the focus, and the panel is scrolled into view with it.
+ * page still too short to scroll. A wheel counts as a key or the pointer does: the reader has taken
+ * the page, and nothing the change asked for is left. The focus stays in the go-to, in view,
+ * nothing is scrolled, and the panel, drawn once the file is read, stays where it falls. The file
+ * is let through only once the page has had the wheel's event, however late the browser hands it.
  */
-test("a wheel turned as the go-to's change of page reads its file, in a window 800 by 600, leaves the panel's heading focused in view", async ({
+test("a wheel turned as the go-to's change of page reads its file, in a window 800 by 600, leaves the focus and the page where they were", async ({
   page,
   gui,
 }) => {
@@ -313,17 +316,17 @@ test("a wheel turned as the go-to's change of page reads its file, in a window 8
     await goTo.press("Enter");
     await expect(page.getByText("Reading the file…")).toBeVisible();
     await page.mouse.move(400, 400);
-    await page.mouse.wheel(0, 200);
+    await wheeled(page, 0, 200);
   } finally {
     release();
   }
   const panel = page.getByRole("complementary", { name: "ParameterA" });
-  const heading = panel.getByRole("heading", { name: "ParameterA", level: 2 });
-  await expect(panel.getByRole("grid", { name: "Keys of ParameterA" })).toBeInViewport({
-    ratio: 0.5,
-  });
-  await expect(heading).toBeFocused();
-  await expect(heading).toBeInViewport();
+  await expect(panel.getByRole("grid", { name: "Keys of ParameterA" })).toBeVisible();
+  await twoFrames(page);
+  await expect(goTo).toBeFocused();
+  await expect(goTo).toBeInViewport();
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  await expect(panel.getByRole("heading", { name: "ParameterA", level: 2 })).not.toBeInViewport();
 });
 
 /**

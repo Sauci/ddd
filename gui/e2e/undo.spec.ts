@@ -181,6 +181,77 @@ test("an edit whose file was saved from outside leaves the stack, and the strip 
   await expect(page.getByRole("button", { name: /^Undo / })).toHaveCount(0);
 });
 
+test("a revision landing while an edit's preview is on its way asks it no second time, and its going is said once", async ({
+  page,
+  gui,
+}) => {
+  // The newest revision the page has read of the state, from its own answers.
+  let newest = 0;
+  page.on("response", (response) => {
+    if (new URL(response.url()).pathname !== "/api/state") return;
+    response
+      .json()
+      .then((body: { revision: number }) => {
+        newest = Math.max(newest, body.revision);
+      })
+      .catch(() => undefined);
+  });
+  // Two edits, as above: ValueA's unit settled, then the vocabulary adopted.
+  await settledAndAnalysed(page, gui);
+  await page.getByRole("button", { name: "DemoDevice" }).click();
+  await page.getByRole("link", { name: "Units" }).click();
+  const banner = page.getByRole("status").filter({ hasText: "This project has no units file" });
+  await banner.getByRole("button", { name: /^Adopt \d+ units$/ }).click();
+  const undo = page.getByRole("button", { name: "Undo the vocabulary adopted" });
+  await expect(undo).toBeVisible();
+  await expect(page.locator(".updating-status")).toHaveText(/^Wrote 2 files for the vocabulary/);
+
+  // The first preview of edit 2 held on its way; any later one answered as the server answers an
+  // edit it has taken off already, refused as no longer on top - what CI's run of the journey
+  // above met, made to happen here on purpose.
+  const release = await held(page, "/api/undo");
+  let asked = 0;
+  await page.route(
+    (url) => url.pathname === "/api/undo" && url.searchParams.get("at") === "2",
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      asked += 1;
+      if (asked === 1) {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 409,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "stale", message: "edit 2 is not the one to undo any more" }),
+      });
+    },
+  );
+  try {
+    await undo.click();
+    await expect(strip(page).getByText("Reading the files…", { exact: true })).toBeVisible();
+    // Saved from outside: the revision that reads the save lands while the preview is held.
+    const before = newest;
+    const description = join(gui.directory, "demo.ddd.json");
+    writeFileSync(description, `${readFileSync(description, "utf8")}\n`);
+    await expect.poll(() => newest, { timeout: 15_000 }).toBeGreaterThan(before);
+  } finally {
+    release();
+  }
+  // The held preview, let through, takes edit 2 off; the edit before it is offered, and the
+  // strip says once why edit 2 went - in the take-off's words alone.
+  await expect(page.getByRole("button", { name: "Undo the unit of ValueA" })).toBeVisible();
+  await expect(strip(page).getByText("Puts back 1 file: controller.ddd.json")).toBeVisible();
+  await expect(strip(page).getByRole("status").locator("p")).toHaveText([
+    "demo.ddd.json changed on disk since it was written, so the vocabulary adopted can no " +
+      "longer be undone. Nothing was put back; the page shows the files as they are.",
+  ]);
+  expect(asked).toBe(1);
+});
+
 test("two edits of one file saved from outside both leave the stack, each said in the strip", async ({
   page,
   gui,

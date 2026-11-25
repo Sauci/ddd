@@ -218,12 +218,28 @@ function same(one: UndoRefused, other: UndoRefused): boolean {
 }
 
 /** `held` with `refused` after the others, and the very same list where it holds that refusal
- * already: the preview of an entry asked again is refused again in the same words, and said once. */
+ * already - the preview of an entry asked again is refused again in the same words, and said once -
+ * or a `stale` refusal of the same entry: an entry the server took off with one is refused as no
+ * longer on top by any ask after it, which would say its going twice (16:M23). The first stands,
+ * the strip asking no entry's preview again while it holds one (`previewAsked`). */
 export function holding(
   held: readonly UndoRefused[],
   refused: UndoRefused,
 ): readonly UndoRefused[] {
-  return held.some((each) => same(each, refused)) ? held : [...held, refused];
+  const already = held.some(
+    (each) => same(each, refused) || (each.stale && refused.stale && each.at === refused.at),
+  );
+  return already ? held : [...held, refused];
+}
+
+/** Whether the strip asks for the preview of `entry`: not while it holds a `stale` refusal of it.
+ * The server took the entry off with that refusal, or keeps it where a file could not be read; the
+ * state says which as it comes. Asked again before then, the preview could only be refused again,
+ * or as no longer on top - and a revision landing while the strip waits for the state keys the
+ * preview anew, which asked the same entry twice (16:M23). The reader asks for it again from the
+ * strip (`UndoShown.askAgain`), which lets the refusal go. */
+export function previewAsked(held: readonly UndoRefused[], entry: { at: number }): boolean {
+  return !held.some((refused) => refused.stale && refused.at === entry.at);
 }
 
 /**
@@ -269,9 +285,10 @@ export interface UndoShown {
   /** Whether the strip says it is reading the files: the preview of the entry on top is asked for,
    * has not come, and nothing refused of it is said. */
   reading: boolean;
-  /** Whether the strip offers to read the files again: the preview of the entry on top was
-   * refused - the server's answer, not a failure - and the server keeps that entry, as it keeps
-   * one whose file could not be read (R22). */
+  /** Whether the strip offers to read the files again, where it offers nothing to put back: the
+   * preview of the entry on top was refused - the server's answer, not a failure - and the server
+   * keeps that entry, as it keeps one whose file could not be read (R22); or the strip asks no
+   * preview of it, holding a `stale` refusal of it (`previewAsked`). */
   askAgain: boolean;
 }
 
@@ -332,8 +349,9 @@ export function undoShown(
     top !== null && asked.error === null && asked.data !== undefined && asked.data.at === top.at
       ? asked.data
       : null;
-  const reading = top !== null && asked.error === null && offered === null;
-  const askAgain = top !== null && refusedRead(asked.error);
+  const asks = top !== null && previewAsked(held, top);
+  const reading = asks && asked.error === null && offered === null;
+  const askAgain = top !== null && offered === null && (!asks || refusedRead(asked.error));
   const label = undoButton(state) ?? (refusals.length > 0 ? NOTHING_LEFT : null);
   return { label, refusals, preview: offered, reading, askAgain };
 }

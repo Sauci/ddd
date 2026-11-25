@@ -9,6 +9,7 @@ import {
   fixLabel,
   holding,
   pasteLabel,
+  previewAsked,
   previewRefused,
   rasterLabel,
   removeLabel,
@@ -605,6 +606,42 @@ describe("a refused undo, and the entries under it (16:M23)", () => {
       "a.ddd.json changed on disk since it was written, so the limits of ValueA can no longer be " +
         "undone. Nothing was put back; the page shows the files as they are.",
     );
+  });
+
+  it("holds no second stale refusal of an edit it holds one of, which is said once, as it went", () => {
+    // CI's run of the journey at undo.spec.ts:148: the preview of edit 2 asked twice, the first
+    // answer taking it off, the second refused as no longer on top - the edit's going said twice.
+    const held = holding([], undoRefused(STALE, LIMITS));
+    expect(holding(held, undoRefused(NOT_ON_TOP, LIMITS))).toBe(held);
+    expect(
+      said(
+        undoShown(holding(held, undoRefused(NOT_ON_TOP, LIMITS)), stateOf(UNIT), asked(undefined)),
+      ),
+    ).toEqual([LIMITS_GONE]);
+    // One that is not stale is held beside it, and so is a stale one of another edit.
+    expect(holding(held, undoRefused(UNWRITABLE, LIMITS))).toHaveLength(2);
+    expect(holding(held, undoRefused(STALE, UNIT))).toHaveLength(2);
+  });
+
+  it("asks no preview of an edit while it holds a stale refusal of it, and offers to read again", () => {
+    // Asked again, it could only be refused again, or as no longer on top where the refusal took
+    // it off; a file that could not be read is read again when the reader asks (R22).
+    const held = [undoRefused(STALE, LIMITS)];
+    expect(previewAsked(held, LIMITS)).toBe(false);
+    expect(previewAsked(held, UNIT)).toBe(true);
+    expect(previewAsked([undoRefused(UNWRITABLE, LIMITS)], LIMITS)).toBe(true);
+    expect(previewAsked([], LIMITS)).toBe(true);
+    // Not asked, the strip reads nothing: it says what it holds and offers to read the files again.
+    expect(undoShown(held, stateOf(LIMITS), asked(undefined))).toMatchObject({
+      preview: null,
+      reading: false,
+      askAgain: true,
+    });
+    // A preview it has from before, its Put back refused, is offered again with its Put back.
+    expect(undoShown(held, stateOf(LIMITS), asked(previewOf(LIMITS)))).toMatchObject({
+      preview: previewOf(LIMITS),
+      askAgain: false,
+    });
   });
 
   it("offers to read the files again beside a refusal of the preview of the entry on top", () => {

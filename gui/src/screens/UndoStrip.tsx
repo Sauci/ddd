@@ -1,12 +1,13 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { getUndo, postUndo } from "../api/client";
-import type { State } from "../api/types";
+import type { State, UndoPreview } from "../api/types";
 import { UndoStripView } from "../components/UndoStripView";
 import { putBackOf, type Write } from "../lib/announcing";
 import {
   askedAgainAfterUndo,
   holding,
+  previewAsked,
   previewRefused,
   type UndoRefused,
   undoRefused,
@@ -26,7 +27,9 @@ interface Props {
  *
  * The preview is asked for only once the strip is open, and keyed by the entry and the
  * revision, so that a file changing on disk - or another window undoing first - is noticed
- * without a request of its own. A refusal of the Put back, whatever its code, is held for the
+ * without a request of its own: once at a time for an entry, and not while the strip holds a
+ * `stale` refusal of it (`previewAsked`), which the reader may ask again from the strip. A refusal
+ * of the Put back, whatever its code, is held for the
  * entry the reader pressed for until their next choice in the strip - Put back pressed again, or
  * the strip closed - as the panels hold theirs, and a revision landing - the one a refusal of the
  * entry on top asks for, within milliseconds (refusing one no longer on top asks for none) - never
@@ -58,13 +61,23 @@ export function UndoStrip({ state, stopped }: Props) {
   }, [open]);
   const undoable = state?.undoable ?? null;
   const revision = state?.revision;
+  // The answer on its way to the preview of an entry, if one is: a revision landing meanwhile keys
+  // the preview anew, and that entry was then asked a second time - the server, having taken it
+  // off with the first answer, refused the second as no longer on top, and the strip said twice
+  // that it can no longer be undone (16:M23). Asked again while one is on its way, the entry's
+  // preview is that answer.
+  const answering = useRef<{ at: number; answer: Promise<UndoPreview> } | null>(null);
+  // No preview of the entry on top while the strip holds a `stale` refusal of it (`previewAsked`).
+  const asks = undoable !== null && previewAsked(held, undoable);
   const preview = useQuery({
     queryKey: ["undo", undoable?.at, revision],
     queryFn:
-      !open || undoable === null
+      !open || undoable === null || !asks
         ? skipToken
-        : () =>
-            getUndo(undoable.at).catch((error: unknown) => {
+        : () => {
+            const pending = answering.current;
+            if (pending !== null && pending.at === undoable.at) return pending.answer;
+            const answer = getUndo(undoable.at).catch((error: unknown) => {
               // Held as the answer comes, of the entry this query was asked for, where the server
               // took that entry off the stack with it: the state naming the one under it can reach
               // the page before this answer does, which moves the strip to that entry's query, and
@@ -72,7 +85,14 @@ export function UndoStrip({ state, stopped }: Props) {
               const kept = error instanceof Error ? previewRefused(error, undoable) : null;
               if (kept !== null && opened.current) setHeld((before) => holding(before, kept));
               throw error;
-            }),
+            });
+            answering.current = { at: undoable.at, answer };
+            const settled = () => {
+              if (answering.current?.answer === answer) answering.current = null;
+            };
+            answer.then(settled, settled);
+            return answer;
+          },
     retry: false,
   });
   const undo = useMutation({
@@ -116,8 +136,10 @@ export function UndoStrip({ state, stopped }: Props) {
         shown.askAgain
           ? () => {
               // A choice of the reader's in the strip, as Put back is: what it says goes with it.
+              // A preview held back for a refusal the strip held is asked as that refusal goes;
+              // one asked and refused is asked again here.
               setHeld([]);
-              void preview.refetch();
+              if (asks) void preview.refetch();
             }
           : null
       }

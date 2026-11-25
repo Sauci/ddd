@@ -137,6 +137,30 @@ def unit_of(target: Path, unit: str) -> FileChange:
     )
 
 
+def waiting_past(session: Session, after: int) -> tuple[threading.Thread, list[Snapshot]]:
+    """A long poll of ``session`` past ``after``, waiting thirty seconds at most on a thread of its
+    own, and what it answers once it does - returned once it is blocked waiting: the session's
+    condition says so while its waiter still holds the lock, which it lets go of only to block, so
+    that whatever the test does next under that lock happens with the waiter blocked, and only a
+    notice wakes it before its thirty seconds run out."""
+    blocked = threading.Event()
+    condition = session._changed
+    real = condition.wait
+
+    def wait(timeout: float | None = None) -> bool:
+        blocked.set()
+        return real(timeout)
+
+    condition.wait = wait  # type: ignore[method-assign]
+    answers: list[Snapshot] = []
+    waiter = threading.Thread(
+        target=lambda: answers.append(session.wait(after, timeout=30)), daemon=True
+    )
+    waiter.start()
+    assert blocked.wait(timeout=10), "the wait never began"
+    return waiter, answers
+
+
 def refusing_renames(after: dict[Path, int]) -> Callable[[Path, Any], Path]:
     """``Path.replace`` refusing a target, as a full disk would, once it has been asked for it
     ``after[target]`` times: 1 refuses the first rename onto it, 2 lets the first by - the put
@@ -4109,6 +4133,42 @@ class TestUndoing:
             session.undo(at)
         assert refused.value.code == STALE
         assert session.undoable is None
+
+    def test_a_wait_answers_as_soon_as_a_preview_takes_an_edit_off(self, shared: Path) -> None:
+        """A long poll waiting while a preview takes the edit on top off the stack answers at
+        once, the state's version moved with the stack, not when its wait runs out: nothing else
+        moves the version then, a preview asking for no analysis."""
+        session = Session(shared.parent)
+        session.open(shared)
+        at, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of Torque")
+        b = shared.parent / "b.ddd.json"
+        b.write_bytes(b.read_bytes().replace(b'"Hz"', b'"rad"'))
+        said = session.snapshot().version
+        waiter, answers = waiting_past(session, said)
+        session.preview_refused(
+            at, EditError(STALE, "b.ddd.json changed on disk since it was written")
+        )
+        waiter.join(timeout=10)
+        assert not waiter.is_alive(), "the wait did not answer the edit taken off"
+        (seen,) = answers
+        assert (seen.version > said, seen.undoable) == (True, None)
+
+    def test_a_wait_answers_as_soon_as_an_undo_takes_its_edit_off(self, shared: Path) -> None:
+        """The same across an undo refused because its file changed on disk: the waiter answers
+        once the edit is off the stack."""
+        session = Session(shared.parent)
+        session.open(shared)
+        at, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of Torque")
+        b = shared.parent / "b.ddd.json"
+        b.write_bytes(b.read_bytes().replace(b'"Hz"', b'"rad"'))
+        said = session.snapshot().version
+        waiter, answers = waiting_past(session, said)
+        with pytest.raises(EditError):
+            session.undo(at)
+        waiter.join(timeout=10)
+        assert not waiter.is_alive(), "the wait did not answer the edit taken off"
+        (seen,) = answers
+        assert (seen.version > said, seen.undoable) == (True, None)
 
     def test_an_undo_left_half_written_forward_is_taken_off_once_asked_again(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

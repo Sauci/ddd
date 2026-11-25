@@ -231,13 +231,16 @@ export function holding(
  *   means for the reader: once the entry has left the stack (`gone`) - the server takes it off
  *   where the disk moved past it - that it can no longer be undone, the button naming another by
  *   then; while it is still there, as it stands, never as one no longer to be undone (a file that
- *   only could not be read keeps its entry);
+ *   only could not be read keeps its entry). That nothing was put back, unless the strip says a
+ *   refusal of the same entry before it that was not `stale` (`after`): an undo the disk refused
+ *   half way put a file back and could not write it forward again, which that one says;
  * - any other, the server's own reason.
  */
-export function undoRefusal(refused: UndoRefused, gone: boolean): string {
+export function undoRefusal(refused: UndoRefused, gone: boolean, after = false): string {
   if (!refused.stale) return `The undo was refused: ${refused.message}`;
   const meaning = gone ? `, so ${refused.label} can no longer be undone` : "";
-  return `${refused.message}${meaning}. Nothing was put back; the page shows the files as they are.`;
+  const nothing = after ? "" : ". Nothing was put back";
+  return `${refused.message}${meaning}${nothing}; the page shows the files as they are.`;
 }
 
 /** What the Undo button says once nothing is left to undo while the strip still says why an entry
@@ -292,9 +295,13 @@ export function undoShown(
   const own = top === null || asked.error === null ? null : undoRefused(asked.error, top);
   const said =
     own === null || standing.some((refused) => same(refused, own)) ? standing : [...standing, own];
-  const refusals = said.map((refused) => ({
+  const refusals = said.map((refused, index) => ({
     key: `${refused.at}:${refused.stale}:${refused.message}`,
-    text: undoRefusal(refused, top === null || refused.at > top.at),
+    text: undoRefusal(
+      refused,
+      top === null || refused.at > top.at,
+      said.slice(0, index).some((before) => before.at === refused.at && !before.stale),
+    ),
   }));
   const offered =
     top !== null && asked.error === null && asked.data !== undefined && asked.data.at === top.at

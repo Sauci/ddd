@@ -547,6 +547,44 @@ describe("a refused undo, and the entries under it (16:M23)", () => {
     expect(new Set(keys).size).toBe(3);
   });
 
+  it("says nothing was put back only where no refusal of the same edit before it may have", () => {
+    // An undo the disk refused half way put a file back and could not write it forward again,
+    // which its own sentence says; asked again, that file is not as the edit left it, and the
+    // edit is taken off - a sentence that nothing was put back would say the first one wrong.
+    const half = new ApiError(
+      409,
+      "unwritable",
+      "b.ddd.json could not be put back (disk full); these could not be written forward again: " +
+        "a.ddd.json",
+    );
+    const after = new ApiError(409, "stale", "a.ddd.json changed on disk since it was written");
+    const held = [undoRefused(half, LIMITS), undoRefused(after, LIMITS)];
+    const first =
+      "The undo was refused: b.ddd.json could not be put back (disk full); these could not be " +
+      "written forward again: a.ddd.json";
+    expect(said(undoShown(held, stateOf(UNIT), asked(undefined)))).toEqual([
+      first,
+      "a.ddd.json changed on disk since it was written, so the limits of ValueA can no longer be " +
+        "undone; the page shows the files as they are.",
+    ]);
+    // While the state still names the edit, as it stands, and the same holds.
+    expect(said(undoShown(held, stateOf(LIMITS), asked(undefined)))).toEqual([
+      first,
+      "a.ddd.json changed on disk since it was written; the page shows the files as they are.",
+    ]);
+    // Beside a refusal of another edit, or one of the same edit coming after it, it is said.
+    const other = [undoRefused(UNWRITABLE, NEWER), undoRefused(after, LIMITS)];
+    expect(said(undoShown(other, stateOf(UNIT), asked(undefined)))[1]).toBe(
+      "a.ddd.json changed on disk since it was written, so the limits of ValueA can no longer be " +
+        "undone. Nothing was put back; the page shows the files as they are.",
+    );
+    const later = [undoRefused(after, LIMITS), undoRefused(half, LIMITS)];
+    expect(said(undoShown(later, stateOf(UNIT), asked(undefined)))[0]).toBe(
+      "a.ddd.json changed on disk since it was written, so the limits of ValueA can no longer be " +
+        "undone. Nothing was put back; the page shows the files as they are.",
+    );
+  });
+
   it("offers the entry again beside a refusal of its Put back that leaves it on the stack", () => {
     // R22: a file that could not be written - the reader may make it writable and press again,
     // with no need to close the strip, the preview the revision on screen answers offered whole.

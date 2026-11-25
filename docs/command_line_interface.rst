@@ -414,14 +414,14 @@ The commands
        unread, and the preview's sentence says that the first row and column pasted are taken
        for a header and not written: a table of that size is read so whatever it holds, and one
        whose header names a different axis is caught by that preview, not by the paste itself.
-       One value pasted into a cell - a single cell of text, a trailing line break aside - is no
-       table: it sets that cell as if typed into it, held with the cells typed before it;
+       One value pasted into a cell - a single cell of text, a trailing line break aside - is
+       no table: it sets that cell as if typed into it, held with the cells typed before it;
        anything more, pasted into a cell or anywhere else in the grid, is a table. A table past
-       about 10,000 counts is not one ``ddd gui`` takes: one whose counts
-       outgrow the address a request carries - past about 8,000 counts of five digits each - is
-       refused as it is pasted, before anything is asked of the server, in a sentence naming the
-       object and saying to set its values cell by cell, or in its file in an editor. Any other
-       plan whose request would outgrow that address is refused the same way, naming its route.
+       about 10,000 counts is not one ``ddd gui`` takes: one whose counts outgrow the address a
+       request carries - past about 8,000 counts of five digits each - is refused as it is
+       pasted, before anything is asked of the server, in a sentence naming the object and
+       saying to set its values cell by cell, or in its file in an editor. Any other plan whose
+       request would outgrow that address is refused the same way, naming its route.
        Every field
        of the page reads a number the same way, in decimal notation: an optional sign, digits
        with an optional fraction or a fraction alone, and an optional exponent, the white
@@ -831,41 +831,36 @@ The commands
        declares or reads an input into a file that loaded is answered. A plan for a name only
        such a file declares says what its panel says, that no file that loaded declares it
        and which did not load, and not that no file declares it. Opening a project answers at
-       once with its name, read from its description as it stands and kept in the heading
-       until another project is opened, in that page or another: the server has one project
-       open at a time, and every page names the new one from then on, by its description's
-       file until the server has said its name; until the first analysis lands, ``Analysing
-       the project…`` stands where the tab's own content goes, and nothing does once one has
-       failed or ``ddd gui`` has stopped, which a banner under the masthead says, and every
-       answer needing a revision is refused, in the same words - ``the open project has not
-       been analysed yet``. An
-       analysis
-       that raises - a plugin failing while the project is read, say - is printed in the
-       terminal ``ddd gui`` runs in, ``ddd gui: analysing the project failed:`` and its reason,
-       and the state the page reads carries the same reason until an analysis succeeds: the
-       revision before it stands meanwhile, or none, and the next poll asks for another
-       analysis. A panel's own plan
-       request goes out at once the first time a field asks for one; typed text asks
-       again only after a pause in the reader's typing; a pick from a list, or Enter,
-       always goes out at once, first time or later. The
-       Findings tab asks for its findings a page at a time as the reader scrolls it,
-       rather than every one at once, and every long table - the component table, the
-       Types, Units, Shared files, Files and Compare tabs' own, a component's own
-       declarations, a unit's own places and a variable's keys - draws only the rows in view,
-       in a box of its own. The component table, a component's own declarations, a unit's own
-       places and the Findings tab each take a filter, which leaves the rows holding the text
-       typed, whatever its case - a component by its name or its file, a declaration by its
-       name, a place by its name or its file's, and a finding, asked of the server, by its
-       check, its words or its file's name as the File column draws it - by its own name, and
-       by as much of its path as tells it apart from another file of that name - and says how
-       many rows it leaves of how many. A text that is a whole name the File column draws leaves
-       the findings of that file alone, where part of a name is found wherever it stands. The
-       Findings tab's File column, a plan's consequence
-       and the lines a change prints name two files of one name in different folders by as
-       much of their paths as tells them apart. The
-       masthead goes to a variable by a part of its name, listing at most fifty of the names
-       holding it, and opens its panel on the page of the component producing it, or of the
-       first declaring it where none does.
+       once with its name, read from its description as it stands and kept in the heading until
+       another project is opened, in that page or another: the server has one project open at a
+       time, and every page names the new one from then on, by its description's file until the
+       server has said its name; until the first analysis lands, ``Analysing the project…``
+       stands where the tab's own content goes, and nothing does once one has failed or ``ddd
+       gui`` has stopped, which a banner under the masthead says, and every answer needing a
+       revision is refused, in the same words - ``the open project has not been analysed yet``.
+       An analysis that raises - a plugin failing while the project is read, say - is printed
+       in the terminal ``ddd gui`` runs in, ``ddd gui: analysing the project failed:`` and its
+       reason, and the state the page reads carries the same reason until an analysis succeeds:
+       the revision before it stands meanwhile, or none, and the next poll asks for another
+       analysis. A panel's own plan request goes out at once the first time a field asks for
+       one; typed text asks again only after a pause in the reader's typing; a pick from a
+       list, or Enter, always goes out at once, first time or later. The Findings tab asks for
+       its findings a page at a time as the reader scrolls it, rather than every one at once,
+       and every long table - the component table, the Types, Units, Shared files, Files and
+       Compare tabs' own, a component's own declarations, a unit's own places and a variable's
+       keys - draws only the rows in view, in a box of its own. The component table, a
+       component's own declarations, a unit's own places and the Findings tab each take a
+       filter, which leaves the rows holding the text typed, whatever its case - a component by
+       its name or its file, a declaration by its name, a place by its name or its file's, and
+       a finding, asked of the server, by its check, its words or its file's name as the File
+       column draws it - by its own name, and by as much of its path as tells it apart from
+       another file of that name - and says how many rows it leaves of how many. A text that is
+       a whole name the File column draws leaves the findings of that file alone, where part of
+       a name is found wherever it stands. The Findings tab's File column, a plan's consequence
+       and the lines a change prints name two files of one name in different folders by as much
+       of their paths as tells them apart. The masthead goes to a variable by a part of its
+       name, listing at most fifty of the names holding it, and opens its panel on the page of
+       the component producing it, or of the first declaring it where none does.
        A build record this DDD cannot use - written by a newer DDD, or naming a check this one
        has not got - applies its severities to no analysis: the start page lists it with its
        reason, as the language server logs one, the state the page reads carries it beside the
@@ -877,9 +872,9 @@ The commands
        the last analysis failed, and, while ``ddd gui`` runs, that it tries again about every
        second until one succeeds; the files that did not load, each named as a refusal names it
        and leading to the Findings tab filtered by the name its File column draws it by, where
-       the finding saying why is listed - past four, three of them and a count of the rest, which leads to the Files tab;
-       and each build record this DDD cannot use, by its path from the project's directory, with
-       its reason.
+       the finding saying why is listed - past four, three of them and a count of the rest,
+       which leads to the Files tab; and each build record this DDD cannot use, by its path
+       from the project's directory, with its reason.
        While a file did not load, the Graph's line on a project with no dictionary names it as
        the cause.
        ``-b DIR`` names a build directory as for ``ddd lsp``, ``--host 0.0.0.0``

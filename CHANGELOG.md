@@ -410,6 +410,8 @@ A user of `ddd tool from-elf`:
   - "The page asks again where the server could not answer, and refuses before sending what the
     server would not read": an edit whose body passes 8 MiB is refused by the page before it is
     sent, in a sentence naming the edit and the limit: it is made in parts, or in an editor.
+  - "Opening the project already open goes to it, and keeps its undo": a reader who reopened the
+    open project to empty its undo stack opens another project first, or starts `ddd gui` again.
   - "An optional key emptied in its field is taken away, so that a raster is made acyclic from its
     panel": a description emptied in a raster's, a section's or a constant's panel is written as no
     key, where the empty text was written; a project that wants the key present with no text writes
@@ -2113,11 +2115,12 @@ A build of DDD from its sources, and a release of it:
   sign.  The Graph moves its view in no time where the browser asks for reduced motion.  After a
   change of page the focus goes to the page's heading, until the reader's own key, pointer, wheel or
   touch takes it elsewhere; Close gives it back to the control the panel was opened from, Apply
-  leaves it in the panel and Put back on the page; every page is titled by its name and the
-  project's; and the heading's line says what an edit or an undo wrote, and where, which a screen
-  reader hears, a second write that says what the first said as well.  A grid's field keeps the
-  focus a screen reader gives it.  A narrow window fits the page: a panel opened out of view is
-  scrolled into it, and a panel's table scrolls sideways in a box of its own.  Nothing to migrate.
+  leaves it in the panel, and Put back, disabled while it puts the files back, gives it to the
+  page's heading; every page is titled by its name and the project's; and the heading's line says
+  what an edit or an undo wrote, and where, which a screen reader hears, a second write that says
+  what the first said as well.  A grid's field keeps the focus a screen reader gives it.  A narrow
+  window fits the page: a panel opened out of view is scrolled into it, and a panel's table scrolls
+  sideways in a box of its own.  Nothing to migrate.
 
 * **Compare names the baseline it was asked for, keeps it from tab to tab, and refuses one in plain
   sentences.**  The Compare tab keeps its Baseline field and the comparison last asked for above the
@@ -2169,9 +2172,11 @@ A build of DDD from its sources, and a release of it:
 * **Opening the project already open goes to it, and keeps its undo.**  The start page offered the
   open project as it offered any other, and pressing it opened it again, which put the undo stack
   away.  Its button now says `Already open`, is marked as the current one, and goes to the project's
-  Graph as the masthead's project button does, asking nothing of the server; a page that followed
-  another page's opening marks that project, from the state, before the session says so.  Every
-  other project opens as before.  Nothing to migrate.
+  Graph as the masthead's project button does, asking nothing of the server, so that its undo stack
+  is kept, where opening it again emptied it; a page that followed another page's opening marks
+  that project, from the state, before the session says so.  Every other project opens as before,
+  emptying the stack.  Migrating costs a reader who reopened the open project to empty its undo
+  stack another project opened first, or `ddd gui` started again.
 
 * **A panel offers what a refusal leaves it, says why it draws nothing, and holds no answer a
   refused read has left.**  One rule says what a panel offers beside a refusal: under a refusal held

@@ -580,7 +580,8 @@ describe("a refused undo, and the entries under it (16:M23)", () => {
         "a.ddd.json",
     );
     const after = new ApiError(409, "stale", "a.ddd.json changed on disk since it was written");
-    const held = [undoRefused(half, LIMITS), undoRefused(after, LIMITS)];
+    // Held as the strip holds them: the take-off beside the Put back refused before it.
+    const held = holding(holding([], undoRefused(half, LIMITS)), undoRefused(after, LIMITS));
     const first =
       "The undo was refused: b.ddd.json could not be put back (disk full); these could not be " +
       "written forward again: a.ddd.json";
@@ -606,8 +607,11 @@ describe("a refused undo, and the entries under it (16:M23)", () => {
         "undone. Nothing was put back; the page shows the files as they are.",
     );
     // A stale refusal before it put nothing back either - a file that could not be read - and
-    // this one still says so.
-    const unread = [undoRefused(UNREAD, LIMITS), undoRefused(after, LIMITS)];
+    // this one still says so. A list the strip no longer holds - it keeps the first stale refusal
+    // of an edit alone (`holding`) - kept for what `undoShown` says of one, given it.
+    const unreadable = undoRefused(UNREAD, LIMITS);
+    expect(holding([unreadable], undoRefused(after, LIMITS))).toEqual([unreadable]);
+    const unread = [unreadable, undoRefused(after, LIMITS)];
     expect(said(undoShown(unread, stateOf(UNIT), asked(undefined)))[1]).toBe(
       "a.ddd.json changed on disk since it was written, so the limits of ValueA can no longer be " +
         "undone. Nothing was put back; the page shows the files as they are.",
@@ -627,6 +631,12 @@ describe("a refused undo, and the entries under it (16:M23)", () => {
     // One that is not stale is held beside it, and so is a stale one of another edit.
     expect(holding(held, undoRefused(UNWRITABLE, LIMITS))).toHaveLength(2);
     expect(holding(held, undoRefused(STALE, UNIT))).toHaveLength(2);
+    // So is a take-off after a Put back the disk refused, which left the edit on top: both are said.
+    const refusedPutBack = [undoRefused(UNWRITABLE, LIMITS)];
+    expect(holding(refusedPutBack, undoRefused(STALE, LIMITS))).toEqual([
+      ...refusedPutBack,
+      undoRefused(STALE, LIMITS),
+    ]);
   });
 
   it("gives an ask of an edit's preview the answer kept for that edit alone", () => {

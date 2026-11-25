@@ -16,7 +16,7 @@ import {
 } from "../components/ConstantPanelView";
 import { heldOf, offerShown, panelShows, type Refused, refusalOf } from "../lib/refusals";
 import type { Route } from "../lib/route";
-import { constantValue, planEdit } from "../lib/shared";
+import { constantDescription, constantValue, planEdit } from "../lib/shared";
 import { planShown } from "../lib/typing";
 import { constantLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
@@ -132,7 +132,7 @@ export function ConstantPanel({
     describe:
       draftDescription === null
         ? null
-        : { action: "set", name, key: "description", raw: JSON.stringify(draftDescription) },
+        : constantDescription(name, draftDescription),
     rename: to === null ? null : { action: "rename", name, to },
     // Asked for only while nothing names the constant: a shape still naming it always refuses
     // (design §4.5), and a control that would refuse the instant it was pressed is a lying button

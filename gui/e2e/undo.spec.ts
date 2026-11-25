@@ -325,6 +325,53 @@ test("a window behind the server names the edit it asked to preview, once anothe
   }
 });
 
+test("an edit a newer one covered, back on top once another window undoes the newer, is offered whole", async ({
+  page,
+  gui,
+}) => {
+  // The first edit, in this window: ValueA's unit settled from Controller's panel.
+  await settledAndAnalysed(page, gui);
+  const other = await page.context().newPage();
+  try {
+    // A second window, its strip open on that edit, its preview held on its way while this window
+    // makes a newer edit: the preview, let through then, is refused as no longer on top.
+    await other.goto(gui.address);
+    const theirs = other.getByRole("button", { name: "Undo the unit of ValueA" });
+    await expect(theirs).toBeVisible();
+    const release = await held(other, "/api/undo");
+    const refused = other.waitForResponse(
+      (response) => new URL(response.url()).pathname === "/api/undo" && response.status() === 409,
+    );
+    try {
+      await theirs.click();
+      const panel = page.getByRole("complementary", { name: "ValueA" });
+      await panel.getByRole("row", { name: /^limits/ }).click();
+      await panel.getByLabel("Max").fill("50");
+      await panel.getByRole("button", { name: /^Apply to/ }).click();
+      await expect(page.getByRole("button", { name: "Undo the limits of ValueA" })).toBeVisible();
+      await expect(other.getByRole("button", { name: "Undo the limits of ValueA" })).toBeVisible();
+    } finally {
+      release();
+    }
+    // Refused before the newer edit goes, so that the strip holds that refusal as it comes back.
+    await refused;
+    await expect(strip(other).getByRole("button", { name: /^Put back/ })).toBeVisible();
+
+    // This window undoes the newer edit: the first is back on top, and the second window offers it
+    // whole - its preview and its Put back, nothing said of a refusal no longer true.
+    await page.getByRole("button", { name: "Undo the limits of ValueA" }).click();
+    await strip(page)
+      .getByRole("button", { name: /^Put back/ })
+      .click();
+    await expect(other.getByRole("button", { name: "Undo the unit of ValueA" })).toBeVisible();
+    await expect(strip(other).getByText("Puts back 1 file: controller.ddd.json")).toBeVisible();
+    await expect(strip(other).getByRole("button", { name: "Put back 1 file" })).toBeVisible();
+    await expect(strip(other).getByRole("status")).toHaveCount(0);
+  } finally {
+    await other.close();
+  }
+});
+
 test("a preview refused after the strip was closed leaves nothing standing beside the name", async ({
   page,
   gui,

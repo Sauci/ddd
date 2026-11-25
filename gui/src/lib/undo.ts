@@ -197,11 +197,20 @@ export interface UndoRefused {
   /** The server's own sentence. */
   message: string;
   stale: boolean;
+  /** Whether the state has named a newer entry on top since the strip held this `stale` refusal:
+   * the entry may come back to the top, and the refusal goes then (`heldUnder`). */
+  covered: boolean;
 }
 
 /** The refusal the strip holds once the Put back of `entry` was refused, whatever its code. */
 export function undoRefused(error: Error, entry: Entry): UndoRefused {
-  return { at: entry.at, label: entry.label, message: error.message, stale: isStale(error) };
+  return {
+    at: entry.at,
+    label: entry.label,
+    message: error.message,
+    stale: isStale(error),
+    covered: false,
+  };
 }
 
 /** What the strip holds once the preview of `entry` was refused: the refusal, where it is `stale`,
@@ -242,6 +251,29 @@ export function previewAsked(held: readonly UndoRefused[], entry: { at: number }
   return !held.some((refused) => refused.stale && refused.at === entry.at);
 }
 
+/** What the strip holds once the state names `top` on top: each `stale` refusal of an entry under
+ * it marked `covered`, and those of `top` itself so marked let go. An entry a newer one covers
+ * comes back to the top once another window undoes the newer edit, or the server takes it off, and
+ * is offered whole then, its preview asked anew (`previewAsked`): a `stale` refusal of it, held
+ * before the newer one went, may no longer hold - one as no longer on top no longer does. Any other
+ * stays until the reader's next choice: one of the entry on top, never covered, keeps its preview
+ * held back - the state may not yet name the edit the server refused it for - and one of an entry
+ * gone, undone or taken off, keeps its words, numbers never reused. The very same list where
+ * nothing moves. */
+export function heldUnder(held: readonly UndoRefused[], top: Entry | null): readonly UndoRefused[] {
+  if (top === null) return held;
+  const standing = held
+    .filter((refused) => !(refused.covered && refused.at === top.at))
+    .map((refused) =>
+      refused.stale && !refused.covered && refused.at < top.at
+        ? { ...refused, covered: true }
+        : refused,
+    );
+  const moved =
+    standing.length !== held.length || standing.some((refused, at) => refused !== held[at]);
+  return moved ? standing : held;
+}
+
 /** An answer the strip keeps to the preview of the entry numbered `at`: what an ask of that
  * entry's preview gets without asking the server (`answerOf`). */
 export interface Answering<T> {
@@ -255,6 +287,15 @@ export interface Answering<T> {
  * entry's answer is none of this one's. */
 export function answerOf<T>(answering: Answering<T> | null, entry: { at: number }): T | null {
   return answering !== null && answering.at === entry.at ? answering.answer : null;
+}
+
+/** What the strip keeps of an answer once the state names `top` on top: nothing of an entry a
+ * newer one covers, which is asked anew if it comes back to the top (`heldUnder`). */
+export function answeringUnder<T>(
+  answering: Answering<T> | null,
+  top: Entry | null,
+): Answering<T> | null {
+  return answering !== null && top !== null && answering.at < top.at ? null : answering;
 }
 
 /** What the strip keeps once `answer` has come: the very answer, where the strip holds the `stale`
@@ -333,8 +374,9 @@ export interface UndoShown {
  *   refuses the next, an edit before it having written the same file. An entry left the stack is
  *   one above the state's top, numbers only ever growing, or any where the stack is empty.
  * - **A refusal held of an entry a newer one covers** - an edit a panel makes while the strip is
- *   open - goes unsaid, the newer one offered whole (branch 2, D0): the entry refused may come
- *   back to the top, and is offered whole then.
+ *   open, or another window - goes unsaid, the newer one offered whole (branch 2, D0): the entry
+ *   refused may come back to the top, and is offered whole then, its preview asked anew - `held`
+ *   is what `heldUnder` leaves, which lets a `stale` refusal of it go as it comes back.
  * - **The preview's own refusal** is said in its place, and nothing is offered to put back: asked
  *   again and refused, the preview before it is no longer what the undo would do. One refused
  *   `stale` is the strip's to hold as its entry's (`previewRefused`), and is said once. A preview

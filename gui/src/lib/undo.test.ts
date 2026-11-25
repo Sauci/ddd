@@ -2,12 +2,14 @@ import { describe, expect, it, test } from "vitest";
 import { ApiError, ServerUnreachable } from "../api/client";
 import type { Finding, PlanReply, State, UndoneChange, UndoPreview } from "../api/types";
 import {
+  answeringUnder,
   answerOf,
   askedAgainAfterUndo,
   constantLabel,
   declareLabel,
   filesLabel,
   fixLabel,
+  heldUnder,
   holding,
   pasteLabel,
   previewAsked,
@@ -404,12 +406,14 @@ describe("a refused undo, and the entries under it (16:M23)", () => {
       label: "the limits of ValueA",
       message: "controller.ddd.json changed on disk since it was written",
       stale: true,
+      covered: false,
     });
     expect(undoRefused(UNWRITABLE, LIMITS)).toEqual({
       at: 2,
       label: "the limits of ValueA",
       message: "controller.ddd.json is read-only, so nothing was put back",
       stale: false,
+      covered: false,
     });
   });
 
@@ -680,6 +684,49 @@ describe("a refused undo, and the entries under it (16:M23)", () => {
       preview: previewOf(LIMITS),
       askAgain: false,
     });
+  });
+
+  it("lets a stale refusal go once its entry is back on top from under a newer one, offered whole", () => {
+    // Another window made an edit as this strip asked, then undid it: edit 2, refused as no longer
+    // on top while the newer one was there, is the one to undo again, and is asked anew.
+    const covered = heldUnder([undoRefused(NOT_ON_TOP, LIMITS)], NEWER);
+    expect(covered).toEqual([{ ...undoRefused(NOT_ON_TOP, LIMITS), covered: true }]);
+    expect(heldUnder(covered, NEWER)).toBe(covered);
+    const back = heldUnder(covered, LIMITS);
+    expect(back).toEqual([]);
+    expect(previewAsked(back, LIMITS)).toBe(true);
+    expect(undoShown(back, stateOf(LIMITS), asked(undefined)).reading).toBe(true);
+    const shown = undoShown(back, stateOf(LIMITS), asked(previewOf(LIMITS)));
+    expect(said(shown)).toEqual([]);
+    expect(shown.preview).toEqual(previewOf(LIMITS));
+    expect(shown.askAgain).toBe(false);
+  });
+
+  it("keeps every other refusal as the stack moves: of the entry on top, not stale, or of one gone", () => {
+    // Of the entry on top and never covered - the state not yet naming the newer edit the server
+    // refused it for - its preview stays held back.
+    const onTop = [undoRefused(NOT_ON_TOP, LIMITS)];
+    expect(heldUnder(onTop, LIMITS)).toBe(onTop);
+    expect(heldUnder(onTop, null)).toBe(onTop);
+    // A Put back refused for a file it cannot write is offered again beside its entry (R22).
+    const unwritable = [undoRefused(UNWRITABLE, UNIT)];
+    expect(heldUnder(unwritable, LIMITS)).toBe(unwritable);
+    // An entry taken off never comes back, numbers never reused: once the newer edit goes, the
+    // strip says again why it went.
+    const takenOff = heldUnder([undoRefused(STALE, LIMITS)], NEWER);
+    expect(takenOff).toEqual([{ ...undoRefused(STALE, LIMITS), covered: true }]);
+    expect(heldUnder(takenOff, UNIT)).toBe(takenOff);
+    expect(said(undoShown(takenOff, stateOf(UNIT), asked(previewOf(UNIT))))).toEqual([LIMITS_GONE]);
+  });
+
+  it("lets go of the answer kept of an entry a newer one covers, and keeps any other", () => {
+    // Covered, the entry is asked of the server anew if it comes back to the top.
+    const kept = { at: 2, answer: "edit 2's answer" };
+    expect(answeringUnder(kept, NEWER)).toBeNull();
+    expect(answeringUnder(kept, LIMITS)).toBe(kept);
+    expect(answeringUnder(kept, UNIT)).toBe(kept);
+    expect(answeringUnder(kept, null)).toBe(kept);
+    expect(answeringUnder(null, NEWER)).toBeNull();
   });
 
   it("offers to read the files again beside a refusal of the preview of the entry on top", () => {

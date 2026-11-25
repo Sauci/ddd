@@ -6,8 +6,10 @@ import { UndoStripView } from "../components/UndoStripView";
 import { putBackOf, type Write } from "../lib/announcing";
 import {
   type Answering,
+  answeringUnder,
   answerOf,
   askedAgainAfterUndo,
+  heldUnder,
   holding,
   previewAsked,
   previewRefused,
@@ -78,8 +80,19 @@ export function UndoStrip({ state, stopped }: Props) {
     setHeld([]);
     answering.current = null;
   };
+  // What the strip holds as the state names its top (`heldUnder`): an entry a newer one covers may
+  // come back to the top - another window undoing the newer edit, or the server taking it off -
+  // and is offered whole then, a `stale` refusal of it gone as it is drawn, never said for a frame.
+  // Kept so once drawn, as an update of what is held by then, so that a refusal come since stays;
+  // the answer kept of an entry covered goes with it (`answeringUnder`), its preview asked anew if
+  // it comes back.
+  const standing = heldUnder(held, undoable);
+  useEffect(() => {
+    if (standing !== held) setHeld((before) => heldUnder(before, undoable));
+    answering.current = answeringUnder(answering.current, undoable);
+  }, [held, standing, undoable]);
   // No preview of the entry on top while the strip holds a `stale` refusal of it (`previewAsked`).
-  const asks = undoable !== null && previewAsked(held, undoable);
+  const asks = undoable !== null && previewAsked(standing, undoable);
   const preview = useQuery({
     queryKey: ["undo", undoable?.at, revision],
     queryFn:
@@ -126,7 +139,7 @@ export function UndoStrip({ state, stopped }: Props) {
     onSettled: () =>
       queries.invalidateQueries({ predicate: (query) => askedAgainAfterUndo(query.queryKey) }),
   });
-  const shown = undoShown(held, state, preview);
+  const shown = undoShown(standing, state, preview);
   if (shown.label === null) return null;
   return (
     <UndoStripView

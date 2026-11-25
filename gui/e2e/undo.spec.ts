@@ -410,16 +410,20 @@ test("a preview refused for a file that cannot be read is read again from the st
   await settledAndAnalysed(page, gui);
   // The server refuses the preview of a file it cannot read, and keeps the edit (R22). The route
   // answers this one preview as it does, word for word: a mode does not stop a read on Windows,
-  // and a journey runs there too. Every later request goes to the server.
-  let refused = 0;
+  // and a journey runs there too. Every later request goes to the server, each preview counted.
+  let asked = 0;
   await page.route(
     (url) => url.pathname === "/api/undo",
     async (route) => {
-      if (route.request().method() !== "GET" || refused > 0) {
+      if (route.request().method() !== "GET") {
         await route.fallback();
         return;
       }
-      refused += 1;
+      asked += 1;
+      if (asked > 1) {
+        await route.fallback();
+        return;
+      }
       await route.fulfill({
         status: 409,
         contentType: "application/json",
@@ -437,12 +441,74 @@ test("a preview refused for a file that cannot be read is read again from the st
   );
   await expect(strip(page).getByRole("button", { name: /^Put back/ })).toHaveCount(0);
 
+  // A revision landing asks the server nothing while the strip holds the refusal: the files are
+  // read again when the reader asks.
+  await revisionLanded(page, gui);
+  await expect(strip(page).getByRole("button", { name: "Read the files again" })).toBeVisible();
+  expect(asked).toBe(1);
+
   // The file mended, the strip reads it again, never closed, and offers the edit whole.
   await strip(page).getByRole("button", { name: "Read the files again" }).click();
   await expect(strip(page).getByText("Puts back 1 file: controller.ddd.json")).toBeVisible();
   await expect(strip(page).getByRole("status")).toHaveCount(0);
   await strip(page).getByRole("button", { name: "Put back 1 file" }).click();
   await expect.poll(() => unitOfValueA(gui)).toBe("rpm");
+  expect(asked).toBe(2);
+});
+
+test("an edit whose Put back meets a file it cannot read is offered again until a revision lands, then read again", async ({
+  page,
+  gui,
+}) => {
+  await settledAndAnalysed(page, gui);
+  // The server refuses the Put back of a file it cannot read, and keeps the edit (R22), answered
+  // here as it is, as the preview's refusal is above. Every preview is counted: the strip asks
+  // none while it holds this refusal, which leaves it no answer kept to give an ask instead.
+  let asked = 0;
+  let refused = 0;
+  await page.route(
+    (url) => url.pathname === "/api/undo",
+    async (route) => {
+      const method = route.request().method();
+      if (method === "GET") asked += 1;
+      if (method !== "POST" || refused > 0) {
+        await route.fallback();
+        return;
+      }
+      refused += 1;
+      await route.fulfill({
+        status: 409,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: "stale",
+          message: "controller.ddd.json can no longer be read",
+        }),
+      });
+    },
+  );
+  await page.getByRole("button", { name: "Undo the unit of ValueA" }).click();
+  await strip(page).getByRole("button", { name: "Put back 1 file" }).click();
+  // Said beside the edit, offered again as the strip read it (R22).
+  await expect(strip(page).getByRole("status")).toHaveText(
+    "controller.ddd.json can no longer be read. Nothing was put back; the page shows the files " +
+      "as they are.",
+  );
+  await expect(strip(page).getByRole("button", { name: "Put back 1 file" })).toBeVisible();
+
+  // A revision landing asks the server nothing: what the strip read is not that revision's, and
+  // it offers to read the files again in its place.
+  await revisionLanded(page, gui);
+  await expect(strip(page).getByRole("button", { name: "Read the files again" })).toBeVisible();
+  await expect(strip(page).getByRole("button", { name: /^Put back/ })).toHaveCount(0);
+  expect(asked).toBe(1);
+
+  // Read again, the edit is offered whole, and put back.
+  await strip(page).getByRole("button", { name: "Read the files again" }).click();
+  await expect(strip(page).getByText("Puts back 1 file: controller.ddd.json")).toBeVisible();
+  await expect(strip(page).getByRole("status")).toHaveCount(0);
+  await strip(page).getByRole("button", { name: "Put back 1 file" }).click();
+  await expect.poll(() => unitOfValueA(gui)).toBe("rpm");
+  expect(asked).toBe(2);
   expect(refused).toBe(1);
 });
 
@@ -484,6 +550,16 @@ async function settledAndAnalysed(page: Page, gui: Gui): Promise<void> {
   await expect(page.locator(".updating-status")).toHaveText(
     "Wrote 1 file for the unit of ValueA: controller.ddd.json.",
   );
+}
+
+/** Saves the project's description from outside, and waits until the page has drawn the revision
+ * that reads it: the component's page asks for that revision's types in the drawing the strip would
+ * ask its own preview in, and this waits on that request's answer. */
+async function revisionLanded(page: Page, gui: Gui): Promise<void> {
+  const asked = page.waitForRequest((request) => new URL(request.url()).pathname === "/api/types");
+  const description = join(gui.directory, "demo.ddd.json");
+  writeFileSync(description, `${readFileSync(description, "utf8")}\n`);
+  await (await asked).response();
 }
 
 /** The unit Controller's file states for ValueA. */

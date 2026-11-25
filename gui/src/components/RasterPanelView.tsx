@@ -2,12 +2,13 @@ import type { PlanReply, RasterReply } from "../api/types";
 import { distinctFindings, keyedFindings } from "../lib/findings";
 import type { Route } from "../lib/route";
 import { rasterRemovable, rasterRemoveBlocked, rasterUseRoute, rasterUseWhat } from "../lib/shared";
-import { baseName, consequence, shownChanges } from "../lib/units";
+import { baseName, consequence, PLANNING, planning, shownChanges } from "../lib/units";
 import { Button } from "../ui/Button";
-import { Chip } from "../ui/Chip";
 import { Panel } from "../ui/Panel";
+import { PanelTable } from "../ui/PanelTable";
 import { UpdatingNote } from "../ui/UpdatingNote";
 import { Changes } from "./Changes";
+import { FindingChip } from "./FindingChip";
 
 /** A change this panel applies: one of the raster's three keys, a rename, or its removal - the
  * keys in the order `ddd.project_shared.RASTERS.keys` lists them, which is the order the panel
@@ -50,7 +51,8 @@ export interface Offer {
    * debounced request has not yet caught up with what the fields now say, or the server has not
    * yet answered the one that has (`planShown`, `lib/typing.ts` - never an earlier request's
    * answer, kept on screen in its place). `plan` is drawn, and Apply offered, only once this is
-   * `false`. */
+   * `false`; until then, with no refusal to say, the panel says `PLANNING` in its place
+   * (`planning`, lib/units.ts). */
   pending: boolean;
 }
 
@@ -190,7 +192,7 @@ export function RasterPanelView(props: RasterPanelViewProps) {
       {rasterRemovable(reply.uses) ? (
         <p className="quiet">Nothing in the project measures in {reply.name}.</p>
       ) : (
-        <table className="panel-declarations">
+        <PanelTable>
           <thead>
             <tr>
               <th scope="col">Where</th>
@@ -216,14 +218,14 @@ export function RasterPanelView(props: RasterPanelViewProps) {
               </tr>
             ))}
           </tbody>
-        </table>
+        </PanelTable>
       )}
       <UpdatingNote updating={props.updating === true} />
       {reply.findings.length > 0 && (
         <ul className="panel-findings">
           {keyedFindings(distinctFindings(reply.findings)).map(([finding, key]) => (
             <li key={key}>
-              <Chip tone={finding.severity === "error" ? "error" : "warning"}>{finding.check}</Chip>{" "}
+              <FindingChip severity={finding.severity} check={finding.check} />{" "}
               <span className="quiet">{finding.message}</span>
             </li>
           ))}
@@ -297,6 +299,7 @@ function Outcome({
         </p>
       )}
       {plan !== null && <p className="consequence">{consequence(plan.changes)}</p>}
+      {planning(offer) && <p className="consequence">{PLANNING}</p>}
       {plan !== null && plan.changes.length > 0 && (
         <>
           {shown && <Changes changes={shownChanges(plan.changes)} />}

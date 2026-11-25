@@ -7,6 +7,7 @@ import type {
   UnitsReply,
   VariableDeclaration,
 } from "../api/types";
+import { toldApartAll } from "./paths";
 
 /** One unit the picker offers: its section, the unit it sets, and what the list says of it. */
 export interface UnitChoice {
@@ -182,22 +183,84 @@ export function rawOf(unit: string | null): string | null {
   return unit === null ? null : JSON.stringify(unit);
 }
 
-/** What a preview changes, in one sentence naming the files. */
+/** How many files a consequence names before it counts the rest. A rename of a unit every
+ * component states changes every file of the project: named one by one, the sentence ran to a
+ * wall of names, with Apply below it. */
+export const FILES_NAMED = 3;
+
+/** What a preview changes, in one sentence: how many files, then their names - three of them and
+ * a count of the rest past four, since a count standing for one file is no shorter than its name.
+ * Its counts are written as the Apply under it writes its own, so that the two read alike. */
 export function consequence(changes: readonly PlannedChange[]): string {
   if (changes.length === 0) return "Nothing to change";
-  const files = changes.map((change) => baseName(change.file));
-  return `Changes ${files.length} file${files.length === 1 ? "" : "s"}: ${files.join(", ")}`;
+  const files = changedNames(changes);
+  const named =
+    files.length <= FILES_NAMED + 1
+      ? files.join(", ")
+      : `${files.slice(0, FILES_NAMED).join(", ")} and ${files.length - FILES_NAMED} more`;
+  return `Changes ${files.length} file${files.length === 1 ? "" : "s"}: ${named}`;
+}
+
+/** What every settlement says after what it changes, in the words the server's fix titles end in
+ * (`CODE_NOT_TOUCHED`, ddd.finding_fixes): the descriptions agree once it is applied, and the code
+ * that reads the variable keeps the scale it was written with. */
+export const CODE_NOT_TOUCHED = " (the code of the readers is not touched)";
+
+/** What a settle's preview says: the consequence a preview always says, and that the readers' code
+ * is not touched - as the quick fix's own title says it, which the server writes. Nothing more
+ * than the consequence where there is nothing to change. */
+export function settleConsequence(changes: readonly PlannedChange[]): string {
+  return changes.length === 0 ? consequence(changes) : `${consequence(changes)}${CODE_NOT_TOUCHED}`;
+}
+
+/** The names a change gives the files it writes, in its order: the one place they are made, all of
+ * them, before `consequence` keeps the first few - each by its own name, and two files of one name
+ * in different folders by as much of their paths as tells them apart (`toldApartAll`), among every
+ * file the change writes (16:M15). Counted in one pass: a rename of a unit stated in a project's
+ * every file changes thousands. */
+export function changedNames(changes: readonly { file: string }[]): string[] {
+  return toldApartAll(changes.map((change) => change.file));
+}
+
+/** What a panel says in place of a plan's consequence while the plan is asked for and has not come
+ * (`planning`): a rename of the unit stated in the most files takes seconds to plan on a large
+ * project - the reference page measures 1.2 to 4.1 s - and the panel looked meanwhile as it had
+ * before it was asked. */
+export const PLANNING = "Planning…";
+
+/** Whether a panel says `PLANNING` where an offer's consequence stands: its plan is pending - asked
+ * for, or about to be once the reader's typing pauses (`planShown`, lib/typing.ts) - and neither
+ * the plan nor why it was refused has come. */
+export function planning(offer: {
+  plan: unknown;
+  refusal: string | null;
+  pending: boolean;
+}): boolean {
+  return offer.pending && offer.plan === null && offer.refusal === null;
 }
 
 /** What a settlement's plan says of the files it would leave unable to load, as the panel draws it
  * beside the plan, before Apply: the server's own sentences, in its words and its order. The
- * reader chose the value, so they warn and stand in no way of applying it. Nothing for no plan, and
- * nothing while the panel says why the plan cannot be applied instead of drawing it. */
-export function unloadableOf(
-  preview: SettleReply | null,
-  refusal: string | null,
-): readonly string[] {
-  return preview === null || refusal !== null ? [] : preview.unloadable;
+ * reader chose the value, so they warn and stand in no way of applying it. Nothing for no plan. A
+ * plan the panel is given is drawn under a refusal of its Apply too, and says them there: it is
+ * never one its own ask refused (`offerShown`, lib/refusals.ts). */
+export function unloadableOf(preview: SettleReply | null): readonly string[] {
+  return preview === null ? [] : preview.unloadable;
+}
+
+/** `sentences` each with a key of its own: the words, and for a sentence the list holds again, how
+ * many of its words came before it. The server's sentences name the file by its name, so two files
+ * of one name say the same words; a list keyed by its words alone drew one of the two under a key
+ * the other had. */
+export function sentenceKeys(
+  sentences: readonly string[],
+): readonly { key: string; text: string }[] {
+  const seen = new Map<string, number>();
+  return sentences.map((text) => {
+    const before = seen.get(text) ?? 0;
+    seen.set(text, before + 1);
+    return { key: `${before} ${text}`, text };
+  });
 }
 
 /** One file's lines as `Changes` prints them: what it changes, and the word standing where its

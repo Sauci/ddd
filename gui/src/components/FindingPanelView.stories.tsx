@@ -127,7 +127,7 @@ export const MismatchWithTwoFixes = () => (
     finding={DEFINITION_MISMATCH}
     state={PROJECT_FINDINGS}
     fixes={DEFINITION_MISMATCH_FIX}
-    chosen="Use the unit declared in controller"
+    chosen="Use the unit declared in controller (the code of the readers is not touched)"
     changesShown
   />
 );

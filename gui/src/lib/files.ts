@@ -1,7 +1,26 @@
 import type { FilesPlanRequest } from "../api/client";
 import type { FilesPlanReply, FilesReply, IncludedEntryReply, SourceFile } from "../api/types";
 import { relativeToProject } from "./findings";
-import { consequence } from "./units";
+import { fileNames } from "./paths";
+import { baseName, consequence } from "./units";
+import { fileFindings, type Lead, type Part } from "./unloaded";
+
+/**
+ * The line the Graph and the Table say over a project that includes no component (16:M13),
+ * pointing at New file, on the Files tab, which writes one and adds it to the includes; `null`
+ * where the project includes one, loaded or not, or while a file did not load - a component saved
+ * half-written is of no kind, and a description that did not load included who knows what: the
+ * banner under the masthead says which (`loadBanner`, lib/unloaded.ts). Left empty, the Graph drew
+ * an empty grid and the Table a header, with no word of what to do next.
+ */
+export function emptyProjectLine(files: readonly SourceFile[]): Part[] | null {
+  if (files.some((file) => file.kind === "component" || !file.loaded)) return null;
+  return [
+    "This project includes no component yet: ",
+    { text: "New file", to: { page: "project", view: "files" } },
+    ", on the Files tab, writes one and includes it.",
+  ];
+}
 
 /**
  * One row of the Files tab: an entry's own row, or one of a pattern's matched files, indented
@@ -222,7 +241,8 @@ export function fileAdd(path: string): FilesPlanRequest | null {
   return path === "" ? null : { action: "add", path };
 }
 
-/** What the Remove panel is about: the row a route's `path` selects, and the plan asked for it. */
+/** What the panel of a row is about: the row a route's `path` selects, where it leads, and the plan
+ * of its removal asked for it. */
 export interface FileRemoval {
   /** The panel's title: the first row of that key in `rowsOf`'s list - the description's own
    * order - named as the table's own Entry cell names it (`cellsOf`). Two rows can share a key, a
@@ -233,20 +253,55 @@ export interface FileRemoval {
    * that key (`remove_plan`), refuses a file only a pattern brings in, naming the pattern, and
    * judges what is left - the page asks, and never decides on its own that Remove is possible. */
   request: Extract<FilesPlanRequest, { action: "remove" }>;
+  /** Where the row leads, beside its removal (`leadsOf`, 16:M20). */
+  leads: Lead[];
 }
 
-/** The Remove panel for `selected`, the route's own `path`, or `null` where nothing is selected
- * or no row carries that key - a sub-project's `include-empty` routes to such a key, naming a
- * place only that sub-project's own table would list - so that no panel opens and nothing is
- * asked for a row the reader cannot see. */
+/** The panel of the row `selected` names, the route's own `path`, or `null` where nothing is
+ * selected or no row carries that key - a sub-project's `include-empty` routes to such a key,
+ * naming a place only that sub-project's own table would list - so that no panel opens and nothing
+ * is asked for a row the reader cannot see. Rows of one key are of one file, and lead alike. */
 export function fileRemoval(
   rows: readonly FileRow[],
   selected: string | undefined,
   project: string,
+  files: readonly SourceFile[],
 ): FileRemoval | null {
   const row = rows.find((candidate) => candidate.key === selected);
   if (row === undefined) return null;
-  return { title: cellsOf(row, project).entry, request: { action: "remove", path: row.key } };
+  return {
+    title: cellsOf(row, project).entry,
+    request: { action: "remove", path: row.key },
+    leads: leadsOf(row.file, fileNames(files.map((file) => file.path))),
+  };
+}
+
+/**
+ * Where a row of the Files tab leads, by the file it is about as the analysis read it (16:M20),
+ * where selecting it offered its removal alone:
+ * - to its component's page, where its file is a component that loaded, named as a finding's
+ *   panel names it (`routeLabel`, lib/findings.ts);
+ * - to its findings, where its file has any - the Findings tab asked for its name
+ *   (`fileFindings`, lib/unloaded.ts), as the table's Findings column counts them;
+ * - to why, where its file did not load: there too, where the banner under the masthead leads it,
+ *   the error saying why among its findings; a file that did not load has no page to draw.
+ *
+ * A row of no file the analysis read - a pattern's own row, an entry naming nothing, a file not
+ * read yet - leads nowhere: its panel offers its removal alone.
+ */
+function leadsOf(file: SourceFile | null, names: ReadonlyMap<string, string>): Lead[] {
+  if (file === null) return [];
+  if (!file.loaded) return [{ text: "Why it did not load", to: fileFindings(file.path, names) }];
+  const leads: Lead[] = [];
+  if (file.kind === "component") {
+    leads.push({
+      text: `Open ${file.name ?? baseName(file.path)}`,
+      to: { page: "component", file: file.path },
+    });
+  }
+  if (totalOf(file) > 0)
+    leads.push({ text: "Show its findings", to: fileFindings(file.path, names) });
+  return leads;
 }
 
 /** Whether the Remove panel asks its plan now (P18b-10, spec §7). Its plan re-analyses the

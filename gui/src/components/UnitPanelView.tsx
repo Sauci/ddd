@@ -1,19 +1,26 @@
+import { useMemo } from "react";
 import type { PlanReply, ProjectUnit, UnitReply, UnitsReply } from "../api/types";
+import { useDrawnRows } from "../app/useDrawnRows";
+import { filterLine, PLACES, placeKey, placesShown, tableDrawn } from "../lib/filter";
 import { distinctFindings, keyedFindings } from "../lib/findings";
 import {
   offers,
   placeRole,
+  placeRoute,
   renameConsequence,
   renameSections,
   unitMeta,
 } from "../lib/projectUnits";
-import { baseName, consequence, shownChanges } from "../lib/units";
+import type { Route } from "../lib/route";
+import { baseName, consequence, PLANNING, planning, shownChanges } from "../lib/units";
 import { Button } from "../ui/Button";
-import { Chip } from "../ui/Chip";
+import { FilterField } from "../ui/FilterField";
 import { Panel } from "../ui/Panel";
+import { Sentence } from "../ui/Sentence";
 import { also, Cell, Column, LongTable, Row, TableBody, TableHeader } from "../ui/Table";
 import { UpdatingNote } from "../ui/UpdatingNote";
 import { Changes } from "./Changes";
+import { FindingChip } from "./FindingChip";
 import { UnitPicker } from "./UnitPicker";
 
 /** A change a unit's panel applies. */
@@ -29,7 +36,8 @@ export interface Offer {
    * request (spec §6) has not yet caught up with what the fields now say, or the server has not
    * yet answered the one that has (`planShown`, `lib/typing.ts` - never an earlier request's
    * answer, kept on screen in its place). `plan` is drawn, and Apply offered, only once this is
-   * `false`. */
+   * `false`; until then, with no refusal to say, the panel says `PLANNING` in its place
+   * (`planning`, lib/units.ts). */
   pending: boolean;
 }
 
@@ -37,6 +45,10 @@ export interface UnitPanelViewProps {
   unit: ProjectUnit;
   reply: UnitReply;
   units: UnitsReply;
+  /** What the filter of the places reads: those whose name or file holds it are drawn
+   * (`placesShown`), and the line beside it says how many of how many. */
+  placesFilter: string;
+  onPlacesFilter: (text: string) => void;
   /** What the Description field reads: what is being typed, else the vocabulary's description. */
   description: string;
   onDescription: (text: string) => void;
@@ -69,6 +81,8 @@ export interface UnitPanelViewProps {
   /** Applying, or the server stopped: nothing can be changed or applied. */
   busy: boolean;
   onClose: () => void;
+  /** A place's name followed to the page of what states the unit there (`placeRoute`). */
+  onOpen: (route: Route) => void;
   /** Whether the findings may be about to change (spec 6): the panel says so where it lists them,
    * also while it lists none - an edit may be about to bring the first. */
   updating?: boolean;
@@ -98,6 +112,13 @@ export function UnitPanelView(props: UnitPanelViewProps) {
     />
   );
   const files = (plan: PlanReply) => consequence(plan.changes);
+  const places = useMemo(
+    () => placesShown(reply.sites, props.placesFilter),
+    [reply.sites, props.placesFilter],
+  );
+  // The places the table draws: those the filter leaves, put back a thousand at a time where it
+  // is widened past the rows drawn (`useDrawnRows`).
+  const drawn = useDrawnRows(places, placeKey);
   return (
     <Panel title={unit.unit} meta={unitMeta(unit, reply, hasVocabulary)} onClose={props.onClose}>
       <UpdatingNote updating={props.updating === true} />
@@ -105,7 +126,7 @@ export function UnitPanelView(props: UnitPanelViewProps) {
         <ul className="panel-findings">
           {keyedFindings(distinctFindings(reply.findings)).map(([finding, key]) => (
             <li key={key}>
-              <Chip tone={finding.severity === "error" ? "error" : "warning"}>{finding.check}</Chip>{" "}
+              <FindingChip severity={finding.severity} check={finding.check} />{" "}
               <span className="quiet">{finding.message}</span>
             </li>
           ))}
@@ -115,48 +136,64 @@ export function UnitPanelView(props: UnitPanelViewProps) {
       {reply.sites.length === 0 ? (
         <p className="quiet">Nothing in the project states {unit.unit}.</p>
       ) : (
-        // Ruling T9-1: a unit stated 12,500 times over (100,000 declarations, one unit) makes
-        // this table as long as the brief's own seven, so it is virtualised the same way.
-        // `.panel-declarations` beside `.long`, for this table alone: it draws in a panel
-        // already, the one place a plain `<table>` of the same class once stood, and keeps that
-        // look - its header's own size, the margin above the table - rather than `.long`'s own,
-        // smaller, unmargined one (fix round 1, Minor 5).
-        //
-        // Widths measured in Chrome (fix round 3) on scratch copies of examples/demo, of a
-        // generated project of 10,000 declarations and of examples/vocabulary. The table draws only
-        // inside this panel, whose box is 472px in a 1280px window and 456px when the table beside
-        // the panel measures 535px. What is fixed at 140px: its words are `placeRole`'s, "structure
-        // member" the widest at 136px. File and Where share the rest, 1fr each, and a column never
-        // goes below its `minWidth`: File keeps 180px, which holds the demo's widest file name
-        // (user_interface.ddd.json, 169px), and Where, whose names are short - the demo's widest is
-        // ParameterA at 96px, the generated project's C00000_O0005 at 115px, examples/vocabulary's
-        // ManifoldPressure at 132px - takes what is left, 152px in the 472px box and 136px in the
-        // 456px one, above a floor of 125px. A name longer than its column - ManifoldPressure is
-        // about 4px short of the 136px - is cut with an ellipsis, never wrapped; Windows' own font
-        // was not measured. The floors sum to 445px: the panel's box holds them down to a window
-        // about 1043px wide - 1089px where a browser draws the box's own vertical scrollbar and the
-        // page's, 15px each - and narrower, until the panel moves under the table it stands beside
-        // at 900px and takes the window's whole width, the box scrolls sideways.
-        <LongTable aria-label={`Where ${unit.unit} is stated`} className="panel-declarations">
-          <TableHeader>
-            <Column isRowHeader width="1fr" minWidth={125}>
-              Where
-            </Column>
-            <Column width="1fr" minWidth={180}>
-              File
-            </Column>
-            <Column width={140}>What</Column>
-          </TableHeader>
-          <TableBody items={reply.sites}>
-            {(site) => (
-              <Row id={`${site.path} ${site.pointer}`}>
-                <Cell>{site.name}</Cell>
-                <Cell className={also("quiet")}>{baseName(site.path)}</Cell>
-                <Cell>{placeRole(site)}</Cell>
-              </Row>
-            )}
-          </TableBody>
-        </LongTable>
+        <>
+          <FilterField
+            label="Filter places"
+            value={props.placesFilter}
+            onChange={props.onPlacesFilter}
+            line={filterLine(props.placesFilter, places.length, reply.sites.length, PLACES)}
+          />
+          {tableDrawn(props.placesFilter, places.length) && (
+            // Ruling T9-1: a unit stated 12,500 times over (100,000 declarations, one unit) makes
+            // this table as long as the brief's own seven, so it is virtualised the same way.
+            // `.panel-declarations` beside `.long`, for this table alone: it draws in a panel
+            // already, the one place a plain `<table>` of the same class once stood, and keeps that
+            // look - its header's own size, the margin above the table - rather than `.long`'s own,
+            // smaller, unmargined one (fix round 1, Minor 5).
+            //
+            // Widths measured in Chrome (fix round 3) on scratch copies of examples/demo, of a
+            // generated project of 10,000 declarations and of examples/vocabulary. The table draws
+            // only inside this panel, whose box is 472px in a 1280px window and 456px when the
+            // table beside the panel measures 535px. What is fixed at 140px: its words are
+            // `placeRole`'s, "structure member" the widest at 136px. File and Where share the rest,
+            // 1fr each, and a column never goes below its `minWidth`: File keeps 180px, which holds
+            // the demo's widest file name (user_interface.ddd.json, 169px), and Where, whose names
+            // are short - the demo's widest is ParameterA at 96px, the generated project's
+            // C00000_O0005 at 115px, examples/vocabulary's ManifoldPressure at 132px - takes what
+            // is left, 152px in the 472px box and 136px in the 456px one, above a floor of 125px. A
+            // name longer than its column - ManifoldPressure is about 4px short of the 136px - is
+            // cut with an ellipsis, never wrapped; Windows' own font was not measured. The floors
+            // sum to 445px: the panel's box holds them down to a window about 1043px wide - 1089px
+            // where a browser draws the box's own vertical scrollbar and the page's, 15px each -
+            // and narrower, until the panel moves under the table it stands beside at 900px and
+            // takes the window's whole width, the box scrolls sideways.
+            <LongTable aria-label={`Where ${unit.unit} is stated`} className="panel-declarations">
+              <TableHeader>
+                <Column isRowHeader width="1fr" minWidth={125}>
+                  Where
+                </Column>
+                <Column width="1fr" minWidth={180}>
+                  File
+                </Column>
+                <Column width={140}>What</Column>
+              </TableHeader>
+              <TableBody items={drawn}>
+                {(site) => (
+                  <Row id={placeKey(site)}>
+                    <Cell>
+                      <Sentence
+                        parts={[{ text: site.name, to: placeRoute(site) }]}
+                        onFollow={props.onOpen}
+                      />
+                    </Cell>
+                    <Cell className={also("quiet")}>{baseName(site.path)}</Cell>
+                    <Cell>{placeRole(site)}</Cell>
+                  </Row>
+                )}
+              </TableBody>
+            </LongTable>
+          )}
+        </>
       )}
       {offered.describe && (
         <section className="panel-offer" aria-label="Description">
@@ -250,6 +287,7 @@ function Outcome({
         </p>
       )}
       {plan !== null && <p className="consequence">{sentence(plan)}</p>}
+      {planning(offer) && <p className="consequence">{PLANNING}</p>}
       {plan !== null && plan.changes.length > 0 && (
         <>
           {shown && <Changes changes={shownChanges(plan.changes)} />}

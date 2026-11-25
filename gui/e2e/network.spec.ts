@@ -1,5 +1,7 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { failing } from "./demo";
+import { CONTROLLER, chooseUnit, failing, openPanel } from "./demo";
 import { expect, test } from "./fixtures";
 
 // The page's own loads, failed by the network once or every time (spec 2026-10-08 §6): each
@@ -191,4 +193,34 @@ test("a module script of another origin, failing once the page is drawn, is not 
   await expect(page.locator("script[data-again]")).toHaveCount(0);
   await expect(page.getByText(PAGE_NOT_LOADED, { exact: true })).toHaveCount(0);
   await expect(controller).toBeVisible();
+});
+
+test("a browser saying the network is lost leaves the page's reads and writes going to a server on loopback", async ({
+  page,
+  gui,
+}) => {
+  const panel = await openPanel(page, gui.address, "ValueA");
+  await chooseUnit(page, "rpm");
+  await expect(panel.getByRole("button", { name: "Apply to 2 files" })).toBeEnabled();
+  await page.evaluate(() => window.dispatchEvent(new Event("offline")));
+  // The long poll is no query: it goes on, and asks again once the apply moves the state.
+  const polled = page.waitForRequest((request) => new URL(request.url()).pathname === "/api/state");
+  // A write: sent at once, not held until the browser says the network is back.
+  await panel.getByRole("button", { name: "Apply to 2 files" }).click({ timeout: 5000 });
+  await expect
+    .poll(
+      () =>
+        JSON.parse(readFileSync(join(gui.directory, CONTROLLER), "utf8")).component.interface.find(
+          (declaration: { definition: { name: string } }) =>
+            declaration.definition.name === "ValueA",
+        ).definition.unit,
+      { timeout: 5000 },
+    )
+    .toBe("rpm");
+  await polled;
+  // A read: the component's file is asked for and answered, not left reading.
+  await page.getByRole("button", { name: "DemoDevice", exact: true }).click();
+  await page.getByRole("button", { name: "SensorHub", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "SensorHub", level: 1 })).toBeVisible();
+  await expect(page.getByRole("grid", { name: "Declarations of SensorHub" })).toBeVisible();
 });

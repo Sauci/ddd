@@ -97,6 +97,35 @@ test("a new measurement is declared and stamped", async ({ page, gui }) => {
   expect(text).toMatch(/"name": "Pressure",\s*"id": "[0-9a-z]{12}"/);
 });
 
+test("a new declaration says what it still needs, its required field empty until one is stated", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("button", { name: "Add a declaration" }).click();
+  const adding = page.getByRole("complementary", { name: "Add a declaration" });
+  const name = adding.getByRole("combobox", { name: "Name" });
+  await name.fill("BrandNewSignal");
+  await name.press("Enter");
+  const kind = adding.getByRole("combobox", { name: "Kind" });
+  await kind.fill("measurement");
+  await kind.press("Enter");
+  const volatile = adding.getByRole("combobox", { name: "Volatile of BrandNewSignal" });
+  await expect(volatile).toHaveValue("");
+  await expect(adding.getByText("Still needs volatile and datatype or typename.")).toBeVisible();
+  await expect(adding.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+
+  await volatile.fill("false");
+  await volatile.press("Enter");
+  await expect(adding.getByText("Still needs datatype or typename.")).toBeVisible();
+  const datatype = adding.getByRole("combobox", { name: "Datatype of BrandNewSignal" });
+  await datatype.fill("uint16");
+  await datatype.press("Enter");
+  await expect(adding.getByText(/Still needs/)).toHaveCount(0);
+  await expect(adding.getByRole("button", { name: "Apply to 1 file" })).toBeEnabled();
+});
+
 test("text left in a key's field of the form offers no Add, until it is taken", async ({
   page,
   gui,
@@ -314,7 +343,7 @@ test("a declaration is removed and put back", async ({ page, gui }) => {
   await expect.poll(() => readFileSync(join(gui.directory, CONTROLLER)).equals(before)).toBe(true);
 });
 
-test("a declaration made from a file that changed on disk is refused, and made once the page has caught up", async ({
+test("a declaration made from a file that changed on disk is refused, and made from the plan offered under the sentence once the page has caught up", async ({
   page,
   gui,
 }) => {
@@ -339,7 +368,6 @@ test("a declaration made from a file that changed on disk is refused, and made o
   const stale =
     "A file changed on disk, so nothing was written. The page now shows the files as they are.";
   await expect(refused).toHaveText(stale);
-  await expect(apply).toHaveCount(0);
   expect(readFileSync(path).equals(drifted)).toBe(true);
 
   // The watcher never notices the drift, and nothing needs it to: refusing the declaration as
@@ -354,11 +382,10 @@ test("a declaration made from a file that changed on disk is refused, and made o
   ).toBeVisible({ timeout: 15000 });
   await expect(refused).toHaveText(stale);
 
-  // Asked again, against the files as they are now: the refusal goes with the edit, and the
-  // declaration is made.
-  await name.fill("ValueC");
-  await name.press("Enter");
-  await adding.getByRole("button", { name: "Apply to 1 file" }).click();
+  // Under the sentence, the plan of the files as they are now, and its Apply (`offerShown`):
+  // pressed, the refusal goes with it, and the declaration is made.
+  await expect(apply).toBeEnabled();
+  await apply.click();
   await expect(page.getByRole("complementary", { name: "ValueC" })).toBeVisible();
   expect(declarationOf(gui.directory, CONTROLLER, "ValueC").unit).toBe("degC");
 });
@@ -471,6 +498,34 @@ test("a component file that stops parsing is shown by its path and the parser's 
   await expect(page.getByRole("grid")).toHaveCount(0);
 });
 
+test("a removal while a file did not load says no other file that loaded declares the variable, and is refused", async ({
+  page,
+  gui,
+}) => {
+  // Controller saved half-written, as an editor saves a file being typed into (16:I10): it still
+  // reads ValueA, which SensorHub alone declares among the files that loaded.
+  const file = join(gui.directory, CONTROLLER);
+  const before = readFileSync(file);
+  writeFileSync(file, before.subarray(0, Math.floor(before.length / 2)));
+  const panel = await openPanel(page, gui.address, "ValueA", "SensorHub");
+  const removing = panel.getByRole("region", { name: "Remove the declaration" });
+  await expect(
+    removing.getByText(
+      "Removes ValueA, which no other file that loaded declares, and controller.ddd.json did " +
+        "not load.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  // The server refuses the removal while a file is unread (`_UNSEEN`, gui/api.py): nothing tells
+  // it whether anything still names ValueA there.
+  await expect(removing.getByRole("status")).toHaveText(
+    "controller.ddd.json did not load, so taking out 'ValueA' could not tell whether anything " +
+      "still names it",
+  );
+  await expect(removing.getByRole("button", { name: "Remove from SensorHub" })).toHaveCount(0);
+  await expect(panel.getByText("which no other component declares")).toHaveCount(0);
+});
+
 test("a component file failing to load leaves the server's own error, and nothing else", async ({
   page,
   gui,
@@ -570,7 +625,7 @@ test("a component file that breaks its schema is drawn as any file is, its namel
   await expect(grid.getByRole("rowheader", { name: "declaration 1", exact: true })).toBeVisible();
   const row = grid.getByRole("row", { name: "declaration 1", exact: true });
   await expect(row.getByRole("gridcell", { name: "input", exact: true })).toBeVisible();
-  await expect(row.getByRole("gridcell", { name: "schema", exact: true })).toBeVisible();
+  await expect(row.getByRole("gridcell", { name: "schema error", exact: true })).toBeVisible();
 
   // Pydantic's own words for a missing key; the finding is text, not a link.
   await expect(
@@ -712,6 +767,26 @@ test("a variable's panel whose variable fails to load says why, beside the table
   expect(failed()).toBeGreaterThanOrEqual(1);
 });
 
+test("a variable's panel whose read of the project's units fails says why, where it said it was reading", async ({
+  page,
+  gui,
+}) => {
+  // The variable's own read goes through: the units its chooser lists fail, every one of them.
+  const failed = await failing(page, "/api/units", "http");
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  const row = page.getByRole("row", { name: "ValueB", exact: true });
+  await expect(row).toBeVisible();
+  await row.click();
+
+  const panel = page.getByRole("complementary", { name: "ValueB", exact: true });
+  await expect(panel.getByRole("heading", { name: "ValueB" })).toBeVisible();
+  await expect(panel.getByRole("alert")).toHaveText(SERVER_FAILED);
+  await expect(panel.getByText("Reading ValueB…")).toHaveCount(0);
+  await expect(page.getByRole("rowheader", { name: "ValueB", exact: true })).toBeVisible();
+  expect(failed()).toBeGreaterThanOrEqual(1);
+});
+
 test("a finding in a variable's panel leads to the unit it names, on the Units tab", async ({
   page,
   copiedGui,
@@ -744,6 +819,31 @@ test("a finding in a variable's panel leads to the unit it names, on the Units t
   ).toBeVisible();
 });
 
+test("a component whose unit holds half of a surrogate pair draws its page, the unit's finding as text", async ({
+  page,
+  copiedGui,
+}) => {
+  // PumpSpeed states a unit of U+D800 and `x`, before the server starts. `JSON.stringify` writes
+  // the lone half as its json escape, plain text in a file that stays utf-8, and the loader reads
+  // it back as it is: the first analysis files `unknown-unit` there, leading to a unit no address
+  // can carry. Decision 17.3 (branch 12's task 9, branch 13's task 7) refuses such a string at the
+  // parser: the task landing it turns this journey into one of the file refused.
+  const gui = await copiedGui("vocabulary", (directory) => {
+    driftIn(directory, PUMP, "PumpSpeed", `${String.fromCharCode(0xd800)}x`);
+  });
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(String(error)));
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Pump", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Pump" }), errors.join("; ")).toBeVisible();
+  await expect(page.getByRole("grid", { name: "Declarations of Pump" })).toBeVisible();
+  // The finding is listed, as text: no link is drawn to the unit it leads to.
+  const finding = page.getByRole("listitem").filter({ hasText: "unknown-unit" });
+  await expect(finding).toContainText("is not a unit this project declares");
+  await expect(finding.getByRole("link")).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
 test("a unit outside the project's vocabulary is said to be, and still offered", async ({
   page,
   vocabularyGui,
@@ -772,7 +872,11 @@ test("a unit outside the project's vocabulary is said to be, and still offered",
   // It is also the field's description, which a screen reader reads with the field. The note
   // comes after the field first drew, which is when React Aria ties a description to its field.
   await expect(picker).toHaveAccessibleDescription("Not one of this project's units");
-  await expect(panel.getByText("Changes 1 file: pump.ddd.json", { exact: true })).toBeVisible();
+  await expect(
+    panel.getByText("Changes 1 file: pump.ddd.json (the code of the readers is not touched)", {
+      exact: true,
+    }),
+  ).toBeVisible();
 
   // A unit the vocabulary lists: no note. Nothing was applied on the way.
   await picker.fill("kPa");
@@ -876,7 +980,7 @@ test("a value block's dimension is picked from the project's constants", async (
     .toContain('"dimensions": ["TREND_SAMPLES"]');
 });
 
-test("a key's apply the server fails on says so in its words, is withdrawn with the unit still chosen, and is sent once", async ({
+test("a key's apply the server fails on says so in its words, the plan asked again offered under it with the unit still chosen, and is sent once a press", async ({
   page,
   gui,
 }) => {
@@ -885,7 +989,10 @@ test("a key's apply the server fails on says so in its words, is withdrawn with 
   const panel = await openPanel(page, gui.address, "ValueA");
   await chooseUnit(page, "rpm");
   await expect(
-    panel.getByText("Changes 2 files: controller.ddd.json, sensor_hub.ddd.json", { exact: true }),
+    panel.getByText(
+      "Changes 2 files: controller.ddd.json, sensor_hub.ddd.json (the code of the readers is not touched)",
+      { exact: true },
+    ),
   ).toBeVisible();
   // Registered once the plan is drawn: `/api/settle`, which draws it, goes through either way.
   const failed = await failing(page, "/api/edit", "http");
@@ -895,15 +1002,53 @@ test("a key's apply the server fails on says so in its words, is withdrawn with 
   await apply.click();
 
   // `VariablePanel` words this refusal itself, as `refusalOf` words the other panels'.
-  await expect(settle.getByRole("status")).toHaveText(`The change was refused: ${SERVER_FAILED}`);
-  // The panel withdraws its Apply until the reader chooses again (P19b-24); the choice stays.
-  await expect(settle.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+  const refused = settle.getByRole("status");
+  await expect(refused).toHaveText(`The change was refused: ${SERVER_FAILED}`);
+  // Under the sentence, held until the reader's next choice, the plan asked again once the Apply
+  // was answered, and its Apply, one press away, as every panel offers it (`offerShown`); the
+  // choice stays.
+  await expect(apply).toBeEnabled();
+  await expect(refused).toHaveText(`The change was refused: ${SERVER_FAILED}`);
   await expect(panel.getByRole("combobox", { name: "Unit of ValueA" })).toHaveValue("rpm");
   // A guard against a write by another path: the POST is answered by `failing`, not the server.
   expect(readFileSync(join(gui.directory, CONTROLLER)).equals(controller)).toBe(true);
   expect(readFileSync(join(gui.directory, SENSOR_HUB)).equals(hub)).toBe(true);
-  // A POST is never sent again.
+  // A POST is never sent again by itself: only a press sends one, the Apply drawn under the
+  // sentence among them.
   expect(failed()).toBe(1);
+  await apply.click();
+  await expect.poll(failed).toBe(2);
+  await expect(refused).toHaveText(`The change was refused: ${SERVER_FAILED}`);
+  await expect(apply).toBeEnabled();
+});
+
+test("a key's apply whose plan the server fails on when asked again offers nothing to press beside the refusal", async ({
+  page,
+  gui,
+}) => {
+  const panel = await openPanel(page, gui.address, "ValueA");
+  await chooseUnit(page, "rpm");
+  const settle = panel.getByRole("region", { name: "Settle the key" });
+  const plan = settle.getByText(
+    "Changes 2 files: controller.ddd.json, sensor_hub.ddd.json (the code of the readers is not touched)",
+    { exact: true },
+  );
+  await expect(plan).toBeVisible();
+
+  // From here on the server fails the Apply, and the plan the panel asks again once the Apply is
+  // answered: the query keeps the plan it had, whose fingerprints the server would refuse.
+  const edits = await failing(page, "/api/edit", "http");
+  const plans = await failing(page, "/api/settle", "http");
+  await settle.getByRole("button", { name: "Apply to 2 files" }).click();
+  await expect(settle.getByRole("status")).toHaveText(`The change was refused: ${SERVER_FAILED}`);
+  await expect.poll(plans).toBeGreaterThanOrEqual(1);
+  // Beside its plan's own refusal, a write offers nothing to apply (`offerShown`), the refusal of
+  // the Apply said over it - once every query the Apply asked again has answered too.
+  await expect(settle.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+  await expect(plan).toHaveCount(0);
+  await expect(panel.getByRole("combobox", { name: "Unit of ValueA" })).toBeEnabled();
+  await expect(settle.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+  expect(edits()).toBe(1);
 });
 
 test("a removal the server fails on says so in its words, and the declaration stays", async ({
@@ -952,10 +1097,14 @@ test("a declaration the server fails on says so in its words, and nothing is dec
   await apply.click();
 
   // `refusalOf`, through the panel's `onError`.
-  await expect(adding.getByRole("status")).toHaveText(`The change was refused: ${SERVER_FAILED}`);
-  // Withdrawn until the next edit of the form (P19b-24); what was typed stays, and nothing was
-  // declared, so no panel of ValueC opens.
-  await expect(adding.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+  const refused = adding.getByRole("status");
+  await expect(refused).toHaveText(`The change was refused: ${SERVER_FAILED}`);
+  // Under the sentence, held until the next edit of the form, the plan asked again once the Apply
+  // was answered, and its Apply (`offerShown`); what was typed stays, and nothing was declared, so
+  // no panel of ValueC opens.
+  await expect(adding.getByText("Reads ValueC as SensorHub declares it.")).toBeVisible();
+  await expect(apply).toBeEnabled();
+  await expect(refused).toHaveText(`The change was refused: ${SERVER_FAILED}`);
   await expect(name).toHaveValue("ValueC");
   await expect(page.getByRole("complementary", { name: "ValueC", exact: true })).toHaveCount(0);
   expect(readFileSync(join(gui.directory, CONTROLLER)).equals(controller)).toBe(true);

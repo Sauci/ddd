@@ -16,6 +16,7 @@ import {
   hasUnitsFile,
   offers,
   placeRole,
+  placeRoute,
   planEdit,
   renameConsequence,
   renameSections,
@@ -240,6 +241,26 @@ group("a unit's panel", () => {
     expect(placeRole(place("type", TYPES))).toBe("scalar type");
     expect(placeRole(place("member", TYPES, { name: "Motor_t.speed" }))).toBe("structure member");
     expect(placeRole(place("variable", PUMP, { role: null }))).toBe("variable");
+  });
+
+  test("a place leads to the page of what states the unit, as the other panels' rows lead", () => {
+    // A variable to its panel on its component's page, a scalar type and a structure member -
+    // named `Type.member` - to the type's own (16:M22).
+    expect(placeRoute(place("variable", PUMP, { name: "EngineSpeed" }))).toEqual({
+      page: "component",
+      file: PUMP,
+      variable: "EngineSpeed",
+    });
+    expect(placeRoute(place("type", TYPES, { name: "Speed_t" }))).toEqual({
+      page: "project",
+      view: "types",
+      type: "Speed_t",
+    });
+    expect(placeRoute(place("member", TYPES, { name: "Motor_t.speed" }))).toEqual({
+      page: "project",
+      view: "types",
+      type: "Motor_t",
+    });
   });
 
   test("a unit the vocabulary lists is described, and removed once nothing states it", () => {

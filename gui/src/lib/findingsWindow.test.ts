@@ -7,19 +7,31 @@ import {
   drawnWindow,
   keeps,
   keptAfter,
+  listingTotal,
   MARGIN,
+  opensAt,
   PAGE_SIZE,
   pageQuery,
   pagesOf,
   pendingKeys,
+  placeOpened,
   type RevisionWindow,
   ROW_HEIGHT,
+  scrolledTo,
+  scrolledTop,
   spacersOf,
   spanOf,
+  walkTarget,
+  windowLine,
   windowRows,
 } from "./findingsWindow";
+import { fileNames } from "./paths";
 
 const HUB = "C:/work/demo/components/sensor_hub.ddd.json";
+
+/** The names the File column draws for the project's files, by path (`fileNames`): the hub's alone
+ * is the only file of its name here. */
+const NAMES = fileNames([HUB]);
 
 /** The finding at `index` of a long table, its key the server's own shape. */
 function listed(index: number): ListedFinding {
@@ -152,6 +164,12 @@ describe("the pages a span covers", () => {
     expect(pageQuery(3)).toEqual({ offset: 300, limit: 100 });
   });
 
+  test("a filtered listing's page is asked for under its text, an unfiltered one's under none", () => {
+    expect(pageQuery(0, "C00500")).toEqual({ offset: 0, limit: 100, text: "C00500" });
+    expect(pageQuery(2, "valuee")).toEqual({ offset: 200, limit: 100, text: "valuee" });
+    expect(pageQuery(2, "")).toEqual({ offset: 200, limit: 100 });
+  });
+
   test("the pages that have arrived, by page, and none that has not", () => {
     const third = page(3);
     expect(arrivedPages([3, 4], [third, undefined], 7)).toEqual(new Map([[3, third]]));
@@ -169,7 +187,7 @@ describe("the pages a span covers", () => {
 
 describe("the rows the window draws", () => {
   test("from a page that has arrived: each finding with its key and its file's own name", () => {
-    const rows = windowRows({ first: 0, last: 2 }, new Map([[0, page(0)]]));
+    const rows = windowRows({ first: 0, last: 2 }, new Map([[0, page(0)]]), NAMES);
     expect(rows).toEqual([
       { index: 0, key: listed(0).key, finding: listed(0), file: "sensor_hub.ddd.json" },
       { index: 1, key: listed(1).key, finding: listed(1), file: "sensor_hub.ddd.json" },
@@ -177,7 +195,7 @@ describe("the rows the window draws", () => {
   });
 
   test("a row whose page has not arrived is a placeholder, keyed by its place", () => {
-    const rows = windowRows({ first: 98, last: 102 }, new Map([[0, page(0)]]));
+    const rows = windowRows({ first: 98, last: 102 }, new Map([[0, page(0)]]), NAMES);
     expect(rows.map((row) => [row.index, row.key, row.finding === null, row.file])).toEqual([
       [98, listed(98).key, false, "sensor_hub.ddd.json"],
       [99, listed(99).key, false, "sensor_hub.ddd.json"],
@@ -187,20 +205,111 @@ describe("the rows the window draws", () => {
   });
 
   test("the rows of a later page are read from where that page starts", () => {
-    const rows = windowRows({ first: 205, last: 207 }, new Map([[2, page(2)]]));
+    const rows = windowRows({ first: 205, last: 207 }, new Map([[2, page(2)]]), NAMES);
     expect(rows.map((row) => row.finding)).toEqual([listed(205), listed(206)]);
   });
 
+  test("a file told apart from another of its name by its path, as the column draws it", () => {
+    // `left/gauge.ddd.json` and `right/gauge.ddd.json` are two rows of one name otherwise
+    // (16:M15). A file the project does not list keeps its own name.
+    const left = "C:/work/demo/left/gauge.ddd.json";
+    const right = "C:/work/demo/right/gauge.ddd.json";
+    const elsewhere = { ...listed(2), file: "C:/other/unlisted.ddd.json" };
+    const reply: FindingsReply = {
+      revision: 7,
+      total: 3,
+      offset: 0,
+      findings: [{ ...listed(0), file: left }, { ...listed(1), file: right }, elsewhere],
+    };
+    const rows = windowRows({ first: 0, last: 3 }, new Map([[0, reply]]), fileNames([left, right]));
+    expect(rows.map((row) => row.file)).toEqual([
+      "left/gauge.ddd.json",
+      "right/gauge.ddd.json",
+      "unlisted.ddd.json",
+    ]);
+  });
+
   test("none, for a span with no row", () => {
-    expect(windowRows({ first: 0, last: 0 }, new Map())).toEqual([]);
+    expect(windowRows({ first: 0, last: 0 }, new Map(), NAMES)).toEqual([]);
   });
 });
 
 describe("the rows nobody can select", () => {
   test("each placeholder, by its key, and no row whose finding has arrived", () => {
-    const rows = windowRows({ first: 98, last: 102 }, new Map([[0, page(0)]]));
+    const rows = windowRows({ first: 98, last: 102 }, new Map([[0, page(0)]]), NAMES);
     expect(pendingKeys(rows)).toEqual(["pending-100", "pending-101"]);
-    expect(pendingKeys(windowRows({ first: 0, last: 3 }, new Map([[0, page(0)]])))).toEqual([]);
+    expect(pendingKeys(windowRows({ first: 0, last: 3 }, new Map([[0, page(0)]]), NAMES))).toEqual(
+      [],
+    );
+  });
+});
+
+describe("where the box stands for the listing asked", () => {
+  test("where it was scrolled to, under the very text asked", () => {
+    expect(scrolledTop({ text: "c00500", top: 990 }, "c00500")).toBe(990);
+    expect(scrolledTop({ text: "", top: 824_967 }, "")).toBe(824_967);
+  });
+
+  test("at its top for a text newly asked, whose table is drawn anew", () => {
+    // Scrolled to the last of 25,000 findings, then filtered: the listing starts at its first row.
+    expect(scrolledTop({ text: "", top: 824_967 }, "c00500")).toBe(0);
+    // And back to every finding, or on to another text.
+    expect(scrolledTop({ text: "c00500", top: 990 }, "")).toBe(0);
+    expect(scrolledTop({ text: "c00500", top: 990 }, "missing-id")).toBe(0);
+  });
+});
+
+describe("where the tab opens, drawn anew (16:M16)", () => {
+  const PROJECT = "C:/work/demo/demo.ddd.json";
+  /** Scrolled to row 606 of the 15,000 `missing-id` findings, the one at row 610 opened. */
+  const held = { project: PROJECT, text: "missing-id", top: 20_000, selected: listed(610) };
+
+  test("at the place held of the very listing its address asks for: its scroll and its finding", () => {
+    expect(placeOpened(held, PROJECT, "missing-id")).toEqual({
+      top: 20_000,
+      selected: listed(610),
+    });
+    // The bare tab's own place, its box scrolled and no panel open.
+    const bare = { project: PROJECT, text: "", top: 824_967, selected: undefined };
+    expect(placeOpened(bare, PROJECT, "")).toEqual({ top: 824_967, selected: undefined });
+  });
+
+  test("at its top, no panel open, for another listing, another project's place, or none held", () => {
+    // A link to a file's findings, while the place held is of every finding.
+    expect(placeOpened(held, PROJECT, "controller.ddd.json")).toEqual({
+      top: 0,
+      selected: undefined,
+    });
+    expect(placeOpened(held, PROJECT, "")).toEqual({ top: 0, selected: undefined });
+    expect(placeOpened(held, "C:/work/second/second.ddd.json", "missing-id")).toEqual({
+      top: 0,
+      selected: undefined,
+    });
+    expect(placeOpened(null, PROJECT, "missing-id")).toEqual({ top: 0, selected: undefined });
+  });
+
+  /** A listing's window as the tab draws it, `total` rows in all or `null` where its count is not
+   * known yet. */
+  function drawnOf(text: string, total: number | null): RevisionWindow {
+    return {
+      revision: 7,
+      text,
+      total,
+      all: 25000,
+      statements: { error: 0, warning: 25000, info: 0 },
+      span: { first: 0, last: 0 },
+      pages: new Map(),
+    };
+  }
+
+  test("its box scrolled there once the spaces standing for its rows are known", () => {
+    expect(opensAt(drawnOf("", 25000), 20_000)).toBe(20_000);
+    expect(opensAt(drawnOf("missing-id", 15000), 20_000)).toBe(20_000);
+    expect(opensAt(drawnOf("missing-id", 15000), 0)).toBe(0);
+  });
+
+  test("nowhere yet while a filtered listing's count has not come: the box could not stand there", () => {
+    expect(opensAt(drawnOf("missing-id", null), 20_000)).toBeNull();
   });
 });
 
@@ -221,21 +330,59 @@ describe("whether a scroll keeps the row the keyboard is on", () => {
   });
 });
 
+describe("the scroll that brings a row the window let go back into the box", () => {
+  test("every row before it, so that it stands first in view and the window draws it", () => {
+    expect(scrolledTo(0)).toBe(0);
+    expect(scrolledTo(1)).toBe(ROW_HEIGHT);
+    expect(scrolledTo(24999)).toBe(24999 * ROW_HEIGHT);
+    for (const index of [0, 57, 9999, 24999]) {
+      expect(keeps(index, scrolledTo(index), BOX_HEIGHT)).toBe(true);
+      expect(spanOf(scrolledTo(index), BOX_HEIGHT, 25000).first).toBe(Math.max(0, index - MARGIN));
+    }
+  });
+
+  test("the top of the box, for a place before the first row", () => {
+    expect(scrolledTo(-3)).toBe(0);
+  });
+});
+
+describe("how many rows a listing has in all", () => {
+  test("unfiltered, every finding its revision files, known at once", () => {
+    expect(listingTotal("", 25000, undefined, 7)).toBe(25000);
+    expect(listingTotal("", 25000, page(0, 30), 7)).toBe(25000);
+  });
+
+  test("filtered, what its first page says, once that page has come of its revision", () => {
+    expect(listingTotal("C00500", 25000, page(0, 30), 7)).toBe(30);
+    expect(listingTotal("nothing", 25000, page(0, 0), 7)).toBe(0);
+  });
+
+  test("filtered, unknown before its first page has come, or while that is another revision's", () => {
+    expect(listingTotal("C00500", 25000, undefined, 7)).toBeNull();
+    expect(listingTotal("C00500", 25000, { ...page(0, 30), revision: 8 }, 7)).toBeNull();
+  });
+});
+
 describe("which revision's rows the window draws", () => {
   /** A revision's window at the top of the box, of `total` rows, with these pages arrived: every
    * finding a warning, and each a statement of its own unless `statements` says how many fewer
-   * the revision makes - a disagreement is filed on each of its files. */
+   * the revision makes - a disagreement is filed on each of its files. Unfiltered, unless `text`
+   * is given, where its revision files `all` rows. */
   function windowOf(
     revision: number,
     total: number,
     arrived: number[],
     statements = total,
+    text = "",
+    all = total,
   ): RevisionWindow {
     const span = spanOf(0, BOX_HEIGHT, total);
     const pages = new Map(arrived.map((number) => [number, { ...page(number, total), revision }]));
     return {
       revision,
+      text,
       total,
+      all,
       statements: { error: 0, warning: statements, info: 0 },
       span,
       pages,
@@ -255,7 +402,7 @@ describe("which revision's rows the window draws", () => {
     // it was on: a finding that stays keeps its key into the next revision.
     const newest = windowOf(8, 990, []);
     expect(drawnWindow(newest, last)).toBe(last);
-    expect(pendingKeys(windowRows(last.span, last.pages))).toEqual([]);
+    expect(pendingKeys(windowRows(last.span, last.pages, NAMES))).toEqual([]);
   });
 
   test("the newest, placeholders and all, where the last's pages for the span are not all there", () => {
@@ -307,29 +454,92 @@ describe("which revision's rows the window draws", () => {
     });
     expect(keptAfter(newest, null)).toEqual({
       revision: 8,
+      text: "",
       total: 990,
+      all: 990,
       statements: { error: 0, warning: 600, info: 0 },
     });
   });
 
   test("the one to keep drawing through the next landing: the window drawn, once it is whole", () => {
     const statements = { error: 0, warning: 990, info: 0 };
-    expect(keptAfter(windowOf(8, 990, [0]), null)).toEqual({ revision: 8, total: 990, statements });
+    const eight = { revision: 8, text: "", total: 990, all: 990, statements };
+    expect(keptAfter(windowOf(8, 990, [0]), null)).toEqual(eight);
     expect(
       keptAfter(windowOf(8, 990, [0]), {
         revision: 7,
+        text: "",
         total: 1000,
+        all: 1000,
         statements: { error: 0, warning: 1000, info: 0 },
       }),
-    ).toEqual({ revision: 8, total: 990, statements });
+    ).toEqual(eight);
   });
 
   test("the one kept before, while the window drawn is not whole, or is that very revision", () => {
-    const kept = { revision: 7, total: 1000, statements: { error: 0, warning: 1000, info: 0 } };
+    const kept = {
+      revision: 7,
+      text: "",
+      total: 1000,
+      all: 1000,
+      statements: { error: 0, warning: 1000, info: 0 },
+    };
     expect(keptAfter(windowOf(8, 990, []), kept)).toBe(kept);
     expect(keptAfter(windowOf(8, 990, []), null)).toBeNull();
     // The very same answer, so that the page can tell nothing changed.
     expect(keptAfter(last, kept)).toBe(kept);
+  });
+
+  test("a filter typed is a listing of its own, drawn once whole, the last kept till then", () => {
+    // 16:I14: the newest listing, of revision 7 filtered by `C00500`, 30 of its 1000 rows: until
+    // its first page has come, its total is not known, and the unfiltered listing stays drawn.
+    const asked: RevisionWindow = { ...windowOf(7, 30, [], 30, "C00500", 1000), total: null };
+    expect(drawnWindow(asked, last)).toBe(last);
+    const come = windowOf(7, 30, [0], 30, "C00500", 1000);
+    expect(drawnWindow(come, last)).toBe(come);
+    const kept = keptAfter(last, null);
+    expect(keptAfter(come, kept)).toEqual({
+      revision: 7,
+      text: "C00500",
+      total: 30,
+      all: 1000,
+      statements: { error: 0, warning: 30, info: 0 },
+    });
+    // Back to no filter: the unfiltered listing is another again.
+    expect(keptAfter(last, keptAfter(come, kept))).toEqual(kept);
+  });
+
+  test("a listing whose total is not known is never whole, even with no page to ask", () => {
+    const unknown: RevisionWindow = {
+      ...windowOf(7, 0, [], 0, "C00500", 1000),
+      total: null,
+    };
+    expect(drawnWindow(unknown, last)).toBe(last);
+    expect(keptAfter(unknown, null)).toBeNull();
+  });
+});
+
+describe("the line beside the Findings tab's filter", () => {
+  function listing(text: string, total: number | null): RevisionWindow {
+    return {
+      revision: 7,
+      text,
+      total,
+      all: 25000,
+      statements: { error: 0, warning: 25000, info: 0 },
+      span: { first: 0, last: 0 },
+      pages: new Map(),
+    };
+  }
+
+  test("how many rows the listing drawn leaves of its revision's", () => {
+    expect(windowLine(listing("C00500", 45))).toBe("45 of 25,000 findings");
+    expect(windowLine(listing("C00500", 0))).toBe("no finding matches");
+  });
+
+  test("nothing for the unfiltered listing, or one whose count is not known yet", () => {
+    expect(windowLine(listing("", 25000))).toBeNull();
+    expect(windowLine(listing("C00500", null))).toBeNull();
   });
 });
 
@@ -343,5 +553,29 @@ describe("what stands for the rows not drawn", () => {
 
   test("nothing, at the top of a table drawn whole", () => {
     expect(spacersOf({ first: 0, last: 5 }, 5)).toEqual({ above: 0, below: 0 });
+  });
+});
+
+describe("a key that walks the listing goes by its rows, not the rows drawn", () => {
+  test("Home and End go to the listing's first and last row", () => {
+    expect(walkTarget("Home", 600, 25000, BOX_HEIGHT)).toBe(0);
+    expect(walkTarget("End", 3, 25000, BOX_HEIGHT)).toBe(24999);
+  });
+
+  test("PageDown and PageUp go a box's rows, less the header's, and stop at the listing's ends", () => {
+    const page = BOX_HEIGHT / ROW_HEIGHT - 1;
+    expect(walkTarget("PageDown", 100, 25000, BOX_HEIGHT)).toBe(100 + page);
+    expect(walkTarget("PageUp", 100, 25000, BOX_HEIGHT)).toBe(100 - page);
+    expect(walkTarget("PageUp", 3, 25000, BOX_HEIGHT)).toBe(0);
+    expect(walkTarget("PageDown", 24995, 25000, BOX_HEIGHT)).toBe(24999);
+  });
+
+  test("a page is a row at the least, and starts at the first row where none holds the focus", () => {
+    expect(walkTarget("PageDown", 5, 25000, 0)).toBe(6);
+    expect(walkTarget("PageDown", null, 25000, BOX_HEIGHT)).toBe(BOX_HEIGHT / ROW_HEIGHT - 1);
+  });
+
+  test("a listing with no row has none to walk to", () => {
+    expect(walkTarget("End", null, 0, BOX_HEIGHT)).toBeNull();
   });
 });

@@ -1,3 +1,4 @@
+import type { Write } from "../lib/announcing";
 import { type OwnEdits, ownEdits } from "../state/edits";
 import { type Keeper, type SignedOut, signedOut, token } from "./token";
 import type {
@@ -24,6 +25,8 @@ import type {
   FixReply,
   Found,
   GraphReply,
+  NamesQuery,
+  NamesReply,
   PlanReply,
   RasterPlanQuery,
   RasterQuery,
@@ -42,6 +45,7 @@ import type {
   TypeReply,
   TypesReply,
   UndoPreview,
+  UndoQuery,
   UndoReply,
   UnitPlanQuery,
   UnitQuery,
@@ -60,8 +64,8 @@ import type {
 export type Fetch = (path: string, init?: RequestInit) => Promise<Response>;
 
 /** A refusal or a failure the server answered with, carrying its code for the page to act on - or
- * the refusal `request` makes itself of an address too long to send, `414` and `too-long`, as the
- * server would have answered it. */
+ * a refusal `request` makes itself, as the server would have answered it: of an address too long
+ * to send, `414` and `too-long`, and of a body too large, `413` and `too-large`. */
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
@@ -85,12 +89,41 @@ export class ServerUnreachable extends Error {
 /** What a body that does not parse reads as, told apart from a body that is json's own `null`. */
 const NOT_JSON = Symbol("not json");
 
+/** The code of a success whose body does not parse (`request`): one that is not json at all, or one
+ * cut on its way, which the browser reads as far as it came. */
+const UNPARSED = "not-json";
+
+/**
+ * Whether the page asks again, after a delay, an ask that failed so (decision 15.4): one that got
+ * no answer at all (`ServerUnreachable`); one the server failed on, a 5xx - its own failure on the
+ * request, or a connection past the most it answers at once, refused `503` with words saying to ask
+ * again in a moment (`BUSY`, gui/server.py); and a success whose answer does not parse, cut on its
+ * way. Ended there, the page's long poll followed nothing more, and a page whose ask of the session
+ * failed as it loaded drew nothing, until it was reloaded. Never a refusal, a 4xx - one `request`
+ * makes itself, as the server would answer it, among them, and one whose code reads `not-json` -
+ * which is the server's answer to what was asked, and is answered again; nor an abort, which the
+ * page asked for itself.
+ */
+export function askedAgain(error: unknown): error is ApiError | ServerUnreachable {
+  if (error instanceof ServerUnreachable) return true;
+  if (!(error instanceof ApiError)) return false;
+  return error.status >= 500 || (error.status < 400 && error.code === UNPARSED);
+}
+
 /** What `request` is asked with: a `RequestInit` whose headers are a plain record, as every
- * caller here builds them, so that the token's header is added beside them. */
-export type Ask = Omit<RequestInit, "headers"> & { headers?: Record<string, string> };
+ * caller here builds them, so that the token's header is added beside them; whose body is text,
+ * as `post` makes it, so that `request` measures what is sent; and, where it is `named`, what a
+ * refusal `request` makes of it calls it - an edit by its label - in place of its route. */
+export type Ask = Omit<RequestInit, "headers" | "body"> & {
+  headers?: Record<string, string>;
+  body?: string;
+  named?: string;
+};
 
 /** Whether a request whose fetch was rejected is sent once more (spec 2026-10-08 §6): a GET,
- * which asks and changes nothing, whose fetch got no answer at all. Never an abort, which the
+ * which writes no file and opens no project, whose fetch got no answer at all - an undo's preview
+ * among them, which may have taken the edit it previews off the undo stack, one no undo could put
+ * back, and is refused as of an edit no longer on top when sent again. Never an abort, which the
  * page asked for itself, and never another method, whose effect may have happened before the
  * connection failed. An HTTP answer, a refusal included, never comes here: `fetch` resolves it. */
 export function sentAgain(method: string | undefined, error: unknown): boolean {
@@ -100,7 +133,9 @@ export function sentAgain(method: string | undefined, error: unknown): boolean {
 
 /** The longest request line `ddd gui`'s server reads, its CRLF included: `BaseHTTPRequestHandler`
  * reads the line with `readline(65537)` and answers **414** to anything longer than 65536 bytes,
- * and `ddd gui`'s own server is one of those (`GuiServer`, a `ThreadingHTTPServer`). */
+ * and `ddd gui`'s own server is one of those (`GuiServer`, a `ThreadingHTTPServer`). This and the
+ * two limits of a body below are copies, each held to the server's by a test of its own suite
+ * (`TestThePageHoldsThisServersLimits`, tests/test_gui_server.py). */
 const LINE_LIMIT = 65536;
 
 /** What one address may carry, asked with `method`: the line is the method, a space, the address,
@@ -126,6 +161,44 @@ function tooLong(address: string, limit: number): ApiError {
   );
 }
 
+/** The most `ddd gui`'s server reads of an edit's body, `POST /api/edit`'s: `EDIT_BODY`
+ * (gui/server.py), 8 MiB, since an Apply posts every change of its plan. */
+export const EDIT_BODY = 8 * 1024 * 1024;
+
+/** The most it reads of the body of any other route: `MAX_BODY` (gui/server.py), 1 MiB. */
+export const MAX_BODY = 1024 * 1024;
+
+/** The route whose body the server reads up to `EDIT_BODY`, and not `MAX_BODY`. */
+const EDIT_ROUTE = "/api/edit";
+
+/** The most the server reads of a body sent to `address`: chosen, as the server chooses it
+ * (`_route`, gui/server.py), by the address's path alone, whatever its query. */
+function bodyLimit(address: string): number {
+  return pathOf(address) === EDIT_ROUTE ? EDIT_BODY : MAX_BODY;
+}
+
+/** The code of a refusal of a body too large to send (`tooLarge`), the server's own for it. */
+const TOO_LARGE = "too-large";
+
+/** What is said of an ask whose body is larger than its route's `limit`, as `request` refuses it,
+ * by what it is (`named`): sent, it was refused before the server read it, and the connection
+ * closed with the rest of the body unread - on Windows a reset, which can lose the refusal, and
+ * the page then read the server as not answering. */
+function tooLarge(named: string, size: number, limit: number): ApiError {
+  return new ApiError(
+    413,
+    TOO_LARGE,
+    `${named} cannot be sent in one request: its body needs ${size} bytes, and ddd gui reads ` +
+      `at most ${limit}`,
+  );
+}
+
+/** How many bytes `body` is sent as: its UTF-8, which `fetch` sends a string body in - what its
+ * `Content-Length` counts, and what the server measures against its limit. */
+function bytesOf(body: string | undefined): number {
+  return body === undefined ? 0 : new TextEncoder().encode(body).byteLength;
+}
+
 export async function request<T>(
   path: string,
   init: Ask = {},
@@ -133,17 +206,22 @@ export async function request<T>(
   kept: Keeper = token,
   out: SignedOut = signedOut,
 ): Promise<T> {
-  // Refused before it is sent, as the server would refuse it: no line past its limit is sent.
+  // Refused before it is sent, as the server would refuse it: no line past its limit is sent, and
+  // no body past the most the server reads of one sent to its route.
   const limit = addressLimit(init.method);
   if (path.length > limit) throw tooLong(path, limit);
+  const { named, ...sent } = init;
+  const size = bytesOf(sent.body);
+  const most = bodyLimit(path);
+  if (size > most) throw tooLarge(named ?? pathOf(path), size, most);
   // The token goes as a header, and no cookie goes at all: a browser sends a cookie to every
   // port of 127.0.0.1, so to every other server there too (part 18b).
   const held = kept.get();
   const headers =
-    held === null ? init.headers : { ...init.headers, Authorization: `Bearer ${held}` };
+    held === null ? sent.headers : { ...sent.headers, Authorization: `Bearer ${held}` };
   const send = () =>
     fetchImpl(path, {
-      ...init,
+      ...sent,
       credentials: "omit",
       ...(headers === undefined ? {} : { headers }),
     });
@@ -182,7 +260,7 @@ export async function request<T>(
   if (body === NOT_JSON) {
     throw new ApiError(
       response.status,
-      "not-json",
+      UNPARSED,
       `ddd gui's answer to ${pathOf(path)} is not json`,
     );
   }
@@ -210,7 +288,8 @@ export const getState = (after: number | null, signal?: AbortSignal, fetchImpl: 
 
 /** Which of the newest revision's findings `GET /api/findings` answers - `FindingsQuery`, the
  * server's own model of the query: from `offset` - the first when left out - at most `limit` of
- * them, or every one from it when left out, of those `severity`, `file` and `check` leave. */
+ * them, or every one from it when left out, of those `severity`, `file`, `check` and `text`
+ * leave. */
 export const getFindings = (query: FindingsQuery, fetchImpl: Fetch = fetch) =>
   request<FindingsReply>(`/api/findings${findingsQuery(query)}`, {}, fetchImpl);
 
@@ -222,6 +301,7 @@ function findingsQuery(query: FindingsQuery): string {
   if (query.severity !== undefined) parts.push(["severity", query.severity]);
   if (query.file !== undefined) parts.push(["file", query.file]);
   if (query.check !== undefined) parts.push(["check", query.check]);
+  if (query.text !== undefined) parts.push(["text", query.text]);
   if (parts.length === 0) return "";
   return `?${parts.map(([key, value]) => `${key}=${encoded(value)}`).join("&")}`;
 }
@@ -234,6 +314,11 @@ export const getGraph = (fetchImpl: Fetch = fetch) =>
 
 export const getVariable = (name: string, fetchImpl: Fetch = fetch) =>
   request<VariableReply>(`/api/variable${queryOf<VariableQuery>({ name })}`, {}, fetchImpl);
+
+/** The variables whose names hold `text`, whatever its case, as the masthead's go-to lists them:
+ * the one it spells exactly first, at most fifty, and how many hold it in all. */
+export const getNames = (text: string, fetchImpl: Fetch = fetch) =>
+  request<NamesReply>(`/api/names${queryOf<NamesQuery>({ text })}`, {}, fetchImpl);
 
 export const getUnits = (fetchImpl: Fetch = fetch) =>
   request<UnitsReply>("/api/units", {}, fetchImpl);
@@ -365,29 +450,43 @@ export const getDescriptionPlan = (plan: DescriptionPlanRequest, fetchImpl: Fetc
   request<PlanReply>(`/api/description-plan${queryOf<DescriptionPlanQuery>(plan)}`, {}, fetchImpl);
 
 /** An edit, answered once written: its number is noted into `edits`, the page's own by default, as
- * soon as the answer arrives - a refused edit notes nothing. */
+ * soon as the answer arrives, with its label and the files it wrote, for the heading to say - a
+ * refused edit notes nothing. One whose body is larger than ddd gui reads is refused unsent, by
+ * its label (`request`). */
 export const postEdit = async (
   changes: Changes,
   fetchImpl: Fetch = fetch,
   edits: OwnEdits = ownEdits,
 ): Promise<EditReply> => {
-  const reply = await request<EditReply>("/api/edit", post(changes), fetchImpl);
-  edits.wrote(reply.edit);
+  const reply = await request<EditReply>(
+    "/api/edit",
+    { ...post(changes), named: changes.label },
+    fetchImpl,
+  );
+  edits.wrote(reply.edit, {
+    kind: "wrote",
+    label: changes.label,
+    files: reply.files.map((file) => file.path),
+  });
   return reply;
 };
 
-export const getUndo = (fetchImpl: Fetch = fetch) =>
-  request<UndoPreview>("/api/undo", {}, fetchImpl);
+/** The preview of an undo of the edit numbered `at`, the one the state names on top: refused
+ * `stale` where another window has moved the stack past it, and nothing taken off then. */
+export const getUndo = (at: number, fetchImpl: Fetch = fetch) =>
+  request<UndoPreview>(`/api/undo${queryOf<UndoQuery>({ at })}`, {}, fetchImpl);
 
 /** An undo of the edit numbered `at`, answered once the files are back: its number is noted into
- * `edits` as an edit's is, with the edit it put back. */
+ * `edits` as an edit's is, with the edit it put back and, where told, what that was
+ * (`putBack`: the preview's label and files), for the heading to say. */
 export const postUndo = async (
   at: number,
   fetchImpl: Fetch = fetch,
   edits: OwnEdits = ownEdits,
+  putBack?: Write,
 ): Promise<UndoReply> => {
   const reply = await request<UndoReply>("/api/undo", post({ at }), fetchImpl);
-  edits.undid(at, reply.edit);
+  edits.undid(at, reply.edit, putBack);
   return reply;
 };
 

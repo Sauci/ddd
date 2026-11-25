@@ -109,6 +109,18 @@ export async function chooseUnit(page: Page, unit: string): Promise<void> {
   await page.getByRole("option", { name: unit, exact: true }).first().click();
 }
 
+/** Where `control` is drawn on the page, whatever the window is scrolled to: its box in the page's
+ * own coordinates, which a control moved by another joining its row does not keep. */
+export function placed(
+  control: Locator,
+): Promise<{ x: number; y: number; width: number; height: number }> {
+  return control.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const { width, height } = box;
+    return { x: box.x + window.scrollX, y: box.y + window.scrollY, width, height };
+  });
+}
+
 /** Opens a variable's panel from its component's table, the way a reader reaches it: the unit
  * cell, which opens the panel on the unit's row with its field focused. */
 export async function openPanel(
@@ -219,6 +231,23 @@ export async function withinBox(page: Page, label: string, target: Locator): Pro
   );
 }
 
+/** Drags the mouse across `words` - pressed just inside its left edge, moved to just inside its
+ * right and let go there - as a reader selects a path or a message in a table to copy it (16:M21),
+ * and answers what the page's selection holds once the press is over: React Aria marks the row it
+ * went down on `data-pressed` until it lets the press go, which it does on the click, or a moment
+ * after a click it does not take as its own. */
+export async function draggedAcross(page: Page, words: Locator): Promise<string> {
+  const box = await words.boundingBox();
+  if (box === null) throw new Error("no words to drag across");
+  const y = box.y + Math.min(box.height / 2, 10);
+  await page.mouse.move(box.x + 1, y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width - 1, y, { steps: 8 });
+  await page.mouse.up();
+  await expect(page.locator("[data-pressed]")).toHaveCount(0);
+  return page.evaluate(() => document.getSelection()?.toString() ?? "");
+}
+
 /** A table pasted into the grid the way a browser delivers one: a `DataTransfer` built in the
  * page and dispatched as a `paste` event, because Playwright cannot put a table on the system
  * clipboard. Dispatched on the grid's own `<section>` - the one `ValuesGridView` binds `onPaste`
@@ -240,6 +269,24 @@ export async function paste(
       data.setData("text/plain", block);
       node.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true }));
     }, text);
+}
+
+/** `text` pasted where the focus is, as Ctrl-V pastes it: the `paste` event `paste` dispatches,
+ * cancelable as the browser's own is, dispatched at the focused element - a grid cell's field,
+ * where one has the focus - and bubbling from there. Answers whether the page took it for its own,
+ * cancelling what the browser does with a paste into a field: drop the text in, at the caret. */
+export async function pasteWhereFocused(page: Page, text: string): Promise<boolean> {
+  return page.evaluate((block) => {
+    const data = new DataTransfer();
+    data.setData("text/plain", block);
+    const event = new ClipboardEvent("paste", {
+      clipboardData: data,
+      bubbles: true,
+      cancelable: true,
+    });
+    (document.activeElement ?? document.body).dispatchEvent(event);
+    return event.defaultPrevented;
+  }, text);
 }
 
 /** One variable's linear factor in one file of a copy drifted, saved from outside; answers the
@@ -357,6 +404,90 @@ const UNSEEN = [
   "    os.replace(staged, path)",
   "os.utime(directory, ns=(kept.st_atime_ns, kept.st_mtime_ns))",
 ].join("\n");
+
+/** The demo's description in a copy made to include nothing, before `ddd gui` starts on it: a
+ * project that loads with no finding and no component, its other files left on disk unread - the
+ * empty project 16:M13 points at New file. */
+export function includesNothing(directory: string): void {
+  const path = join(directory, "demo.ddd.json");
+  const data = JSON.parse(readFileSync(path, "utf8"));
+  data.project.includes = [];
+  writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+}
+
+/** The letters a DDD id is spelled in (`OBJECT_ID_ALPHABET`, src/ddd/models/common.py). */
+const ID_LETTERS = "abcdefghjkmnpqrstvwxyz0123456789";
+
+/** `count` locals added to Controller's interface in a copy, before `ddd gui` starts on it, named
+ * `Crowd00000` on and each with an id of its own, so that they add no finding: a component of
+ * thousands of declarations, whose table puts a widened filter's rows back a thousand at a time. */
+export function crowd(directory: string, count: number): void {
+  const path = join(directory, CONTROLLER);
+  const data = JSON.parse(readFileSync(path, "utf8"));
+  for (let at = 0; at < count; at += 1) {
+    let id = "";
+    for (let left = at, letter = 0; letter < 10; letter += 1, left = Math.floor(left / 32)) {
+      id = `${ID_LETTERS[left % 32]}${id}`;
+    }
+    data.component.interface.push({
+      scope: "local",
+      definition: {
+        name: `Crowd${String(at).padStart(5, "0")}`,
+        id: `zz${id}`,
+        kind: "measurement",
+        datatype: "uint8",
+        unit: "%",
+        conversion: { kind: "identity" },
+        volatile: false,
+      },
+    });
+  }
+  writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+}
+
+/** Controller made to declare a scalar type, `Gain_t`, and two declarations naming it: `GainA`, a
+ * parameter of no dimensions stating 10, and `GainRow`, a value block of three. Neither states a
+ * datatype of its own: the type does. */
+export function namingAScalarType(directory: string): void {
+  const path = join(directory, CONTROLLER);
+  const data = JSON.parse(readFileSync(path, "utf8"));
+  data.component.types = [
+    {
+      type: "scalar",
+      name: "Gain_t",
+      description: "A gain in hertz",
+      datatype: "uint16",
+      unit: "Hz",
+      conversion: { factor: 0.25 },
+    },
+  ];
+  data.component.interface.push(
+    {
+      scope: "local",
+      definition: {
+        kind: "parameter",
+        name: "GainA",
+        id: "g41na0000001",
+        typename: "Gain_t",
+        init: 10,
+        volatile: false,
+      },
+    },
+    {
+      scope: "local",
+      definition: {
+        kind: "value_block",
+        name: "GainRow",
+        id: "g41na0000002",
+        typename: "Gain_t",
+        dimensions: [3],
+        init: [1, 2, 3],
+        volatile: false,
+      },
+    },
+  );
+  writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+}
 
 /** A producing declaration's id taken away from outside, the way a description written before
  * `ddd id` adopted ids states it - which is what `missing-id` reports; answers the file as it
@@ -500,7 +631,8 @@ export async function watchFrames(page: Page, label: string, edit: string): Prom
       const each = () => {
         const field = document.querySelector<HTMLInputElement>(`input[aria-label="${name}"]`);
         const said = [...document.querySelectorAll('[role="status"]')].some(
-          (status) => status.textContent === "Updating the findings…",
+          // The heading's says it after what the page wrote, where it says that too (16:I13).
+          (status) => status.textContent?.endsWith("Updating the findings…") === true,
         );
         const offered = [...document.querySelectorAll("button")].some(
           (button) => button.textContent === undo,
@@ -634,6 +766,140 @@ export async function held(
     every ? {} : { times: 1 },
   );
   return release;
+}
+
+/** Longer than what a change of page leaves waiting waits at most, 3 s (`WAITS_AT_MOST_MS`,
+ * lib/focus.ts). */
+export const PAST_THE_WAITS = 4000;
+
+/** GainA's panel on the Graph, and its link to Gain_t, the scalar type giving GainA its unit
+ * (`namingAScalarType`): the Graph loaded at GainA's address, after the address ddd gui printed. */
+export async function gainLink(page: Page, address: string): Promise<Locator> {
+  await page.goto(address);
+  const graph = new URL(page.url());
+  graph.pathname = "/project";
+  graph.search = "?variable=GainA";
+  await page.goto(graph.href);
+  const link = page
+    .getByRole("complementary", { name: "GainA" })
+    .getByRole("link", { name: "Gain_t" })
+    .first();
+  await expect(link).toBeVisible();
+  return link;
+}
+
+/** Controller made to declare `count` scalar types more than it does, `Scale00_t` and on, each
+ * naming nothing: enough of them stand the Types tab's table past a window's foot. */
+export function moreScalarTypes(directory: string, count: number): void {
+  const path = join(directory, CONTROLLER);
+  const data = JSON.parse(readFileSync(path, "utf8"));
+  data.component.types ??= [];
+  for (let index = 0; index < count; index += 1) {
+    data.component.types.push({
+      type: "scalar",
+      name: `Scale${String(index).padStart(2, "0")}_t`,
+      description: "A scale, for a long table of types",
+      datatype: "uint16",
+      conversion: { factor: 1 },
+    });
+  }
+  writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+}
+
+/** A component of `name` declaring nothing, as its file holds it. */
+export function emptyComponent(name: string): string {
+  const data = { component: { name, description: `${name}, declaring nothing`, interface: [] } };
+  return `${JSON.stringify(data, null, 2)}\n`;
+}
+
+/** `count` components more in the demo's own `components/*.ddd.json` pattern, `Extra00` and on,
+ * each declaring nothing: rows enough to fill the Files tab's table box. */
+export function moreComponents(directory: string, count: number): void {
+  for (let index = 0; index < count; index += 1) {
+    const name = `Extra${String(index).padStart(2, "0")}`;
+    writeFileSync(
+      join(directory, "components", `${name.toLowerCase()}.ddd.json`),
+      emptyComponent(name),
+    );
+  }
+}
+
+/** Waits two of the page's frames: by then what it does once a change is drawn has run - its
+ * effects, and what it watches of its own layout. */
+export async function twoFrames(page: Page): Promise<void> {
+  await page.evaluate(
+    () =>
+      new Promise<void>((done) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => done()));
+      }),
+  );
+}
+
+/**
+ * Turns the mouse's wheel by `deltaX` and `deltaY` px where the pointer stands, and goes on only once
+ * the page has had the wheel's event: the browser hands a wheel to the page on its own timing - on
+ * Windows, after the turn has returned, and after what a journey does next - so a journey whose
+ * claim is about what the page does once the reader has turned the wheel waits for the page to have
+ * heard it.
+ */
+export async function wheeled(page: Page, deltaX: number, deltaY: number): Promise<void> {
+  const listening = await page.evaluateHandle(() => ({
+    heard: new Promise<void>((done) => {
+      document.addEventListener("wheel", () => done(), {
+        capture: true,
+        once: true,
+        passive: true,
+      });
+    }),
+  }));
+  await page.mouse.wheel(deltaX, deltaY);
+  await listening.evaluate(({ heard }) => heard);
+  await listening.dispose();
+}
+
+/**
+ * A wheel the page turns itself from the moment the heading of the panel titled `title` takes the
+ * focus: a wheel event at each of its next `frames` frames, dispatched in the frame's animation
+ * callbacks - before the frame's layout and what watches the page's sizes, where the browser hands
+ * the page a wheel turned by hand too. So the turn falls in the frames right after the focus,
+ * whatever the platform's own timing of the wheel. A wheel event the page dispatches scrolls
+ * nothing itself, as a wheel turned upward at the page's top. Set before what moves the focus;
+ * answers what waits until the last of those events has been dispatched.
+ */
+export async function wheelFromFocus(
+  page: Page,
+  title: string,
+  frames: number,
+): Promise<() => Promise<void>> {
+  const turning = await page.evaluateHandle(
+    ({ title, frames }) => ({
+      over: new Promise<void>((done) => {
+        const start = (event: FocusEvent) => {
+          const heading = event.target;
+          if (!(heading instanceof HTMLElement) || heading.dataset.heading !== "panel") return;
+          if (heading.textContent !== title) return;
+          document.removeEventListener("focusin", start, true);
+          let left = frames;
+          const turn = () => {
+            const under = document.elementFromPoint(innerWidth / 2, innerHeight / 2);
+            (under ?? document.body).dispatchEvent(
+              new WheelEvent("wheel", { deltaY: -100, bubbles: true, cancelable: true }),
+            );
+            left -= 1;
+            if (left > 0) requestAnimationFrame(turn);
+            else done();
+          };
+          requestAnimationFrame(turn);
+        };
+        document.addEventListener("focusin", start, true);
+      }),
+    }),
+    { title, frames },
+  );
+  return async () => {
+    await turning.evaluate(({ over }) => over);
+    await turning.dispose();
+  };
 }
 
 /**

@@ -5,14 +5,22 @@ import {
   edgesOf,
   fadedNodes,
   firstMatch,
+  flightOf,
   flowTitle,
+  insideBox,
+  isFittedView,
   MIN_ZOOM,
+  modulesCut,
+  noDictionary,
   nodesOf,
   objectsInDisagreement,
   openingViewport,
   STROKE,
+  searchLine,
   shownEdges,
   stateOf,
+  tooltipSpot,
+  windowPointOf,
   withSavedPositions,
 } from "./canvas";
 import type { Placed } from "./layout";
@@ -288,6 +296,60 @@ test("the first match is the first module whose name contains the text", () => {
   expect(firstMatch([A, B, C], " ")).toBeNull();
 });
 
+test("the line under the search box says how many modules a search found of how many there are", () => {
+  // A project of 1,166 modules, three of them holding the text searched for.
+  const modules = [
+    ...Array.from({ length: 1163 }, (_, index) =>
+      graphModule(`/c${index}.ddd.json`, `C${String(index).padStart(5, "0")}`),
+    ),
+    graphModule("/sensor_hub.ddd.json", "SensorHub"),
+    graphModule("/pressure.ddd.json", "PressureSensor"),
+    graphModule("/sensor_bus.ddd.json", "SensorBus"),
+  ];
+  expect(searchLine(modules, "sensor")).toBe("3 of 1,166 modules");
+  expect(searchLine(modules, "C0050")).toBe("10 of 1,166 modules");
+  expect(searchLine([...modules.slice(0, 3)], "c0000")).toBe("3 of 3 modules");
+  expect(searchLine([A], "alp")).toBe("1 of 1 module");
+});
+
+test("a search that finds no module says so, and nothing typed says nothing", () => {
+  expect(searchLine([A, B, C], "nothing")).toBe("no module matches");
+  expect(searchLine([A, B, C], "")).toBeNull();
+  expect(searchLine([A, B, C], "  ")).toBeNull();
+});
+
+test("the line counts exactly what a search dims the rest for, ignoring case", () => {
+  expect(searchLine([A, B, C], "A")).toBe("3 of 3 modules");
+  expect(searchLine([A, B, C], "BET")).toBe("1 of 3 modules");
+  expect(searchLine([A, B, C], " gam ")).toBe("1 of 3 modules");
+});
+
+test("a canvas with no dictionary says so, naming the files that did not load where that is why", () => {
+  // A plugin that raised or a constant declared twice leaves no dictionary too, with every file
+  // loaded: the graph cannot tell those apart, and names no cause.
+  expect(noDictionary([], false)).toBe(
+    "This project has no dictionary, so its modules are drawn without arrows.",
+  );
+  // A file that did not load leaves every read of the project with an error, and so no dictionary.
+  expect(noDictionary(["controller.ddd.json"], false)).toBe(
+    "controller.ddd.json did not load, so this project has no dictionary, and its modules are " +
+      "drawn without arrows.",
+  );
+  expect(
+    noDictionary(["a.ddd.json", "b.ddd.json", "c.ddd.json", "d.ddd.json", "e.ddd.json"], false),
+  ).toBe(
+    "a.ddd.json, b.ddd.json, c.ddd.json and 2 more did not load, so this project has no " +
+      "dictionary, and its modules are drawn without arrows.",
+  );
+});
+
+test("a canvas whose project's own description did not load says no module is drawn", () => {
+  // Nothing past the description is read, so there is no module for arrows to be missing from.
+  expect(noDictionary(["demo.ddd.json"], true)).toBe(
+    "demo.ddd.json did not load, so this project has no dictionary and no module is drawn.",
+  );
+});
+
 test("a node outside the bright set is faded, and one whose state did not change is left alone", () => {
   const nodes = nodesOf([placedAt(A, 0, 0), placedAt(B, 10, 10)], [A, B], () => undefined);
   const faded = fadedNodes(nodes, new Set([A.path]));
@@ -315,6 +377,41 @@ test("an arrow is bright only while both of its ends are, and open only while it
 // constant against itself the way passing it as openingViewport's own minZoom argument would.
 test("MIN_ZOOM is React Flow's own default, 0.5", () => {
   expect(MIN_ZOOM).toBe(0.5);
+});
+
+test("a view is the fitted one only while it is, to within an animation's last frame", () => {
+  const fitted = { x: 10, y: 20, zoom: 0.8 };
+  expect(isFittedView({ x: 10, y: 20, zoom: 0.8 }, fitted)).toBe(true);
+  expect(isFittedView({ x: 10.4, y: 19.6, zoom: 0.8004 }, fitted)).toBe(true);
+  // Panned, or zoomed, by the reader.
+  expect(isFittedView({ x: 11, y: 20, zoom: 0.8 }, fitted)).toBe(false);
+  expect(isFittedView({ x: 10, y: 21, zoom: 0.8 }, fitted)).toBe(false);
+  expect(isFittedView({ x: 10, y: 20, zoom: 0.81 }, fitted)).toBe(false);
+  // Nothing was ever fitted: no view is the fitted one.
+  expect(isFittedView(fitted, null)).toBe(false);
+});
+
+test("modules are cut where a module's box reaches past the canvas, whichever edge", () => {
+  const module = {} as GraphModule;
+  const at = (x: number, y: number): Placed => ({ module, x, y });
+  const size = { width: 600, height: 400 };
+  const view = { x: 0, y: 0, zoom: 1 };
+  // NODE_WIDTH wide: inside at 0, cut past the right edge once it reaches beyond 600.
+  expect(modulesCut([at(0, 0), at(100, 100)], view, size)).toBe(false);
+  expect(modulesCut([at(0, 0), at(600 - NODE_WIDTH + 1, 0)], view, size)).toBe(true);
+  expect(modulesCut([at(-1, 0)], view, size)).toBe(true);
+  expect(modulesCut([at(0, -1)], view, size)).toBe(true);
+  expect(modulesCut([at(0, 400)], view, size)).toBe(true);
+  // The view's own offset and zoom move every box with it.
+  expect(modulesCut([at(10, 10)], { x: 590, y: 0, zoom: 1 }, size)).toBe(true);
+  expect(modulesCut([at(0, 0)], { x: 0, y: 0, zoom: 0.5 }, size)).toBe(false);
+  expect(modulesCut([at(500, 0)], { x: 0, y: 0, zoom: 2 }, size)).toBe(true);
+  // A module of this width, zoomed in, reaches further than at the zoom of 1.
+  expect(modulesCut([at(150, 0)], { x: 0, y: 0, zoom: 2 }, size)).toBe(true);
+  expect(modulesCut([at(150, 0)], { x: 0, y: 0, zoom: 1 }, size)).toBe(false);
+  expect(modulesCut([at(0, 0)], { x: 0, y: 0, zoom: 4 }, { width: 5000, height: 100 })).toBe(true);
+  expect(modulesCut([at(0, 0)], { x: 0, y: 0, zoom: 1 }, { width: 5000, height: 100 })).toBe(false);
+  expect(modulesCut([], view, size)).toBe(false);
 });
 
 test("openingViewport shows nothing when nothing is placed", () => {
@@ -362,4 +459,65 @@ test("openingViewport centres the first rank at minZoom when the whole graph wou
   );
   const result = openingViewport(placed, { width: 1280, height: 800 }, MIN_ZOOM);
   expect(result).toEqual({ x: 595, y: 388, zoom: 0.5 });
+});
+
+// 16:I11: a graphic that carries meaning wants 3:1 on its ground, and `--rule` on `--canvas` is 1.17:1.
+test("an arrow that agrees is drawn in the quiet ink, as dark as the page's own quiet text", () => {
+  expect(STROKE.agreed).toBe("var(--ink-quiet)");
+});
+
+// 16:M19: the viewport's flights take 300 ms, and none for a reader who asked for less motion.
+test("the viewport flies for 300 ms, and for no time at all under reduced motion", () => {
+  expect(flightOf(false)).toBe(300);
+  expect(flightOf(true)).toBe(0);
+});
+
+test("a point of the canvas is in the window where the viewport's pan and zoom, and the canvas's corner, put it", () => {
+  expect(windowPointOf({ x: 100, y: 50 }, [10, -20, 1], { x: 0, y: 0 })).toEqual({ x: 110, y: 30 });
+  expect(windowPointOf({ x: 100, y: 50 }, [10, -20, 2], { x: 40, y: 90 })).toEqual({
+    x: 250,
+    y: 170,
+  });
+});
+
+test("a tooltip sits above its arrow, centred, and keeps its size whatever the zoom", () => {
+  const spot = tooltipSpot(
+    { x: 500, y: 400 },
+    { width: 200, height: 80 },
+    { width: 1000, height: 800 },
+  );
+  expect(spot).toEqual({ x: 400, y: 308 });
+});
+
+test("a tooltip with no room above its arrow goes below it", () => {
+  const spot = tooltipSpot(
+    { x: 500, y: 50 },
+    { width: 200, height: 80 },
+    { width: 1000, height: 800 },
+  );
+  expect(spot).toEqual({ x: 400, y: 62 });
+});
+
+test("a tooltip is moved in from the window's edges, and never above or left of its corner", () => {
+  const window = { width: 1000, height: 800 };
+  const size = { width: 200, height: 80 };
+  expect(tooltipSpot({ x: 20, y: 400 }, size, window).x).toBe(8);
+  expect(tooltipSpot({ x: 990, y: 400 }, size, window).x).toBe(792);
+  // Below an arrow near the window's foot there is no room either: kept in, its first line shown.
+  expect(tooltipSpot({ x: 500, y: 20 }, size, { width: 1000, height: 100 }).y).toBe(12);
+  // Larger than the window: the first line first.
+  expect(tooltipSpot({ x: 500, y: 400 }, { width: 2000, height: 900 }, window)).toEqual({
+    x: 8,
+    y: 8,
+  });
+});
+
+test("a point is inside a box up to its edges, and outside past them", () => {
+  const box = { x: 10, y: 20, width: 100, height: 50 };
+  expect(insideBox({ x: 10, y: 20 }, box)).toBe(true);
+  expect(insideBox({ x: 110, y: 70 }, box)).toBe(true);
+  expect(insideBox({ x: 9, y: 40 }, box)).toBe(false);
+  expect(insideBox({ x: 111, y: 40 }, box)).toBe(false);
+  expect(insideBox({ x: 50, y: 19 }, box)).toBe(false);
+  expect(insideBox({ x: 50, y: 71 }, box)).toBe(false);
 });

@@ -2,13 +2,14 @@ import type { PlanReply, TypeReply, TypeUse, UnitsReply } from "../api/types";
 import { distinctFindings, keyedFindings, routeOf } from "../lib/findings";
 import { keyRowsOfType, memberRows } from "../lib/projectTypes";
 import type { Route } from "../lib/route";
-import { baseName, consequence, shownChanges, textOf } from "../lib/units";
+import { baseName, consequence, PLANNING, shownChanges, textOf } from "../lib/units";
 import { Button } from "../ui/Button";
-import { Chip } from "../ui/Chip";
 import { Panel } from "../ui/Panel";
+import { PanelTable } from "../ui/PanelTable";
 import { Cell, Column, Row, Table, TableBody, TableHeader } from "../ui/Table";
 import { UpdatingNote } from "../ui/UpdatingNote";
 import { Changes } from "./Changes";
+import { FindingChip } from "./FindingChip";
 import { KeyChooser } from "./KeyChooser";
 
 export interface TypePanelViewProps {
@@ -39,6 +40,9 @@ export interface TypePanelViewProps {
   onRenameTo: (to: string | null) => void;
   /** The preview of whichever change is pending, or `null` while there is none. */
   preview: PlanReply | null;
+  /** Whether that preview is asked for and has not come, with no refusal to say: the panel then
+   * says `PLANNING` where its consequence stands (`planning`, lib/units.ts). */
+  planning?: boolean;
   changesShown: boolean;
   onChangesShown: (shown: boolean) => void;
   onApply: () => void;
@@ -50,9 +54,9 @@ export interface TypePanelViewProps {
   /** Whether the findings may be about to change (spec 6): the panel says so where it lists them,
    * also while it lists none - an edit may be about to bring the first. */
   updating?: boolean;
-  /** When the chooser's list opens: as its field takes the focus, as the panel's does once a key
-   * is picked (`focus`, left out), or once it is typed into (`input`), for a story to show what
-   * the open list covers - a range's two fields and the sentence under them. */
+  /** When the chooser's list opens: once it is typed into, or asked for with ArrowDown or the arrow
+   * (`input`, left out), or as its field takes the focus (`focus`), for a story to photograph the
+   * list open: opened on the focus, the list would cover the panel below the field. */
   pickerTrigger?: "input" | "focus" | undefined;
 }
 
@@ -144,7 +148,7 @@ export function TypePanelView(props: TypePanelViewProps) {
               note={props.note}
               busy={busy}
               focus={1}
-              pickerTrigger={props.pickerTrigger ?? "focus"}
+              pickerTrigger={props.pickerTrigger}
             />
           )}
         </>
@@ -164,16 +168,22 @@ export function TypePanelView(props: TypePanelViewProps) {
         </label>
         <p className="rename-note">Only the name changes; what the type fixes stays as it is.</p>
       </section>
-      {refusal !== null ? (
+      {refusal !== null && (
         <p className="panel-refusal" role="status">
           {refusal}
         </p>
-      ) : (
-        // As the variable panel's own consequence line stays with `selected !== undefined`: a
-        // stale preview says nothing once nothing is pending.
-        pending && preview !== null && <p className="consequence">{consequence(preview.changes)}</p>
       )}
-      {refusal === null && pending && preview !== null && preview.changes.length > 0 && (
+      {/* Under a refusal too, the preview the panel is given and its Apply: what it offers beside
+          one is the screen's rule (`offerShown`), which hands no plan its own ask refused. As the
+          variable panel's own consequence line stays with `selected !== undefined`: a stale
+          preview says nothing once nothing is pending. */}
+      {pending &&
+        (preview !== null ? (
+          <p className="consequence">{consequence(preview.changes)}</p>
+        ) : (
+          refusal === null && props.planning === true && <p className="consequence">{PLANNING}</p>
+        ))}
+      {pending && preview !== null && preview.changes.length > 0 && (
         <>
           {props.changesShown && <Changes changes={shownChanges(preview.changes)} />}
           <div className="panel-actions">
@@ -190,7 +200,7 @@ export function TypePanelView(props: TypePanelViewProps) {
       {type.uses.length === 0 ? (
         <p className="quiet">Nothing in the project uses {type.name}.</p>
       ) : (
-        <table className="panel-declarations">
+        <PanelTable>
           <thead>
             <tr>
               <th scope="col">Where</th>
@@ -211,12 +221,12 @@ export function TypePanelView(props: TypePanelViewProps) {
               </tr>
             ))}
           </tbody>
-        </table>
+        </PanelTable>
       )}
       {type.kind === "struct" && (
         <>
           <h3 className="panel-heading">Members</h3>
-          <table className="panel-declarations">
+          <PanelTable>
             <thead>
               <tr>
                 <th scope="col">Member</th>
@@ -255,7 +265,7 @@ export function TypePanelView(props: TypePanelViewProps) {
                 );
               })}
             </tbody>
-          </table>
+          </PanelTable>
         </>
       )}
       <UpdatingNote updating={props.updating === true} />
@@ -265,9 +275,7 @@ export function TypePanelView(props: TypePanelViewProps) {
             const route = routeOf(finding);
             return (
               <li key={key}>
-                <Chip tone={finding.severity === "error" ? "error" : "warning"}>
-                  {finding.check}
-                </Chip>{" "}
+                <FindingChip severity={finding.severity} check={finding.check} />{" "}
                 {route === null ? (
                   <span className="quiet">{finding.message}</span>
                 ) : (

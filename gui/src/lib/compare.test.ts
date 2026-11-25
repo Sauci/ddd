@@ -1,12 +1,19 @@
 import { expect, test } from "vitest";
 import type { CompareReply, Finding, State } from "../api/types";
 import {
+  askedIn,
+  asksNothing,
+  baselineOf,
   type CompareRow,
   compareLine,
   compareRouteReason,
   compareRows,
   fileNameIn,
+  heldFor,
   nextAsk,
+  ownErrorsLine,
+  typedIn,
+  verdictLine,
 } from "./compare";
 
 function finding(fields: Partial<Finding> = {}): Finding {
@@ -68,7 +75,7 @@ const STATE: State = {
 test("a baseline's own finding is answered before the state is ever asked", () => {
   // The case `noRouteReason` cannot answer: the baseline's file is, path for path, a live and
   // loaded component of the open project, with a pointer naming a declaration that is really
-  // there. Asked of it, `noRouteReason` would say "there is nothing at that place any more".
+  // there. Asked of it, `noRouteReason` would say "There is nothing at that place any more".
   const baseline = row({
     fromBaseline: true,
     finding: finding({
@@ -77,13 +84,13 @@ test("a baseline's own finding is answered before the state is ever asked", () =
     }),
   });
   expect(compareRouteReason(baseline, STATE)).toBe(
-    "it is the baseline's own finding, not a place in your project",
+    "It is the baseline's own finding, not a place in your project",
   );
 });
 
 test("a finding filed at no place in particular is about the whole delivery", () => {
   expect(compareRouteReason(row(), STATE)).toBe(
-    "it is about the whole delivery being compared, not a place in one file",
+    "It is about the whole delivery being compared, not a place in one file",
   );
 });
 
@@ -168,7 +175,7 @@ test("the line counts the statements of the reply, a baseline's disagreement onc
 
 test("the line says how many of each severity the comparison and the baseline make", () => {
   const counted = reply({ statements: { error: 2, warning: 1, info: 1 } });
-  expect(compareLine(counted)).toBe("4 findings · 2 errors, 1 warning, 1 note");
+  expect(compareLine(counted)).toBe("4 findings · 2 errors, 1 warning, 1 info");
   expect(compareLine(reply())).toBe("Nothing to report");
 });
 
@@ -207,4 +214,98 @@ test("no ask repeats an earlier one, even when its baseline comes back", () => {
   const third = nextAsk(second, "a.json");
   expect(third.baseline).toBe(first.baseline);
   expect(new Set([first.number, second.number, third.number]).size).toBe(3);
+});
+
+test("a baseline pasted in a pair of like quotes is asked for as the path between them", () => {
+  // Windows' Copy as path writes double quotes round a path, a shell's quoting single ones; the
+  // server takes them off as well (16:M3), and the verdict names what was asked (16:M2).
+  expect(baselineOf('"C:\\work\\demo\\baseline.json"')).toBe("C:\\work\\demo\\baseline.json");
+  expect(baselineOf("'baseline.json'")).toBe("baseline.json");
+  expect(baselineOf('  "baseline.json"  ')).toBe("baseline.json");
+  expect(nextAsk(null, '"baseline.json"').baseline).toBe("baseline.json");
+});
+
+test("a quote alone, or two unlike, are the path's own characters", () => {
+  expect(baselineOf('"baseline.json')).toBe('"baseline.json');
+  expect(baselineOf("baseline.json'")).toBe("baseline.json'");
+  expect(baselineOf("\"baseline.json'")).toBe("\"baseline.json'");
+  expect(baselineOf('"')).toBe('"');
+});
+
+test("nothing but spaces, or quotes round nothing, ask for nothing", () => {
+  expect(asksNothing("   ")).toBe(true);
+  expect(asksNothing(' "" ')).toBe(true);
+  expect(asksNothing("''")).toBe(true);
+  expect(asksNothing('"')).toBe(false);
+  expect(asksNothing("baseline.json")).toBe(false);
+});
+
+test("the verdict names the baseline it was asked for", () => {
+  expect(verdictLine(true, "baseline.json")).toBe(
+    "This project can replace the baseline 'baseline.json'.",
+  );
+  expect(verdictLine(false, "C:/work/demo/deliveries/released/demo.ddd.json")).toBe(
+    "This project cannot replace the baseline 'C:/work/demo/deliveries/released/demo.ddd.json'.",
+  );
+});
+
+test("the tab holds nothing typed and nothing asked for a project it held nothing of", () => {
+  expect(heldFor(null, "C:/work/demo/demo.ddd.json")).toEqual({
+    project: "C:/work/demo/demo.ddd.json",
+    typed: "",
+    asked: null,
+  });
+});
+
+test("what the tab holds is kept for its project, and another project starts with nothing", () => {
+  const demo = askedIn(typedIn(heldFor(null, "C:/work/demo/demo.ddd.json"), "baseline.json"));
+  expect(heldFor(demo, "C:/work/demo/demo.ddd.json")).toBe(demo);
+  expect(heldFor(demo, "C:/work/second/second.ddd.json")).toEqual({
+    project: "C:/work/second/second.ddd.json",
+    typed: "",
+    asked: null,
+  });
+});
+
+test("typing is held without asking, and asking asks for what the field holds", () => {
+  const typed = typedIn(heldFor(null, "C:/work/demo/demo.ddd.json"), " baseline.json ");
+  expect(typed.typed).toBe(" baseline.json ");
+  expect(typed.asked).toBeNull();
+  const asked = askedIn(typed);
+  expect(asked.asked).toEqual({ baseline: "baseline.json", number: 1 });
+  expect(asked.typed).toBe(" baseline.json ");
+  // Typed again and not asked: the ask held is still the one before, which the verdict names.
+  const retyped = typedIn(asked, "other.json");
+  expect(retyped.asked).toBe(asked.asked);
+  expect(askedIn(retyped).asked).toEqual({ baseline: "other.json", number: 2 });
+});
+
+test("a project with no error of its own is said nothing of under the verdict", () => {
+  expect(ownErrorsLine(reply({ own_errors: 0 }), STATE)).toBeNull();
+});
+
+test("a project's own errors are said under the verdict, counted as the Findings tab counts them", () => {
+  // One disagreement of the project's own, filed on each of the two files it concerns: two rows,
+  // which `own_errors` counts, and one statement, which the Findings tab's line and `ddd compare`
+  // count (14:I1).
+  const one = { ...STATE, statements: { error: 1, warning: 0, info: 0 } };
+  expect(ownErrorsLine(reply({ revision: 7, own_errors: 2 }), one)).toBe(
+    "This project has 1 error of its own, and the verdict counts it as ddd compare does: the " +
+      "Findings tab lists it.",
+  );
+  const three = { ...STATE, statements: { error: 3, warning: 1, info: 0 } };
+  expect(ownErrorsLine(reply({ revision: 7, own_errors: 3 }), three)).toBe(
+    "This project has 3 errors of its own, and the verdict counts them as ddd compare does: the " +
+      "Findings tab lists them.",
+  );
+});
+
+test("a reply of another revision than the state drawn says the project's own errors without a count", () => {
+  // The server answered from a revision the page has not followed yet, or no longer shows: the
+  // state's count is of another revision than the verdict's.
+  const one = { ...STATE, statements: { error: 1, warning: 0, info: 0 } };
+  expect(ownErrorsLine(reply({ revision: 8, own_errors: 2 }), one)).toBe(
+    "This project has errors of its own, and the verdict counts them as ddd compare does: the " +
+      "Findings tab lists them.",
+  );
 });

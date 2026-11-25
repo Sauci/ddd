@@ -14,15 +14,14 @@ import {
   ConstantPanelView,
   type Offer,
 } from "../components/ConstantPanelView";
-import { panelShows, type Refused, refusalShown } from "../lib/refusals";
+import { heldOf, offerShown, panelShows, type Refused, refusalOf } from "../lib/refusals";
 import type { Route } from "../lib/route";
-import { constantValue, planEdit } from "../lib/shared";
+import { constantDescription, constantValue, planEdit } from "../lib/shared";
 import { planShown } from "../lib/typing";
 import { constantLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
 import { UpdatingNote } from "../ui/UpdatingNote";
-import { refusalOf } from "./UnitPanel";
 
 interface Props {
   name: string;
@@ -130,10 +129,7 @@ export function ConstantPanel({
       valueRead === null || "refusal" in valueRead
         ? null
         : { action: "set", name, key: "value", raw: valueRead.raw },
-    describe:
-      draftDescription === null
-        ? null
-        : { action: "set", name, key: "description", raw: JSON.stringify(draftDescription) },
+    describe: draftDescription === null ? null : constantDescription(name, draftDescription),
     rename: to === null ? null : { action: "rename", name, to },
     // Asked for only while nothing names the constant: a shape still naming it always refuses
     // (design §4.5), and a control that would refuse the instant it was pressed is a lying button
@@ -207,16 +203,11 @@ export function ConstantPanel({
    * `plan`/`refusal`/`pending` are `planShown`'s own, `lib/typing.ts` (review fix round 1):
    * `null`/`null`/pending while the debounced request has not caught up with what the fields now
    * say, or while the answer is an earlier request's kept as a placeholder - never a plan, nor
-   * its own fetch refusal, for text the reader has since typed past. A refusal of its Apply takes
-   * precedence, as it always did (`refusalShown`). */
-  const offer = (action: ConstantAction): Offer => {
-    const shown = planShown(asked[action], requests[action], plans[action]);
-    return {
-      plan: shown.plan,
-      refusal: refusalShown(failed, shown.refusal, action),
-      pending: shown.pending,
-    };
-  };
+   * its own fetch refusal, for text the reader has since typed past. What it offers beside a
+   * refusal is the one rule every panel follows (`offerShown`): a refusal of its Apply said over
+   * the plan asked again, and nothing to apply beside its plan's own refusal. */
+  const offer = (action: ConstantAction): Offer =>
+    offerShown(heldOf(failed, action), planShown(asked[action], requests[action], plans[action]));
 
   if (gone) return null;
   if (answer.shown === "refusal") {

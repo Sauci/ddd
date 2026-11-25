@@ -5,6 +5,7 @@ import {
   BASELINE_ROOT,
   CAN_REPLACE,
   CANNOT_REPLACE,
+  CANNOT_REPLACE_FOR_ITS_OWN_ERRORS,
   PROJECT_FINDINGS,
   REFUSED_OUTSIDE_ROOT,
 } from "../stories/fixtures";
@@ -27,7 +28,8 @@ interface Props {
 /** The Compare tab over one scenario's fixtures, with its own baseline field and selection -
  * `CompareView`'s own props, exactly as the tab itself supplies them (`ComparePage`). `state` is
  * the Findings tab's own fixture, which is what a row naming a place in the open project is
- * routed against; `onOpen` is where the app would navigate, and a story navigates nowhere. */
+ * routed against; `onOpen` is where the app would navigate, and a story navigates nowhere. The
+ * baseline the field shows at first is the one `reply` was asked for, which its verdict names. */
 function View({
   baseline: typedAtFirst = "",
   reply = null,
@@ -47,6 +49,7 @@ function View({
       baseline={baseline}
       onBaseline={setBaseline}
       onAsk={() => undefined}
+      asked={typedAtFirst}
       reply={reply}
       refusal={refusal}
       busy={busy}
@@ -76,8 +79,16 @@ export const CannotReplaceTheBaseline = () => (
   <View baseline={`${BASELINE_ROOT}/demo.ddd.json`} reply={CANNOT_REPLACE} openBaseline />
 );
 
-/** A baseline named outside the session root: the reason said plainly, and no verdict beneath
- * it - one of the spec's own four refusals (§6). */
+/** A delivery the open project cannot replace for its own errors alone (14:I1): the comparison
+ * finds nothing to report, and the line under the verdict says why it refuses all the same - the
+ * project's own errors, which the verdict counts and the Findings tab lists. */
+export const CannotReplaceForItsOwnErrors = () => (
+  <View baseline={`${BASELINE_ROOT}/demo.ddd.json`} reply={CANNOT_REPLACE_FOR_ITS_OWN_ERRORS} />
+);
+
+/** A baseline named outside the directory `ddd gui` was started in: the reason said plainly, in
+ * the words of the sentence under the field, and no verdict beneath it - one of the spec's own
+ * four refusals (§6). */
 export const BaselineRefused = () => (
   <View baseline="C:/archives/demo.ddd.json" refusal={REFUSED_OUTSIDE_ROOT} />
 );

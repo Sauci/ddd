@@ -740,6 +740,123 @@ test("typing in a grid", async ({ page }) => {
   }
 });
 
+/** How long `typing in a filter` waits after each key before the next: longer than the 250 ms a
+ * typed field waits for typing to pause (`PLAN_DELAY_MS`, gui/src/lib/typing.ts), so that each
+ * key is timed alone and the ask it sets going after that pause is made before the next key. */
+const KEY_GAP_MS = 600;
+
+/** One filter's keys: the time from each key's capturing keydown to the second frame after it,
+ * the slowest of them, and the longest long task from the first key to `KEY_GAP_MS` after the
+ * last - which a key pressed meanwhile would have waited for. `text` is typed into `field` key
+ * by key, taken back Backspace by Backspace, then put back whole and emptied in one key, selected
+ * and Backspace pressed: one key after which the filter leaves every row again. */
+async function filterKeys(
+  page: Page,
+  field: Locator,
+  text: string,
+): Promise<{ slowest: number; longest: number }> {
+  const keys = [...text, ...Array.from(text, () => "Backspace")];
+  await field.focus();
+  await resetLongTasks(page);
+  let slowest = 0;
+  const press = async (key: string) => {
+    await page.evaluate(() => {
+      window.__frames = [];
+    });
+    await field.press(key);
+    await page.waitForFunction(() => (window.__frames?.length ?? 0) > 0);
+    slowest = Math.max(slowest, await page.evaluate(() => window.__frames?.[0] ?? 0));
+    await page.waitForTimeout(KEY_GAP_MS);
+  };
+  for (const key of keys) await press(key);
+  await field.fill(text);
+  await page.waitForTimeout(KEY_GAP_MS);
+  await field.press("ControlOrMeta+a");
+  await press("Backspace");
+  return { slowest, longest: await longestLongTask(page) };
+}
+
+/**
+ * Typing in the filters of the long tables and in the masthead's go-to (16:I14, fix round 1): a
+ * key from its capturing keydown to the second frame after it, as `typing in a grid` times a
+ * cell's, the slowest key of each, and the longest long task meanwhile (`filterKeys`). Over the
+ * Table tab's components, the first component's declarations, the first unit's places - a
+ * generated project's outputs state its units in turn - the Findings tab's findings, asked of the
+ * server, and the go-to's names. The text typed is the first component's name, or its first
+ * declaration's, read off the page. What the large projects design (§3) holds under 100 ms.
+ */
+test("typing in a filter", async ({ page }) => {
+  await installLongTaskObserver(page);
+  await page.addInitScript(() => {
+    window.__frames = [];
+    window.addEventListener(
+      "keydown",
+      () => {
+        const start = performance.now();
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => window.__frames?.push(performance.now() - start)),
+        );
+      },
+      true,
+    );
+  });
+  if (!(await openedProject(page, "typing in a filter"))) return;
+  const measure = async (
+    label: string,
+    open: () => Promise<{ field: Locator; text: string }>,
+  ): Promise<void> => {
+    const opened = await capped(open);
+    if (didNotFinish(opened)) {
+      record(`typing in a filter, ${label}`, formatMs(opened));
+      return;
+    }
+    const keys = await capped(() => filterKeys(page, opened.field, opened.text));
+    if (didNotFinish(keys)) {
+      record(`typing in a filter, ${label}`, formatMs(keys));
+      return;
+    }
+    record(`typing in a filter, ${label}`, formatMs(keys.slowest));
+    record(`typing in a filter, ${label}, longest task`, formatMs(keys.longest));
+  };
+  let component = "";
+  let declaration = "";
+  await measure("components", async () => {
+    await page.getByRole("link", { name: "Table", exact: true }).click();
+    const first = firstRow(page).getByRole("button").first();
+    await expect(first).toBeVisible({ timeout: LONG_TIMEOUT });
+    component = (await first.textContent()) ?? "";
+    return { field: page.getByRole("textbox", { name: "Filter components" }), text: component };
+  });
+  await measure("declarations", async () => {
+    await page.getByRole("link", { name: "Table", exact: true }).click();
+    await page.getByRole("button", { name: component, exact: true }).click();
+    const cell = firstRow(page).getByRole("button", { name: /^Set the unit of / });
+    await expect(cell).toBeVisible({ timeout: LONG_TIMEOUT });
+    declaration = ((await cell.getAttribute("aria-label")) ?? "").replace(/^Set the unit of /, "");
+    return { field: page.getByRole("textbox", { name: "Filter declarations" }), text: declaration };
+  });
+  await measure("places", async () => {
+    await page.getByRole("button", { name: "Generated", exact: true }).click();
+    await page.getByRole("link", { name: "Units", exact: true }).click();
+    const unit = firstRow(page);
+    await expect(unit).toBeVisible({ timeout: LONG_TIMEOUT });
+    const name = (await unit.getByRole("rowheader").textContent()) ?? "";
+    await unit.click();
+    const panel = page.getByRole("complementary", { name, exact: true });
+    const field = panel.getByRole("textbox", { name: "Filter places" });
+    await expect(field).toBeVisible({ timeout: LONG_TIMEOUT });
+    return { field, text: component.toLowerCase() };
+  });
+  await measure("findings", async () => {
+    await openFindingsTab(page);
+    return { field: page.getByRole("textbox", { name: "Filter findings" }), text: component };
+  });
+  await measure("go-to", async () => ({
+    field: page.getByRole("combobox", { name: "Go to a variable" }),
+    text: declaration,
+  }));
+});
+
 test("scrolling", async ({ page }) => {
   await installLongTaskObserver(page);
   if (!(await openedProject(page, "scrolling"))) return;

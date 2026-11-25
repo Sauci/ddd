@@ -1,17 +1,46 @@
 import { describe, expect, test } from "vitest";
 import { ApiError, ServerUnreachable } from "../api/client";
 import {
+  heldOf,
   isStale,
+  offerShown,
+  STALE as PAGE_STALE,
+  type PanelShows,
+  panelReads,
   panelShows,
+  pickedOnRefusal,
   type Refused,
+  refusalOf,
   refusalOfOffer,
   refusalSentence,
-  refusalShown,
 } from "./refusals";
 
 /** What a panel says when its Apply is refused because a file changed under its preview. */
 const STALE =
   "A file changed on disk, so nothing was written. The page now shows the files as they are.";
+
+/** What a panel of several writes says beside its write `about`: `offerShown`'s refusal, from the
+ * refusal it holds of that write's Apply (`heldOf`) and why its plan was refused when asked for. */
+function said(held: Refused<string> | null, asked: string | null, about: string): string | null {
+  return offerShown(heldOf(held, about), { plan: null, refusal: asked, pending: false }).refusal;
+}
+
+test("the page's own sentence for an Apply refused because a file changed on disk", () => {
+  // Said by every panel but the variable panel and the Findings tab, which say what they show in
+  // words of their own: the Units, Types and Shared files tabs' panels, the Files tab, the values
+  // grid and the declare panel.
+  expect(PAGE_STALE).toBe(STALE);
+});
+
+test("an Apply refused is said in the page's own sentence where a file changed on disk, else in the server's words", () => {
+  expect(refusalOf(new ApiError(409, "stale", "a.ddd.json changed on disk"))).toBe(STALE);
+  expect(refusalOf(new ApiError(409, "invalid", "'rpm' is no unit"))).toBe(
+    "The change was refused: 'rpm' is no unit",
+  );
+  expect(refusalOf(new ServerUnreachable(new Error("refused")))).toBe(
+    "The change was refused: ddd gui is not answering",
+  );
+});
 
 test("an Apply refused for a file changed on disk is stale, and no other refusal is", () => {
   expect(isStale(new ApiError(409, "stale", "a.ddd.json changed on disk"))).toBe(true);
@@ -35,16 +64,16 @@ test("an Apply refused is said in the panel's own sentence where a file changed 
 
 test("a refusal held of a write is shown beside it, over why its plan was refused", () => {
   const held: Refused<string> = { about: "rename", text: STALE };
-  expect(refusalShown(held, "'rpm' is the unit's own spelling", "rename")).toBe(STALE);
-  expect(refusalShown(held, null, "rename")).toBe(STALE);
+  expect(said(held, "'rpm' is the unit's own spelling", "rename")).toBe(STALE);
+  expect(said(held, null, "rename")).toBe(STALE);
 });
 
 test("a refusal held of another write is not shown beside this one, which shows its own plan's", () => {
   const held: Refused<string> = { about: "remove", text: "The change was refused: no" };
-  expect(refusalShown(held, "'rpm' is the unit's own spelling", "rename")).toBe(
+  expect(said(held, "'rpm' is the unit's own spelling", "rename")).toBe(
     "'rpm' is the unit's own spelling",
   );
-  expect(refusalShown(held, null, "rename")).toBeNull();
+  expect(said(held, null, "rename")).toBeNull();
 });
 
 test("a refusal of an offer is held while the offer is made, and goes with it", () => {
@@ -55,7 +84,64 @@ test("a refusal of an offer is held while the offer is made, and goes with it", 
 });
 
 test("nothing held and no plan refused, nothing is shown", () => {
-  expect(refusalShown(null, null, "rename")).toBeNull();
+  expect(said(null, null, "rename")).toBeNull();
+});
+
+test("a panel of several writes holds the sentence of the write it was refused for, and of no other", () => {
+  const held: Refused<string> = { about: "rename", text: STALE };
+  expect(heldOf(held, "rename")).toBe(STALE);
+  expect(heldOf(held, "remove")).toBeNull();
+  expect(heldOf(null, "rename")).toBeNull();
+});
+
+describe("what a panel offers of one write beside the refusal it says", () => {
+  /** A plan as `planShown` hands it over: the revision's answer for the write as it stands. */
+  const PLAN = { changes: [{ file: "units.ddd.json" }] };
+  const PLAN_REFUSED = "units.ddd.json changed since the project was analysed";
+
+  test("nothing refused, the plan is offered", () => {
+    expect(offerShown(null, { plan: PLAN, refusal: null, pending: false })).toEqual({
+      plan: PLAN,
+      refusal: null,
+      pending: false,
+    });
+  });
+
+  test("beside a refusal held of its Apply, the plan asked for again is offered under the sentence", () => {
+    // The plan of the files as they now are, which a stale refusal's sentence says the panel shows:
+    // one press away, never withdrawn until the reader chooses again.
+    expect(offerShown(STALE, { plan: PLAN, refusal: null, pending: false })).toEqual({
+      plan: PLAN,
+      refusal: STALE,
+      pending: false,
+    });
+  });
+
+  test("beside its plan's own refusal, nothing is offered to apply, not even an answer kept from before", () => {
+    // A plan asked for again and refused leaves the answer before it in the query's hands, its
+    // fingerprints no longer the files': an Apply drawn from it would only be refused.
+    expect(offerShown(null, { plan: PLAN, refusal: PLAN_REFUSED, pending: false })).toEqual({
+      plan: null,
+      refusal: PLAN_REFUSED,
+      pending: false,
+    });
+  });
+
+  test("a refusal held of its Apply is said over its plan's own, and nothing is offered while that stands", () => {
+    expect(offerShown(STALE, { plan: PLAN, refusal: PLAN_REFUSED, pending: false })).toEqual({
+      plan: null,
+      refusal: STALE,
+      pending: false,
+    });
+  });
+
+  test("whether the plan may still change is the plan's own", () => {
+    expect(offerShown(STALE, { plan: null, refusal: null, pending: true })).toEqual({
+      plan: null,
+      refusal: STALE,
+      pending: true,
+    });
+  });
 });
 
 describe("a refusal held of a write, over each answer a new revision brings its plan", () => {
@@ -72,13 +158,13 @@ describe("a refusal held of a write, over each answer a new revision brings its 
   const plan8 = "'rpm' is the unit's own spelling";
 
   test("held, it is shown while the plan is asked again, and over the plan's own refusal once that comes", () => {
-    expect(refusalShown(held, null, "rename")).toBe(STALE);
-    expect(refusalShown(held, plan8, "rename")).toBe(STALE);
+    expect(said(held, null, "rename")).toBe(STALE);
+    expect(said(held, plan8, "rename")).toBe(STALE);
   });
 
   test("once the panel holds none, the plan's own answer is shown", () => {
-    expect(refusalShown(null, plan8, "rename")).toBe(plan8);
-    expect(refusalShown(null, null, "rename")).toBeNull();
+    expect(said(null, plan8, "rename")).toBe(plan8);
+    expect(said(null, null, "rename")).toBeNull();
   });
 });
 
@@ -164,4 +250,53 @@ describe("what a panel shows of the answer about its own entity", () => {
       });
     },
   );
+});
+
+describe("what a panel shows once it reads the project's units beside its entity", () => {
+  // The unit, type and variable panels read `GET /api/units` for what their choosers list.
+  const RPM = { unit: "RPM", sites: 2 };
+  const reply: PanelShows<typeof RPM> = { shown: "reply", reply: RPM };
+  const UNITS = { units: [], vocabulary: null };
+  const failed = new ApiError(500, "internal", "ddd gui failed on this request");
+
+  test.each([
+    { shown: "reading" } as const,
+    { shown: "updating" } as const,
+    { shown: "refusal", refusal: "'RPM' is not declared in the open project" } as const,
+  ])("what it shows short of its entity's answer stands, whatever the units' read: %o", (shows) => {
+    expect(panelReads(shows, { data: undefined, error: failed })).toEqual(shows);
+    expect(panelReads(shows, { data: UNITS, error: null })).toEqual(shows);
+  });
+
+  test("its entity's answer and the units', it shows the answer", () => {
+    expect(panelReads(reply, { data: UNITS, error: null })).toEqual(reply);
+  });
+
+  test("its entity's answer, the units on their way, it is reading", () => {
+    expect(panelReads(reply, { data: undefined, error: null })).toEqual({ shown: "reading" });
+  });
+
+  test("its entity's answer, the units' read failed with nothing to draw from, it says so in its place", () => {
+    // Where it once said it was reading, for good.
+    expect(panelReads(reply, { data: undefined, error: failed })).toEqual({
+      shown: "refusal",
+      refusal: "ddd gui failed on this request",
+    });
+  });
+
+  test("its entity's answer, the units' read failed over an answer the query still holds, it draws from that", () => {
+    expect(panelReads(reply, { data: UNITS, error: failed })).toEqual(reply);
+  });
+});
+
+describe("the key a variable's panel shows once a key's Apply was refused", () => {
+  test("the key the panel opened by itself becomes its choice, so that a revision moving the rows leaves it open", () => {
+    // The first row that disagrees, which the analysis the refusal asks for can make agree.
+    expect(pickedOnRefusal(undefined, "unit")).toBe("unit");
+  });
+
+  test("the reader's own choice stays theirs", () => {
+    expect(pickedOnRefusal("limits", "unit")).toBe("limits");
+    expect(pickedOnRefusal(null, "unit")).toBeNull();
+  });
 });

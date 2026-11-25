@@ -1,6 +1,15 @@
 import { chmodSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { CONTROLLER, chooseUnit, drift, renameValueA, SENSOR_HUB, scrolledIntoView } from "./demo";
+import type { Locator } from "@playwright/test";
+import {
+  CONTROLLER,
+  chooseUnit,
+  drift,
+  openPanel,
+  renameValueA,
+  SENSOR_HUB,
+  scrolledIntoView,
+} from "./demo";
 import { expect, test } from "./fixtures";
 
 test("a disagreement written from outside is resolved from the component page", async ({
@@ -231,8 +240,10 @@ test("the picker lists the variable's units, then the project's, narrowed by wha
   await page.getByRole("button", { name: /^Show the choices for Unit of ValueA/ }).click();
   await expect(page.getByRole("option", { name: "%", exact: true })).toBeVisible();
   await expect(page.getByRole("option", { name: "Hz", exact: true })).toBeVisible();
-  // The list spans the field it belongs to, edge to edge.
-  const field = await page.locator(".combo-field").boundingBox();
+  // The list spans the field it belongs to, edge to edge: the panel's, the masthead holding the
+  // go-to's field too.
+  const panel = page.getByRole("complementary", { name: "ValueA" });
+  const field = await panel.locator(".combo-field").boundingBox();
   const list = await page.locator(".combo-popover").boundingBox();
   expect([list?.x, list?.width]).toEqual([field?.x, field?.width]);
   await picker.fill("h");
@@ -254,6 +265,230 @@ test("a unit cell pressed again, once focus has moved elsewhere, moves it back t
   await expect(picker).not.toBeFocused();
   await cell.click();
   await expect(picker).toBeFocused();
+});
+
+test("Close pressed from the keyboard puts the focus back on the unit cell the panel was opened from", async ({
+  page,
+  gui,
+}) => {
+  const panel = await openPanel(page, gui.address, "ValueA");
+  await closedByKeyboard(panel, "ValueA");
+  await expect(page.getByRole("button", { name: "Set the unit of ValueA" })).toBeFocused();
+});
+
+/** Presses Close in a panel from the keyboard, once the panel has read what it shows, and waits for
+ * the panel to go. A variable's panel is drawn anew as its keys come, its Close with it: a press of
+ * the Close it replaced would be lost, the focus then on the new panel's heading. */
+async function closedByKeyboard(panel: Locator, title: string): Promise<void> {
+  await expect(panel).toBeVisible();
+  await expect(panel.getByText(/^Reading .+…$/)).toHaveCount(0);
+  await panel.getByRole("button", { name: `Close ${title}` }).focus();
+  await panel.page().keyboard.press("Enter");
+  await expect(panel).toHaveCount(0);
+}
+
+test("Close puts the focus back on the row the panel was opened from", async ({ page, gui }) => {
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  const row = page
+    .getByRole("grid", { name: "Declarations of Controller" })
+    .getByRole("row", { name: /ValueB/ });
+  await row.focus();
+  await page.keyboard.press("Enter");
+  const panel = page.getByRole("complementary", { name: "ValueB" });
+  await expect(panel).toBeVisible();
+  await closedByKeyboard(panel, "ValueB");
+  await expect(row).toBeFocused();
+});
+
+test("a panel drawn anew while the focus is elsewhere on the page still gives it back to its row", async ({
+  page,
+  gui,
+}) => {
+  // ValueB's panel reads its keys, held until the focus is in the filter - where a reader may be
+  // typing as the keys come in. The panel is drawn anew with them, under the same title: still the
+  // panel opened from the row, which Close gives the focus back to, not the filter.
+  let release = () => {};
+  const held = new Promise<void>((done) => {
+    release = done;
+  });
+  await page.route(
+    (url) => url.pathname === "/api/variable",
+    async (route) => {
+      await held;
+      await route.continue();
+    },
+  );
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  const row = page
+    .getByRole("grid", { name: "Declarations of Controller" })
+    .getByRole("row", { name: /ValueB/ });
+  await row.focus();
+  await page.keyboard.press("Enter");
+  const panel = page.getByRole("complementary", { name: "ValueB" });
+  await expect(panel.getByText("Reading ValueB…")).toBeVisible();
+  const filter = page.getByRole("textbox", { name: "Filter declarations" });
+  await filter.focus();
+  release();
+  await expect(panel.getByRole("grid", { name: "Keys of ValueB" })).toBeVisible();
+  await expect(filter).toBeFocused();
+  await closedByKeyboard(panel, "ValueB");
+  await expect(row).toBeFocused();
+});
+
+test("Close puts the focus on the panel's row once the filter puts it back, in the table while the filter leaves it out, and on the heading where no row is left", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  const table = page.getByRole("grid", { name: "Declarations of Controller" });
+  const row = table.getByRole("row", { name: /ValueB/ });
+  const panel = page.getByRole("complementary", { name: "ValueB" });
+  const filter = page.getByRole("textbox", { name: "Filter declarations" });
+
+  // Left out and put back, the row the panel was opened from is drawn anew, as another element:
+  // the focus goes back to it all the same, though the table moved its own place off it meanwhile.
+  await row.click();
+  await expect(panel).toBeVisible();
+  await filter.fill("State");
+  await expect(row).toHaveCount(0);
+  await filter.fill("");
+  await expect(row).toBeVisible();
+  await closedByKeyboard(panel, "ValueB");
+  await expect(row).toBeFocused();
+
+  // Left out, the panel's row cannot take it: the table does, at the place it moved to as the row
+  // went, in the row standing nearest - its cell, where a cell of the row was clicked.
+  await row.click();
+  await expect(panel).toBeVisible();
+  await filter.fill("State");
+  await expect(row).toHaveCount(0);
+  await closedByKeyboard(panel, "ValueB");
+  const nearest = table.getByRole("row", { name: /StateA/ });
+  await expect
+    .poll(() => nearest.evaluate((element) => element.contains(document.activeElement)))
+    .toBe(true);
+
+  // No row left, no table is drawn, and the page's heading takes it.
+  await filter.fill("");
+  await row.click();
+  await expect(panel).toBeVisible();
+  await filter.fill("nothing has this name");
+  await expect(table).toHaveCount(0);
+  await closedByKeyboard(panel, "ValueB");
+  await expect(page.getByRole("heading", { name: "Controller", level: 1 })).toBeFocused();
+});
+
+test("Apply pressed from the keyboard leaves the focus on the panel's heading as its edit is written and analysed", async ({
+  page,
+  gui,
+}) => {
+  const panel = await openPanel(page, gui.address, "ValueA");
+  await chooseUnit(page, "rpm");
+  await panel.getByRole("button", { name: "Apply to 2 files" }).focus();
+  await page.keyboard.press("Enter");
+  // Apply is disabled while its edit is written, and the panel drawn anew while it is analysed:
+  // the focus stays in the panel, on its heading, from where Tab goes on through it.
+  await expect(panel.getByText("Nothing to change")).toBeVisible();
+  await expect(panel.getByRole("heading", { name: "ValueA", level: 2 })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(panel.getByRole("button", { name: "Close ValueA" })).toBeFocused();
+});
+
+test("the heading says what an Apply wrote, until another page is drawn", async ({ page, gui }) => {
+  const panel = await openPanel(page, gui.address, "ValueA");
+  const said = page.locator(".heading").getByRole("status");
+  await chooseUnit(page, "rpm");
+  await panel.getByRole("button", { name: "Apply to 2 files" }).click();
+  await expect(said).toHaveText(
+    "Wrote 2 files for the unit of ValueA: controller.ddd.json, sensor_hub.ddd.json.",
+  );
+  // Another page has news of its own to say, and none of this one's; nor does this page, drawn
+  // again, say it twice.
+  await page.getByRole("button", { name: "DemoDevice" }).click();
+  await expect(page.getByRole("heading", { name: "DemoDevice", level: 1 })).toBeVisible();
+  await expect(said).toHaveText("");
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: "Controller", level: 1 })).toBeVisible();
+  await expect(said).toHaveText("");
+});
+
+/**
+ * A second write saying what the first said (16:I13): ValueA's unit set to rpm, then to mV, each
+ * Apply writing both files - the heading's line says the same sentence of both, and a screen reader
+ * is told of the second as it was of the first, the region given the sentence anew, not left as it
+ * stood while only "Updating the findings…" came and went beside it.
+ */
+test("a second write saying what the first said is told again", async ({ page, gui }) => {
+  const panel = await openPanel(page, gui.address, "ValueA");
+  const said = page.locator(".heading").getByRole("status");
+  const sentence =
+    "Wrote 2 files for the unit of ValueA: controller.ddd.json, sensor_hub.ddd.json.";
+  await chooseUnit(page, "rpm");
+  await panel.getByRole("button", { name: "Apply to 2 files" }).click();
+  await expect(said).toHaveText(sentence);
+
+  // What the region is given from here on, each node it gains by its words.
+  await said.evaluate((region) => {
+    const given: string[] = [];
+    (window as unknown as { given: string[] }).given = given;
+    new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) given.push((node.textContent ?? "").trim());
+      }
+    }).observe(region, { childList: true, subtree: true });
+  });
+  await chooseUnit(page, "mV");
+  await panel.getByRole("button", { name: "Apply to 2 files" }).click();
+  await expect
+    .poll(() => readFileSync(join(gui.directory, CONTROLLER), "utf8"))
+    .toContain('"unit": "mV"');
+  await expect(said).toHaveText(sentence);
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { given: string[] }).given))
+    .toContain(sentence);
+});
+
+test("a panel the page closes while the focus is in it gives the focus back to where it was opened from", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  const table = page.getByRole("grid", { name: "Declarations of Controller" });
+  await table.getByRole("row", { name: /ValueA/ }).focus();
+  await page.keyboard.press("Enter");
+  const panel = page.getByRole("complementary", { name: "ValueA" });
+  const unit = panel
+    .getByRole("grid", { name: "Keys of ValueA" })
+    .getByRole("row", { name: /unit/ });
+  await unit.focus();
+  await expect(unit).toBeFocused();
+  // Renamed from outside, ValueA is no longer declared, and its panel closes, the focus in it.
+  renameValueA(gui.directory, "ValueZ");
+  await expect(panel).toHaveCount(0);
+  await expect(table.getByRole("row", { name: /ValueZ/ })).toBeFocused();
+});
+
+test("Close puts the focus on the panel's row where its address opened it", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("row", { name: /ValueB/ }).click();
+  await expect(page).toHaveURL(/variable=ValueB/);
+  await page.reload();
+  const panel = page.getByRole("complementary", { name: "ValueB" });
+  await expect(panel).toBeVisible();
+  await closedByKeyboard(panel, "ValueB");
+  await expect(
+    page.getByRole("grid", { name: "Declarations of Controller" }).getByRole("row", {
+      name: /ValueB/,
+    }),
+  ).toBeFocused();
 });
 
 test("the address keeps the panel open across a reload", async ({ page, gui }) => {
@@ -337,6 +572,29 @@ test("an arrow in disagreement about two variables asks which, from the keyboard
   await chooser.getByRole("button", { name: "ValueB", exact: true }).click();
   await expect(page.getByRole("complementary", { name: "ValueB" })).toBeVisible();
   await expect(page).toHaveURL(/\/project\?variable=ValueB$/);
+});
+
+test("Close puts the focus back on the arrow a panel was opened from, through the chooser", async ({
+  page,
+  gui,
+}) => {
+  drift(gui.directory, "ValueA", "rpm");
+  drift(gui.directory, "ValueB", "mV");
+  await page.goto(gui.address);
+  const arrow = page.getByRole("button", { name: "SensorHub to Controller: 2 variables, error" });
+  await arrow.focus();
+  await page.keyboard.press("Enter");
+  // The chooser's own Close, then the variable's panel the chooser opened in its place.
+  const chooser = page.getByRole("complementary", { name: "SensorHub to Controller" });
+  await closedByKeyboard(chooser, "SensorHub to Controller");
+  await expect(arrow).toBeFocused();
+  await page.keyboard.press("Enter");
+  await chooser.getByRole("button", { name: "ValueB", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  const panel = page.getByRole("complementary", { name: "ValueB" });
+  await expect(panel).toBeVisible();
+  await closedByKeyboard(panel, "ValueB");
+  await expect(arrow).toBeFocused();
 });
 
 test("no page reports a violation of its content security policy", async ({ page, gui }) => {

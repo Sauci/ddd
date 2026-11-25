@@ -109,3 +109,30 @@ test("what was undone is one answer until another undo is noted, as useSyncExter
 test("the page's own has undone nothing when it loads", () => {
   expect(ownEdits.undone()).toEqual(new Map());
 });
+
+test("the newest write is kept with what it was, where told, for the heading to say", () => {
+  const edits = new OwnEdits();
+  expect(edits.last()).toBeNull();
+  const unit = { kind: "wrote", label: "the unit of ValueA", files: ["/p/a.ddd.json"] } as const;
+  edits.wrote(3, unit);
+  const third = edits.last();
+  expect(third).toEqual({ edit: 3, write: unit });
+  // One answer until another write is noted, as useSyncExternalStore needs.
+  expect(edits.last()).toBe(third);
+  // An older answer arriving late is no newer write.
+  edits.wrote(2, { ...unit, label: "the limits of ValueB" });
+  expect(edits.last()).toBe(third);
+  // An undo noted with what it put back is the newest write; one answered after a newer edit is not.
+  const back = { kind: "put back", label: "the unit of ValueA", files: ["/p/a.ddd.json"] } as const;
+  edits.undid(3, 4, back);
+  expect(edits.last()).toEqual({ edit: 4, write: back });
+  edits.wrote(6, unit);
+  edits.undid(4, 5, back);
+  expect(edits.last()).toEqual({ edit: 6, write: unit });
+  // A write noted with nothing told of it leaves nothing to say.
+  edits.wrote(7);
+  expect(edits.last()).toBeNull();
+  edits.wrote(8, unit);
+  edits.undid(8, 9);
+  expect(edits.last()).toBeNull();
+});

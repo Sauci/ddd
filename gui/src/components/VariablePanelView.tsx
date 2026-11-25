@@ -2,13 +2,22 @@ import type { SettleReply, UnitsReply, VariableReply } from "../api/types";
 import { removalSentence } from "../lib/declarations";
 import { describeSentence, EDITED_ELSEWHERE } from "../lib/description";
 import { distinctFindings, keyedFindings, namesThisVariable, routeHref } from "../lib/findings";
-import { consequence, declaredUnits, shownChanges, unloadableOf } from "../lib/units";
+import {
+  consequence,
+  declaredUnits,
+  PLANNING,
+  planning,
+  sentenceKeys,
+  settleConsequence,
+  shownChanges,
+  unloadableOf,
+} from "../lib/units";
 import { describeVariable, offerOf } from "../lib/variableKeys";
 import { Button } from "../ui/Button";
-import { Chip } from "../ui/Chip";
 import { Panel } from "../ui/Panel";
 import { UpdatingNote } from "../ui/UpdatingNote";
 import { Changes } from "./Changes";
+import { FindingChip } from "./FindingChip";
 import { KeyChooser, type KeyChooserProps } from "./KeyChooser";
 import type { Offer } from "./UnitPanelView";
 import { VariableKeysTable } from "./VariableKeysTable";
@@ -26,6 +35,9 @@ export interface VariablePanelViewProps
    * reload. */
   onOpenConstant: (name: string) => void;
   preview: SettleReply | null;
+  /** Whether the plan of the value chosen is asked for and has not come, with no refusal to say:
+   * the panel then says `PLANNING` where its consequence stands (`planning`, lib/units.ts). */
+  planning?: boolean;
   /** Why the chosen value cannot be applied, or why applying it was refused. */
   refusal: string | null;
   changesShown: boolean;
@@ -39,6 +51,10 @@ export interface VariablePanelViewProps
         offer: Offer;
         /** Which component the removal would take it from, for the sentence and the label. */
         from: string;
+        /** The files of the project that did not load, as the banner under the masthead names
+         * them: the sentence says no other file that loaded declares the variable, rather than
+         * that no other component does (`removalSentence`, 16:I10). */
+        unread: readonly string[];
         shown: boolean;
         onShown: (shown: boolean) => void;
         onRemove: () => void;
@@ -88,9 +104,7 @@ export function VariablePanelView(props: VariablePanelViewProps) {
             const href = namesThisVariable(finding, variable.name) ? null : routeHref(finding);
             return (
               <li key={key}>
-                <Chip tone={finding.severity === "error" ? "error" : "warning"}>
-                  {finding.check}
-                </Chip>{" "}
+                <FindingChip severity={finding.severity} check={finding.check} />{" "}
                 {href === null ? (
                   <span className="quiet">{finding.message}</span>
                 ) : (
@@ -134,23 +148,27 @@ export function VariablePanelView(props: VariablePanelViewProps) {
           section exists so a reader - and a locator - can tell this block's "Show changes" from
           the removal offer's own, below. */}
       <section aria-label="Settle the key">
-        {refusal !== null ? (
+        {refusal !== null && (
           <p className="panel-refusal" role="status">
             {refusal}
           </p>
-        ) : (
-          selected !== undefined &&
-          preview !== null && <p className="consequence">{consequence(changes)}</p>
         )}
+        {/* Under a refusal too, the plan the panel is given, and its Apply: what it offers beside
+            one is the screen's rule (`offerShown`), which hands no plan its own ask refused. */}
+        {selected !== undefined &&
+          (preview !== null ? (
+            <p className="consequence">{settleConsequence(changes)}</p>
+          ) : (
+            refusal === null && props.planning === true && <p className="consequence">{PLANNING}</p>
+          ))}
         {/* What the server says of the files this plan would leave unable to load, in its words:
-            drawn with the plan, above Apply, which stays - the value is the reader's to write.
-            `unloadableOf` says which sentences: none where a refusal stands in the plan's place. */}
-        {unloadableOf(preview, refusal).map((sentence) => (
-          <p key={sentence} className="panel-unloadable" role="status">
-            {sentence}
+            drawn with the plan, above Apply, which stays - the value is the reader's to write. */}
+        {sentenceKeys(unloadableOf(preview)).map(({ key, text }) => (
+          <p key={key} className="panel-unloadable" role="status">
+            {text}
           </p>
         ))}
-        {refusal === null && changes.length > 0 && (
+        {changes.length > 0 && (
           <>
             {props.changesShown && <Changes changes={shownChanges(changes)} />}
             <div className="panel-actions">
@@ -180,37 +198,39 @@ export function VariablePanelView(props: VariablePanelViewProps) {
               {description.offer.refusal}
             </p>
           )}
-          {description.offer.refusal === null &&
-            description.offer.plan !== null &&
-            description.offer.plan.changes.length > 0 && (
-              <>
-                <p className="consequence">
-                  {describeSentence(variable.name, description.from, description.value)}.{" "}
-                  {consequence(description.offer.plan.changes)}
-                </p>
-                {description.shown && (
-                  <Changes changes={shownChanges(description.offer.plan.changes)} />
-                )}
-                <div className="panel-actions">
-                  <Button variant="link" onPress={() => description.onShown(!description.shown)}>
-                    {description.shown ? "Hide changes" : "Show changes"}
-                  </Button>
-                  <Button
-                    variant="primary"
-                    isDisabled={props.busy || description.offer.pending}
-                    onPress={description.onApply}
-                  >
-                    Apply to {description.offer.plan.changes.length} file
-                    {description.offer.plan.changes.length === 1 ? "" : "s"}
-                  </Button>
-                </div>
-              </>
-            )}
+          {planning(description.offer) && <p className="consequence">{PLANNING}</p>}
+          {description.offer.plan !== null && description.offer.plan.changes.length > 0 && (
+            <>
+              <p className="consequence">
+                {describeSentence(variable.name, description.from, description.value)}.{" "}
+                {consequence(description.offer.plan.changes)}
+              </p>
+              {description.shown && (
+                <Changes changes={shownChanges(description.offer.plan.changes)} />
+              )}
+              <div className="panel-actions">
+                <Button variant="link" onPress={() => description.onShown(!description.shown)}>
+                  {description.shown ? "Hide changes" : "Show changes"}
+                </Button>
+                <Button
+                  variant="primary"
+                  isDisabled={props.busy || description.offer.pending}
+                  onPress={description.onApply}
+                >
+                  Apply to {description.offer.plan.changes.length} file
+                  {description.offer.plan.changes.length === 1 ? "" : "s"}
+                </Button>
+              </div>
+            </>
+          )}
         </section>
       )}
+      {/* The one offer that draws nothing to press under any refusal, its own plan's or one held of
+          Remove: whether it should draw Remove under a held refusal's sentence, as every other
+          offer draws its Apply, is a question left with the maintainer (P19b-24). */}
       {removal !== undefined && (
         <section className="panel-offer" aria-label="Remove the declaration">
-          <p className="consequence">{removalSentence(variable, removal.from)}</p>
+          <p className="consequence">{removalSentence(variable, removal.from, removal.unread)}</p>
           {removal.offer.refusal !== null && (
             <p className="panel-refusal" role="status">
               {removal.offer.refusal}

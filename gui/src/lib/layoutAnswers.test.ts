@@ -82,7 +82,7 @@ test("an answer naming neither placed nor error changes nothing", () => {
 });
 
 test("the screen waits when nothing has ever answered", () => {
-  expect(layoutScreen(INITIAL_LAYOUT_STATE)).toEqual({ kind: "waiting" });
+  expect(layoutScreen(INITIAL_LAYOUT_STATE, false)).toEqual({ kind: "waiting" });
 });
 
 test("the screen shows the error alone when the first layout ever failed", () => {
@@ -91,7 +91,7 @@ test("the screen shows the error alone when the first layout ever failed", () =>
     ranksOnly: false,
     error: "Maximum call stack size exceeded",
   };
-  expect(layoutScreen(state)).toEqual({
+  expect(layoutScreen(state, false)).toEqual({
     kind: "failed",
     message: "Maximum call stack size exceeded",
   });
@@ -100,7 +100,7 @@ test("the screen shows the error alone when the first layout ever failed", () =>
 test("the screen draws the canvas plainly once a layout has succeeded", () => {
   const placed = placedAt("/a.ddd.json");
   const state: LayoutState = { placed, ranksOnly: false, error: null };
-  expect(layoutScreen(state)).toEqual({
+  expect(layoutScreen(state, false)).toEqual({
     kind: "drawn",
     placed,
     errorMessage: null,
@@ -111,7 +111,7 @@ test("the screen draws the canvas plainly once a layout has succeeded", () => {
 test("the screen draws the canvas with the error when a later layout failed", () => {
   const placed = placedAt("/a.ddd.json");
   const state: LayoutState = { placed, ranksOnly: false, error: "boom" };
-  expect(layoutScreen(state)).toEqual({
+  expect(layoutScreen(state, false)).toEqual({
     kind: "drawn",
     placed,
     errorMessage: "boom",
@@ -122,7 +122,7 @@ test("the screen draws the canvas with the error when a later layout failed", ()
 test("the screen draws the canvas with the ranks-only note when the fallback made it", () => {
   const placed = placedAt("/a.ddd.json");
   const state: LayoutState = { placed, ranksOnly: true, error: null };
-  expect(layoutScreen(state)).toEqual({
+  expect(layoutScreen(state, false)).toEqual({
     kind: "drawn",
     placed,
     errorMessage: null,
@@ -133,10 +133,38 @@ test("the screen draws the canvas with the ranks-only note when the fallback mad
 test("the screen shows both the error and the ranks-only note when both apply at once", () => {
   const placed = placedAt("/a.ddd.json");
   const state: LayoutState = { placed, ranksOnly: true, error: "boom" };
-  expect(layoutScreen(state)).toEqual({
+  expect(layoutScreen(state, false)).toEqual({
     kind: "drawn",
     placed,
     errorMessage: "boom",
     note: "Laid out in ranks only: the project is too large for the full layout.",
   });
+});
+
+test("a worker that stopped is said once the first layout never came, unless ddd gui has stopped", () => {
+  const state: LayoutState = { placed: null, ranksOnly: false, error: WORKER_FAILED };
+  expect(layoutScreen(state, false)).toEqual({ kind: "failed", message: WORKER_FAILED });
+  // A reload then loses the tab to the browser's refused connection: the page's own line says
+  // what to do, and the worker says nothing.
+  expect(layoutScreen(state, true)).toEqual({ kind: "stopped" });
+});
+
+test("a worker that stopped over a canvas drawn is said above it, unless ddd gui has stopped", () => {
+  const placed = placedAt("/a.ddd.json");
+  const state: LayoutState = { placed, ranksOnly: true, error: WORKER_FAILED };
+  expect(layoutScreen(state, false)).toMatchObject({ kind: "drawn", errorMessage: WORKER_FAILED });
+  expect(layoutScreen(state, true)).toEqual({
+    kind: "drawn",
+    placed,
+    errorMessage: null,
+    note: RANKS_ONLY_NOTE,
+  });
+});
+
+test("a layout that failed for its own reason is said while ddd gui has stopped too", () => {
+  const first: LayoutState = { placed: null, ranksOnly: false, error: "boom" };
+  expect(layoutScreen(first, true)).toEqual({ kind: "failed", message: "boom" });
+  const placed = placedAt("/a.ddd.json");
+  const later: LayoutState = { placed, ranksOnly: false, error: "boom" };
+  expect(layoutScreen(later, true)).toMatchObject({ kind: "drawn", errorMessage: "boom" });
 });

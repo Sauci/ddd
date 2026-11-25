@@ -5,6 +5,7 @@ import {
   addFormRefusal,
   addTitle,
   constantAdd,
+  constantDescription,
   constantValue,
   isDeclared,
   kindNamed,
@@ -626,5 +627,55 @@ describe("a plan's changes, ready to send", () => {
 
   test("a plan with nothing to change comes to no edit", () => {
     expect(planEdit({ revision: 3, changes: [] }, "the value of CELLS")).toBeNull();
+  });
+});
+
+describe("an optional key emptied takes the key away", () => {
+  test("a raster's cycle and description, emptied, send no raw", () => {
+    expect(rasterSet("10ms", "cycle", "")).toEqual({ action: "set", name: "10ms", key: "cycle" });
+    expect(rasterSet("10ms", "description", "")).toEqual({
+      action: "set",
+      name: "10ms",
+      key: "description",
+    });
+    expect("raw" in rasterSet("10ms", "cycle", "")).toBe(false);
+  });
+
+  test("a section's and a constant's description, emptied, send no raw", () => {
+    expect(sectionSet(".calib", "description", "")).toEqual({
+      action: "set",
+      name: ".calib",
+      key: "description",
+    });
+    expect(constantDescription("LIMIT", "")).toEqual({
+      action: "set",
+      name: "LIMIT",
+      key: "description",
+    });
+    expect(constantDescription("LIMIT", "the limit")).toEqual({
+      action: "set",
+      name: "LIMIT",
+      key: "description",
+      raw: '"the limit"',
+    });
+  });
+
+  test("text of spaces alone is as empty as none", () => {
+    expect(rasterSet("10ms", "cycle", "  ")).toEqual({ action: "set", name: "10ms", key: "cycle" });
+    expect(constantDescription("LIMIT", " ")).toEqual({
+      action: "set",
+      name: "LIMIT",
+      key: "description",
+    });
+  });
+
+  test("a key that is not optional keeps what it was", () => {
+    expect(sectionSet(".calib", "access", "")).toEqual({
+      action: "set",
+      name: ".calib",
+      key: "access",
+      raw: '""',
+    });
+    expect(rasterSet("10ms", "event", "")).toEqual({ refusal: "'' is not a number" });
   });
 });

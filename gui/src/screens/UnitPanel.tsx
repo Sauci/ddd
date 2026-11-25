@@ -12,7 +12,15 @@ import { useUpdating } from "../app/updating";
 import { useDebounced } from "../app/useDebounced";
 import { type Offer, type UnitAction, UnitPanelView } from "../components/UnitPanelView";
 import { offers, planEdit } from "../lib/projectUnits";
-import { panelShows, type Refused, refusalShown } from "../lib/refusals";
+import {
+  heldOf,
+  offerShown,
+  panelReads,
+  panelShows,
+  type Refused,
+  refusalOf,
+} from "../lib/refusals";
+import type { Route } from "../lib/route";
 import { planShown, unsettled } from "../lib/typing";
 import { unitLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
@@ -28,14 +36,8 @@ interface Props {
   onGone: () => void;
   /** Renamed or removed from this panel: the tab opens the new spelling's panel, or none. */
   onMoved: (unit: string | undefined) => void;
-}
-
-/** What the tab says when an edit it posted was refused: stale, as part 1's panel says it, or the
- * server's own reason. */
-export function refusalOf(error: Error): string {
-  return error instanceof ApiError && error.code === "stale"
-    ? "A file changed on disk, so nothing was written. The page now shows the files as they are."
-    : `The change was refused: ${error.message}`;
+  /** A place of the unit followed to its page. */
+  onOpen: (route: Route) => void;
 }
 
 /**
@@ -55,7 +57,7 @@ export function usePlan(request: UnitPlanRequest | null, revision: number | unde
 }
 
 /** One unit's panel: where it is stated, its vocabulary entry, and a spelling to rename it to. */
-export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }: Props) {
+export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved, onOpen }: Props) {
   const queries = useQueryClient();
   const updating = useUpdating();
   const reply = useQuery({
@@ -63,15 +65,19 @@ export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }:
     queryFn: () => getUnit(name),
     placeholderData: (previous) => previous,
   });
-  // What the panel shows of that answer (`panelShows`): a unit just renamed to this spelling is
-  // refused until the rename is analysed, and the panel says the findings are updating meanwhile.
-  const answer = panelShows(reply, (shown) => shown.unit, name, updating);
-  const shownReply = answer.shown === "reply" ? answer.reply : undefined;
   const units = useQuery({
     queryKey: ["units", revision],
     queryFn: () => getUnits(),
     placeholderData: (previous) => previous,
   });
+  // What the panel shows of that answer (`panelShows`): a unit just renamed to this spelling is
+  // refused until the rename is analysed, and the panel says the findings are updating meanwhile.
+  // Its read of the units failed with nothing to draw from, it says why (`panelReads`).
+  const answer = panelReads(
+    panelShows(reply, (shown) => shown.unit, name, updating),
+    units,
+  );
+  const shownReply = answer.shown === "reply" ? answer.reply : undefined;
   // Set once this panel renamed or removed its unit: the unit is then gone because the reader
   // asked, and the panel moves on without the tab saying that it disappeared.
   const moving = useRef(false);
@@ -98,6 +104,8 @@ export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }:
   // file changed on disk included, and never let go by a revision landing (`Refused`,
   // lib/refusals.ts).
   const [failed, setFailed] = useState<Refused<UnitAction> | null>(null);
+  // What the filter of the places holds: this unit's, the panel being drawn anew for another.
+  const [places, setPlaces] = useState("");
 
   const row = units.data?.units.find((entry) => entry.unit === name);
   const offered =
@@ -177,17 +185,13 @@ export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }:
    * `plan`/`refusal`/`pending` are `planShown`'s own, `lib/typing.ts` (review fix round 1):
    * `null`/`null`/pending while the debounced request has not caught up with what the fields now
    * say, or while the answer is an earlier request's kept as a placeholder - never a plan, nor
-   * its own fetch refusal, for text the reader has since typed past. A refusal of its Apply takes
-   * precedence, as it always did (`refusalShown`). Never held back for `add`/`remove`/`rename`
-   * beyond their own query settling, whose `asked` entries are never behind `requests`'. */
-  const offer = (action: UnitAction): Offer => {
-    const shown = planShown(asked[action], requests[action], plans[action]);
-    return {
-      plan: shown.plan,
-      refusal: refusalShown(failed, shown.refusal, action),
-      pending: shown.pending,
-    };
-  };
+   * its own fetch refusal, for text the reader has since typed past. What it offers beside a
+   * refusal is the one rule every panel follows (`offerShown`): a refusal of its Apply said over
+   * the plan asked again, and nothing to apply beside its plan's own refusal. Never held back for
+   * `add`/`remove`/`rename` beyond their own query settling, whose `asked` entries are never
+   * behind `requests`'. */
+  const offer = (action: UnitAction): Offer =>
+    offerShown(heldOf(failed, action), planShown(asked[action], requests[action], plans[action]));
 
   if (gone) return null;
   if (answer.shown === "refusal") {
@@ -217,6 +221,8 @@ export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }:
       reply={shownReply}
       units={units.data}
       updating={updating}
+      placesFilter={places}
+      onPlacesFilter={setPlaces}
       description={description ?? row.description ?? ""}
       onDescription={(text) => {
         setDescription(text);
@@ -250,6 +256,7 @@ export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }:
       onApply={(action) => apply.mutate(action)}
       busy={stopped || apply.isPending}
       onClose={onClose}
+      onOpen={onOpen}
     />
   );
 }

@@ -9,12 +9,22 @@ import {
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
+  type Viewport,
 } from "@xyflow/react";
-import { type KeyboardEvent, useCallback, useMemo, useRef, useState } from "react";
+import {
+  type KeyboardEvent,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { getGraph } from "../api/client";
 import type { GraphReply, State } from "../api/types";
 import { useKept } from "../app/useKept";
 import { useLayout } from "../app/useLayout";
+import { useReducedMotion } from "../app/useReducedMotion";
 import { FlowEdge } from "../components/FlowEdge";
 import { ModuleNode } from "../components/ModuleNode";
 import {
@@ -22,21 +32,30 @@ import {
   edgesOf,
   fadedNodes,
   firstMatch,
+  flightOf,
   flowTitle,
+  isFittedView,
   MIN_ZOOM,
   type ModuleNodeType,
+  modulesCut,
+  noDictionary,
   nodesOf,
   objectsInDisagreement,
   openingViewport,
+  searchLine,
   shownEdges,
   withSavedPositions,
 } from "../lib/canvas";
+import { emptyProjectLine } from "../lib/files";
 import { layoutScreen } from "../lib/layoutAnswers";
+import type { Route } from "../lib/route";
 import { visibleOnly } from "../lib/shape";
+import { descriptionAlone, unloadedNames } from "../lib/unloaded";
 import { forgetPositions, rememberPosition, savedPositions } from "../state/positions";
 import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
 import { Panel } from "../ui/Panel";
+import { Sentence } from "../ui/Sentence";
 import { VariablePanel } from "./VariablePanel";
 
 // Outside the component on purpose: a fresh object here makes React Flow rebuild every node and
@@ -44,10 +63,11 @@ import { VariablePanel } from "./VariablePanel";
 const nodeTypes = { module: ModuleNode };
 const edgeTypes = { flow: FlowEdge };
 
-/** How long the viewport takes to fly to what `Fit` or a search asked for, in milliseconds. */
-const FLIGHT = 300;
-
 interface Props {
+  /** The path of the project the state is of (`State.project`): what the graph is asked for
+   * under, and what the canvas's arrangement is kept under (`state/positions.ts`). Not the
+   * session's: another page of the same server may have opened this project since the page last
+   * asked it. */
   project: string;
   state: State | null;
   variable: string | undefined;
@@ -58,6 +78,8 @@ interface Props {
   onOpenType: (name: string) => void;
   /** Following a `dimensions` entry of the open variable's panel to the constant it names. */
   onOpenConstant: (name: string) => void;
+  /** Following a line's link to the page it leads to: an empty project's to New file. */
+  onOpen: (route: Route) => void;
 }
 
 /** The open project as a canvas: one node per module, one arrow per producing-consuming pair. */
@@ -70,6 +92,7 @@ export function GraphPage({
   onVariable,
   onOpenType,
   onOpenConstant,
+  onOpen,
 }: Props) {
   const graph = useQuery({
     // The project is in the key beside the revision: until the first state answer arrives the
@@ -83,6 +106,10 @@ export function GraphPage({
     placeholderData: (previous) => previous,
   });
   const answer = useKept(graph, JSON.stringify(["graph", project]));
+  // The files that did not load, as the banner under the masthead names them: the cause the
+  // dictionary's sentence names, and what the panel's sentences say they were not told of.
+  const unread = useMemo(() => unloadedNames(state?.files ?? []), [state?.files]);
+  const empty = state === null ? null : emptyProjectLine(state.files);
 
   if (answer === undefined) {
     if (graph.isError) return <Banner tone="error">{graph.error.message}</Banner>;
@@ -93,10 +120,18 @@ export function GraphPage({
       {/* Spec 5.6: a server that stopped answering leaves the canvas as it was, and says so
           beside it - what is drawn is still the truth of the last revision that was read. */}
       {graph.isError && <Banner tone="error">{graph.error.message}</Banner>}
+      {/* Naming the files that did not load, where that is why (`noDictionary`, 16:I9). */}
       {!answer.dictionary && (
         <Banner tone="warning">
-          This project has no dictionary, so its modules are drawn without arrows.
+          {noDictionary(unread, descriptionAlone(project, state?.files ?? []))}
         </Banner>
+      )}
+      {/* A project that includes no component draws no module: the line says how to write one
+          (`emptyProjectLine`, 16:M13). */}
+      {empty !== null && (
+        <p className="quiet">
+          <Sentence parts={empty} onFollow={onOpen} />
+        </p>
       )}
       <ReactFlowProvider>
         <Canvas
@@ -104,6 +139,7 @@ export function GraphPage({
           project={project}
           variable={variable}
           revision={state?.revision}
+          unread={unread}
           stopped={stopped}
           onComponent={onComponent}
           onVariable={onVariable}
@@ -128,6 +164,7 @@ function Canvas({
   project,
   variable,
   revision,
+  unread,
   stopped,
   onComponent,
   onVariable,
@@ -138,6 +175,7 @@ function Canvas({
   project: string;
   variable: string | undefined;
   revision: number | undefined;
+  unread: readonly string[];
   stopped: boolean;
   onComponent: (file: string) => void;
   onVariable: (variable: string | undefined) => void;
@@ -151,8 +189,9 @@ function Canvas({
   // reader is waiting for, not a throwaway layout of nothing that would make `placed` stop being
   // `null` before a real one has arrived.
   const layout = useLayout(graph.modules, graph.flows);
-  const screen = layoutScreen(layout);
+  const screen = layoutScreen(layout, stopped);
   const flow = useReactFlow();
+  const reducedMotion = useReducedMotion();
   const [hovered, setHovered] = useState<string | null>(null);
   const [reached, setReached] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -260,14 +299,44 @@ function Canvas({
    * `fitView` always re-measured this way too, and this keeps that part of its behaviour even
    * though it is no longer what calls it.
    */
+  /** The view last fitted: Fit's own, or the opening one until Fit is used. */
+  const fitted = useRef<Viewport | null>(null);
   const onFit = useCallback(() => {
     const node = containerRef.current;
     const placement = drawnPlacement();
     if (node === null || placement === null) return;
     const size = { width: node.clientWidth, height: node.clientHeight };
     const view = openingViewport(placement, size, MIN_ZOOM);
-    if (view !== null) void flow.setViewport(view, { duration: FLIGHT });
-  }, [flow, drawnPlacement]);
+    if (view !== null) {
+      fitted.current = view;
+      void flow.setViewport(view, { duration: flightOf(reducedMotion) });
+    }
+  }, [flow, drawnPlacement, reducedMotion]);
+  // A panel opening beside the canvas narrows the box React Flow draws in under the view it had,
+  // and the far modules are cut until Fit (16:M22): the view is fitted again when the box resizes
+  // and leaves a module cut, and left as the reader put it when it does not.
+  const sized = containerSize !== null;
+  useEffect(() => {
+    const node = containerRef.current;
+    if (!sized || node === null) return;
+    let width = node.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (node.clientWidth === width) return;
+      width = node.clientWidth;
+      const placement = drawnPlacement();
+      const size = { width: node.clientWidth, height: node.clientHeight };
+      const view = flow.getViewport();
+      if (
+        placement !== null &&
+        isFittedView(view, fitted.current ?? opening) &&
+        modulesCut(placement, view, size)
+      ) {
+        onFit();
+      }
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [sized, drawnPlacement, flow, onFit, opening]);
   const onSearchKey = useCallback(
     (event: KeyboardEvent<HTMLInputElement>) => {
       if (event.key !== "Enter") return;
@@ -276,10 +345,14 @@ function Canvas({
       // Centred rather than zoomed onto: one module filling the canvas would answer "where is
       // it" by throwing away everything it is connected to.
       if (first !== null) {
-        void flow.fitView({ nodes: [{ id: first }], duration: FLIGHT, maxZoom: 1 });
+        void flow.fitView({
+          nodes: [{ id: first }],
+          duration: flightOf(reducedMotion),
+          maxZoom: 1,
+        });
       }
     },
-    [flow, graph, search],
+    [flow, graph, search, reducedMotion],
   );
 
   // An arrow in disagreement about several variables asks which one; one about a single
@@ -308,12 +381,18 @@ function Canvas({
     [graph, hovered, search],
   );
   const shownNodes = useMemo(() => fadedNodes(nodes, bright), [nodes, bright]);
+  // What the search found, said under its box (`searchLine`), which describes the box.
+  const found = useMemo(() => searchLine(graph.modules, search), [graph, search]);
+  const foundId = useId();
   const shownArrows = useMemo(() => shownEdges(edges, bright, reached), [edges, bright, reached]);
 
   // `layoutScreen` (`gui/src/lib/layoutAnswers.ts`) is the whole decision (review fix round 1,
   // Minor 6): this reads its tag and draws accordingly, deciding nothing about when either
   // applies itself.
   if (screen.kind === "waiting") return <p className="quiet">Laying the project out…</p>;
+  // Nothing, where ddd gui has stopped and the worker with it: the line under the masthead says
+  // what to do (`layoutScreen`).
+  if (screen.kind === "stopped") return null;
   if (screen.kind === "failed") return <Banner tone="error">{screen.message}</Banner>;
   return (
     <div className={variable !== undefined || chooser !== null ? "with-panel" : undefined}>
@@ -333,10 +412,16 @@ function Canvas({
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             onKeyDown={onSearchKey}
+            aria-describedby={foundId}
           />
           <Button onPress={onTidy}>Tidy</Button>
           <Button onPress={onFit}>Fit</Button>
         </div>
+        {/* Held whether or not a search is typed, empty while none is (app.css): its words coming
+            never move the canvas, and a screen reader hears each count as it changes. */}
+        <p id={foundId} className="canvas-search-line" role="status">
+          {found ?? ""}
+        </p>
         <section className="canvas" aria-label="Modules" ref={canvasRef}>
           {containerSize !== null && (
             <ReactFlow
@@ -393,6 +478,7 @@ function Canvas({
           // from - Task 7's optional prop on `VariablePanelView` then draws no offer at all.
           file={undefined}
           revision={revision}
+          unread={unread}
           stopped={stopped}
           focusPicker={null}
           onClose={() => onVariable(undefined)}

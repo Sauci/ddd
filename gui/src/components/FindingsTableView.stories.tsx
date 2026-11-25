@@ -1,16 +1,22 @@
 import { useState } from "react";
 import type { FindingsReply } from "../api/types";
 import { BOX_HEIGHT, spacersOf, spanOf, type WindowRow, windowRows } from "../lib/findingsWindow";
+import { fileNames } from "../lib/paths";
 import { LONG_FIRST_PAGE, LONG_TOTAL, PROJECT_FINDINGS_PAGE } from "../stories/fixtures";
 import { FindingsTableView } from "./FindingsTableView";
 
 export default { title: "Components / FindingsTableView" };
 
+/** The names the File column draws for the fixtures' files. */
+const NAMES = fileNames(
+  [...PROJECT_FINDINGS_PAGE.findings, ...LONG_FIRST_PAGE.findings].map((found) => found.file),
+);
+
 /** The window the Findings tab draws before its box has been scrolled: at the top, one box high,
- * from the pages that have arrived. */
+ * from the pages that have arrived - the box opened there. */
 function atTheTop(total: number, pages: ReadonlyMap<number, FindingsReply>) {
   const span = spanOf(0, BOX_HEIGHT, total);
-  return { rows: windowRows(span, pages), ...spacersOf(span, total) };
+  return { rows: windowRows(span, pages, NAMES), ...spacersOf(span, total), total, opensAt: 0 };
 }
 
 /** Nothing moves when a story's box is scrolled: each story is a picture of one window. */

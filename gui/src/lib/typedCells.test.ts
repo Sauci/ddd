@@ -439,18 +439,27 @@ describe("changesSentence", () => {
 
 describe("offerSentence", () => {
   test("where no cell is typed into, the sentence is a pasted table's", () => {
-    expect(offerSentence(CURVE_A, null, true)).toBe("Replaces every value of CurveA");
+    expect(offerSentence(CURVE_A, null, true, false)).toBe("Replaces every value of CurveA");
   });
 
-  test("else what the typed cells set", () => {
-    expect(offerSentence(CURVE_A, typedOffer(THREE, CURVE_A), true)).toBe(
+  test("which says where its first row and column were taken for a header (decision 15.1)", () => {
+    expect(offerSentence(CURVE_A, null, true, true)).toBe(
+      "Replaces every value of CurveA; the first row and column pasted are taken for a header " +
+        "and not written",
+    );
+  });
+
+  test("else what the typed cells set, whatever a table pasted before them held", () => {
+    expect(offerSentence(CURVE_A, typedOffer(THREE, CURVE_A), true, true)).toBe(
       "Sets 3 elements of CurveA: element 1 to 13 ms; element 2 to 14 ms; element 3 to 15 ms",
     );
   });
 
   test("and none while they set nothing, or one of them is refused", () => {
-    expect(offerSentence(CURVE_A, typedOffer([typed(0, 0, "12")], CURVE_A), true)).toBeNull();
-    expect(offerSentence(CURVE_A, typedOffer([typed(0, 0, "x")], CURVE_A), true)).toBeNull();
+    expect(
+      offerSentence(CURVE_A, typedOffer([typed(0, 0, "12")], CURVE_A), true, false),
+    ).toBeNull();
+    expect(offerSentence(CURVE_A, typedOffer([typed(0, 0, "x")], CURVE_A), true, false)).toBeNull();
   });
 });
 

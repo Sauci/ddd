@@ -1232,7 +1232,7 @@ export const EMPTIED_FINDINGS: State = {
   statements: { error: 3, warning: 1, info: 2 },
 };
 
-/** The one fix the tab offers: `missing-id`, previewed onto SensorHub's ValueA. */
+/** A `missing-id` finding's one fix, its identity, previewed onto SensorHub's ValueA. */
 export const ID_FIX: FixReply = {
   revision: 7,
   fixes: [
@@ -1307,7 +1307,7 @@ export const DEFINITION_MISMATCH_FIX: FixReply = {
   revision: 7,
   fixes: [
     {
-      title: "Use the datatype declared in controller",
+      title: "Use the datatype declared in controller (the code of the readers is not touched)",
       changes: [
         {
           file: USER_INTERFACE,
@@ -1326,7 +1326,7 @@ export const DEFINITION_MISMATCH_FIX: FixReply = {
       ],
     },
     {
-      title: "Use the unit declared in controller",
+      title: "Use the unit declared in controller (the code of the readers is not touched)",
       changes: [
         {
           file: USER_INTERFACE,
@@ -1515,6 +1515,23 @@ export const UNDO_ADOPTION: UndoPreview = {
           before: ["{", '  "units": [', '    { "unit": "rpm", "description": "" }', "  ]", "}"],
           after: [],
         },
+      ],
+    },
+  ],
+};
+
+/** The edit under the adoption on the stack: ValueA's unit settled in Controller's file, which the
+ * strip offers once the adoption has left the stack. */
+export const UNDO_UNIT: UndoPreview = {
+  revision: 7,
+  at: 2,
+  label: "the unit of ValueA",
+  changes: [
+    {
+      file: "C:/work/demo/components/controller.ddd.json",
+      gone: false,
+      hunks: [
+        { line: 12, before: ['          "unit": "%",'], after: ['          "unit": "rpm",'] },
       ],
     },
   ],
@@ -2244,6 +2261,34 @@ export const CURVE_CELLS_PLAN: PlanReply = {
   ],
 };
 
+/** CurveA's six values replaced by a table pasted with its header row and column, 12.5, 9.5, 8.5,
+ * 8, 7.5 and 7 ms (ATablePastedWithItsHeader): one `set` of the whole `init`, one line, which a
+ * served copy of examples/demo answers `GET /api/values-plan?name=CurveA&raw=1250,950,850,800,750,
+ * 700` with. */
+export const CURVE_TABLE_PLAN: PlanReply = {
+  revision: 1,
+  changes: [
+    {
+      file: CONTROLLER,
+      fingerprint: "8878185dd8feae77366338050e33c9ec28f63d97ce6e722b242366993d7ddfe5",
+      operations: [
+        {
+          op: "set",
+          pointer: "component.interface[12].definition.init",
+          raw: "[1250, 950, 850, 800, 750, 700]",
+        },
+      ],
+      hunks: [
+        {
+          line: 205,
+          before: ['          "init": [1200, 900, 800, 750, 700, 650],'],
+          after: ['          "init": [1250, 950, 850, 800, 750, 700],'],
+        },
+      ],
+    },
+  ],
+};
+
 /** ParameterA: the controller's own calibration parameter, no dimensions, `init: 3200` and a
  * factor of 0.25 - 3200 raw counts, 800 Hz. A scalar is a grid of one cell, and a served copy of
  * examples/demo answers this reply for it (AScalarAsOneCell's own). */
@@ -2504,11 +2549,26 @@ export const CANNOT_REPLACE: CompareReply = {
   renames: [RENAME_ROW],
 };
 
-/** A baseline typed outside the session root - one of the spec's own four refusals (§6), settled
- * before `read_baseline` is ever asked to read anything (`ddd.gui.compare._resolved_baseline`).
- */
+/** A delivery the comparison finds nothing against, which the open project still cannot replace:
+ * PROJECT_FINDINGS' own three errors, which the verdict counts as `ddd compare`'s exit code does
+ * (14:I1) - three rows, each its own statement there, so `own_errors` and the state's statements
+ * agree. */
+export const CANNOT_REPLACE_FOR_ITS_OWN_ERRORS: CompareReply = {
+  revision: 7,
+  verdict: false,
+  own_errors: 3,
+  findings: [],
+  baseline_findings: [],
+  statements: { error: 0, warning: 0, info: 0 },
+  renames: [],
+};
+
+/** A baseline typed outside the directory `ddd gui` was started in - one of the spec's own four
+ * refusals (§6), settled before `read_baseline` is ever asked to read anything
+ * (`ddd.gui.compare._resolved_baseline`), in the words the tab says its reach in (16:M3). */
 export const REFUSED_OUTSIDE_ROOT =
-  "the baseline 'C:/archives/demo.ddd.json' is outside the session root 'C:/work/demo'";
+  "the baseline 'C:/archives/demo.ddd.json' is outside the directory ddd gui was started in, " +
+  "'C:/work/demo'";
 
 // examples/vocabulary's own two constants (spec 5.1): TREND_SAMPLES in constants.ddd.json,
 // PRESSURE_CELLS declared inline in pump.ddd.json - modelled on it, not transcribed, as
@@ -3611,6 +3671,38 @@ export const ADD_BRINGING: FilesPlanReply = {
  * path. */
 export const ADDED_BY_A_PATTERN =
   "lib/l.ddd.json is part of this project already: the pattern 'lib/*.ddd.json' brings it in";
+
+// Add refused for the plugins it would bring in (constructed: the tree of `TestAFilesPlanAsksThe
+// PluginsRefusal.test_an_add_of_a_description_that_names_plugins_is_refused`) - a root including
+// a.ddd.json, beside sub.ddd.json, a project description naming the plugin x.py. `ddd gui` changes
+// no plugins list a description names, so the plan refuses the add before the reader presses.
+
+const PLUGINS_A = "C:/work/plugins/a.ddd.json";
+
+export const PLUGINS_FILES: FilesReply = {
+  revision: 1,
+  project: "C:/work/plugins/p.ddd.json",
+  entries: [literalEntry(0, "a.ddd.json", PLUGINS_A)],
+  creatable: FILES_CREATABLE,
+};
+
+/** Its one component, `empty-component` its one finding, at info. */
+export const PLUGINS_SOURCES: readonly SourceFile[] = [
+  {
+    path: PLUGINS_A,
+    kind: "component",
+    name: "A",
+    loaded: true,
+    fingerprint: "224e4cee37d5adb44bf720c2007b342dac61a15869a89c66121adf54ac94202e",
+    findings: { error: 0, warning: 0, info: 1 },
+  },
+];
+
+/** sub.ddd.json refused, as that test pins it whole (its `REFUSED_INCLUDES`), asked with the
+ * story's own path. */
+export const ADDED_NAMING_PLUGINS =
+  "ddd gui does not change which plugins the project's descriptions name; change the includes " +
+  "in a text editor";
 
 // Remove refused, over examples/vocabulary: its constants.ddd.json declares TREND_SAMPLES, which
 // pump.ddd.json's PressureTrend is dimensioned by.

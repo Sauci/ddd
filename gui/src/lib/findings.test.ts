@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import type {
   Finding,
   FindingCounts,
@@ -22,8 +22,10 @@ import {
   routeOf,
   selectionAfter,
   tableLine,
+  toneOf,
   unreadable,
 } from "./findings";
+import * as paths from "./paths";
 import { SHARED_KINDS } from "./shared";
 import { baseName } from "./units";
 
@@ -149,11 +151,11 @@ describe("what the tab says about how many there are", () => {
   test.each([
     [{ error: 0, warning: 0, info: 0 }, "Nothing to report"],
     [{ error: 1, warning: 0, info: 0 }, "1 finding · 1 error"],
-    [{ error: 1, warning: 1, info: 1 }, "3 findings · 1 error, 1 warning, 1 note"],
+    [{ error: 1, warning: 1, info: 1 }, "3 findings · 1 error, 1 warning, 1 info"],
     [{ error: 2, warning: 0, info: 0 }, "2 findings · 2 errors"],
-    [{ error: 0, warning: 0, info: 2 }, "2 findings · 2 notes"],
+    [{ error: 0, warning: 0, info: 2 }, "2 findings · 2 infos"],
     [{ error: 0, warning: 1, info: 0 }, "1 finding · 1 warning"],
-    [{ error: 3, warning: 0, info: 1 }, "4 findings · 3 errors, 1 note"],
+    [{ error: 3, warning: 0, info: 1 }, "4 findings · 3 errors, 1 info"],
   ])("%#: from the statements the state counts", (counts, says) => {
     expect(findingCounts(counts, false)).toBe(says);
   });
@@ -163,9 +165,9 @@ describe("what the tab says about how many there are", () => {
   test.each([
     [{ error: 0, warning: 0, info: 0 }, "Nothing to report · updating"],
     [{ error: 1, warning: 0, info: 0 }, "1 finding · 1 error · updating"],
-    [{ error: 0, warning: 0, info: 1 }, "1 finding · 1 note · updating"],
+    [{ error: 0, warning: 0, info: 1 }, "1 finding · 1 info · updating"],
     [{ error: 2, warning: 3, info: 0 }, "5 findings · 2 errors, 3 warnings · updating"],
-    [{ error: 1, warning: 1, info: 2 }, "4 findings · 1 error, 1 warning, 2 notes · updating"],
+    [{ error: 1, warning: 1, info: 2 }, "4 findings · 1 error, 1 warning, 2 infos · updating"],
   ])("%#: about to change, it says so at its end", (counts, says) => {
     expect(findingCounts(counts, true)).toBe(says);
   });
@@ -176,7 +178,7 @@ describe("what the tab says about how many there are", () => {
   });
 
   // The Table tab's line: errors and warnings, each counted even at none, as the table's own two
-  // columns count them - a note has no column, and the line says nothing of notes.
+  // columns count them - an info has no column, and the line says nothing of infos.
   test.each([
     [{ error: 0, warning: 0, info: 0 }, "0 errors, 0 warnings"],
     [{ error: 1, warning: 1, info: 0 }, "1 error, 1 warning"],
@@ -234,11 +236,49 @@ describe("what the Findings tab keeps of a selected finding", () => {
     expect(selectionAfter(kept.selected, undefined).selected).toBe(moved);
   });
 
-  test("nothing, and gone, where the reply no longer reports its key - however alike another reads", () => {
-    expect(selectionAfter(selected, reply(listed("a"), listed("c")))).toEqual({
-      selected: undefined,
-      gone: true,
-    });
+  // A declaration above it taken out, or put in: the server keys a finding by its place too, so
+  // the same finding comes back under another key, its pointer moved.
+  const HERE = "component.interface[2].definition";
+  const ABOVE = "component.interface[1].definition";
+  const BELOW = "component.interface[3].definition";
+
+  test("its place moved, the reply's report of the same words in its file is kept in its stead", () => {
+    const at = listed("b", { pointer: HERE });
+    const moved = listed("b moved", { pointer: ABOVE });
+    expect(selectionAfter(at, reply(moved))).toEqual({ selected: moved, gone: false });
+  });
+
+  test("its place moved, of two reports of the same words the panel follows the first", () => {
+    const at = listed("b", { pointer: HERE });
+    const first = listed("a", { pointer: ABOVE });
+    const second = listed("c", { pointer: BELOW });
+    expect(selectionAfter(at, reply(first, second))).toEqual({ selected: first, gone: false });
+  });
+
+  test("its own key reported, it is kept, before a report of the same words met first", () => {
+    const at = listed("b", { pointer: HERE });
+    const alike = listed("a", { pointer: ABOVE });
+    const own = listed("b", { pointer: HERE });
+    expect(selectionAfter(at, reply(alike, own)).selected).toBe(own);
+  });
+
+  test.each([
+    ["other words", { message: "'ValueA' is declared differently by component 'Pump'" }],
+    ["another severity", { severity: "warning" as const }],
+    ["another check", { check: "unknown-unit" }],
+    ["another file", { file: TYPES }],
+  ])(
+    "nothing, and gone, where the reply no longer reports its key nor its words: %s",
+    (_, fields) => {
+      const at = listed("b", { pointer: HERE });
+      expect(selectionAfter(at, reply(listed("a", { ...fields, pointer: ABOVE })))).toEqual({
+        selected: undefined,
+        gone: true,
+      });
+    },
+  );
+
+  test("nothing, and gone, where the reply reports nothing", () => {
     expect(selectionAfter(selected, reply())).toEqual({ selected: undefined, gone: true });
   });
 });
@@ -393,6 +433,15 @@ describe("where a finding leads", () => {
     expect(routeOf(one)).toBeNull();
   });
 
+  test("to no address, where it leads to a unit no address can carry", () => {
+    // Half of a surrogate pair alone, which a json file can state as an escape (`hrefOf`): no
+    // link is drawn, and the route itself is still the screen's.
+    const unit = `${String.fromCharCode(0xd800)}x`;
+    const one = finding({ check: "unknown-unit", route: { kind: "unit", name: unit } });
+    expect(routeHref(one)).toBeNull();
+    expect(routeOf(one)).toEqual({ page: "project", view: "units", unit });
+  });
+
   test("the route itself is what a screen navigates to", () => {
     // The address and the route are one answer in two forms: a link carries the address, and
     // the screen hands the route to the app's own navigate.
@@ -405,6 +454,43 @@ describe("where a finding leads", () => {
 });
 
 describe("why a finding leads nowhere", () => {
+  test("names its file as the caller does, told apart from a namesake by its path", () => {
+    const one = finding({});
+    const withFiles = state([one]);
+    withFiles.files = [
+      ...withFiles.files.filter((file) => file.path !== one.file),
+      fileRow(one.file, "component", false),
+    ];
+    const named = (path: string) => (path === one.file ? "components/sensor_hub.ddd.json" : path);
+    expect(noRouteReason(one, withFiles, named)).toBe(
+      "components/sensor_hub.ddd.json did not load",
+    );
+    expect(noRouteReason(one, withFiles)).toBe("sensor_hub.ddd.json did not load");
+  });
+
+  test("where it leads is a name no address can carry", () => {
+    // Its file loaded and has a page, and the place is still there: what is missing is the
+    // address, which `hrefOf` does not write for half of a surrogate pair alone. Read as a route
+    // the server left out, it would say there is nothing at that place any more.
+    const one = finding({
+      check: "unknown-unit",
+      pointer: "component.interface[0].definition.unit",
+      route: { kind: "unit", name: `${String.fromCharCode(0xd800)}x` },
+    });
+    expect(noRouteReason(one, state([one]))).toBe("No address can carry the name it leads to");
+  });
+
+  test("a route an address carries is never said to lack one", () => {
+    // A panel draws the reason only where it draws no link, which a route with an address always
+    // has; a caller drawing it anyway must not read that no address can carry where it leads.
+    const one = finding({
+      check: "unknown-unit",
+      pointer: "component.interface[0].definition.unit",
+      route: { kind: "unit", name: "degC" },
+    });
+    expect(noRouteReason(one, state([one]))).not.toBe("No address can carry the name it leads to");
+  });
+
   test("its file did not load", () => {
     const one = finding({ route: null });
     const half = state([one]);
@@ -432,7 +518,7 @@ describe("why a finding leads nowhere", () => {
         findings: { error: 1, warning: 0, info: 0 },
       },
     ];
-    expect(noRouteReason(one, withUnits)).toBe("there is nothing at that place any more");
+    expect(noRouteReason(one, withUnits)).toBe("There is nothing at that place any more");
   });
 
   test("a finding on a constants file no longer says it has no page", () => {
@@ -458,7 +544,7 @@ describe("why a finding leads nowhere", () => {
       },
     ];
     expect(noRouteReason(one, withConstants)).toBe(
-      "it is about the project rather than a place in a file",
+      "It is about the project rather than a place in a file",
     );
   });
 
@@ -484,7 +570,7 @@ describe("why a finding leads nowhere", () => {
         findings: { error: 1, warning: 0, info: 0 },
       },
     ];
-    expect(noRouteReason(one, withSections)).toBe("there is nothing at that place any more");
+    expect(noRouteReason(one, withSections)).toBe("There is nothing at that place any more");
   });
 
   test("a finding on a rasters file no longer says it has no page", () => {
@@ -509,7 +595,7 @@ describe("why a finding leads nowhere", () => {
         findings: { error: 1, warning: 0, info: 0 },
       },
     ];
-    expect(noRouteReason(one, withRasters)).toBe("there is nothing at that place any more");
+    expect(noRouteReason(one, withRasters)).toBe("There is nothing at that place any more");
   });
 
   test("a file of a kind that still has no page says so", () => {
@@ -538,7 +624,7 @@ describe("why a finding leads nowhere", () => {
   test("it names no place in a file", () => {
     const one = finding({ pointer: "", route: null, check: "missing-producer" });
     expect(noRouteReason(one, state([one]))).toBe(
-      "it is about the project rather than a place in a file",
+      "It is about the project rather than a place in a file",
     );
   });
 
@@ -557,7 +643,7 @@ describe("why a finding leads nowhere", () => {
     const withConstants = state([one]);
     withConstants.files = [...withConstants.files, fileRow(CONSTANTS, "constants", true)];
     expect(noRouteReason(one, withConstants)).toBe(
-      "it is about the whole of constants.ddd.json rather than one entry of it",
+      "It is about the whole of constants.ddd.json rather than one entry of it",
     );
   });
 
@@ -654,6 +740,35 @@ describe("why a finding leads nowhere", () => {
       expect(unreadable(withFiles, ["types"])).toEqual({ own: ["y/b.ddd.json"], untold: [] });
     });
 
+    test("thousands of them are named in one pass, never compared pair by pair", () => {
+      // Every component of a large project failing at once: named pairwise, 3,334 files took
+      // about two seconds on each render of the Types and Shared files tabs (B11-35). Held by
+      // what is asked of the naming, never by the clock: it is asked once for all of them.
+      const one = finding({});
+      const withFiles = state([one]);
+      withFiles.files = Array.from({ length: 3334 }, (_, at) =>
+        fileRow(
+          `C:/work/demo/c${at % 50}/c${at}.ddd.json`,
+          at % 2 === 0 ? "types" : "unknown",
+          false,
+        ),
+      );
+      const together = vi.spyOn(paths, "namedAmong");
+      const pairwise = vi.spyOn(paths, "toldApart");
+      try {
+        const named = unreadable(withFiles, ["types"]);
+        expect(together).toHaveBeenCalledTimes(1);
+        expect(together.mock.calls[0]?.[0]).toHaveLength(3334);
+        expect(pairwise).not.toHaveBeenCalled();
+        expect(named.own).toHaveLength(1667);
+        expect(named.untold).toHaveLength(1667);
+        expect(named.own[0]).toBe("c0.ddd.json");
+      } finally {
+        together.mockRestore();
+        pairwise.mockRestore();
+      }
+    });
+
     test("a file of a name no other has is named by its name alone beside them", () => {
       const one = finding({});
       const withFiles = state([one]);
@@ -743,7 +858,7 @@ describe("why a finding leads nowhere", () => {
     // there - `ddd.finding_routes.route_of`. The file is a loaded component all the same, so
     // the reason must not tell the reader it is a finding about the project.
     const one = finding({ route: null });
-    expect(noRouteReason(one, state([one]))).toBe("there is nothing at that place any more");
+    expect(noRouteReason(one, state([one]))).toBe("There is nothing at that place any more");
   });
 
   test("the unit it was filed on is no longer stated there", () => {
@@ -752,7 +867,7 @@ describe("why a finding leads nowhere", () => {
       pointer: "component.interface[2].definition.unit",
       route: null,
     });
-    expect(noRouteReason(one, state([one]))).toBe("there is nothing at that place any more");
+    expect(noRouteReason(one, state([one]))).toBe("There is nothing at that place any more");
   });
 
   test("its file is not one the analysis listed", () => {
@@ -889,5 +1004,17 @@ describe("where a finding is, said for a finding that leads nowhere", () => {
 
   test("a finding with neither a line nor a pointer names no place", () => {
     expect(placeOf(finding({ route: null, pointer: "" }), name)).toBeNull();
+  });
+});
+
+describe("how a severity is toned, wherever a chip or a row shows one", () => {
+  // One decision for every chip: an info is the quiet tone the Findings tab gives it, never a
+  // warning's amber (a missing-id read amber on a component, grey on the tab).
+  test.each([
+    ["error", "error"],
+    ["warning", "warning"],
+    ["info", "neutral"],
+  ] as const)("%s is toned %s", (severity, tone) => {
+    expect(toneOf(severity)).toBe(tone);
   });
 });

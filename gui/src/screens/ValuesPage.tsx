@@ -5,12 +5,15 @@ import type { State, ValuesReply } from "../api/types";
 import { useUpdating } from "../app/updating";
 import { useDebounced } from "../app/useDebounced";
 import { useKept } from "../app/useKept";
+import { useWritten } from "../app/useWritten";
 import { ValuesGridView } from "../components/ValuesGridView";
-import { drawable, pasted, type TypedCell } from "../lib/objectValues";
+import { drawable, type Pasted, pasted, type TypedCell } from "../lib/objectValues";
 import { planEdit } from "../lib/projectUnits";
+import { offerShown, refusalOf } from "../lib/refusals";
 import { planOffered, typedOffer, typedPlan, withComma, withTyped } from "../lib/typedCells";
 import { gated, planShown } from "../lib/typing";
 import { pasteLabel, valuesLabel } from "../lib/undo";
+import { planning } from "../lib/units";
 import {
   appliesOver,
   holdAfter,
@@ -23,9 +26,9 @@ import {
 import { ownEdits } from "../state/edits";
 import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
+import { PageHeading } from "../ui/PageHeading";
 import { UpdatingStatus } from "../ui/UpdatingNote";
 import { UndoStrip } from "./UndoStrip";
-import { refusalOf } from "./UnitPanel";
 
 interface Props {
   /** The object whose values this grid shows - the route's own `variable`. */
@@ -57,7 +60,8 @@ interface Props {
  * at a time: `pastedRows` and `typed` are cleared by each other's own action - a table pasted
  * takes the place of every cell typed before it, and a cell typed after it takes the table's -
  * and `shownPlan`/`shownSentence`/`label` below choose between the two once, rather than at each
- * prop.
+ * prop. One value pasted into a cell is a cell typed (`pastedValue`, decision 15.2): its field
+ * hands it over through `onTyped`, never `onPaste`, and it joins the cells typed before it.
  *
  * What an Apply wrote shows at once (spec 6): `GET /api/values` answers what the last analysis
  * read, so while the grid stays open it holds the values its own Apply wrote - and, once the Undo
@@ -72,6 +76,8 @@ interface Props {
 export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   const queries = useQueryClient();
   const updating = useUpdating();
+  // What the heading says the page last wrote, on this variable's grid.
+  const writtenLine = useWritten(`${file} ${name}`);
   const revision = state.revision;
   // The component named by the file the route carries - "Back to" both says and returns to the
   // same place, which the object's own owner cannot always promise (spec 5.4). Resolved once,
@@ -122,6 +128,18 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   // it was refused for: the reader's answer to what the comma means reads the block again.
   const [pastedText, setPastedText] = useState<{ text: string; physical: boolean } | null>(null);
   const [pasteAmbiguous, setPasteAmbiguous] = useState<string | null>(null);
+  // Whether the block pasted had its first row and column taken for a header, which the sentence
+  // over its preview says (`Pasted.header`, decision 15.1). Read only while a pasted block owns the
+  // offer, and set by every block read (`keepPasted`), so nothing else clears it.
+  const [pasteHeader, setPasteHeader] = useState(false);
+  // What a block pasted, or read again with the meaning of its comma, answers (`pasted`), kept in
+  // one place: its counts or its refusal, the value whose comma it asks about, and its header.
+  const keepPasted = (block: Pasted) => {
+    setPastedRows(block.rows);
+    setPasteRefusal(block.refusal);
+    setPasteAmbiguous(block.ambiguous);
+    setPasteHeader(block.header);
+  };
 
   // What the cells typed into set, read against the values shown (`typedOffer`): `null` while
   // `shown` has not arrived yet, or one of the cells is refused - `ValuesGridView` finds that same
@@ -179,20 +197,34 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   // was never a cell to begin with - driving it through a real browser (`values.spec.ts`'s own
   // "a block of the wrong shape is refused and nothing is written") is what actually found this.
   const pasting = pastedRows !== null || pasteRefusal !== null;
-  // Never the cell's plan while it is an earlier keystroke's (`shownCell.plan`, already `null`
-  // then): that plan is for text the reader has since typed past, and is dropped exactly as one
-  // still loading would be.
+  // Whether a pasted table's plan is on its way (`planning`, lib/units.ts): asked at once, as
+  // `table` is keyed; a typed cell's is on its way once its debounce and its gate let it.
+  const shownTable = planShown(
+    pastedRows === null || !current ? null : pastedRows,
+    pastedRows,
+    table,
+  );
+  // What the offer is, the one rule every panel follows (`offerShown`): a refused apply said over
+  // the plan its revision answers, and nothing to apply beside the plan's own refusal. The refusal
+  // each offer can find for itself is its plan's: a pasted block's own sentence, which asks for no
+  // plan at all, or the server's, for the one thing the parser cannot check. A typed cell's own
+  // refusal is `ValuesGridView`'s to find, from the cells directly (`typedOffer`), so it is not
+  // repeated here - repeating it would only recompute the same sentence a second time for no
+  // reader to see any sooner. Never the cell's plan while it is an earlier keystroke's
+  // (`shownCell.plan`, already `null` then): that plan is for text the reader has since typed
+  // past, and is dropped exactly as one still loading would be.
+  const offer = pasting
+    ? offerShown(failed, {
+        plan: table.data ?? null,
+        refusal: pasteRefusal ?? (table.isError ? table.error.message : null),
+        pending: shownTable.pending,
+      })
+    : offerShown(failed, shownCell);
   // A plan that changes nothing is no offer at all (`planOffered`): the server answers one with no
   // file to change (15:M4).
-  const shownPlan = planOffered(pasting ? (table.data ?? null) : shownCell.plan);
-  // The pre-apply refusal each offer can find for itself - a pasted block's own sentence, or the
-  // server's, for the one thing the parser cannot check - ahead of an apply refused either way.
-  // A typed cell's own refusal is `ValuesGridView`'s to find, from the cells directly
-  // (`typedOffer`), so it is not repeated here - repeating it would only recompute the same
-  // sentence a second time for no reader to see any sooner.
-  const shownSentence = pasting
-    ? (pasteRefusal ?? failed ?? (table.isError ? table.error.message : null))
-    : (failed ?? shownCell.refusal);
+  const shownPlan = planOffered(offer.plan);
+  const offerPlanning = planning(offer);
+  const shownSentence = offer.refusal;
   // What either offer's own edit is called, for the undo stack: the whole object for a paste,
   // the element or the elements the typed cells set - `pasteLabel`'s and `valuesLabel`'s own
   // difference.
@@ -242,7 +274,7 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
       return (
         <section>
           <div className="heading">
-            <h1>{name}</h1>
+            <PageHeading>{name}</PageHeading>
             <Button variant="link" onPress={onBack}>
               Back to {backTo}
             </Button>
@@ -265,7 +297,7 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
     return (
       <section>
         <div className="heading">
-          <h1>{reply.name}</h1>
+          <PageHeading>{reply.name}</PageHeading>
           <Button variant="link" onPress={onBack}>
             Back to {backTo}
           </Button>
@@ -283,9 +315,11 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
       backTo={backTo}
       banner={banner}
       undoStrip={<UndoStrip state={state} stopped={stopped} />}
+      written={writtenLine}
       physical={physical}
       typed={typed}
       plan={shownPlan}
+      planning={offerPlanning}
       refusal={shownSentence}
       changesShown={changesShown}
       busy={stopped || apply.isPending}
@@ -305,25 +339,20 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
       }}
       onBack={onBack}
       pasteAmbiguous={pasteAmbiguous}
+      pasteHeader={pasteHeader}
       // What a comma that could be either means, as the reader says with one press: the block
       // pasted is read again with it, or each typed cell holding such a comma takes it.
       onComma={(meaning) => {
         if (pastedText !== null) {
-          const block = pasted(pastedText.text, reply, pastedText.physical, meaning);
-          setPastedRows(block.rows);
-          setPasteRefusal(block.refusal);
-          setPasteAmbiguous(block.ambiguous);
+          keepPasted(pasted(pastedText.text, reply, pastedText.physical, meaning));
         } else {
           setTyped((held) => withComma(held, reply, meaning));
         }
         setFailed(null);
       }}
       onPaste={(text) => {
-        const block = pasted(text, reply, physical);
         setPastedText({ text, physical });
-        setPastedRows(block.rows);
-        setPasteRefusal(block.refusal);
-        setPasteAmbiguous(block.ambiguous);
+        keepPasted(pasted(text, reply, physical));
         setFailed(null);
         setTyped([]);
       }}

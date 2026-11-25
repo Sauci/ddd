@@ -6,11 +6,13 @@ import type {
   TypePlanRequest,
   UnitPlanRequest,
 } from "../api/client";
-import type { Finding, PlanReply, State, UndoneChange } from "../api/types";
+import type { Finding, PlanReply, State, UndoneChange, UndoPreview } from "../api/types";
 import type { Mode } from "./declarations";
 import { relativeToProject } from "./findings";
+import { refusedRead } from "./kept";
 import { elementLabel } from "./objectValues";
-import { baseName, type ShownChange } from "./units";
+import { isStale } from "./refusals";
+import { changedNames, type ShownChange } from "./units";
 
 /** The longest label `POST /api/edit` takes; see `Changes.label` in src/ddd/gui/contract.py. */
 const LIMIT = 120;
@@ -71,7 +73,7 @@ export function rasterLabel(plan: RasterPlanRequest): string {
  * of the project once its own entry is gone (`FilesPlanReply.kept_by`).
  *
  * A `create`'s new file by the name `answered` - the plan the server gave for it - creates it
- * under: the base name of its change that carries no fingerprint, as a created file's change alone
+ * under: the name of its change that carries no fingerprint, as a created file's change alone
  * does (`PlannedChange.fingerprint`). `ddd.file_plans.create_plan` makes that name from the one
  * typed and a suffix of its own, and the label takes it as made rather than making it again. An
  * `add`'s by `path` exactly as typed, relative to the description or absolute, since that text is
@@ -82,17 +84,17 @@ export function rasterLabel(plan: RasterPlanRequest): string {
  * to a directory is named by where it leads, a spelling no entry has; and a key outside the
  * description's directory by its base name alone, `relativeToProject`'s own fallback. */
 export function filesLabel(plan: FilesPlanRequest, answered: PlanReply, project: string): string {
-  if (plan.action === "create") return fitted(`${createdBy(answered)} created`);
+  if (plan.action === "create") return fitted(`the creation of ${createdBy(answered)}`);
   if (plan.action === "add") return fitted(`'${plan.path}' added to the includes`);
   return fitted(`'${relativeToProject(plan.path, project)}' removed from the includes`);
 }
 
-/** Every file `answered` creates, quoted by its base name - one, for every plan `create_plan`
- * makes. */
+/** Every file `answered` creates, quoted by its name among the files the plan writes - one, for
+ * every plan `create_plan` makes. */
 function createdBy(answered: PlanReply): string {
+  const names = changedNames(answered.changes);
   return answered.changes
-    .filter((change) => change.fingerprint === null)
-    .map((change) => `'${baseName(change.file)}'`)
+    .flatMap((change, at) => (change.fingerprint === null ? [`'${names[at]}'`] : []))
     .join(", ");
 }
 
@@ -143,14 +145,16 @@ export function valuesLabel(
 /**
  * What a fix applied from the Findings tab is called.
  *
- * The one fix the tab offers is `missing-id`, whose route names the declaration it stamps, so
- * the sentence can name it too. Any other fix is named by its own title, which is the best the
- * page has and reads well enough after "Undo".
+ * The tab offers the fixes `ddd.finding_fixes` plans: a `missing-id` finding's identity, and a
+ * `definition-mismatch` finding's reconciliations, one for each key it disagrees on. An
+ * identity's route names the declaration it stamps, so the sentence names it too. Any other fix
+ * is named by its own title, which is the best the page has, said as a fix: a title is a sentence
+ * of its own, and after "Undo" it ran on as one.
  */
 export function fixLabel(finding: Finding, title: string): string {
   const named = finding.route === null ? null : finding.route.name;
   if (finding.check === "missing-id" && named !== null) return fitted(`the identity of ${named}`);
-  return fitted(title);
+  return fitted(`the fix "${title}"`);
 }
 
 /** A label as the api takes it: a long one cut short, so that no edit is ever refused for the
@@ -168,6 +172,172 @@ export function shownUndo(changes: readonly UndoneChange[]): ShownChange[] {
   return changes.map(({ file, gone, hunks }) => ({ file, hunks, note: gone ? "removed" : null }));
 }
 
+/** An entry of the undo stack as the state names it (`State.undoable`). */
+interface Entry {
+  at: number;
+  label: string;
+}
+
+/**
+ * What the Undo strip holds of a refusal of one entry's undo, its preview's or its Put back's,
+ * until the reader's next choice in the strip - Put back pressed again, or the strip closed - as a
+ * panel holds its own (`Refused`, lib/refusals.ts): what it says is worded as the stack stands
+ * when it is said (`undoRefusal`).
+ *
+ * `stale` is the server's code for a file the entry would put back gone, changed on disk, or that
+ * could not be read - or for the entry no longer the one on top. The server takes the entry off
+ * the stack where the disk moved past it (`ddd.gui.session.Session.undo`), and keeps it where a
+ * file only could not be read: the page reads which from the state, as the stack moves.
+ */
+export interface UndoRefused {
+  /** The entry the refusal is of (`UndoableEdit.at`). */
+  at: number;
+  /** What the page calls that entry. */
+  label: string;
+  /** The server's own sentence. */
+  message: string;
+  stale: boolean;
+}
+
+/** The refusal the strip holds once the Put back of `entry` was refused, whatever its code. */
+export function undoRefused(error: Error, entry: Entry): UndoRefused {
+  return { at: entry.at, label: entry.label, message: error.message, stale: isStale(error) };
+}
+
+/** What the strip holds once the preview of `entry` was refused: the refusal, where it is `stale`,
+ * which the server may have taken the entry off the stack with, so that the strip says why the
+ * entry went beside the one under it once the state names that one; none for any other, which the
+ * strip says in the preview's place for as long as the preview stands refused (`undoShown`). */
+export function previewRefused(error: Error, entry: Entry): UndoRefused | null {
+  return isStale(error) ? undoRefused(error, entry) : null;
+}
+
+/** Whether two refusals are one: of one entry, in one code and in the same words. */
+function same(one: UndoRefused, other: UndoRefused): boolean {
+  return one.at === other.at && one.stale === other.stale && one.message === other.message;
+}
+
+/** `held` with `refused` after the others, and the very same list where it holds that refusal
+ * already: the preview of an entry asked again is refused again in the same words, and said once. */
+export function holding(
+  held: readonly UndoRefused[],
+  refused: UndoRefused,
+): readonly UndoRefused[] {
+  return held.some((each) => same(each, refused)) ? held : [...held, refused];
+}
+
+/**
+ * What the Undo strip says of `refused`, as the stack stands:
+ * - refused `stale`, the server's own sentence, which names the file or the edit, and what it
+ *   means for the reader: once the entry has left the stack (`gone`) - the server takes it off
+ *   where the disk moved past it - that it can no longer be undone, the button naming another by
+ *   then; while it is still there, as it stands, never as one no longer to be undone (a file that
+ *   only could not be read keeps its entry). That nothing was put back, unless the strip says a
+ *   refusal of the same entry before it that was not `stale` (`after`): an undo the disk refused
+ *   half way put a file back and could not write it forward again, which that one says;
+ * - any other, the server's own reason.
+ */
+export function undoRefusal(refused: UndoRefused, gone: boolean, after = false): string {
+  if (!refused.stale) return `The undo was refused: ${refused.message}`;
+  const meaning = gone ? `, so ${refused.label} can no longer be undone` : "";
+  const nothing = after ? "" : ". Nothing was put back";
+  return `${refused.message}${meaning}${nothing}; the page shows the files as they are.`;
+}
+
+/** What the Undo strip says in its preview's place where the preview failed - the server failing
+ * on it, or not answering - rather than refusing it (`refusedRead`): no undo was asked, and nothing
+ * was refused, so the strip says that reading the files failed, in the words of the failure. */
+export function previewFailed(message: string): string {
+  return `Reading the files failed: ${message}.`;
+}
+
+/** What the Undo button says once nothing is left to undo while the strip still says why an entry
+ * left the stack: pressed, it closes the strip, and the control goes with it. */
+export const NOTHING_LEFT = "Nothing left to undo";
+
+/** What the Undo control and the strip it opens draw (`undoShown`). */
+export interface UndoShown {
+  /** What the button says: `Undo` and the entry on top (`undoButton`), `NOTHING_LEFT` with none
+   * left while a refusal is said, and `null` where the control is not drawn at all. */
+  label: string | null;
+  /** Every refusal the strip says, in the order they came, each keyed by the entry it is of - and a
+   * preview's failure, which is said among them in a sentence of its own (`previewFailed`). */
+  refusals: readonly { key: string; text: string }[];
+  /** The entry the strip offers to put back, once its preview has come: its line, its changes and
+   * its Put back. `null` while none is. */
+  preview: UndoPreview | null;
+  /** Whether the strip says it is reading the files: the preview of the entry on top is asked for,
+   * has not come, and nothing refused of it is said. */
+  reading: boolean;
+  /** Whether the strip offers to read the files again: the preview of the entry on top was
+   * refused - the server's answer, not a failure - and the server keeps that entry, as it keeps
+   * one whose file could not be read (R22). */
+  askAgain: boolean;
+}
+
+/**
+ * What the Undo strip says and offers (16:M23): the refusals it holds (`held`), the state's entry
+ * on top, and that entry's preview as its query has it (`asked`).
+ *
+ * - **An entry that has left the stack** - the server took it off, its preview or its Put back
+ *   refused because the disk moved past it - is said, as no longer to be undone, for as long as
+ *   the strip holds its refusal, beside whatever the stack's top then offers: the entry under it,
+ *   offered whole, its preview and its Put back, with no need to close the strip. Each entry taken
+ *   off while the strip is open is said, in the order they went: the save that refused one often
+ *   refuses the next, an edit before it having written the same file. An entry left the stack is
+ *   one above the state's top, numbers only ever growing, or any where the stack is empty.
+ * - **A refusal held of an entry a newer one covers** - an edit a panel makes while the strip is
+ *   open - goes unsaid, the newer one offered whole (branch 2, D0): the entry refused may come
+ *   back to the top, and is offered whole then.
+ * - **The preview's own refusal** is said in its place, and nothing is offered to put back: asked
+ *   again and refused, the preview before it is no longer what the undo would do. One refused
+ *   `stale` is the strip's to hold as its entry's (`previewRefused`), and is said once. A preview
+ *   that failed - the server failing on it, or not answering - was refused by nobody, and is said
+ *   so, in a sentence of its own (`previewFailed`).
+ * - **Beside a refusal held of the entry on top**, said as it stands, the strip offers that entry
+ *   again, whole, as the revision on screen previews it, and so its Put back (R22): the reader may
+ *   mend the file - make it readable or writable - and press again, with no need to close the
+ *   strip, as a panel offers its plan beside a refusal held of its Apply (`offerShown`,
+ *   lib/refusals.ts). One the server took off is offered so until the state says it went.
+ * - **Beside the preview's own refusal** of the entry on top - a refusal (`refusedRead`), the
+ *   server keeping the entry, as it keeps one whose file could not be read - the strip offers to
+ *   read the files again (R22): mended, the file is previewed there, and the entry offered whole
+ *   once it is, never a Put back of files the strip has not read. A preview that failed - the
+ *   server failing, or not answering - is asked again as the page's other failed reads are: at the
+ *   next revision, or once the strip is closed and opened.
+ */
+export function undoShown(
+  held: readonly UndoRefused[],
+  state: State | null,
+  asked: { data: UndoPreview | undefined; error: Error | null },
+): UndoShown {
+  const top = state?.undoable ?? null;
+  const standing = held.filter((refused) => top === null || refused.at >= top.at);
+  const own = top === null || asked.error === null ? null : undoRefused(asked.error, top);
+  const failed = own !== null && !refusedRead(asked.error);
+  const said =
+    own === null || standing.some((refused) => same(refused, own)) ? standing : [...standing, own];
+  const refusals = said.map((refused, index) => ({
+    key: `${refused.at}:${refused.stale}:${refused.message}`,
+    text:
+      failed && refused === own
+        ? previewFailed(refused.message)
+        : undoRefusal(
+            refused,
+            top === null || refused.at > top.at,
+            said.slice(0, index).some((before) => before.at === refused.at && !before.stale),
+          ),
+  }));
+  const offered =
+    top !== null && asked.error === null && asked.data !== undefined && asked.data.at === top.at
+      ? asked.data
+      : null;
+  const reading = top !== null && asked.error === null && offered === null;
+  const askAgain = top !== null && refusedRead(asked.error);
+  const label = undoButton(state) ?? (refusals.length > 0 ? NOTHING_LEFT : null);
+  return { label, refusals, preview: offered, reading, askAgain };
+}
+
 /** What the Undo button says, or `null` when there is nothing to undo: no project open yet, no
  * state arrived yet, or a session that has written nothing. */
 export function undoButton(state: State | null): string | null {
@@ -175,16 +345,32 @@ export function undoButton(state: State | null): string | null {
   return undoable === null ? null : `Undo ${undoable.label}`;
 }
 
-/** What an undo would put back, in one sentence naming the files, as part 1's consequence line
- * names the files a change is applied to. */
+/** What an undo would do, in one sentence naming the files, as part 1's consequence line names the
+ * files a change is applied to: those it puts back, and apart from them those it takes away, which
+ * its preview names gone - "Puts back 1 file: demo.ddd.json, and removes 1 file: units.ddd.json",
+ * as the heading's line says them once the undo is answered (`writtenSentence`, 16:I13). Each file
+ * is told apart among every file the undo writes (`changedNames`). */
 export function undoConsequence(changes: readonly UndoneChange[]): string {
-  const files = changes.map((change) => baseName(change.file));
-  return `Puts back ${plural(files.length)}: ${files.join(", ")}`;
+  const names = changedNames(changes);
+  const back = changes.flatMap((change, at) => (change.gone ? [] : [`${names[at]}`]));
+  const gone = changes.flatMap((change, at) => (change.gone ? [`${names[at]}`] : []));
+  const said = [
+    ...(back.length > 0 || gone.length === 0
+      ? [`puts back ${plural(back.length)}: ${back.join(", ")}`]
+      : []),
+    ...(gone.length === 0 ? [] : [`removes ${plural(gone.length)}: ${gone.join(", ")}`]),
+  ].join(", and ");
+  return `${said.charAt(0).toUpperCase()}${said.slice(1)}`;
 }
 
-/** What the button that writes says. */
+/** What the button that writes says, counting the files it takes away apart from those it puts
+ * back, as the line above it does: "Put back 1 file and remove 1 file". */
 export function undoAction(changes: readonly UndoneChange[]): string {
-  return `Put back ${plural(changes.length)}`;
+  const gone = changes.filter((change) => change.gone).length;
+  const back = changes.length - gone;
+  if (gone === 0) return `Put back ${plural(back)}`;
+  if (back === 0) return `Remove ${plural(gone)}`;
+  return `Put back ${plural(back)} and remove ${plural(gone)}`;
 }
 
 function plural(count: number): string {
@@ -201,8 +387,8 @@ function plural(count: number): string {
  *   stands, and asked again before then it could lead to what the undo put back while its words
  *   still name what the analysis read; its own analysis answers both at once.
  * - **The strip's own preview**: the undo closes the strip, and the entry it previews next is the
- *   one the next state names, under a key of its own - asked again, the entry put back answers
- *   that nothing is left to undo, or another one.
+ *   one the next state names, under a key of its own - asked again, the preview of the entry put
+ *   back is refused as no longer on top.
  * - **No file's**: the session, and the projects found.
  */
 const LEFT_ALONE: ReadonlySet<unknown> = new Set([

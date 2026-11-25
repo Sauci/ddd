@@ -22,6 +22,17 @@ import type { GraphDisagreement, GraphFlow, GraphModule, GraphReply } from "../a
 import type { Placed } from "./layout";
 import { neighboursOf } from "./neighbours";
 import { NODE_HEIGHT, NODE_WIDTH } from "./nodeSize";
+import { countText } from "./numbers";
+import { namedFiles } from "./unloaded";
+
+/** How long the viewport takes to fly to what `Fit` or a search asked for, in milliseconds. */
+const FLIGHT = 300;
+
+/** The duration of a flight of the viewport: none for a reader who asked their system for less
+ * motion, where the view lands at once. */
+export function flightOf(reducedMotion: boolean): number {
+  return reducedMotion ? 0 : FLIGHT;
+}
 
 /** React Flow's own default, given explicitly to `<ReactFlow>` so `openingViewport` always
  * agrees with what it is deciding against (review fix round 1, Ruling T10-2). Pinned by the
@@ -79,11 +90,13 @@ export function stateOf(severity: FlowData["severity"]): "error" | "warning" | "
   return severity === "error" || severity === "warning" ? severity : "agreed";
 }
 
-/** What each state paints with; `info` and `ignore` leave the arrow plain, as spec 4.4 says. */
+/** What each state paints with; `info` and `ignore` leave the arrow plain, as spec 4.4 says. An
+ * arrow that agrees is drawn in `--ink-quiet`, whose contrast on the canvas is 4.92:1 - a graphic
+ * that carries meaning wants 3:1 - where `--rule`, which it was drawn in, reads 1.17:1. */
 export const STROKE: Record<ReturnType<typeof stateOf>, string> = {
   error: "var(--error)",
   warning: "var(--warning)",
-  agreed: "var(--rule)",
+  agreed: "var(--ink-quiet)",
 };
 
 /**
@@ -205,6 +218,36 @@ function boundsOf(placed: readonly Placed[]): {
   const right = Math.max(...placed.map((at) => at.x + NODE_WIDTH));
   const bottom = Math.max(...placed.map((at) => at.y + NODE_HEIGHT));
   return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
+/** Whether the canvas's view is still the one last fitted (the opening view, or what `Fit` set it
+ * to) and not one the reader made by panning or zooming: the same to within half a pixel and a
+ * thousandth of a zoom, the slack of an animation's last frame. A panel opening beside the canvas
+ * fits it again only while this holds; a view the reader chose is theirs (16:M22). */
+export function isFittedView(viewport: Viewport, fitted: Viewport | null): boolean {
+  return (
+    fitted !== null &&
+    Math.abs(viewport.x - fitted.x) <= 0.5 &&
+    Math.abs(viewport.y - fitted.y) <= 0.5 &&
+    Math.abs(viewport.zoom - fitted.zoom) <= 0.001
+  );
+}
+
+/** Whether a view of the canvas, at `viewport` in a box of `size`, leaves any placed module's box
+ * partly or wholly past the box's edge: what a panel opening beside the canvas does to the view it
+ * had, narrowing the box under it, so that the far modules are cut until `Fit` (16:M22). */
+export function modulesCut(
+  placed: readonly Placed[],
+  viewport: Viewport,
+  size: { width: number; height: number },
+): boolean {
+  return placed.some((at) => {
+    const left = at.x * viewport.zoom + viewport.x;
+    const top = at.y * viewport.zoom + viewport.y;
+    const right = left + NODE_WIDTH * viewport.zoom;
+    const bottom = top + NODE_HEIGHT * viewport.zoom;
+    return left < 0 || top < 0 || right > size.width || bottom > size.height;
+  });
 }
 
 /**
@@ -398,6 +441,41 @@ export function firstMatch(modules: readonly GraphModule[], search: string): str
   return matchesOf(modules, search)?.[0]?.path ?? null;
 }
 
+/**
+ * The line under the search box: how many modules a search found, of how many the project has -
+ * `3 of 1,166 modules` - or `no module matches`; nothing while nothing is typed. A search dims
+ * every module it does not find and flies to none before Enter, so what it found may be out of
+ * view: without the line, a search finding nothing and one finding only modules out of view looked
+ * alike. It counts what `brightOf` keeps bright.
+ */
+export function searchLine(modules: readonly GraphModule[], search: string): string | null {
+  const matching = matchesOf(modules, search);
+  if (matching === null) return null;
+  if (matching.length === 0) return "no module matches";
+  const all = modules.length;
+  return `${countText(matching.length)} of ${countText(all)} module${all === 1 ? "" : "s"}`;
+}
+
+/**
+ * What the canvas says over a revision that resolved no dictionary (spec 5.6), whose modules it
+ * draws without arrows: why. Where files did not load - `unloaded`, as `unloadedNames` names them
+ * (lib/unloaded.ts) - that is why: such a file leaves every read of the project with an error, and
+ * said as "no dictionary" alone, it named neither file nor cause (16:I9). Otherwise only that there
+ * is none: a plugin that raised and a constant declared twice leave none too, which the graph does
+ * not tell apart. Where the project's own description is what did not load (`described`,
+ * `descriptionAlone`), nothing past it was read and the canvas draws no module at all: it says
+ * that, rather than that modules are drawn without arrows.
+ */
+export function noDictionary(unloaded: readonly string[], described: boolean): string {
+  if (described) {
+    return `${namedFiles(unloaded)} did not load, so this project has no dictionary and no module is drawn.`;
+  }
+  if (unloaded.length === 0) {
+    return "This project has no dictionary, so its modules are drawn without arrows.";
+  }
+  return `${namedFiles(unloaded)} did not load, so this project has no dictionary, and its modules are drawn without arrows.`;
+}
+
 /** Every module whose name contains the text, ignoring case, or `null` when none was typed. */
 function matchesOf(modules: readonly GraphModule[], search: string): GraphModule[] | null {
   const wanted = search.trim().toLowerCase();
@@ -439,4 +517,61 @@ export function shownEdges(
     if (edge.data.faded === faded && edge.data.active === active) return edge;
     return { ...edge, data: { ...edge.data, faded, active } };
   });
+}
+
+/** A point, or a size, in pixels. */
+export interface Point {
+  x: number;
+  y: number;
+}
+export interface Size {
+  width: number;
+  height: number;
+}
+
+/**
+ * Where a point of the canvas's own space, an arrow's middle, is in the window: React Flow's
+ * viewport transform (`[x, y, zoom]`) applied to it, and the canvas's own corner added. An arrow's
+ * tooltip is drawn in the window's space rather than the canvas's (16:M11), so that it keeps its
+ * size at every zoom and is not cut by the canvas's edge; this is what it is placed by.
+ */
+export function windowPointOf(
+  point: Point,
+  transform: readonly [number, number, number],
+  corner: Point,
+): Point {
+  const [x, y, zoom] = transform;
+  return { x: corner.x + x + point.x * zoom, y: corner.y + y + point.y * zoom };
+}
+
+/** Whether `point` lies within `box`, edges included. An arrow's tooltip is drawn only while the
+ * arrow's middle is within the canvas: one scrolled or panned out of it points at nothing, and
+ * would float over the page (16:M11). */
+export function insideBox(point: Point, box: Point & Size): boolean {
+  return (
+    point.x >= box.x &&
+    point.x <= box.x + box.width &&
+    point.y >= box.y &&
+    point.y <= box.y + box.height
+  );
+}
+
+/** The room a tooltip keeps from the window's edge and from the arrow's middle it points at. */
+export const TOOLTIP_EDGE = 8;
+export const TOOLTIP_GAP = 12;
+
+/**
+ * Where an arrow's tooltip's top left corner goes, in the window, for an `anchor` (its arrow's
+ * middle) and the `size` it is drawn at: above the arrow and centred on it, below it where there is
+ * no room above, and moved in from the window's edges where it would pass them - so that its first
+ * line, which lists the variables the arrow carries, is never out of view. A tooltip larger than the window is
+ * kept at the top left corner, its first line first.
+ */
+export function tooltipSpot(anchor: Point, size: Size, window: Size): Point {
+  const above = anchor.y - TOOLTIP_GAP - size.height;
+  const top = above >= TOOLTIP_EDGE ? above : anchor.y + TOOLTIP_GAP;
+  const centred = anchor.x - size.width / 2;
+  const left = Math.min(centred, window.width - size.width - TOOLTIP_EDGE);
+  const lowest = window.height - size.height - TOOLTIP_EDGE;
+  return { x: Math.max(left, TOOLTIP_EDGE), y: Math.max(Math.min(top, lowest), TOOLTIP_EDGE) };
 }

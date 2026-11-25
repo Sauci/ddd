@@ -126,6 +126,18 @@ describe("planShown", () => {
       planShown(request, request, { data: plan, error: null, isPlaceholderData: true }),
     ).toEqual({ plan: null, refusal: null, pending: true });
   });
+
+  test("nothing asked for is nothing pending: no plan is on its way to say Planning… for", () => {
+    expect(
+      planShown(null, null, { data: undefined, error: null, isPlaceholderData: false }),
+    ).toEqual({ plan: null, refusal: null, pending: false });
+  });
+
+  test("a plan the fields ask for and not asked yet is pending: a pause or a gate holds it back", () => {
+    expect(
+      planShown(null, request, { data: undefined, error: null, isPlaceholderData: false }),
+    ).toEqual({ plan: null, refusal: null, pending: true });
+  });
 });
 
 // Ruling T12b-1: the gate after the debounce, never before it - the values grid's

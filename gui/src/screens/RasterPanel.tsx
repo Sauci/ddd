@@ -10,7 +10,7 @@ import {
 import { useUpdating } from "../app/updating";
 import { useDebounced } from "../app/useDebounced";
 import { type Offer, type RasterAction, RasterPanelView } from "../components/RasterPanelView";
-import { panelShows, type Refused, refusalShown } from "../lib/refusals";
+import { heldOf, offerShown, panelShows, type Refused, refusalOf } from "../lib/refusals";
 import type { Route } from "../lib/route";
 import { planEdit, rasterRemovable, rasterSet, requestOf } from "../lib/shared";
 import { planShown } from "../lib/typing";
@@ -18,7 +18,6 @@ import { rasterLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
 import { UpdatingNote } from "../ui/UpdatingNote";
-import { refusalOf } from "./UnitPanel";
 
 interface Props {
   name: string;
@@ -199,16 +198,11 @@ export function RasterPanel({ name, revision, stopped, onClose, onGone, onMoved,
    * `plan`/`refusal`/`pending` are `planShown`'s own, `lib/typing.ts` (review fix round 1):
    * `null`/`null`/pending while the debounced request has not caught up with what the fields now
    * say, or while the answer is an earlier request's kept as a placeholder - never a plan, nor
-   * its own fetch refusal, for text the reader has since typed past. A refusal of its Apply takes
-   * precedence, as it always did (`refusalShown`). */
-  const offer = (action: RasterAction): Offer => {
-    const shown = planShown(asked[action], requests[action], plans[action]);
-    return {
-      plan: shown.plan,
-      refusal: refusalShown(failed, shown.refusal, action),
-      pending: shown.pending,
-    };
-  };
+   * its own fetch refusal, for text the reader has since typed past. What it offers beside a
+   * refusal is the one rule every panel follows (`offerShown`): a refusal of its Apply said over
+   * the plan asked again, and nothing to apply beside its plan's own refusal. */
+  const offer = (action: RasterAction): Offer =>
+    offerShown(heldOf(failed, action), planShown(asked[action], requests[action], plans[action]));
 
   if (gone) return null;
   if (answer.shown === "refusal") {

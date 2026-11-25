@@ -1,3 +1,5 @@
+import type { WrittenLine } from "../lib/announcing";
+
 /**
  * "Updating the findings…" where findings are listed - a panel's, the values grid's, a
  * component's - while they may be about to change (spec 6): an edit is waiting for its analysis,
@@ -12,17 +14,27 @@ export function UpdatingNote({ updating }: { updating: boolean }) {
 }
 
 /**
- * The heading's "Updating the findings…" (spec 6): of a screen's status regions, the one that
- * says its findings are updating - in the project's heading, a component's and the values grid's.
- * It stays in the heading whether or not anything updates, empty while nothing does, and its words
- * arrive when an update starts - the change a screen reader announces. Last in the heading's row,
- * it needs no room of its own and takes what its line has left, cut short rather than wrapped:
- * where none is left - beside the open Undo strip's own line - it shows nothing, and is still
- * heard. Its words coming and going never change the heading's height (`ui.css`).
+ * The heading's status (spec 6, 16:I13): of a screen's status regions, the one that says what the
+ * page last wrote (`written`, `useWritten`), and that its findings are updating - in the project's
+ * heading, a component's and the values grid's. It stays in the heading whether or not it says
+ * anything, empty while it does not, and each of its two parts is announced as it comes, alone:
+ * the update starting, once; what was written, once for each write - drawn anew by the write's
+ * number, so that a second write saying what the first said is told too - and not again as an
+ * update comes and goes beside it. Last in the heading's row, it needs no room of its own and takes
+ * what its line has left, cut short rather than wrapped: where none is left - beside the open Undo
+ * strip's own line - it shows nothing, and is still heard. Its words coming and going never change
+ * the heading's height (`ui.css`).
  */
-export function UpdatingStatus({ updating }: { updating: boolean }) {
+export function UpdatingStatus({
+  updating,
+  written = null,
+}: {
+  updating: boolean;
+  written?: WrittenLine | null;
+}) {
   return (
-    <p className="updating-status" role="status">
+    <p className="updating-status" role="status" aria-atomic="false">
+      {written !== null && <span key={written.edit}>{written.sentence} </span>}
       {updating ? "Updating the findings…" : ""}
     </p>
   );

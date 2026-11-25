@@ -7,7 +7,7 @@ import type {
   ListedFinding,
   State,
 } from "../api/types";
-import { toldApart } from "./paths";
+import { namedAmong } from "./paths";
 import { hrefOf, type Route } from "./route";
 import { baseName } from "./units";
 
@@ -68,12 +68,19 @@ export interface FindingRow {
   file: string;
 }
 
-/** Each severity's word, singular then plural, and the noun `findingCounts` says it under. */
+/** Each severity's word, singular then plural - `ddd check`'s own ("1 info", "2 infos") - and the
+ * noun `findingCounts` says it under. */
 const COUNTED = [
   ["error", "error", "errors"],
   ["warning", "warning", "warnings"],
-  ["info", "note", "notes"],
+  ["info", "info", "infos"],
 ] as const satisfies readonly [keyof FindingCounts, string, string][];
+
+/** The tone of a chip for a severity (its word is the severity's own, `ddd check`'s), the one every chip of the page takes: an error and a warning
+ * are their own, an info is the quiet one the design system calls neutral - never a warning's. */
+export function toneOf(severity: Finding["severity"]): "error" | "warning" | "neutral" {
+  return severity === "error" ? "error" : severity === "warning" ? "warning" : "neutral";
+}
 
 /** How many findings the counts count, of every severity together. */
 export function findingsTotal(counts: FindingCounts): number {
@@ -85,7 +92,7 @@ export function findingsTotal(counts: FindingCounts): number {
 const UPDATING = " · updating";
 
 /** A count and its noun, singular for one and plural otherwise - none included. */
-function counted(count: number, one: string, many: string): string {
+export function counted(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`;
 }
 
@@ -115,22 +122,44 @@ export function tableLine(counts: FindingCounts, updating: boolean): string {
   return updating ? `${errors}, ${warnings}${UPDATING}` : `${errors}, ${warnings}`;
 }
 
-/** What the Findings tab keeps as its selected finding once `reply` - the findings of its file and
+/**
+ * What the Findings tab keeps as its selected finding once `reply` - the findings of its file and
  * its check, asked of the newest revision - has come: the reply's own report of it, its notes and
  * its route that revision's, kept as the selection so that while the next revision's reply is
  * asked for the panel goes on showing it, never the finding as it was first selected; `selected`
- * itself while no reply has come; and nothing, `gone`, once the reply no longer reports its key -
- * the panel closes, saying so. Its key is the one thing a page of findings and a selection hold in
- * common. */
+ * itself while no reply has come; and nothing, `gone`, once the reply reports neither its key nor
+ * its words - the panel closes, saying so.
+ *
+ * Its key, the one thing a page of findings and a selection hold in common, is the server's, and
+ * holds the finding's place (`ddd.gui.derived.content_of`): a declaration taken out above it, or
+ * put in, moves its pointer, and the same finding comes back under another key. Where the key is
+ * gone, the reply's first report of the same words - in the same file, at the same severity and
+ * of the same check - is the finding at its new place, and is kept in its stead (15:M12). Of two
+ * findings saying one sentence in one file, the panel then follows the first: the pointer, which
+ * told them apart, is what moved.
+ */
 export function selectionAfter(
   selected: ListedFinding | undefined,
   reply: FindingsReply | undefined,
 ): { selected: ListedFinding | undefined; gone: boolean } {
   if (selected === undefined || reply === undefined) return { selected, gone: false };
-  const reported = reply.findings.find((finding) => finding.key === selected.key);
+  const reported =
+    reply.findings.find((finding) => finding.key === selected.key) ??
+    reply.findings.find((finding) => saysTheSame(finding, selected));
   return reported === undefined
     ? { selected: undefined, gone: true }
     : { selected: reported, gone: false };
+}
+
+/** Whether two findings say one thing of one file: its file, its severity, its check and its words,
+ * wherever in the file each is filed. */
+function saysTheSame(one: Finding, other: Finding): boolean {
+  return (
+    one.file === other.file &&
+    one.severity === other.severity &&
+    one.check === other.check &&
+    one.message === other.message
+  );
 }
 
 /** What the button that follows a finding says, or `null` when it leads nowhere. */
@@ -212,7 +241,8 @@ export function routeOf(finding: Finding): Route | null {
   return { page: "component", file: finding.file };
 }
 
-/** The address that route is written as, or `null` when the finding leads nowhere. */
+/** The address that route is written as, or `null` when the finding leads nowhere, or where no
+ * address can carry the name it leads to (`hrefOf`). */
 export function routeHref(finding: Finding): string | null {
   const route = routeOf(finding);
   return route === null ? null : hrefOf(route);
@@ -237,7 +267,7 @@ export function namesThisVariable(finding: Finding, name: string): boolean {
 
 /** The files a tab's table cannot show the contents of, by name: those of the tab's own kinds
  * that did not load, and those that did not load without saying what kind they are. Two of one
- * name are told apart by their paths (`toldApart`) among every file that did not load, whichever
+ * name are told apart by their paths (`namedAmong`) among every file that did not load, whichever
  * list each is in, as the server's refusals name them: one file, one name on the page.
  *
  * Two lists because the tab can only speak for the first. `ddd.gui.session.kind_of` reads a file's
@@ -261,14 +291,12 @@ export function unreadable(
   kinds: readonly string[],
 ): { own: string[]; untold: string[] } {
   const missing = (state?.files ?? []).filter((file) => !file.loaded);
-  const paths = missing.map((file) => file.path);
+  // Named all at once (`toldApartAll`), never one against all the others: 3,334 files that did not
+  // load took about two seconds to name, on each render of the tabs that ask.
+  const named = namedAmong(missing, (file) => file.path);
   return {
-    own: missing
-      .filter((file) => kinds.includes(file.kind))
-      .map((file) => toldApart(file.path, paths)),
-    untold: missing
-      .filter((file) => file.kind === "unknown")
-      .map((file) => toldApart(file.path, paths)),
+    own: named.filter(({ item }) => kinds.includes(item.kind)).map(({ name }) => name),
+    untold: named.filter(({ item }) => item.kind === "unknown").map(({ name }) => name),
   };
 }
 
@@ -296,18 +324,30 @@ const SHOWN = new Set(["component", "constants", "types", "units", "sections", "
  * and so the whole of what the file declares, which no panel shows. What is left is a
  * finding that does name a place the file no longer has: a declaration moved since the
  * analysis read it, or a unit no longer stated where it was. Neither is about the project, and
- * neither is a sentence to guess at, so the reason says only what is certain of both. */
-export function noRouteReason(finding: Finding, state: State): string {
-  const name = baseName(finding.file);
+ * neither is a sentence to guess at, so the reason says only what is certain of both.
+ *
+ * `named` is how the caller names a file - the Findings tab names it as its panel's lines do, told
+ * apart from another of its name by its path (16:M15).
+ *
+ * A route the server did answer, to a name no address can carry (`hrefOf`, 15:I5), is said
+ * first: such a finding leads somewhere, and no link can take the reader there. */
+export function noRouteReason(
+  finding: Finding,
+  state: State,
+  named: (path: string) => string = baseName,
+): string {
+  const route = routeOf(finding);
+  if (route !== null && hrefOf(route) === null) return "No address can carry the name it leads to";
+  const name = named(finding.file);
   const listed = state.files.find((file) => file.path === finding.file);
   if (listed === undefined) return `${name} is not a file of this project`;
   if (!listed.loaded) return `${name} did not load`;
   if (!SHOWN.has(listed.kind)) return `${name} is a ${listed.kind} file, which has no page yet`;
-  if (finding.pointer === "") return "it is about the project rather than a place in a file";
+  if (finding.pointer === "") return "It is about the project rather than a place in a file";
   if (!/[.[]/.test(finding.pointer)) {
-    return `it is about the whole of ${name} rather than one entry of it`;
+    return `It is about the whole of ${name} rather than one entry of it`;
   }
-  return "there is nothing at that place any more";
+  return "There is nothing at that place any more";
 }
 
 /** Where a finding is, for a panel with no route to offer: `file:line:column` as `ddd check`

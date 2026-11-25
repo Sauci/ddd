@@ -103,6 +103,21 @@ def _described(model: str) -> dict[str, str]:
     }
 
 
+class TestTheStartPageListsWhatItCouldNotRead:
+    def test_found_says_each_description_it_could_not_read_with_why(self) -> None:
+        found = contract.api_schema()["$defs"]["Found"]
+        assert list(found["properties"]) == ["root", "projects", "refused", "unreadable"]
+        assert found["required"] == list(found["properties"])
+        assert found["properties"]["unreadable"]["items"] == {"$ref": "#/$defs/UnreadDescription"}
+        assert _described("Found")["unreadable"] == (
+            "Every ``*.ddd.json`` the walk found and could not read, sorted by path. A "
+            "description that parses and states no project (a component's) is not one of them."
+        )
+        unread = contract.api_schema()["$defs"]["UnreadDescription"]
+        assert list(unread["properties"]) == ["path", "reason"]
+        assert unread["required"] == ["path", "reason"]
+
+
 class TestThePageFollowsTheAnalyser:
     """What ``npm run schemas`` turns into the page's own types: the fields an edit and the state
     answer now that an edit is answered once written and its analysis follows."""
@@ -303,8 +318,52 @@ class TestFindingsComeAPageAtATime:
             "How many findings the filters leave, in all."
         )
 
+    def test_a_page_is_asked_for_under_four_filters_a_text_among_them(self) -> None:
+        """16:I14: the Findings tab's filter is the server's, its rows being the server's pages."""
+        query = contract.api_schema()["$defs"]["FindingsQuery"]
+        assert list(query["properties"]) == ["offset", "limit", "severity", "file", "check", "text"]
+        assert "required" not in query
+        assert " ".join(query["properties"]["text"]["description"].split()) == (
+            "Only the findings whose check, words or file's own name hold this text, whatever its "
+            "case; blank, every one."
+        )
+
     def test_both_are_published_beside_every_other_model(self) -> None:
         assert {"FindingsReply", "ListedFinding"} <= set(contract.__all__)
+
+
+class TestTheGoToFindsAVariable:
+    """16:I14: what ``GET /api/names`` answers the masthead's go-to, which the page's types
+    publish."""
+
+    def test_a_name_found_says_where_the_page_opens_it(self) -> None:
+        named = contract.api_schema()["$defs"]["NamedVariable"]
+        assert list(named["properties"]) == ["name", "kind", "file", "component"]
+        assert named["required"] == list(named["properties"])
+        assert _described("NamedVariable")["file"] == (
+            "Absolute, posix-separated path of the component the page opens it on: the one "
+            "producing it - a local's own among them - or, where none does, the first declaring "
+            "it, in the order the project lists its components."
+        )
+
+    def test_the_names_found_are_capped_and_counted_in_all(self) -> None:
+        reply = contract.api_schema()["$defs"]["NamesReply"]
+        assert list(reply["properties"]) == ["revision", "total", "names"]
+        assert reply["required"] == list(reply["properties"])
+        assert reply["properties"]["names"]["items"] == {"$ref": "#/$defs/NamedVariable"}
+        assert _described("NamesReply")["total"] == (
+            "How many names hold the text, in all: more than ``names`` holds where the cap left "
+            "some out."
+        )
+        assert {"NamedVariable", "NamesReply"} <= set(contract.__all__)
+
+    def test_a_name_is_asked_for_by_a_part_of_it(self) -> None:
+        query = contract.api_schema()["$defs"]["NamesQuery"]
+        assert list(query["properties"]) == ["text"]
+        assert query["required"] == ["text"]
+        assert query["properties"]["text"]["description"] == (
+            "What the names answered hold, whatever its case."
+        )
 
 
 class TestAFindingLeadsToAPanelThatListsIt:

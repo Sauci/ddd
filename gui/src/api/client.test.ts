@@ -2,6 +2,8 @@ import { describe, expect, test, vi } from "vitest";
 import { OwnEdits, ownEdits } from "../state/edits";
 import {
   ApiError,
+  askedAgain,
+  EDIT_BODY,
   getCellsPlan,
   getCompare,
   getConstant,
@@ -15,6 +17,7 @@ import {
   getFindings,
   getFix,
   getGraph,
+  getNames,
   getProjects,
   getRaster,
   getRasterPlan,
@@ -35,6 +38,7 @@ import {
   getValues,
   getValuesPlan,
   getVariable,
+  MAX_BODY,
   openProject,
   postEdit,
   postUndo,
@@ -169,7 +173,8 @@ describe("requests to the server", () => {
   });
 
   test("each call asks the path and method the api expects", async () => {
-    const fetchImpl = answering(200, "{}");
+    // An empty answer to each, but for the files an edit's reply always lists.
+    const fetchImpl = answering(200, '{"files": []}');
     const signal = new AbortController().signal;
     await getSession(fetchImpl);
     await getProjects(fetchImpl);
@@ -267,7 +272,7 @@ describe("requests to the server", () => {
       { file: "/tmp/c.ddd.json", name: "ParameterA", description: "" },
       fetchImpl,
     );
-    // Noted into an instance of their own: this fetch answers `{}`, which carries no number.
+    // Noted into an instance of their own: this fetch's answer carries no number.
     await postEdit(
       {
         changes: [{ file: "a", fingerprint: "x", operations: [{ op: "remove", pointer: "a" }] }],
@@ -276,7 +281,7 @@ describe("requests to the server", () => {
       fetchImpl,
       new OwnEdits(),
     );
-    await getUndo(fetchImpl);
+    await getUndo(2, fetchImpl);
     await postUndo(3, fetchImpl, new OwnEdits());
     await getValues("CurveA", fetchImpl);
     await getValuePlan({ name: "CurveA", at: "[2]", raw: 750 }, fetchImpl);
@@ -397,7 +402,7 @@ describe("requests to the server", () => {
             '"label":"the unit of ValueA"}',
         },
       ],
-      ["/api/undo", { credentials: "omit" }],
+      ["/api/undo?at=2", { credentials: "omit" }],
       [
         "/api/undo",
         {
@@ -413,6 +418,16 @@ describe("requests to the server", () => {
     ]);
   });
 
+  test("getNames asks for the names holding a text, encoded", async () => {
+    const calls = recorded();
+    await getNames("C00530_O0000", calls.fetch);
+    await getNames("Value E & 'x'", calls.fetch);
+    expect(calls.urls).toEqual([
+      ["/api/names?text=C00530_O0000", { credentials: "omit" }],
+      ["/api/names?text=Value%20E%20%26%20%27x%27", { credentials: "omit" }],
+    ]);
+  });
+
   test("getFindings asks for a page, each of its parameters encoded and none it was not given", async () => {
     const calls = recorded();
     await getFindings({}, calls.fetch);
@@ -424,6 +439,8 @@ describe("requests to the server", () => {
       { offset: 100, limit: 100, severity: "error", file: "/p/a&b.ddd.json", check: "a/b" },
       calls.fetch,
     );
+    await getFindings({ offset: 0, limit: 100, text: "C00500 & 'x'" }, calls.fetch);
+    await getFindings({ check: "missing-id", text: "ValueE" }, calls.fetch);
     expect(calls.urls).toEqual([
       ["/api/findings", { credentials: "omit" }],
       ["/api/findings?offset=0&limit=100", { credentials: "omit" }],
@@ -434,6 +451,8 @@ describe("requests to the server", () => {
         "/api/findings?offset=100&limit=100&severity=error&file=%2Fp%2Fa%26b.ddd.json&check=a%2Fb",
         { credentials: "omit" },
       ],
+      ["/api/findings?offset=0&limit=100&text=C00500%20%26%20%27x%27", { credentials: "omit" }],
+      ["/api/findings?check=missing-id&text=ValueE", { credentials: "omit" }],
     ]);
   });
 
@@ -593,6 +612,192 @@ describe("requests to the server", () => {
   });
 });
 
+describe("an edit's body", () => {
+  /** The most ddd gui reads of `POST /api/edit`'s body: `EDIT_BODY`, gui/server.py, 8 MiB. */
+  const LIMIT = 8_388_608;
+
+  /** What the rename of a unit stated in many files is called, as the units panel labels it. */
+  const LABEL = "the rename of 'Nm' to 'N·m'";
+
+  /** An edit whose body, as `postEdit` sends it, is `bytes` bytes long, its one file's path
+   * spelled with `filler` - one byte in UTF-8, or `·`, two - as far as it takes. */
+  function editOf(bytes: number, filler = "x"): Changes {
+    const of = (path: string): Changes => ({
+      changes: [{ file: path, fingerprint: "x", operations: [{ op: "remove", pointer: "a" }] }],
+      label: LABEL,
+    });
+    const rest = new TextEncoder().encode(JSON.stringify(of(""))).length;
+    const each = new TextEncoder().encode(filler).length;
+    return of(filler.repeat((bytes - rest) / each));
+  }
+
+  /** An edit's body as `postEdit` sends it, in UTF-8 bytes. */
+  const sent = (changes: Changes) => new TextEncoder().encode(JSON.stringify(changes)).length;
+
+  /** A fetch answering an edit as the server answers one it wrote. */
+  const written = () => answering(200, '{"edit": 4, "files": []}');
+
+  test("is at most what ddd gui reads of one", () => {
+    expect(EDIT_BODY).toBe(LIMIT);
+  });
+
+  test("past that is refused before it is sent, naming the edit", async () => {
+    // Sent, it was refused before the server read it, and the connection closed with the rest of
+    // the body unread: on Windows a reset, which can lose the refusal, and the page read the
+    // server as not answering.
+    const fetch = written();
+    const edit = editOf(LIMIT + 1);
+    expect(sent(edit)).toBe(8_388_609);
+    const refused = postEdit(edit, fetch, new OwnEdits());
+    await expect(refused).rejects.toBeInstanceOf(ApiError);
+    await expect(refused).rejects.toMatchObject({
+      status: 413,
+      code: "too-large",
+      message:
+        "the rename of 'Nm' to 'N·m' cannot be sent in one request: its body needs 8388609 " +
+        "bytes, and ddd gui reads at most 8388608",
+    });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  test("of the limit's own size is sent, as written", async () => {
+    const fetch = written();
+    const edit = editOf(LIMIT);
+    expect(sent(edit)).toBe(LIMIT);
+    await postEdit(edit, fetch, new OwnEdits());
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch.mock.calls[0]?.[1]).toEqual({
+      credentials: "omit",
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(edit),
+    });
+  });
+
+  test("is measured in the bytes it is sent in, where its characters are fewer", async () => {
+    // A path of two-byte characters, past the limit only as UTF-8 bytes.
+    const fetch = written();
+    const edit = editOf(LIMIT + 1, "·");
+    expect(sent(edit)).toBe(8_388_609);
+    expect(JSON.stringify(edit).length).toBeLessThan(LIMIT);
+    await expect(postEdit(edit, fetch, new OwnEdits())).rejects.toMatchObject({
+      status: 413,
+      message:
+        "the rename of 'Nm' to 'N·m' cannot be sent in one request: its body needs 8388609 " +
+        "bytes, and ddd gui reads at most 8388608",
+    });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("any other ask's body", () => {
+  /** The most ddd gui reads of the body of any route but an edit's: `MAX_BODY`, gui/server.py,
+   * 1 MiB. */
+  const LIMIT = 1_048_576;
+
+  test("is at most what ddd gui reads of one", () => {
+    expect(MAX_BODY).toBe(LIMIT);
+  });
+
+  test("past that is refused before it is sent, naming its route and that route's own limit", async () => {
+    // Sent, it was refused 413 before the server read it, as an edit past its own was: the edit's
+    // 8 MiB is that route's alone, and every other reads 1 MiB.
+    const fetch = answering(200, '{"edit": 3, "files": []}');
+    const body = "x".repeat(LIMIT + 1);
+    await expect(request("/api/undo", { method: "POST", body }, fetch)).rejects.toMatchObject({
+      status: 413,
+      code: "too-large",
+      message:
+        "/api/undo cannot be sent in one request: its body needs 1048577 bytes, and ddd gui " +
+        "reads at most 1048576",
+    });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  test("of that limit's own size is sent", async () => {
+    const fetch = answering(200, '{"edit": 3, "files": []}');
+    const body = "x".repeat(LIMIT);
+    await request("/api/undo", { method: "POST", body }, fetch);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  test("is held to its route's limit whatever its query, the edit's alone being larger", async () => {
+    // The server chooses the limit by the address's path, never its query.
+    const fetch = answering(200, '{"edit": 3, "files": []}');
+    const body = "x".repeat(LIMIT + 1);
+    await expect(
+      request("/api/undo?at=/api/edit", { method: "POST", body }, fetch),
+    ).rejects.toMatchObject({ status: 413 });
+    await request("/api/edit?x=1", { method: "POST", body }, fetch);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("askedAgain", () => {
+  /** What `request` answers `body` with, at `status`: the error it throws. */
+  async function failedWith(status: number, body: string): Promise<unknown> {
+    return request("/api/state", {}, answering(status, body)).catch((error: unknown) => error);
+  }
+
+  test("a 503 carrying the server's own busy sentence is asked again", async () => {
+    // A connection past the most ddd gui answers at once (`BUSY`, gui/server.py), whose words say
+    // to ask again in a moment.
+    const error = await failedWith(
+      503,
+      JSON.stringify({
+        error: "busy",
+        message:
+          "ddd gui is answering as many connections as it takes at once; ask again in a moment",
+      }),
+    );
+    expect(error).toMatchObject({ status: 503, code: "busy" });
+    expect(askedAgain(error)).toBe(true);
+  });
+
+  test("any 5xx is asked again, the server's own error shape or none", async () => {
+    expect(askedAgain(await failedWith(500, '{"error": "internal", "message": "failed"}'))).toBe(
+      true,
+    );
+    expect(askedAgain(await failedWith(502, "Bad Gateway"))).toBe(true);
+  });
+
+  test("an answer cut half way, whose body does not parse, is asked again", async () => {
+    const error = await failedWith(200, '{"revision": 3, "vers');
+    expect(error).toMatchObject({ status: 200, code: "not-json" });
+    expect(askedAgain(error)).toBe(true);
+  });
+
+  test("no answer at all is asked again", () => {
+    expect(askedAgain(new ServerUnreachable(new TypeError("fetch failed")))).toBe(true);
+  });
+
+  test("a refusal, a 4xx, is not: asked again, it is answered again", async () => {
+    expect(askedAgain(await failedWith(409, '{"error": "no-project", "message": "no"}'))).toBe(
+      false,
+    );
+    expect(askedAgain(await failedWith(404, '{"error": "not-found", "message": "no"}'))).toBe(
+      false,
+    );
+    // Cut or not json, a refusal is still one: its status says so.
+    expect(askedAgain(await failedWith(400, "Bad Request"))).toBe(false);
+    // Nor what `request` refuses itself, as the server would have answered it.
+    expect(askedAgain(new ApiError(414, "too-long", "too long"))).toBe(false);
+  });
+
+  test("a refusal whose code reads not-json is still a refusal, its status says so", () => {
+    expect(
+      askedAgain(new ApiError(409, "not-json", "ddd gui's answer to /api/state is not json")),
+    ).toBe(false);
+    expect(askedAgain(new ApiError(400, "not-json", "no"))).toBe(false);
+  });
+
+  test("nor an abort, which the page asked for itself, nor anything else thrown", () => {
+    expect(askedAgain(new DOMException("aborted", "AbortError"))).toBe(false);
+    expect(askedAgain(new TypeError("x is undefined"))).toBe(false);
+    expect(askedAgain("failed")).toBe(false);
+  });
+});
+
 describe("sentAgain", () => {
   test("a GET whose fetch got no answer is sent again, its method named or not", () => {
     expect(sentAgain(undefined, new TypeError("x"))).toBe(true);
@@ -715,11 +920,39 @@ describe("the page's own edits", () => {
     expect(edits.newest()).toBe(4);
   });
 
+  test("an edit answered notes its label and the files it wrote, for the heading to say", async () => {
+    const edits = new OwnEdits();
+    const reply =
+      '{"edit": 4, "files": [{"path": "/p/a.ddd.json", "fingerprint": "f"}, ' +
+      '{"path": "/p/b.ddd.json", "fingerprint": "g"}]}';
+    await postEdit(CHANGES, answering(200, reply), edits);
+    expect(edits.last()).toEqual({
+      edit: 4,
+      write: {
+        kind: "wrote",
+        label: "the unit of ValueA",
+        files: ["/p/a.ddd.json", "/p/b.ddd.json"],
+      },
+    });
+  });
+
   test("an undo answered notes the number the server gave it, and the edit it put back", async () => {
     const edits = new OwnEdits();
     await postUndo(3, answering(200, '{"edit": 5}'), edits);
     expect(edits.newest()).toBe(5);
     expect(edits.undone()).toEqual(new Map([[3, 5]]));
+    expect(edits.last()).toBeNull();
+  });
+
+  test("an undo answered notes what it put back, where told", async () => {
+    const edits = new OwnEdits();
+    const putBack = {
+      kind: "put back",
+      label: "the unit of ValueA",
+      files: ["/p/a.ddd.json"],
+    } as const;
+    await postUndo(3, answering(200, '{"edit": 5}'), edits, putBack);
+    expect(edits.last()).toEqual({ edit: 5, write: putBack });
   });
 
   test("an edit or an undo refused notes nothing", async () => {

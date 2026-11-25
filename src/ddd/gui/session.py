@@ -201,11 +201,17 @@ class FoundProject:
 
 @dataclass(frozen=True, slots=True)
 class Found:
-    """Every project found under a directory, and the build records that could not be used."""
+    """Every project found under a directory, the build records that could not be used, and the
+    descriptions that could not be read."""
 
     root: Path
     projects: tuple[FoundProject, ...]
     refused: tuple[tuple[Path, str], ...]
+    unreadable: tuple[tuple[Path, str], ...]
+    """Each project description the walk found and could not read, with why, by path: one that
+    cannot be opened or does not parse. One that parses and states no project (a component's)
+    is no project and is not here, and neither is one a build record offers, which is among the
+    projects without a name."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -363,6 +369,26 @@ class Undoable:
     """Every file it wrote, as :func:`ddd.editing.restore` takes them."""
 
 
+def _moved_past(edit: Undoable) -> bool:
+    """Whether the disk has moved past ``edit``, so that it can never be put back as its files
+    stand: one of them is gone, or holds bytes other than the ones the edit left - saved from
+    outside, or put back by an undo of it the disk refused half way. A file that cannot be read for
+    any other reason - a permission, a handle another program holds without sharing it for
+    reading, a fault of the disk - says nothing of what it holds, and moves nothing: the engine
+    refuses it ``stale`` as well ("can no longer be read", :func:`ddd.editing.unchanged`), and the
+    reader may mend it and ask again."""
+    for file in edit.files:
+        try:
+            data = file.path.read_bytes()
+        except FileNotFoundError:
+            return True
+        except OSError:
+            continue
+        if fingerprint(data) != file.fingerprint:
+            return True
+    return False
+
+
 @dataclass(frozen=True, slots=True)
 class FileContent:
     """A description file as the page reads it: parsed, or the reason it cannot be."""
@@ -454,12 +480,14 @@ def find_projects(root: Path, build_directories: Sequence[Path] = ()) -> Found:
         # none, and two build trees of one image name it twice.
         if info.image and info.image not in named:
             named.append(info.image)
-    paths = sorted(set(images) | set(_descriptions(base)))
+    described, unread = _descriptions(base)
+    paths = sorted(set(images) | set(described))
     projects = tuple(
         FoundProject(path, name_in(read_json(path), "project"), tuple(images.get(path, ())))
         for path in paths
     )
-    return Found(base, projects, tuple(sorted(refused.items())))
+    unreadable = tuple(sorted((path, why) for path, why in unread if path not in images))
+    return Found(base, projects, tuple(sorted(refused.items())), unreadable)
 
 
 def walk_finds(root: Path, path: Path) -> bool:
@@ -797,9 +825,11 @@ class Session:
         Only the top of the stack: an ``at`` that is not it is refused as stale, which is what
         keeps a second window from putting back an edit this one never saw - asking for no
         analysis, since the stack moved and no file did (:class:`_NotOnTopError`). A refusal of
-        the put back - a file changed since, or one that could not be written - leaves the stack
-        as it is, so the reader may put that file back and ask again, and is answered as an
-        edit's is (:meth:`_refused`).
+        the put back is answered as an edit's is (:meth:`_refused`), and what it leaves of the
+        stack is :meth:`_taken_off`'s: refused because a file the edit would write is gone, or
+        changed on disk since, the edit is taken off and the one under it comes within reach;
+        refused because a file could not be read or written, it stays, for the reader to mend
+        that file and ask again.
         """
         try:
             return self._undone(at)
@@ -809,15 +839,69 @@ class Session:
             self._refused(refused)
             raise
 
+    def preview_refused(self, at: int, refused: EditError) -> None:
+        """What a refused preview of the undo of the edit numbered ``at`` does: ``GET /api/undo``
+        reads that edit's files as they stand before anything is asked to be put back, and its
+        refusal is the undo's own. Where that edit is still on top, the stack is left as a
+        refusal of its put back leaves it (:meth:`_taken_off`); where another came there since -
+        an edit, or an undo from another window - the refusal is not of the top, and the stack is
+        left as it is.
+
+        It asks for no analysis, where a put back refused ``stale`` asks for one
+        (:meth:`_refused`): nothing was written, the poll sees the save as it sees any, and the
+        preview runs no plugin, as no read of the api but a comparison and a files plan does.
+
+        The page asks for the preview before it offers any Put back, so this is the refusal a
+        reader meets first: an edit whose file was saved from outside since is refused here, and
+        taking it off only on a refused put back would leave it on top for good."""
+        with self._lock:
+            top = self._stack[-1] if self._stack else None
+            if top is not None and top.at == at:
+                self._taken_off(top, refused)
+
+    def _taken_off(self, top: Undoable, refused: EditError) -> None:
+        """Take ``top``, the edit on top of the stack, off it where its put back was ``refused``
+        as ``stale`` and the disk has moved past it (:func:`_moved_past`): a file it would write
+        is gone, or holds other bytes than it left, so that the edit can never be put back as the
+        file stands. The edits under it come within reach, where it held them out of reach for
+        as long as the session ran; the page says why it went, in the strip that asked. Any other
+        refusal leaves it on top, as one ``stale`` does for a file that only could not be read:
+        the reader may mend the file, make it readable or writable again, and ask again. What it
+        costs: an edit the reader could have put back once they had put that file back by hand,
+        byte for byte, is gone. Holding the lock, which every file of the edit is read under; the
+        version moves with the stack."""
+        if refused.code == STALE and _moved_past(top):
+            self._stack.pop()
+            self._version += 1
+            self._changed.notify_all()
+
+    def to_undo(self, at: int) -> Undoable:
+        """The edit numbered ``at``, where it is the one on top of the stack: what an undo of it
+        puts back, and what its preview reads (``GET /api/undo``). Refused ``stale`` otherwise,
+        as :meth:`undo` refuses it, the stack left as it is - another window has undone it, or
+        made an edit since, or the disk moved past it (:class:`_NotOnTopError`)."""
+        with self._lock:
+            self._required()
+            return self._on_top(at)
+
+    def _on_top(self, at: int) -> Undoable:
+        """The edit numbered ``at``, on top of the stack, refusing any other; holding the lock."""
+        top = self._stack[-1] if self._stack else None
+        if top is None or top.at != at:
+            raise _NotOnTopError(STALE, f"edit {at} is not the one to undo any more")
+        return top
+
     def _undone(self, at: int) -> int:
         with self._lock:
             self._required()
-            top = self._stack[-1] if self._stack else None
-            if top is None or top.at != at:
-                raise _NotOnTopError(STALE, f"edit {at} is not the one to undo any more")
-            restore(top.files)
+            top = self._on_top(at)
+            try:
+                restore(top.files)
+            except EditError as refused:
+                self._taken_off(top, refused)
+                raise
             # Popped only once the files are back: a refused restore leaves the entry where it
-            # was.
+            # was, but where the refusal takes it off (`_taken_off`).
             self._stack.pop()
             self._edits += 1
             self._written.append((self._edits, frozenset(file.path for file in top.files)))
@@ -1705,8 +1789,11 @@ def _kind_shown(path: Path, stated: str | None) -> str:
     return stated
 
 
-def _descriptions(root: Path) -> list[Path]:
+def _descriptions(root: Path) -> tuple[list[Path], list[tuple[Path, str]]]:
+    """The project descriptions under ``root`` the walk finds, and the ``*.ddd.json`` files it
+    could not read with why (:func:`_unread`)."""
     found: list[Path] = []
+    unread: list[tuple[Path, str]] = []
     for directory, subdirectories, files in root.walk():
         depth = len(directory.relative_to(root).parts)
         # A junction is passed over as a symbolic link is: ``Path.walk`` does so itself from
@@ -1717,12 +1804,31 @@ def _descriptions(root: Path) -> list[Path]:
             for name in subdirectories
             if depth < SEARCH_DEPTH and not _skipped(name) and not (directory / name).is_junction()
         ]
-        found.extend(
-            directory / name
-            for name in files
-            if name.endswith(DESCRIPTION_SUFFIX) and _is_project(directory / name)
-        )
-    return found
+        for name in files:
+            if not name.endswith(DESCRIPTION_SUFFIX):
+                continue
+            data, why = _unread(directory / name)
+            if why is not None:
+                unread.append((directory / name, why))
+            elif isinstance(data, dict) and isinstance(data.get("project"), dict):
+                found.append(directory / name)
+    return found, unread
+
+
+def _unread(path: Path) -> tuple[Any, str | None]:
+    """The document ``path`` holds as :func:`read_json` reads it, and why it could not be read:
+    ``None`` where it was, else a clause the start page says after the path - the file cannot be
+    opened, is not UTF-8 text, or does not parse (the loader's own refusal, with its line)."""
+    try:
+        data = path.read_bytes()
+    except OSError as error:
+        return None, f"cannot be read: {error.strerror or error}"
+    try:
+        return parse_json_text(data.decode("utf-8-sig")), None
+    except UnicodeDecodeError:
+        return None, "is not UTF-8 text"
+    except ValueError as error:
+        return None, f"does not parse: {error}"
 
 
 def _skipped(name: str) -> bool:

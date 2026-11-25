@@ -7,8 +7,11 @@ import {
   failing,
   framesWatched,
   held,
+  namingAScalarType,
   openValues,
   paste,
+  pasteWhereFocused,
+  placed,
   SENSOR_HUB,
   SERVER_FAILED,
   scrolledIntoView,
@@ -148,12 +151,40 @@ function wideNumbers(directory: string): void {
   });
 }
 
-/** A declaration's definition as `wideNumbers` changes it: only the keys it writes. */
+/** A declaration's definition as `wideNumbers` and `curveOfThree` change it: only the keys they
+ * write. */
 interface Definition {
   datatype?: string;
   dimensions?: number[];
   conversion?: { factor: number };
+  size?: number;
   init?: unknown;
+}
+
+/** CurveA made a curve of three: AxisA given three breakpoints, 0, 3200 and 6400, where Controller
+ * produces it and where UserInterface reads it, and the values of CurveA and of MapA, which is laid
+ * against AxisA too, cut to three a row. Each file rewritten whole, as `bigMapA` rewrites its own. */
+function curveOfThree(directory: string): void {
+  const rewrite = (file: string, change: (definition: (name: string) => Definition) => void) => {
+    const path = join(directory, file);
+    const data = JSON.parse(readFileSync(path, "utf8"));
+    change(
+      (name) =>
+        data.component.interface.find(
+          (declaration: { definition: { name: string } }) => declaration.definition.name === name,
+        ).definition,
+    );
+    writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+  };
+  rewrite(CONTROLLER, (definition) => {
+    definition("AxisA").size = 3;
+    definition("AxisA").init = [0, 3200, 6400];
+    definition("CurveA").init = [1200, 900, 800];
+    definition("MapA").init = (definition("MapA").init as number[][]).map((row) => row.slice(0, 3));
+  });
+  rewrite(USER_INTERFACE, (definition) => {
+    definition("AxisA").size = 3;
+  });
 }
 
 /** SensorHub's ValueD made a float64 block of three written `[1.0, 2.5, 3.0]`: numbers spelled as
@@ -298,12 +329,19 @@ test("a curve is drawn from the numbers it holds", async ({ page, gui }) => {
     "4800",
     "8000",
   ]);
-  await expect(plot.locator(".values-plot-side")).toHaveText(["12.275", "6.225"]);
+  await expect(plot.locator(".values-plot-side")).toHaveText(["12", "6.5"]);
+  // Beside the frame, right-aligned to it: a long figure grows away from the markers, never over
+  // the first of them (16:M22).
+  const readings = await plot
+    .locator(".values-plot-side")
+    .evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().right));
+  const marker = await plot.locator("circle").first().boundingBox();
+  for (const right of readings) expect(right).toBeLessThan(marker?.x ?? 0);
 
   await page.getByRole("button", { name: "Raw" }).click();
   // What the toggle actually redraws, in text a reader can see: AxisA's own ticks (its raw
   // breakpoints rather than what its conversion makes of them) and the two side readings (the
-  // padded range of CurveA's own raw counts rather than of what its conversion makes of them).
+  // greatest and least of CurveA's own raw counts rather than of what its conversion makes of them).
   //
   // The polyline's own `points` are deliberately not re-asserted here. The plot scales to its own
   // range (`rangeOf`, `placed` in valuePlot.ts), so the same six numbers in a different unit are
@@ -322,7 +360,7 @@ test("a curve is drawn from the numbers it holds", async ({ page, gui }) => {
     "19200",
     "32000",
   ]);
-  await expect(plot.locator(".values-plot-side")).toHaveText(["1227.5", "622.5"]);
+  await expect(plot.locator(".values-plot-side")).toHaveText(["1200", "650"]);
 });
 
 test("a cell changed is written to the producer's file", async ({ page, gui }) => {
@@ -445,6 +483,25 @@ test("a cell's field shows the whole number it holds, and the whole of what is t
 // The offer a typed cell made stood under the grid and its plot, past the bottom of the window for
 // a map, and nothing in view said a value was waiting to be applied. It is held at the window's
 // foot while it is drawn.
+/** A typed cell's plan on its way (16:M17): the offer says so where its consequence will stand,
+ * and says the consequence once the plan has come. Every plan is held until then: each key typed
+ * asks again, the first at once. */
+test("a cell typed says it is planning while its plan is on its way", async ({ page, gui }) => {
+  await openValues(page, gui.address, "MapA");
+  const offer = page.getByRole("region", { name: "Set the cell" });
+  const release = await held(page, "/api/value-plan", { every: true });
+  try {
+    await typed(page.getByRole("textbox", { name: "element 2, 4" }), "50");
+    await expect(offer.getByText("Planning…", { exact: true })).toBeVisible();
+  } finally {
+    release();
+  }
+  await expect(
+    offer.getByText(/^Sets element 2, 4 of MapA to 50 %\. Changes 1 file: /),
+  ).toBeVisible();
+  await expect(offer.getByText("Planning…")).toHaveCount(0);
+});
+
 test("the sentence, Show changes and Apply a typed map cell offers are in view", async ({
   page,
   gui,
@@ -736,6 +793,35 @@ test("Tab out of a field of a big map does not scroll the page", async ({ page, 
     () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
   );
   expect(await scrolled()).toEqual([0, 0]);
+});
+
+test("a field focused by no click and no Tab, while the grid holds another cell, keeps the focus and takes the keys", async ({
+  page,
+  gui,
+}) => {
+  // 16:C1: a screen reader or voice control moves the focus to the field it names, as a call does,
+  // and the keys the reader pressed last were its own. Tab enters the table at the cell it holds,
+  // the table being one stop for Tab; any other focus lands on the field it names.
+  await openValues(page, gui.address, "MapA");
+  const field = (row: number, column: number) =>
+    page.getByRole("textbox", { name: `element ${row}, ${column}` });
+  await field(1, 1).click();
+  await expect(field(1, 1)).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(field(1, 1)).not.toBeFocused();
+  await field(3, 3).focus();
+  await page.evaluate(
+    () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+  );
+  await expect(field(3, 3)).toBeFocused();
+  await typed(field(3, 3), "7");
+  await expect(field(3, 3)).toHaveValue("7");
+  await expect(page.getByText("Sets element 3, 3 of MapA to 7")).toBeVisible();
+  // Tab still leaves the table, and Shift+Tab comes back to the cell it holds: this one now.
+  await page.keyboard.press("Tab");
+  await expect(field(3, 3)).not.toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(field(3, 3)).toBeFocused();
 });
 
 test("a click into a field after the focus left the grid keeps the focus in that field", async ({
@@ -1105,9 +1191,13 @@ test("a curve's grid has its shape's columns, and a cell the file does not state
     await expect(cell).toHaveClass("hollow");
   }
   await expect(
-    page.getByText("Paste 1 row of 6 values from a spreadsheet to replace them all.", {
-      exact: true,
-    }),
+    page.getByText(
+      "Paste 1 row of 6 values from a spreadsheet to replace them all, or one value into a " +
+        "cell to set it.",
+      {
+        exact: true,
+      },
+    ),
   ).toBeVisible();
 
   // Typed into, a hollow cell plans what `set_cell` writes: the whole init, the cells it lacked 0.
@@ -1443,8 +1533,12 @@ test("a pasted curve replaces every value in one edit", async ({ page, gui }) =>
   await openValues(page, gui.address, "CurveA");
 
   await paste(page, "12.004\t9.5\t8.5\t8\t7.5\t7");
-  await expect(page.getByText("Replaces every value of CurveA")).toBeVisible();
-  await expect(page.getByText("Changes 1 file: controller.ddd.json")).toBeVisible();
+  // The object's own shape: the sentence takes nothing for a header.
+  await expect(
+    page.getByText("Replaces every value of CurveA. Changes 1 file: controller.ddd.json", {
+      exact: true,
+    }),
+  ).toBeVisible();
 
   await page.getByRole("button", { name: "Apply to 1 file" }).click();
   await expect
@@ -1462,12 +1556,140 @@ test("a pasted map takes its header row and column", async ({ page, gui }) => {
   await page.getByRole("button", { name: "Raw" }).click();
 
   await paste(page, MAP_A_PASTE);
+  await expect(
+    page
+      .getByRole("region", { name: "Replace the values" })
+      .getByText(
+        "Replaces every value of MapA; the first row and column pasted are taken for a header " +
+          "and not written. Changes 1 file: controller.ddd.json",
+        { exact: true },
+      ),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Apply to 1 file" }).click();
 
   await expect
     .poll(() => definitionOf(gui.directory, CONTROLLER, "MapA").init[0])
     .toEqual([1, 2, 3, 4, 5, 6]);
   expect(definitionOf(gui.directory, CONTROLLER, "MapA").init[3]).toEqual([19, 20, 21, 22, 23, 24]);
+});
+
+// Decision 15.1: a table with a row and a column more than the object's own shape is taken to have
+// a header, whatever it holds, and its first row and column are left out - and the sentence over
+// the preview says so, for a reader who meant something else to learn it before opening Show
+// changes.
+test("two rows of four pasted into a curve of three say that their first row and column are not written", async ({
+  page,
+  copiedGui,
+}) => {
+  const gui = await copiedGui("demo", curveOfThree);
+  await openValues(page, gui.address, "CurveA");
+  await page.getByRole("button", { name: "Raw" }).click();
+  const grid = page.getByRole("grid", { name: "Values of CurveA" });
+  await expectRow(grid, ["1200", "900", "800"]);
+
+  await paste(page, "10\t20\t30\t40\n50\t60\t70\t80");
+  const offer = page.getByRole("region", { name: "Replace the values" });
+  await expect(
+    offer.getByText(
+      "Replaces every value of CurveA; the first row and column pasted are taken for a header " +
+        "and not written. Changes 1 file: controller.ddd.json",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(offer.getByRole("button", { name: "Show changes" })).toBeVisible();
+  await page.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect
+    .poll(() => definitionOf(gui.directory, CONTROLLER, "CurveA").init)
+    .toEqual([60, 70, 80]);
+});
+
+// Decision 15.2: one value pasted where a cell has the focus - with the line break a spreadsheet
+// puts after a single cell copied - sets that cell as though typed there, and joins the cells
+// typed before it in one plan. Read as a table, it was refused as one of the wrong shape, and the
+// cells typed went with it. The cell has the focus by a click, then by an arrow.
+test("one value pasted into a cell sets that cell, held with the cells typed before it", async ({
+  page,
+  gui,
+}) => {
+  await openValues(page, gui.address, "CurveA");
+  const grid = page.getByRole("grid", { name: "Values of CurveA" });
+  const cell = (element: number) => grid.getByRole("textbox", { name: `element ${element}` });
+  await typed(cell(1), "13");
+  await cell(2).click();
+  await expect(cell(2)).toBeFocused();
+  // Taken by the page, which puts the value in the field itself: the browser drops nothing in.
+  expect(await pasteWhereFocused(page, "14\n")).toBe(true);
+  await expect(cell(2)).toHaveValue("14");
+  await expect(cell(1)).toHaveValue("13");
+
+  await cell(2).press("ArrowRight");
+  await expect(cell(3)).toBeFocused();
+  expect(await pasteWhereFocused(page, "15\r\n")).toBe(true);
+  await expectRow(grid, ["13", "14", "15", "7.5", "7", "6.5"]);
+  await expect(
+    page
+      .getByRole("region", { name: "Set the cells" })
+      .getByText(
+        "Sets 3 elements of CurveA: element 1 to 13 ms; element 2 to 14 ms; element 3 to 15 ms",
+      ),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect
+    .poll(() => definitionOf(gui.directory, CONTROLLER, "CurveA").init)
+    .toEqual([1300, 1400, 1500, 750, 700, 650]);
+});
+
+// A paste of no text - an empty one, or an image alone, whose text is empty - leaves the cell it is
+// pasted into as it was, as a text field keeps its own (decision 15.2): the page takes
+// nothing of it, and the grid reads no table of it, where the cell's field was emptied.
+test("a paste with no text leaves the cell pasted into as it was, and the cells typed beside it", async ({
+  page,
+  gui,
+}) => {
+  await openValues(page, gui.address, "CurveA");
+  const grid = page.getByRole("grid", { name: "Values of CurveA" });
+  const cell = (element: number) => grid.getByRole("textbox", { name: `element ${element}` });
+  await typed(cell(1), "13");
+  await typed(cell(2), "14");
+  const sentence = page
+    .getByRole("region", { name: "Set the cells" })
+    .getByText("Sets 2 elements of CurveA: element 1 to 13 ms; element 2 to 14 ms");
+  await expect(sentence).toBeVisible();
+  await expect(cell(2)).toBeFocused();
+  expect(await pasteWhereFocused(page, "")).toBe(false);
+  await expect(cell(2)).toHaveValue("14");
+  await expect(cell(1)).toHaveValue("13");
+  await expect(sentence).toBeVisible();
+  await expect(page.getByText(/^expected 1 row of 6/)).toHaveCount(0);
+});
+
+// One value is a cell's only where a cell has the focus: anything more pasted into a cell, and
+// one value pasted with the focus on no cell, is a table, which replaces every value in place of
+// the cells typed before it.
+test("a table pasted into a cell replaces every value, and one value pasted beside the cells is a table", async ({
+  page,
+  gui,
+}) => {
+  await openValues(page, gui.address, "CurveA");
+  const grid = page.getByRole("grid", { name: "Values of CurveA" });
+  await typed(grid.getByRole("textbox", { name: "element 1" }), "13");
+  await grid.getByRole("textbox", { name: "element 3" }).click();
+  expect(await pasteWhereFocused(page, "12.5\t9.5\t8.5\t8\t7.5\t7\n")).toBe(true);
+  await expect(
+    page
+      .getByRole("region", { name: "Replace the values" })
+      .getByText("Replaces every value of CurveA. Changes 1 file: controller.ddd.json", {
+        exact: true,
+      }),
+  ).toBeVisible();
+  await expectRow(grid, ["12", "9", "8", "7.5", "7", "6.5"]);
+
+  await page.getByRole("button", { name: "Raw" }).focus();
+  expect(await pasteWhereFocused(page, "1400")).toBe(true);
+  await expect(
+    page.getByText("expected 1 row of 6, or 2 rows of 7 with a header; got 1 row of 1"),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
 });
 
 test("a block of the wrong shape is refused and nothing is written", async ({ page, gui }) => {
@@ -1824,6 +2046,19 @@ test("a scalar's value is typed key by key, written at its own init, and put bac
   await expect.poll(() => readFileSync(join(gui.directory, CONTROLLER)).equals(before)).toBe(true);
 });
 
+// Decision 15.2 in a grid of one cell: the value pasted into it is the cell's text, as typed,
+// where the browser dropped it in beside the text the field held.
+test("one value pasted into a scalar's cell sets it", async ({ page, gui }) => {
+  await openValues(page, gui.address, "ParameterA");
+  const cell = page.getByRole("textbox", { name: "the value" });
+  await cell.click();
+  expect(await pasteWhereFocused(page, "1000\r\n")).toBe(true);
+  await expect(cell).toHaveValue("1000");
+  await expect(page.getByText("Sets the value of ParameterA to 1000 Hz")).toBeVisible();
+  await page.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect.poll(() => definitionOf(gui.directory, CONTROLLER, "ParameterA").init).toBe(4000);
+});
+
 test("a scalar stating no init gains one, which the preview shows", async ({ page, gui }) => {
   expect(definitionOf(gui.directory, SENSOR_HUB, "ValueC")).not.toHaveProperty("init");
   await openValues(page, gui.address, "ValueC", "SensorHub");
@@ -1897,9 +2132,13 @@ test("a grid that states nothing is drawn hollow with no picture, says so, and t
   await expect(picture).toHaveCount(0);
   // One producer, so the grid is writable and a paste is offered.
   await expect(
-    page.getByText("Paste 1 row of 4 values from a spreadsheet to replace them all.", {
-      exact: true,
-    }),
+    page.getByText(
+      "Paste 1 row of 4 values from a spreadsheet to replace them all, or one value into a " +
+        "cell to set it.",
+      {
+        exact: true,
+      },
+    ),
   ).toBeVisible();
 
   await typed(grid.getByRole("textbox", { name: "element 2, not stated", exact: true }), "1");
@@ -2038,49 +2277,25 @@ test("a values address naming a file the project does not include still draws th
   );
 });
 
-/** Controller made to declare a scalar type, `Gain_t`, and two declarations naming it: `GainA`, a
- * parameter of no dimensions stating 10, and `GainRow`, a value block of three. Neither states a
- * datatype of its own: the type does. */
-function namingAScalarType(directory: string): void {
-  const path = join(directory, CONTROLLER);
-  const data = JSON.parse(readFileSync(path, "utf8"));
-  data.component.types = [
-    {
-      type: "scalar",
-      name: "Gain_t",
-      description: "A gain in hertz",
-      datatype: "uint16",
-      unit: "Hz",
-      conversion: { factor: 0.25 },
-    },
-  ];
-  data.component.interface.push(
-    {
-      scope: "local",
-      definition: {
-        kind: "parameter",
-        name: "GainA",
-        id: "g41na0000001",
-        typename: "Gain_t",
-        init: 10,
-        volatile: false,
-      },
-    },
-    {
-      scope: "local",
-      definition: {
-        kind: "value_block",
-        name: "GainRow",
-        id: "g41na0000002",
-        typename: "Gain_t",
-        dimensions: [3],
-        init: [1, 2, 3],
-        volatile: false,
-      },
-    },
-  );
-  writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`, "utf8");
-}
+/** The Undo control joins a values grid's heading after the way back to the component, just before
+ * the row's status, as the project's own heading has it (16:M23): drawn before it, it moved "Back to
+ * Controller" by its width as the Apply's edit reached the state, and a press made on Back then
+ * opened the strip - the journey below met it about once in thirty runs. */
+test("the way back keeps its place in a values grid's heading as the Undo control joins it", async ({
+  page,
+  gui,
+}) => {
+  await openValues(page, gui.address, "CurveA");
+  const back = page.getByRole("button", { name: "Back to Controller", exact: true });
+  const cell = page.getByRole("textbox", { name: "element 3" });
+  await expect(cell).toHaveValue("8");
+  await expect(back).toBeVisible();
+  const before = await placed(back);
+  await typed(cell, "7.5");
+  await page.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect(page.getByRole("button", { name: "Undo element 3 of CurveA" })).toBeVisible();
+  expect(await placed(back)).toEqual(before);
+});
 
 test("a scalar naming a scalar type reads scalar, and its value is typed, written and read back", async ({
   page,
@@ -2186,6 +2401,107 @@ test("a declaration's description is read in its panel, written, put back, and t
 // Spec 2026-09-30 §6: what an edit wrote shows at once. The file is read again after the write; the
 // field holds what was applied meanwhile, and a read held back by the journey is the interim state
 // that an auto-retrying assertion cannot otherwise see.
+/** A description's plan on its way (16:M17): the panel says so where its consequence will stand,
+ * and says the consequence once the plan has come, held until then. */
+test("a description the server fails on says so in its words over the plan asked again, which a press sends again", async ({
+  page,
+  gui,
+}) => {
+  const before = readFileSync(join(gui.directory, CONTROLLER));
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("row", { name: /ParameterA/ }).click();
+  const panel = page.getByRole("complementary", { name: "ParameterA" });
+  const field = panel.getByRole("textbox", { name: "Description in Controller" });
+  await field.fill("Engine speed gain");
+  const describing = panel.getByRole("region", { name: "Describe the declaration" });
+  const apply = describing.getByRole("button", { name: "Apply to 1 file" });
+  await expect(apply).toBeEnabled();
+
+  // The page's only request to `/api/edit` is an Apply's POST, failed from here on.
+  const failed = await failing(page, "/api/edit", "http");
+  await apply.click();
+  const refused = describing.getByRole("status");
+  await expect(refused).toHaveText(`The change was refused: ${SERVER_FAILED}`);
+  // Under the sentence, held until the reader's next choice, the plan asked again once the Apply
+  // was answered, and its Apply (`offerShown`), as every panel offers it; what was typed stays.
+  await expect(
+    describing.getByText(
+      "Sets the description of ParameterA in Controller. Changes 1 file: controller.ddd.json",
+    ),
+  ).toBeVisible();
+  await expect(apply).toBeEnabled();
+  await expect(refused).toHaveText(`The change was refused: ${SERVER_FAILED}`);
+  await expect(field).toHaveValue("Engine speed gain");
+  expect(readFileSync(join(gui.directory, CONTROLLER)).equals(before)).toBe(true);
+  expect(failed()).toBe(1);
+  // Pressed, it is sent again, and refused again.
+  await apply.click();
+  await expect.poll(failed).toBe(2);
+  await expect(refused).toHaveText(`The change was refused: ${SERVER_FAILED}`);
+});
+
+test("a description whose plan the server fails on when asked again offers nothing to press beside the refusal", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("row", { name: /ParameterA/ }).click();
+  const panel = page.getByRole("complementary", { name: "ParameterA" });
+  const field = panel.getByRole("textbox", { name: "Description in Controller" });
+  await field.fill("Engine speed gain");
+  const describing = panel.getByRole("region", { name: "Describe the declaration" });
+  const plan = describing.getByText(
+    "Sets the description of ParameterA in Controller. Changes 1 file: controller.ddd.json",
+  );
+  await expect(plan).toBeVisible();
+
+  // From here on the server fails the Apply, and the plan the panel asks again once the Apply is
+  // answered: the query keeps the plan it had, whose fingerprints the server would refuse.
+  const edits = await failing(page, "/api/edit", "http");
+  const plans = await failing(page, "/api/description-plan", "http");
+  await describing.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect(describing.getByRole("status")).toHaveText(
+    `The change was refused: ${SERVER_FAILED}`,
+  );
+  await expect.poll(plans).toBeGreaterThanOrEqual(1);
+  // Beside its plan's own refusal, a write offers nothing to apply (`offerShown`), the refusal of
+  // the Apply said over it - once every query the Apply asked again has answered too.
+  await expect(describing.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+  await expect(plan).toHaveCount(0);
+  await expect(field).toBeEnabled();
+  await expect(describing.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+  expect(edits()).toBe(1);
+});
+
+test("a description typed says it is planning while its plan is on its way", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("row", { name: /ParameterA/ }).click();
+  const panel = page.getByRole("complementary", { name: "ParameterA" });
+  const describing = panel.getByRole("region", { name: "Describe the declaration" });
+
+  const release = await held(page, "/api/description-plan");
+  try {
+    await panel
+      .getByRole("textbox", { name: "Description in Controller" })
+      .fill("Engine speed gain");
+    await expect(describing.getByText("Planning…", { exact: true })).toBeVisible();
+  } finally {
+    release();
+  }
+  await expect(
+    describing.getByText(
+      "Sets the description of ParameterA in Controller. Changes 1 file: controller.ddd.json",
+    ),
+  ).toBeVisible();
+  await expect(describing.getByText("Planning…")).toHaveCount(0);
+});
+
 test("the description field shows what an Apply wrote while the file is still being read again", async ({
   page,
   gui,
@@ -2283,4 +2599,73 @@ test("the project screen's own panel offers no description, and still says what 
   ).toBeVisible();
   await expect(panel.getByRole("textbox")).toHaveCount(0);
   await expect(panel.getByRole("region", { name: "Describe the declaration" })).toHaveCount(0);
+});
+
+test("the Graph and the values grid take the window, and the other pages keep the 1,100 px measure", async ({
+  page,
+  gui,
+}) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  const app = page.locator(".app");
+  const widthOf = async () => (await app.boundingBox())?.width ?? 0;
+  // The window less any scrollbar of the page's own.
+  const window = () => page.evaluate(() => document.documentElement.clientWidth);
+
+  await page.goto(gui.address);
+  await expect(page.getByRole("region", { name: "Modules" })).toBeVisible();
+  expect(await widthOf()).toBe(await window());
+  // The canvas fills what the page gives it, less the page's own padding on each side.
+  const canvas = await page.getByRole("region", { name: "Modules" }).boundingBox();
+  expect(canvas?.width).toBeGreaterThan(1700);
+
+  await page.getByRole("link", { name: "Table" }).click();
+  await expect(page.getByRole("grid", { name: "Components" })).toBeVisible();
+  expect(await widthOf()).toBe(1100);
+
+  await openValues(page, gui.address, "CurveA");
+  await expect(page.getByRole("grid", { name: "Values of CurveA" })).toBeVisible();
+  expect(await widthOf()).toBe(await window());
+
+  // The component's own page, one step back, is a table's page again.
+  await page
+    .getByRole("button", { name: /^Back to/ })
+    .first()
+    .click();
+  await expect(page.getByRole("heading", { name: "Controller", level: 1 })).toBeVisible();
+  expect(await widthOf()).toBe(1100);
+});
+
+test("a plot's readings keep every digit of the longest value a cell holds, inside the box", async ({
+  page,
+  copiedGui,
+}) => {
+  // CurveA as a uint32 whose cells hold 4294967295 counts: ten digits raw, eleven characters in ms.
+  const gui = await copiedGui("demo", (directory) => {
+    const path = join(directory, CONTROLLER);
+    const data = JSON.parse(readFileSync(path, "utf8"));
+    const entry = data.component.interface.find(
+      (declaration: { definition: { name: string } }) => declaration.definition.name === "CurveA",
+    );
+    entry.definition.datatype = "uint32";
+    entry.definition.init = [4294967295, 900, 800, 750, 700, 650];
+    writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`);
+  });
+  await openValues(page, gui.address, "CurveA");
+  const plot = page.getByRole("img", { name: "plotted against AxisA" });
+  const sides = plot.locator(".values-plot-side");
+  await expect(sides).toHaveText(["42949672.95", "6.5"]);
+  for (const reading of ["physical", "raw"]) {
+    if (reading === "raw") await page.getByRole("button", { name: "Raw" }).click();
+    const frame = await plot.boundingBox();
+    const marker = await plot.locator("circle").first().boundingBox();
+    for (const box of await sides.evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const { left, right } = node.getBoundingClientRect();
+        return { left, right };
+      }),
+    )) {
+      expect(box.left).toBeGreaterThanOrEqual(frame?.x ?? 0);
+      expect(box.right).toBeLessThan(marker?.x ?? 0);
+    }
+  }
 });

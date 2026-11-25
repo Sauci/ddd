@@ -1,7 +1,8 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   CONTROLLER,
+  draggedAcross,
   drift,
   driftIn,
   EVENT_LOGGER,
@@ -93,6 +94,120 @@ test("a disagreement is counted once above both tables, as ddd check counts it, 
   await expect(page.getByRole("row", { name: /definition-mismatch/ })).toHaveCount(2);
 });
 
+test("Close puts the focus back on the finding's row", async ({ page, gui }) => {
+  drift(gui.directory);
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Findings" }).click();
+  const row = page
+    .getByRole("row", { name: "definition-mismatch" })
+    .filter({ hasText: "controller.ddd.json" });
+  await row.focus();
+  await page.keyboard.press("Enter");
+  const panel = page.getByRole("complementary", { name: "definition-mismatch" });
+  await panel.getByRole("button", { name: "Close definition-mismatch" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(panel).toHaveCount(0);
+  await expect(row).toBeFocused();
+});
+
+test("a row the Findings tab's filter leaves stays selected once the filter is emptied", async ({
+  page,
+  gui,
+}) => {
+  // 16:I14: the filter asks the server for the findings a file's name holds, and the row it leaves
+  // keeps its key - selected there, it is the one selected once every finding is back.
+  drift(gui.directory);
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Findings" }).click();
+  const mismatches = page.getByRole("row", { name: "definition-mismatch" });
+  await expect(mismatches).toHaveCount(2);
+
+  const filter = page.getByRole("textbox", { name: "Filter findings" });
+  await filter.fill("sensor_hub");
+  await expect(filter).toHaveAccessibleDescription("1 of 2 findings");
+  await expect(mismatches).toHaveCount(1);
+  await expect(mismatches).toContainText("sensor_hub.ddd.json");
+  await mismatches.click();
+  await expect(page.getByRole("complementary", { name: "definition-mismatch" })).toBeVisible();
+
+  await filter.fill("");
+  await expect(mismatches).toHaveCount(2);
+  const selected = page.getByRole("row", { selected: true });
+  await expect(selected).toHaveCount(1);
+  await expect(selected).toContainText("sensor_hub.ddd.json");
+  // The line above the table counts the one statement the two rows make, filtered or not.
+  await expect(page.getByText("1 finding · 1 error", { exact: true })).toBeVisible();
+});
+
+test("a component's page reached from a finding leads back to the Findings tab, as it was left", async ({
+  page,
+  gui,
+}) => {
+  // 16:M16: a component's page has no tabs of its own, and the masthead's project link goes to the
+  // Graph: the page leads back to the tab it was reached from, the Findings tab at its place.
+  drift(gui.directory);
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Findings" }).click();
+  const filter = page.getByRole("textbox", { name: "Filter findings" });
+  await filter.fill("sensor_hub");
+  await expect(filter).toHaveAccessibleDescription("1 of 2 findings");
+  const row = page.getByRole("row", { name: "definition-mismatch" });
+  await row.click();
+  const panel = page.getByRole("complementary", { name: "definition-mismatch" });
+  await panel.getByRole("link", { name: "Open ValueA" }).click();
+  await expect(page).toHaveURL(/\/component\?file=.*variable=ValueA$/);
+
+  await page.getByRole("button", { name: "Back to Findings", exact: true }).click();
+  await expect(page).toHaveURL(/\/project\?view=findings&text=sensor_hub$/);
+  await expect(filter).toHaveValue("sensor_hub");
+  await expect(panel).toBeVisible();
+  await expect(row).toHaveAttribute("aria-selected", "true");
+  // A change of page, as Back is: the focus on the new page's heading (16:I13).
+  await expect(page.getByRole("heading", { name: "DemoDevice", level: 1 })).toBeFocused();
+
+  // Reached from another tab, the way back names that tab, and leads to it.
+  await page.getByRole("link", { name: "Table", exact: true }).click();
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("button", { name: "Back to Table", exact: true }).click();
+  await expect(page).toHaveURL(/\/project\?view=table$/);
+  await expect(page.getByRole("grid", { name: "Components" })).toBeVisible();
+});
+
+test("a finding's words dragged over are selected, and open no panel, where a click on its row does", async ({
+  page,
+  gui,
+}) => {
+  // 16:M21: a press on a row turned text selection off on it, and selected the row as it went
+  // down, its panel opening under a drag over its words.
+  drift(gui.directory);
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Findings" }).click();
+  const row = page
+    .getByRole("row", { name: "definition-mismatch" })
+    .filter({ hasText: "controller.ddd.json" });
+  const words = row.getByRole("gridcell").first();
+  await expect(words).toContainText("is declared differently");
+  expect(await draggedAcross(page, words)).toContain("is declared differently");
+  await expect(page.getByRole("complementary")).toHaveCount(0);
+  await expect(row).toHaveAttribute("aria-selected", "false");
+  await words.click();
+  await expect(page.getByRole("complementary", { name: "definition-mismatch" })).toBeVisible();
+});
+
+test("a filter the server fails on says so above the table", async ({ page, gui }) => {
+  drift(gui.directory);
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Findings" }).click();
+  await expect(page.getByRole("row", { name: "definition-mismatch" })).toHaveCount(2);
+  await failing(
+    page,
+    (url) => url.pathname === "/api/findings" && url.searchParams.has("text"),
+    "http",
+  );
+  await page.getByRole("textbox", { name: "Filter findings" }).fill("sensor_hub");
+  await expect(page.getByText(SERVER_FAILED, { exact: true })).toBeVisible();
+});
+
 test("a disagreement is settled from the finding that reports it", async ({ page, gui }) => {
   // ValueE is written by Controller and read by UserInterface and EventLogger, all three in
   // Hz - the only demo variable with one producer and two consumers, so drifting one reader's
@@ -163,7 +278,7 @@ test("a missing id is fixed", async ({ page, gui }) => {
   await page.getByRole("row", { name: "missing-id" }).click();
 
   const panel = page.getByRole("complementary", { name: "missing-id" });
-  await expect(panel.locator(".chip")).toHaveText("note");
+  await expect(panel.locator(".chip")).toHaveText("info");
   await expect(panel.getByText("'ValueH' has no 'id'")).toBeVisible();
 
   await panel.getByRole("button", { name: "Give 'ValueH' an id" }).click();
@@ -256,6 +371,46 @@ test("a finding fixed from outside while its panel is open is no longer reported
   );
   await expect(panel).toHaveCount(0);
 });
+
+test("a finding whose declaration moved up in its file keeps its panel, on the finding at its new place", async ({
+  page,
+  gui,
+}) => {
+  // UserInterface's own reading of ValueC drifted from SensorHub's: a definition-mismatch on
+  // UserInterface's third declaration, whose fix sets its unit back.
+  driftIn(gui.directory, USER_INTERFACE, "ValueC", "K");
+  const file = join(gui.directory, USER_INTERFACE);
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Findings", exact: true }).click();
+  await page
+    .getByRole("row", { name: "definition-mismatch" })
+    .filter({ hasText: "user_interface.ddd.json" })
+    .click();
+  const panel = page.getByRole("complementary", { name: "definition-mismatch" });
+  await panel.getByRole("button", { name: "Use the unit declared in sensor_hub" }).click();
+  await panel.getByRole("button", { name: "Show changes" }).click();
+  // Where the fix writes ValueC's unit: the line of ValueC's own unit in the file as it stands.
+  const where = panel.locator(".hunk .where");
+  await expect(where).toHaveText(`user_interface.ddd.json, line ${unitOfValueCAt(file)}`);
+
+  // ValueF's declaration, the one above it, taken out from outside, as an editor saving the file
+  // would: the same finding, in the same words, now stands at UserInterface's second declaration,
+  // and the panel stays on it, its fix planned again at the line ValueC's unit moved up to.
+  const data = JSON.parse(readFileSync(file, "utf8"));
+  data.component.interface.splice(1, 1);
+  writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
+  await expect(where).toHaveText(`user_interface.ddd.json, line ${unitOfValueCAt(file)}`);
+  await expect(panel.getByText("is declared differently by component")).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "no longer reported" })).toHaveCount(0);
+});
+
+/** The line, counted from 1, of ValueC's own `"unit"` in a file as it stands: the first after its
+ * name. */
+function unitOfValueCAt(file: string): number {
+  const lines = readFileSync(file, "utf8").split("\n");
+  const name = lines.findIndex((line) => line.includes('"name": "ValueC"'));
+  return lines.findIndex((line, at) => at > name && line.includes('"unit"')) + 1;
+}
 
 /** What the Findings tab says when a fix's Apply is refused because a file changed under its
  * preview: `FindingsPage.tsx`'s own sentence, held until the reader's next choice. */
@@ -386,7 +541,7 @@ test("a page of findings still being read is drawn as rows saying so, which the 
   await expect(pending).toHaveCount(0);
 });
 
-test("a fix the server fails on shows its refusal in the panel in place of the fix, is sent once, and can be chosen again and applied", async ({
+test("a fix the server fails on shows its refusal in the panel over the fix asked again, is sent once, and can be chosen again and applied", async ({
   page,
   gui,
 }) => {
@@ -407,9 +562,11 @@ test("a fix the server fails on shows its refusal in the panel in place of the f
   await fixing.getByRole("button", { name: "Apply to 1 file" }).click();
 
   // It stays until the reader chooses again, as every refusal of the tab does, and the panel
-  // draws it in place of the consequence and the Apply.
+  // draws it over the fix asked again once the Apply was answered, and its Apply (`offerShown`).
   await expect(fixing.getByRole("status")).toHaveText(`The change was refused: ${SERVER_FAILED}`);
-  await expect(fixing.getByRole("button", { name: "Apply to 1 file" })).toHaveCount(0);
+  await expect(fixing.getByRole("button", { name: "Apply to 1 file" })).toBeEnabled();
+  await expect(fixing.getByText("Changes 1 file: controller.ddd.json")).toBeVisible();
+  await expect(fixing.getByRole("status")).toHaveText(`The change was refused: ${SERVER_FAILED}`);
   // The finding is still reported, and the panel still shows it.
   await expect(panel.getByText("'ValueH' has no 'id'")).toBeVisible();
   // A guard against a write by another path: the POST is answered by `failing`, not the server.
@@ -429,4 +586,67 @@ test("a fix the server fails on shows its refusal in the panel in place of the f
   await fixing.getByRole("button", { name: "Apply to 1 file" }).click();
   await expect(page.getByText("Nothing to report")).toBeVisible();
   expect(valueH(gui.directory).id).toMatch(/^[abcdefghjkmnpqrstvwxyz0-9]{12}$/);
+});
+
+test("a fix whose finding's fixes the server fails on when asked again, once its apply was refused, offers nothing to press", async ({
+  page,
+  gui,
+}) => {
+  unstamp(gui.directory, CONTROLLER, "ValueH");
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Findings", exact: true }).click();
+  await page.getByRole("row", { name: "missing-id" }).click();
+  const panel = page.getByRole("complementary", { name: "missing-id" });
+  const fix = panel.getByRole("button", { name: "Give 'ValueH' an id" });
+  await fix.click();
+  const fixing = panel.getByRole("region", { name: "Give 'ValueH' an id" });
+  const apply = fixing.getByRole("button", { name: "Apply to 1 file" });
+  await expect(apply).toBeVisible();
+
+  // From here on the server fails the Apply, and the fixes the tab asks again once the Apply is
+  // answered: the query keeps the fixes it had, whose fingerprints the server would refuse.
+  const edits = await failing(page, "/api/edit", "http");
+  const fixes = await failing(page, "/api/fix", "http");
+  await apply.click();
+  await expect.poll(fixes).toBeGreaterThanOrEqual(1);
+  // The fixes refused, the panel offers none of those kept from before, nor their Apply
+  // (`offerShown`): the alert over the panel says why.
+  await expect(page.getByRole("alert").and(page.locator(":above(.panel)"))).toHaveText(
+    SERVER_FAILED,
+  );
+  await expect(fix).toHaveCount(0);
+  await expect(apply).toHaveCount(0);
+  expect(edits()).toBe(1);
+});
+
+test("two files of one name are told apart by their paths, and the filter finds each by what its row says", async ({
+  page,
+  copiedGui,
+}) => {
+  // Two components of one name in two folders, each saved half way: each files an error, and the
+  // banner under the masthead names the pair. The File column draws each by its path from the
+  // first folder that differs, and the banner leads each of them to its own findings (16:M15).
+  const gui = await copiedGui("demo", (directory) => {
+    const description = join(directory, "demo.ddd.json");
+    const data = JSON.parse(readFileSync(description, "utf8"));
+    data.project.includes.push("left/gauge.ddd.json", "right/gauge.ddd.json");
+    writeFileSync(description, `${JSON.stringify(data, null, 2)}\n`);
+    for (const folder of ["left", "right"]) {
+      mkdirSync(join(directory, folder));
+      writeFileSync(join(directory, folder, "gauge.ddd.json"), '{"component": {"name": "Gauge"');
+    }
+  });
+  await page.goto(gui.address);
+  const banner = page.getByRole("status").filter({ hasText: "did not load" });
+  await banner.getByRole("link", { name: "left/gauge.ddd.json" }).click();
+  await expect(page.getByRole("textbox", { name: "Filter findings" })).toHaveValue(
+    "left/gauge.ddd.json",
+  );
+  const rows = page.getByRole("grid", { name: "Findings" }).getByRole("row");
+  await expect(rows.filter({ hasText: "left/gauge.ddd.json" })).not.toHaveCount(0);
+  await expect(rows.filter({ hasText: "right/gauge.ddd.json" })).toHaveCount(0);
+
+  await page.getByRole("textbox", { name: "Filter findings" }).fill("right/gauge.ddd.json");
+  await expect(rows.filter({ hasText: "right/gauge.ddd.json" })).not.toHaveCount(0);
+  await expect(rows.filter({ hasText: "left/gauge.ddd.json" })).toHaveCount(0);
 });

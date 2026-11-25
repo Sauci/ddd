@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { DeclarableReply } from "../api/types";
+import type { DeclarableName, DeclarableReply } from "../api/types";
 import {
   chosenName,
   declareSentence,
@@ -12,8 +12,12 @@ import {
   keyUnsettled,
   labelOf,
   modeOf,
+  NAMES_SHOWN,
+  nameList,
   removalSentence,
   scopesOf,
+  statedValues,
+  stillNeeded,
 } from "./declarations";
 
 function offer(key: string, required: boolean, editor = "none") {
@@ -66,6 +70,83 @@ describe("which of the two verbs the name field has landed on", () => {
   test("a name it does not is declared", () => {
     expect(modeOf("Pressure", REPLY.names)).toBe("declare");
     expect(chosenName("Pressure", REPLY.names)).toBeNull();
+  });
+});
+
+describe("the Name list, narrowed by what is typed and drawn to a cap", () => {
+  /** `count` names a generated project could offer, `C00000_O0000` on, a hundred to a component. */
+  function generated(count: number): DeclarableName[] {
+    return Array.from({ length: count }, (_, index) => ({
+      name: `C${String(Math.floor(index / 100)).padStart(5, "0")}_O${String(index % 100).padStart(4, "0")}`,
+      kind: "measurement",
+      producer: `C${String(Math.floor(index / 100)).padStart(5, "0")}`,
+      scopes: ["input"],
+    }));
+  }
+  const labels = (typed: string, names: DeclarableName[]) =>
+    nameList(names, typed).sections.flatMap((section) => section.choices.map((c) => c.label));
+
+  test("every name holding the text is listed, whatever its case, as the unit picker narrows", () => {
+    const names: DeclarableName[] = [
+      ...REPLY.names,
+      { name: "valueD", kind: "measurement", producer: null, scopes: ["input"] },
+    ];
+    expect(labels("VALUE", names)).toEqual(["ValueC", "valueD"]);
+    expect(labels("", names)).toEqual(["ValueC", "Orphan", "valueD"]);
+  });
+
+  // Pinned by the literal, not by the constant, which a test comparing against it would follow.
+  test("fifty at most are drawn, and the line under them says how many more match", () => {
+    expect(NAMES_SHOWN).toBe(50);
+    const list = nameList(generated(120), "");
+    expect(list.sections.flatMap((section) => section.choices)).toHaveLength(50);
+    expect(list.footnote).toBe("70 more names match: type to narrow the list.");
+  });
+
+  test("the cap holds whatever narrows the list, and the line counts what it narrowed to", () => {
+    // `_O0010` to `_O0019` of each of 263 components: 2,630 names, fifty of them drawn.
+    const list = nameList(generated(26300), "_o001");
+    expect(list.sections.flatMap((section) => section.choices)).toHaveLength(50);
+    expect(list.footnote).toBe("2,580 more names match: type to narrow the list.");
+  });
+
+  test("one more is said in the singular", () => {
+    expect(nameList(generated(51), "").footnote).toBe(
+      "1 more name matches: type to narrow the list.",
+    );
+  });
+
+  test("the name the text spells exactly comes first, so the cap never hides it", () => {
+    // Each of the eighty holds "O00", and so does the name spelling it, last in the server's order.
+    const names: DeclarableName[] = [
+      ...generated(80),
+      { name: "O00", kind: "measurement", producer: null, scopes: ["input"] },
+    ];
+    const listed = labels("O00", names);
+    expect(listed).toHaveLength(50);
+    expect(listed.slice(0, 3)).toEqual(["O00", "C00000_O0000", "C00000_O0001"]);
+  });
+
+  test("a list drawing every name that matches says nothing more", () => {
+    expect(nameList(generated(120), "C00001_O001").footnote).toBeUndefined();
+    expect(nameList(generated(50), "").footnote).toBeUndefined();
+  });
+
+  test("no name holding the text lists nothing, and no section is left empty", () => {
+    expect(nameList(generated(120), "Pressure")).toEqual({ sections: [], footnote: undefined });
+  });
+
+  test("each entry is the name, under the project's variables, with its kind and its producer", () => {
+    expect(nameList(REPLY.names, "").sections).toEqual([
+      {
+        id: "names",
+        title: "This project's variables",
+        choices: [
+          { id: "ValueC", label: "ValueC", detail: "measurement from SensorHub" },
+          { id: "Orphan", label: "Orphan", detail: "measurement from no producer" },
+        ],
+      },
+    ]);
   });
 });
 
@@ -239,6 +320,15 @@ describe("the sentence that tells reading from declaring", () => {
     );
   });
 
+  test("a listed name's sentence follows the scope chosen, not the verb reading it", () => {
+    expect(declareSentence("Orphan", "", "output", REPLY)).toBe(
+      "Produces Orphan as this project declares it.",
+    );
+    expect(declareSentence("ValueC", "", "local", REPLY)).toBe(
+      "Keeps ValueC to itself as SensorHub declares it.",
+    );
+  });
+
   test("nothing typed asks for a name", () => {
     expect(declareSentence("", "", "input", REPLY)).toBe("Choose a variable, or type a new name.");
   });
@@ -300,12 +390,44 @@ describe("what removing a declaration leaves behind", () => {
       "Removes ValueA from SensorHub; Pump and Controller still declare it.",
     );
   });
+
+  test("while a file did not load, nothing left is said of the files that loaded alone", () => {
+    // 16:I10: Controller saved half-written, SensorHub's ValueA declared nowhere else that loaded.
+    // Controller still read it, in no index: "no other component declares" it was false, and the
+    // removal broke the project once Controller loaded again.
+    expect(
+      removalSentence(declaredBy(["SensorHub", "produces"]), "SensorHub", ["controller.ddd.json"]),
+    ).toBe(
+      "Removes ValueA, which no other file that loaded declares, and controller.ddd.json did " +
+        "not load.",
+    );
+    // Named as the banner under the masthead names them: past four, three and how many more.
+    expect(
+      removalSentence(declaredBy(["SensorHub", "produces"]), "SensorHub", [
+        "a.ddd.json",
+        "b.ddd.json",
+        "c.ddd.json",
+        "d.ddd.json",
+        "e.ddd.json",
+      ]),
+    ).toBe(
+      "Removes ValueA, which no other file that loaded declares, and a.ddd.json, b.ddd.json, " +
+        "c.ddd.json and 2 more did not load.",
+    );
+  });
+
+  test("while a file did not load, those left are named as they are: each still holds it", () => {
+    const variable = declaredBy(["SensorHub", "produces"], ["Controller", "reads"]);
+    expect(removalSentence(variable, "SensorHub", ["user_interface.ddd.json"])).toBe(
+      "Removes ValueA from SensorHub; Controller still reads it.",
+    );
+  });
 });
 
 describe("text left in a key's field", () => {
   test("a field with no text typed reads its value, and typed text equal to that reads as taken", () => {
-    expect(labelOf("volatile", undefined)).toBe("state nothing");
-    expect(labelOf("volatile", "")).toBe("state nothing");
+    expect(labelOf("unit", undefined)).toBe("state nothing");
+    expect(labelOf("unit", "")).toBe("state nothing");
     expect(labelOf("volatile", "false")).toBe("false");
     expect(keyUnsettled("volatile", {}, { volatile: "false" })).toBe(false);
     expect(keyUnsettled("volatile", { volatile: "false" }, { volatile: "false" })).toBe(false);
@@ -313,7 +435,15 @@ describe("text left in a key's field", () => {
 
   test("typed text that is not what the form states is not taken", () => {
     expect(keyUnsettled("volatile", { volatile: "fal" }, { volatile: "false" })).toBe(true);
-    expect(keyUnsettled("volatile", { volatile: "" }, {})).toBe(true);
+    expect(keyUnsettled("unit", { unit: "" }, {})).toBe(true);
+  });
+
+  test("a required key nothing states reads empty, not a choice the list never held", () => {
+    expect(labelOf("volatile", undefined, true)).toBe("");
+    expect(labelOf("volatile", "", true)).toBe("");
+    expect(labelOf("volatile", "false", true)).toBe("false");
+    expect(keyUnsettled("volatile", { volatile: "" }, {}, true)).toBe(false);
+    expect(keyUnsettled("volatile", { volatile: "fal" }, {}, true)).toBe(true);
   });
 
   test("the form is unsettled while a key it asks for holds such text, and only then", () => {
@@ -322,5 +452,62 @@ describe("text left in a key's field", () => {
     expect(formUnsettled("measurement", REPLY, { volatile: undefined }, {})).toBe(false);
     // A key this kind does not ask for is not in the form.
     expect(formUnsettled("value_block", REPLY, { datatype: "uin" }, {})).toBe(false);
+  });
+});
+
+describe("what the form still needs before it can add", () => {
+  test("a required key left unstated is named, and the storage as the one choice it is", () => {
+    expect(stillNeeded("Pressure", "measurement", {}, {}, REPLY)).toBe(
+      "Still needs volatile and datatype or typename.",
+    );
+  });
+
+  test("a key stated is no longer named", () => {
+    expect(stillNeeded("Pressure", "measurement", { volatile: "false" }, {}, REPLY)).toBe(
+      "Still needs datatype or typename.",
+    );
+    expect(
+      stillNeeded("Pressure", "measurement", { volatile: "false", typename: '"T"' }, {}, REPLY),
+    ).toBeNull();
+    expect(
+      stillNeeded("Pressure", "measurement", { volatile: "false", datatype: '"uint8"' }, {}, REPLY),
+    ).toBeNull();
+  });
+
+  test("a kind with no storage key names only its required keys", () => {
+    expect(stillNeeded("Block", "value_block", {}, {}, REPLY)).toBe(
+      "Still needs dimensions and volatile.",
+    );
+    expect(
+      stillNeeded("Block", "value_block", { dimensions: "[3]", volatile: "true" }, {}, REPLY),
+    ).toBeNull();
+  });
+
+  test("text left in a field is named too, the form holding Add back for it", () => {
+    const stated = { volatile: "false", datatype: '"uint8"' };
+    expect(stillNeeded("Pressure", "measurement", stated, { datatype: "uin" }, REPLY)).toBe(
+      "Text left in datatype is not taken yet.",
+    );
+    expect(
+      stillNeeded("Pressure", "measurement", {}, { volatile: "tr", datatype: "uin" }, REPLY),
+    ).toBe(
+      "Still needs volatile and datatype or typename. Text left in volatile and datatype is not taken yet.",
+    );
+  });
+
+  test("a name read, or no name or kind yet, needs nothing named", () => {
+    expect(stillNeeded("ValueC", "", {}, {}, REPLY)).toBeNull();
+    expect(stillNeeded("ValueC", "measurement", {}, {}, REPLY)).toBeNull();
+    expect(stillNeeded("", "measurement", {}, {}, REPLY)).toBeNull();
+    expect(stillNeeded("Pressure", "", {}, {}, REPLY)).toBeNull();
+    expect(stillNeeded("Pressure", "mystery", {}, {}, REPLY)).toBeNull();
+  });
+
+  test("a value block's rows state its dimensions once every row does", () => {
+    expect(statedValues({ volatile: "true" }, ["3", "N"])).toEqual({
+      volatile: "true",
+      dimensions: '[3,"N"]',
+    });
+    expect(statedValues({ volatile: "true" }, ["3", ""])).toEqual({ volatile: "true" });
   });
 });

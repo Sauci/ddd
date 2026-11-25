@@ -213,6 +213,20 @@ function numberRaw(text: string): { raw: string } | { refusal: string } {
   return "json" in read ? { raw: read.json } : { refusal: read.refusal };
 }
 
+/** Of a section's keys, the one the file may leave out. */
+const SECTION_OPTIONAL: readonly string[] = ["description"];
+
+/** Of a raster's keys, the two the file may leave out. */
+const RASTER_OPTIONAL: readonly string[] = ["cycle", "description"];
+
+/** Whether a field of an optional key holds nothing: the key is then to go, which a `set` says by
+ * carrying no `raw` at all (`Held`, `api/client.ts`) - where `""` sent as a json string is a
+ * cycle no value can be, and a description written empty. A key the file requires is read as it
+ * was. */
+function emptied(optional: readonly string[], key: string, text: string): boolean {
+  return optional.includes(key) && text.trim() === "";
+}
+
 /** The json text one of a section's keys travels to the api as, or the sentence its text is
  * refused with.
  *
@@ -246,6 +260,7 @@ export function sectionSet<K extends string>(
   key: K,
   text: string,
 ): (Extract<SectionPlanRequest, { action: "set" }> & { key: K }) | { refusal: string } {
+  if (emptied(SECTION_OPTIONAL, key, text)) return { action: "set", name, key };
   const raw = sectionRaw(key, text);
   return "refusal" in raw ? raw : { action: "set", name, key, raw: raw.raw };
 }
@@ -284,6 +299,7 @@ export function rasterSet<K extends string>(
   key: K,
   text: string,
 ): (Extract<RasterPlanRequest, { action: "set" }> & { key: K }) | { refusal: string } {
+  if (emptied(RASTER_OPTIONAL, key, text)) return { action: "set", name, key };
   const raw = rasterRaw(key, text);
   return "refusal" in raw ? raw : { action: "set", name, key, raw: raw.raw };
 }
@@ -292,6 +308,17 @@ export function rasterSet<K extends string>(
  * is refused with: read as every number of the Shared tab is (`numberRaw`). */
 export function constantValue(text: string): { raw: string } | { refusal: string } {
   return numberRaw(text);
+}
+
+/** A constant's description as its field holds it, as `GET /api/constant-plan` takes it: in its
+ * quotes, or with no `raw` where the field is emptied, which takes the description away. */
+export function constantDescription(
+  name: string,
+  text: string,
+): Extract<ConstantPlanRequest, { action: "set" }> & { key: "description" } {
+  return text.trim() === ""
+    ? { action: "set", name, key: "description" }
+    : { action: "set", name, key: "description", raw: JSON.stringify(text) };
 }
 
 /** The declaration a constant's add form comes to, or `null` while a parameter `add` requires is

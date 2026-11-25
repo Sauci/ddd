@@ -1,12 +1,14 @@
 import type { ConstantReply, ConstantUse, PlanReply } from "../api/types";
+import { constantRemoveBlocked, placesNaming } from "../lib/constantUses";
 import { distinctFindings, keyedFindings } from "../lib/findings";
 import type { Route } from "../lib/route";
-import { baseName, consequence, shownChanges } from "../lib/units";
+import { baseName, consequence, PLANNING, planning, shownChanges } from "../lib/units";
 import { Button } from "../ui/Button";
-import { Chip } from "../ui/Chip";
 import { Panel } from "../ui/Panel";
+import { PanelTable } from "../ui/PanelTable";
 import { UpdatingNote } from "../ui/UpdatingNote";
 import { Changes } from "./Changes";
+import { FindingChip } from "./FindingChip";
 
 /** A change this panel applies: its own value, its description, a rename, or its removal. */
 export type ConstantAction = "value" | "describe" | "rename" | "remove";
@@ -28,7 +30,8 @@ export interface Offer {
    * own debounced request (spec §6) has not yet caught up with what the fields now say, or the
    * server has not yet answered the one that has (`planShown`, `lib/typing.ts` - never an
    * earlier request's answer, kept on screen in its place). `plan` is drawn, and Apply offered,
-   * only once this is `false`. */
+   * only once this is `false`; until then, with no refusal to say, the panel says `PLANNING` in
+   * its place (`planning`, lib/units.ts). */
   pending: boolean;
 }
 
@@ -70,6 +73,8 @@ export interface ConstantPanelViewProps {
 /** One constant's panel (spec 5.2), drawn from what the api answered: a picture of its props. */
 export function ConstantPanelView(props: ConstantPanelViewProps) {
   const { reply, busy } = props;
+  // One row for each declaration naming the constant, however many of its strings spell it.
+  const places = placesNaming(reply.uses);
   // The entry's own pointer is `constants[i]` in a constants file or `component.constants[i]`
   // inline (`ConstantReply.pointer`'s own doc): the prefix is the only place that tells the two
   // apart, since a constants file is not a component and so has no page of its own to link to.
@@ -137,7 +142,7 @@ export function ConstantPanelView(props: ConstantPanelViewProps) {
       {reply.uses.length === 0 ? (
         <p className="quiet">Nothing in the project uses {reply.name}.</p>
       ) : (
-        <table className="panel-declarations">
+        <PanelTable>
           <thead>
             <tr>
               <th scope="col">Where</th>
@@ -146,7 +151,7 @@ export function ConstantPanelView(props: ConstantPanelViewProps) {
             </tr>
           </thead>
           <tbody>
-            {reply.uses.map((use) => (
+            {places.map((use) => (
               <tr key={`${use.path} ${use.pointer}`}>
                 <td>
                   <Button variant="link" onPress={() => props.onOpen(routeOfUse(use))}>
@@ -158,14 +163,14 @@ export function ConstantPanelView(props: ConstantPanelViewProps) {
               </tr>
             ))}
           </tbody>
-        </table>
+        </PanelTable>
       )}
       <UpdatingNote updating={props.updating === true} />
       {reply.findings.length > 0 && (
         <ul className="panel-findings">
           {keyedFindings(distinctFindings(reply.findings)).map(([finding, key]) => (
             <li key={key}>
-              <Chip tone={finding.severity === "error" ? "error" : "warning"}>{finding.check}</Chip>{" "}
+              <FindingChip severity={finding.severity} check={finding.check} />{" "}
               <span className="quiet">{finding.message}</span>
             </li>
           ))}
@@ -198,7 +203,7 @@ export function ConstantPanelView(props: ConstantPanelViewProps) {
         {reply.uses.length === 0 ? (
           outcome("remove", props.removeOffer, () => "Remove from the constants")
         ) : (
-          <p className="quiet">{removeBlocked(reply.name, reply.uses.length)}</p>
+          <p className="quiet">{constantRemoveBlocked(reply.name, places.length)}</p>
         )}
       </section>
     </Panel>
@@ -238,6 +243,7 @@ function Outcome({
         </p>
       )}
       {plan !== null && <p className="consequence">{consequence(plan.changes)}</p>}
+      {planning(offer) && <p className="consequence">{PLANNING}</p>}
       {plan !== null && plan.changes.length > 0 && (
         <>
           {shown && <Changes changes={shownChanges(plan.changes)} />}
@@ -273,17 +279,6 @@ function routeOfUse(use: ConstantUse): Route {
   }
   const dot = use.name.indexOf(".");
   return { page: "project", view: "types", type: dot === -1 ? use.name : use.name.slice(0, dot) };
-}
-
-/** What stands where Remove would be, while a shape still names the constant: not the server's
- * own refusal - trying would only ever come back with the one word this already says, and a
- * control asked for just to prove it refuses is the lying button `ComponentPage.tsx` already
- * refuses to draw - but the count that made it refuse, read off `reply.uses` already on screen,
- * in the quiet register the "Used by" table's own empty line above uses, not the warning tone an
- * actual refusal is drawn in. The table above already names each of them; this only says how many. */
-function removeBlocked(name: string, count: number): string {
-  const verb = count === 1 ? "names" : "name";
-  return `${count} shape${count === 1 ? "" : "s"} ${verb} ${name}, so it cannot be removed.`;
 }
 
 /* The form that declares a new constant lived here, beside the panel, while a constant was the

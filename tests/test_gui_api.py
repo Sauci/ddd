@@ -42,6 +42,7 @@ from conftest import (
     messages,
     offered_beside,
     project,
+    read_refused,
     registered_beside,
     scalar_type,
     stopped,
@@ -62,6 +63,7 @@ from ddd.findings_by_file import FindingsByFile
 from ddd.gui import contract
 from ddd.gui.api import (
     MEMO,
+    NAMES_ANSWERED,
     ROUTES,
     Api,
     Reply,
@@ -661,6 +663,7 @@ class TestTheRouteTable:
             ("GET", "/api/undo"),
             ("POST", "/api/undo"),
             ("GET", "/api/variable"),
+            ("GET", "/api/names"),
             ("GET", "/api/units"),
             ("GET", "/api/settle"),
             ("GET", "/api/fix"),
@@ -944,17 +947,30 @@ class TestPathsAreReadAgainstWhatIsServed:
             400,
             {
                 "error": "bad-request",
-                "message": "the baseline '//server/share/q/baseline.json' is outside the session "
-                f"root '{tmp_path.resolve().as_posix()}'",
+                "message": "the baseline '//server/share/q/baseline.json' is outside the directory "
+                f"ddd gui was started in, '{tmp_path.resolve().as_posix()}'",
             },
         )
 
     @pytest.mark.parametrize(
-        "baseline", ["//server/share/baseline.json", "\\\\server\\share\\baseline.json"]
+        ("baseline", "named"),
+        [
+            ("//server/share/baseline.json", "//server/share/baseline.json"),
+            ("\\\\server\\share\\baseline.json", "\\\\server\\share\\baseline.json"),
+            ('"\\\\server\\share\\baseline.json"', "\\\\server\\share\\baseline.json"),
+        ],
+        ids=["forward", "backward", "in-quotes"],
     )
     def test_a_network_baseline_outside_is_refused_in_compare_s_words_before_it_is_resolved(
-        self, api: Api, root: Path, baseline: str, monkeypatch: pytest.MonkeyPatch
+        self,
+        api: Api,
+        root: Path,
+        baseline: str,
+        named: str,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        """Named without the quotes it was copied with, which come off first (16:M3)."""
+
         def resolving(self: Path, *args: object, **kwargs: object) -> Path:
             raise AssertionError(f"{self} was resolved")
 
@@ -963,8 +979,8 @@ class TestPathsAreReadAgainstWhatIsServed:
             400,
             {
                 "error": "bad-request",
-                "message": f"the baseline '{baseline}' is outside the session root "
-                f"'{api.session.root.as_posix()}'",
+                "message": f"the baseline '{named}' is outside the directory ddd gui was started "
+                f"in, '{api.session.root.as_posix()}'",
             },
         )
 
@@ -1074,17 +1090,17 @@ def unresolvable(
 
 def unreadable_baseline(baseline: str) -> str:
     """``GET /api/compare``'s refusal of ``baseline``, a path through :func:`unresolvable`'s
-    directory, in the words this python gives it: where ``resolve`` raises, the path as given
-    and the error; where it walks past the loop, the path it resolved to and the error opening
-    it raises - the operating system's own words, which this suite has no business spelling."""
+    directory, as this python names it: where ``resolve`` raises, the path as given; where it walks
+    past the loop, the path it resolved to, which opening then refuses. Neither says the error
+    after it, the system's own words (16:M3)."""
     path = Path(baseline)
     try:
         resolved = path.resolve()
-    except RuntimeError as error:
-        return f"the baseline '{path.as_posix()}' is unreadable: {error}"
-    with pytest.raises(OSError) as refused:
+    except RuntimeError:
+        return f"the baseline '{path.as_posix()}' is unreadable"
+    with pytest.raises(OSError):
         resolved.open("rb")
-    return f"the baseline '{resolved.as_posix()}' is unreadable: {refused.value}"
+    return f"the baseline '{resolved.as_posix()}' is unreadable"
 
 
 class TestAPathThatWillNotResolve:
@@ -1489,6 +1505,17 @@ class TestProjects:
         # sorted by path: other/q.ddd.json comes before p.ddd.json
         assert [(p["name"], p["images"]) for p in body["projects"]] == [("Q", []), ("P", [])]
         assert body["refused"] == []
+
+    def test_a_description_that_does_not_parse_is_listed_with_its_reason(self, root: Path) -> None:
+        (root / "other" / "broken.ddd.json").write_text("{", encoding="utf-8")
+        body = get(Api(Session(root)), "/api/projects").body
+        assert [p["name"] for p in body["projects"]] == ["Q", "P"]
+        (entry,) = body["unreadable"]
+        assert entry["path"] == (root / "other" / "broken.ddd.json").resolve().as_posix()
+        assert entry["reason"].startswith("does not parse: ")
+
+    def test_none_is_unreadable_where_every_description_parses(self, api: Api) -> None:
+        assert get(api, "/api/projects").body["unreadable"] == []
 
     def test_a_refused_record_is_listed_with_its_reason(self, root: Path) -> None:
         from conftest import build_record
@@ -2286,6 +2313,71 @@ class TestFindingsAPageAtATime:
             ("info", "missing-id"),
         ]
 
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            # A check's name, whatever its case: no finding's words or file's name hold it.
+            ("STORAGE", [("warning", "storage-mismatch")] * 2),
+            # Words, whatever their case: the four disagreements about ValueE.
+            ("valuee", [("error", "definition-mismatch")] * 4),
+            # A file's own name: the one finding filed on event_logger.ddd.json - its words name
+            # the component EventLogger, spelled without the underscore.
+            ("event_logger", [("error", "definition-mismatch")]),
+            ("EventLogger", [("error", "definition-mismatch")] * 2),
+            # A folder of a file's path is not its name: nothing says logging.
+            ("logging", []),
+            ("ddd id --assign", [("info", "missing-id")]),
+            ("nothing says this", []),
+        ],
+    )
+    def test_a_text_filter_leaves_the_findings_whose_check_words_or_file_s_name_hold_it(
+        self, demo: Api, text: str, expected: list[tuple[str, str]]
+    ) -> None:
+        """What the Findings tab's filter asks (16:I14): each finding whose check, words or file's
+        own name - as its File column names it - holds the text, whatever its case, in the tab's
+        order, keys and all."""
+        wanted = text.lower()
+
+        def holds(found: dict[str, Any]) -> bool:
+            texts = (found["check"], found["message"], Path(found["file"]).name)
+            return any(wanted in each.lower() for each in texts)
+
+        whole = get(demo, "/api/findings").body["findings"]
+        body = get(demo, "/api/findings", text=text).body
+        assert body["findings"] == [found for found in whole if holds(found)]
+        assert [(found["severity"], found["check"]) for found in body["findings"]] == expected
+        assert (body["total"], body["offset"]) == (len(expected), 0)
+
+    def test_a_text_filter_joins_the_others_and_is_answered_a_page_at_a_time(
+        self, demo: Api, tmp_path: Path
+    ) -> None:
+        controller = (tmp_path / "real" / "demo" / DEMO_FILES["controller"]).as_posix()
+        mismatched = get(demo, "/api/findings", text="ValueE", file=controller).body
+        assert [found["check"] for found in mismatched["findings"]] == ["definition-mismatch"] * 2
+        # Controller by its file's name on one side, and by the words on the other.
+        warned = get(demo, "/api/findings", text="controller", severity="warning").body
+        assert [Path(found["file"]).name for found in warned["findings"]] == [
+            "controller.ddd.json",
+            "sensor_hub.ddd.json",
+        ]
+        assert get(demo, "/api/findings", text="controller", check="missing-id").body["total"] == 1
+        whole = get(demo, "/api/findings", text="mismatch").body
+        assert whole["total"] == 6
+        page = get(demo, "/api/findings", text="mismatch", offset="2", limit="3").body
+        assert page["findings"] == whole["findings"][2:5]
+        assert (page["total"], page["offset"]) == (6, 2)
+
+    def test_a_blank_text_leaves_every_finding(self, demo: Api) -> None:
+        """Every finding's words hold the empty text: the page sends none, and a blank asks for
+        nothing narrower than none."""
+        assert get(demo, "/api/findings", text="").body == get(demo, "/api/findings").body
+
+    def test_a_text_filter_asked_twice_is_the_reply_made_first(self, demo: Api) -> None:
+        first = get(demo, "/api/findings", text="ValueE", offset="0", limit="1")
+        assert first.status == 200
+        assert get(demo, "/api/findings", text="ValueE", offset="0", limit="1") is first
+        assert get(demo, "/api/findings", text="ValueB", offset="0", limit="1") is not first
+
     def test_a_file_s_findings_come_worst_first_where_two_builds_file_them_otherwise(
         self, tmp_path: Path
     ) -> None:
@@ -2419,6 +2511,153 @@ class TestFindingsAPageAtATime:
         assert len(api._memo) == MEMO
         assert get(api, "/api/findings", offset="1", limit="1") is second
         assert get(api, "/api/findings", offset="0", limit="1") is not first
+
+
+NAMED_FILES: Final = {
+    "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json", "c.ddd.json"),
+    "a.ddd.json": component("A", declare("output", "EngineSpeed"), declare("input", "Speed")),
+    "b.ddd.json": component("B", declare("output", "Speed"), declare("local", "speed_raw")),
+    "c.ddd.json": component("C", declare("input", "Torque"), declare("input", "EngineSpeed")),
+}
+"""Three components naming four variables: ``Speed``, which A reads before B, its producer, is
+listed; ``speed_raw``, B's own local; and ``Torque``, which C reads and nothing produces."""
+
+
+class TestNamesFoundForTheGoTo:
+    """``GET /api/names`` (16:I14): what the masthead's go-to asks as a reader types - every
+    variable whose name holds the text, whatever its case, the one it spells exactly first, then
+    the others by name, at most :data:`NAMES_ANSWERED` of them, each with its kind and the
+    component the page opens its panel on, and how many hold the text in all."""
+
+    @pytest.fixture
+    def demo(self, tmp_path: Path) -> tuple[Api, Path]:
+        return copied(tmp_path, "demo", "demo.ddd.json")
+
+    def test_each_name_holding_the_text_whatever_its_case_by_name_with_its_component(
+        self, demo: tuple[Api, Path]
+    ) -> None:
+        api, root = demo
+        body = get(api, "/api/names", text="VALUE").body
+        expected = [
+            ("ValueA", "SensorHub", "components/sensor_hub.ddd.json"),
+            ("ValueB", "SensorHub", "components/sensor_hub.ddd.json"),
+            ("ValueC", "SensorHub", "components/sensor_hub.ddd.json"),
+            ("ValueD", "SensorHub", "components/sensor_hub.ddd.json"),
+            ("ValueE", "Controller", "components/controller.ddd.json"),
+            ("ValueF", "Controller", "components/controller.ddd.json"),
+            ("ValueG", "Controller", "components/controller.ddd.json"),
+            ("ValueH", "Controller", "components/controller.ddd.json"),
+            ("ValueI", "UserInterface", "components/user_interface.ddd.json"),
+            ("ValueJ", "EventLogger", "subsystems/logging/event_logger.ddd.json"),
+            ("ValueK", "EventLogger", "subsystems/logging/event_logger.ddd.json"),
+        ]
+        assert body == {
+            "revision": analysed(api)[0].number,
+            "total": 11,
+            "names": [
+                {
+                    "name": name,
+                    "kind": "measurement",
+                    "file": posix(root, file),
+                    "component": component_name,
+                }
+                for name, component_name, file in expected
+            ],
+        }
+
+    def test_each_name_says_its_kind(self, demo: tuple[Api, Path]) -> None:
+        api, _ = demo
+        found = get(api, "/api/names", text="a").body["names"]
+        kinds = {named["name"]: named["kind"] for named in found}
+        assert (kinds["AxisA"], kinds["CurveA"], kinds["MapA"], kinds["ParameterA"]) == (
+            "axis",
+            "curve",
+            "map",
+            "parameter",
+        )
+        assert kinds["SoftwareLabel"] == "value_block"
+
+    def test_the_name_the_text_spells_exactly_comes_first(self, tmp_path: Path) -> None:
+        api = opened(tmp_path, NAMED_FILES)
+        exact = get(api, "/api/names", text="Speed").body["names"]
+        assert [named["name"] for named in exact] == ["Speed", "EngineSpeed", "speed_raw"]
+        # Spelled in no name's own case, the text spells no name exactly: every one by name.
+        folded = get(api, "/api/names", text="speed").body["names"]
+        assert [named["name"] for named in folded] == ["EngineSpeed", "Speed", "speed_raw"]
+
+    def test_a_name_opens_on_its_producer_and_where_none_produces_it_on_the_first_declaring_it(
+        self, tmp_path: Path
+    ) -> None:
+        api = opened(tmp_path, NAMED_FILES)
+        found = {
+            named["name"]: (named["component"], Path(named["file"]).name)
+            for named in get(api, "/api/names", text="e").body["names"]
+        }
+        assert found == {
+            "EngineSpeed": ("A", "a.ddd.json"),
+            # A reads it, listed first; B produces it.
+            "Speed": ("B", "b.ddd.json"),
+            # B keeps it, a local.
+            "speed_raw": ("B", "b.ddd.json"),
+            # Nothing produces it: the one declaring it.
+            "Torque": ("C", "c.ddd.json"),
+        }
+
+    def test_at_most_fifty_are_answered_and_the_total_counts_every_one(
+        self, tmp_path: Path
+    ) -> None:
+        many = [declare("output", f"Signal{number:02}") for number in range(60)]
+        api = opened(
+            tmp_path,
+            {"p.ddd.json": project("P", "a.ddd.json"), "a.ddd.json": component("A", *many)},
+        )
+        assert NAMES_ANSWERED == 50
+        body = get(api, "/api/names", text="signal").body
+        assert body["total"] == 60
+        assert [named["name"] for named in body["names"]] == [
+            f"Signal{number:02}" for number in range(50)
+        ]
+        # The exact name first, past the cap where the order would leave it.
+        exact = get(api, "/api/names", text="Signal59").body
+        assert (exact["total"], [named["name"] for named in exact["names"]]) == (1, ["Signal59"])
+        narrowed = get(api, "/api/names", text="Signal5").body
+        assert narrowed["total"] == 10
+        assert [named["name"] for named in narrowed["names"]] == [
+            f"Signal{number}" for number in range(50, 60)
+        ]
+
+    def test_a_text_no_name_holds_answers_none(self, api: Api) -> None:
+        assert get(api, "/api/names", text="Torque").body == {
+            "revision": 1,
+            "total": 0,
+            "names": [],
+        }
+
+    def test_with_no_index_it_is_refused_naming_what_did_not_load(self, tmp_path: Path) -> None:
+        assert get(unloaded(tmp_path), "/api/names", text="Speed") == Reply(
+            409,
+            {
+                "error": "unreadable",
+                "message": "p.ddd.json did not load, so no variable of the project can be found",
+            },
+        )
+
+    def test_with_no_index_though_every_file_read_loaded_it_names_the_description(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        api = unloaded(tmp_path)
+        revision = api.session.revision
+        assert revision is not None
+        loaded = tuple(dataclasses.replace(file, loaded=True) for file in revision.files)
+        monkeypatch.setattr(api.session, "_revision", dataclasses.replace(revision, files=loaded))
+        assert get(api, "/api/names", text="Speed").body == {
+            "error": "unreadable",
+            "message": "p.ddd.json did not load, so no variable of the project can be found",
+        }
+
+    def test_it_needs_an_open_project(self, root: Path) -> None:
+        reply = get(Api(Session(root), wait_seconds=0.01), "/api/names", text="Speed")
+        assert (reply.status, reply.body["error"]) == (409, "no-project")
 
 
 class TestFiles:
@@ -4237,15 +4476,69 @@ class TestUndoing:
         assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
         assert get(api, "/api/state").body["undoable"] == {"at": 1, "label": "the unit of Speed"}
 
-    def test_nothing_to_undo_is_not_found(self, api: Api) -> None:
-        reply = get(api, "/api/undo")
-        assert (reply.status, reply.body["error"]) == (404, "not-found")
+    def test_a_preview_with_nothing_to_undo_is_refused_as_its_undo_is(self, api: Api) -> None:
+        reply = get(api, "/api/undo", at="1")
+        assert reply == Reply(
+            409, {"error": "stale", "message": "edit 1 is not the one to undo any more"}
+        )
+
+    def test_a_preview_is_of_the_edit_it_names_and_refused_where_that_is_not_on_top(
+        self, api: Api, root: Path
+    ) -> None:
+        """The strip asks for the preview of the edit its state names, which another window may
+        have moved past: one not on top is refused ``stale``, as its undo would be, and the stack
+        is left as it is - a preview takes off no edit but the one it names."""
+        first = unit_edit(api, root, "Hz", "a.ddd.json", "the unit of Speed in A")
+        assert post(api, "/api/edit", first).status == 200
+        assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
+        preview = get(api, "/api/undo", at="2")
+        assert (preview.status, preview.body["at"]) == (200, 2)
+        reply = get(api, "/api/undo", at="1")
+        assert reply == Reply(
+            409, {"error": "stale", "message": "edit 1 is not the one to undo any more"}
+        )
+        assert get(api, "/api/state").body["undoable"] == {"at": 2, "label": "the unit of Speed"}
+
+    def test_two_windows_previews_each_take_off_the_edit_they_name_and_no_other(
+        self, api: Api, root: Path
+    ) -> None:
+        """Two edits of one file, then a save from outside. A window whose state still names the
+        first, with the second on top, takes nothing off. The preview of the second takes it off;
+        the same preview from a window not yet told is refused as not on top, and takes nothing
+        off either - the first, beneath, waits for a preview naming it, which takes it off in
+        turn: each refusal is of the edit asked for, and each edit goes with one."""
+        first = unit_edit(api, root, "Hz", label="the unit of Speed")
+        assert post(api, "/api/edit", first).status == 200
+        second = unit_edit(api, root, "rad", label="the unit of Speed again")
+        assert post(api, "/api/edit", second).status == 200
+        b = root / "b.ddd.json"
+        b.write_bytes(b.read_bytes().replace(b'"rad"', b'"rpm"'))
+        changed = Reply(
+            409, {"error": "stale", "message": "b.ddd.json changed on disk since it was written"}
+        )
+        assert get(api, "/api/undo", at="1") == Reply(
+            409, {"error": "stale", "message": "edit 1 is not the one to undo any more"}
+        )
+        assert get(api, "/api/state").body["undoable"]["at"] == 2
+        assert get(api, "/api/undo", at="2") == changed
+        assert get(api, "/api/undo", at="2") == Reply(
+            409, {"error": "stale", "message": "edit 2 is not the one to undo any more"}
+        )
+        assert get(api, "/api/state").body["undoable"] == {"at": 1, "label": "the unit of Speed"}
+        assert get(api, "/api/undo", at="1") == changed
+        assert get(api, "/api/state").body["undoable"] is None
+
+    def test_a_preview_takes_the_number_of_the_edit_it_previews(self, api: Api, root: Path) -> None:
+        assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
+        for query in ({}, {"at": ""}, {"at": "0"}, {"at": "one"}):
+            reply = get(api, "/api/undo", **query)
+            assert (reply.status, reply.body["error"]) == (400, "bad-request")
 
     def test_the_preview_carries_the_lines_each_file_would_get_back(
         self, api: Api, root: Path
     ) -> None:
         assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
-        body = get(api, "/api/undo").body
+        body = get(api, "/api/undo", at="1").body
         assert (body["at"], body["label"]) == (1, "the unit of Speed")
         assert body["revision"] == get(api, "/api/state").body["revision"]
         change = body["changes"][0]
@@ -4258,7 +4551,7 @@ class TestUndoing:
         assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
         b = root / "b.ddd.json"
         b.write_text('{"component": {"name": "B", "interface": []}}', encoding="utf-8")
-        reply = get(api, "/api/undo")
+        reply = get(api, "/api/undo", at="1")
         assert (reply.status, reply.body["error"]) == (409, "stale")
         assert reply.body["message"] == "b.ddd.json changed on disk since it was written"
 
@@ -4271,8 +4564,96 @@ class TestUndoing:
             raise EditError(UNWRITABLE, "disk full")
 
         monkeypatch.setattr("ddd.gui.api.unchanged", unwritable)
-        reply = get(api, "/api/undo")
+        reply = get(api, "/api/undo", at="1")
         assert (reply.status, reply.body["error"]) == (409, "unwritable")
+        # Not stale: the edit stays, for the reader to ask again once the disk is mended.
+        assert get(api, "/api/state").body["undoable"] == {"at": 1, "label": "the unit of Speed"}
+
+    def test_a_preview_refused_because_a_file_changed_on_disk_takes_its_edit_off_the_stack(
+        self, api: Api, root: Path
+    ) -> None:
+        """The strip asks for the preview first: refused because a file the edit wrote was saved
+        from outside since, the edit can never be put back as that file stands, so it is taken
+        off the stack - the state's version moving with it - and the next preview is the one of
+        the edit beneath it."""
+        first = unit_edit(api, root, "Hz", "a.ddd.json", "the unit of Speed in A")
+        assert post(api, "/api/edit", first).status == 200
+        assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
+        b = root / "b.ddd.json"
+        b.write_bytes(b.read_bytes().replace(b'"Hz"', b'"rad"'))
+        said = get(api, "/api/state").body["version"]
+        reply = get(api, "/api/undo", at="2")
+        assert reply == Reply(
+            409, {"error": "stale", "message": "b.ddd.json changed on disk since it was written"}
+        )
+        state = get(api, "/api/state").body
+        assert state["undoable"] == {"at": 1, "label": "the unit of Speed in A"}
+        assert state["version"] > said
+        preview = get(api, "/api/undo", at="1")
+        assert (preview.status, preview.body["at"]) == (200, 1)
+        assert [Path(change["file"]).name for change in preview.body["changes"]] == ["a.ddd.json"]
+
+    def test_a_preview_refused_for_a_file_that_cannot_be_read_keeps_its_edit(
+        self, api: Api, root: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A file the edit wrote that cannot be read while the strip asks for the preview: refused
+        ``stale``, as the engine refuses a file it cannot read, and the edit kept, the disk not
+        having moved past it - once the file reads again, as the edit left it, its undo goes
+        through."""
+        b = root / "b.ddd.json"
+        before = b.read_bytes()
+        assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
+        with read_refused(b, monkeypatch):
+            reply = get(api, "/api/undo", at="1")
+        assert reply == Reply(
+            409, {"error": "stale", "message": "b.ddd.json can no longer be read"}
+        )
+        assert get(api, "/api/state").body["undoable"] == {"at": 1, "label": "the unit of Speed"}
+        assert post(api, "/api/undo", {"at": 1}).status == 200
+        assert b.read_bytes() == before
+
+    def test_an_unreadable_file_names_itself_alike_in_the_put_back_and_the_preview_it_refuses(
+        self, api: Api, root: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A Put back refused because a file it would put back cannot be read, and the preview the
+        strip asks again at the analysis that refusal asks for, name the file alike, by its own
+        name, as the page names a file (16:M15): the two are one refusal, which the strip says
+        once."""
+        b = root / "b.ddd.json"
+        assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
+        with read_refused(b, monkeypatch):
+            put_back = post(api, "/api/undo", {"at": 1})
+            preview = get(api, "/api/undo", at="1")
+        assert put_back == Reply(
+            409, {"error": "stale", "message": "b.ddd.json can no longer be read"}
+        )
+        assert preview == put_back
+        assert get(api, "/api/state").body["undoable"] == {"at": 1, "label": "the unit of Speed"}
+
+    def test_an_undo_refused_because_its_file_changed_on_disk_lets_the_edit_beneath_be_undone(
+        self, api: Api, root: Path
+    ) -> None:
+        """Two edits, then a save from outside of the file the second wrote: its undo is refused
+        ``stale``, that edit is taken off the stack, and the first is the one to undo - put back
+        as it always was, the save left as it stands."""
+        a = root / "a.ddd.json"
+        before = a.read_bytes()
+        first = unit_edit(api, root, "Hz", "a.ddd.json", "the unit of Speed in A")
+        assert post(api, "/api/edit", first).status == 200
+        assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
+        b = root / "b.ddd.json"
+        b.write_bytes(b.read_bytes().replace(b'"Hz"', b'"rad"'))
+        reply = post(api, "/api/undo", {"at": 2})
+        assert (reply.status, reply.body["error"]) == (409, "stale")
+        assert reply.body["message"] == "b.ddd.json changed on disk since it was written"
+        assert get(api, "/api/state").body["undoable"] == {
+            "at": 1,
+            "label": "the unit of Speed in A",
+        }
+        assert post(api, "/api/undo", {"at": 1}).status == 200
+        assert a.read_bytes() == before
+        assert b'"rad"' in b.read_bytes()
+        assert get(api, "/api/state").body["undoable"] is None
 
     def test_an_undo_puts_the_files_back_and_answers_its_own_number(
         self, api: Api, root: Path
@@ -4328,7 +4709,7 @@ class TestUndoing:
 
     def test_undoing_needs_an_open_project(self, root: Path) -> None:
         bare = Api(Session(root))
-        assert get(bare, "/api/undo").status == 409
+        assert get(bare, "/api/undo", at="1").status == 409
         assert post(bare, "/api/undo", {"at": 1}).status == 409
 
     def test_both_methods_of_one_path_are_served(self, api: Api) -> None:
@@ -4497,9 +4878,10 @@ class TestBeforeTheFirstAnalysis:
             ("GET", "/api/findings", {"offset": "0", "limit": "100", "severity": "error"}),
             ("GET", "/api/graph", {}),
             ("POST", "/api/edit", {}),
-            ("GET", "/api/undo", {}),
+            ("GET", "/api/undo", {"at": "1"}),
             ("POST", "/api/undo", {}),
             ("GET", "/api/variable", {"name": "Speed"}),
+            ("GET", "/api/names", {"text": "Speed"}),
             ("GET", "/api/units", {}),
             ("GET", "/api/settle", {"name": "Speed", "key": "unit", "raw": '"Hz"'}),
             ("GET", "/api/fix", {"file": "a.ddd.json", "pointer": "", "check": "missing-id"}),
@@ -6012,6 +6394,88 @@ class TestCompare:
         assert reply.status == 400
         assert "unreadable" in reply.body["message"]
 
+    @pytest.mark.parametrize("named", ["nothing.json", "folder"])
+    def test_a_baseline_not_there_or_a_directory_is_refused_as_unreadable_and_no_more(
+        self, api: Api, root: Path, monkeypatch: pytest.MonkeyPatch, named: str
+    ) -> None:
+        """16:M3: named from the directory ``ddd gui`` was started in, as it is started there, a
+        baseline that is not there and one that is a directory are both unreadable, and the
+        refusal says that much: the system's own error after it - its number, and the path again
+        as python quotes a string, every backslash of a Windows path doubled - is no reader's."""
+        monkeypatch.chdir(root)
+        (root / "folder").mkdir()
+        assert get(api, "/api/compare", baseline=named) == Reply(
+            400,
+            {
+                "error": "bad-request",
+                "message": f"the baseline '{posix(root, named)}' is unreadable",
+            },
+        )
+
+    def test_a_baseline_outside_is_refused_in_the_words_the_tab_says_its_reach_in(
+        self, api: Api, root: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """16:M3: the tab says a baseline is read under "the directory ddd gui was started in",
+        and a baseline outside it is refused in those words, naming that directory."""
+        monkeypatch.chdir(root)
+        outside = (root / ".." / "elsewhere.json").resolve().as_posix()
+        assert get(api, "/api/compare", baseline="../elsewhere.json") == Reply(
+            400,
+            {
+                "error": "bad-request",
+                "message": f"the baseline '{outside}' is outside the directory ddd gui was "
+                f"started in, '{api.session.root.as_posix()}'",
+            },
+        )
+
+    @pytest.mark.parametrize("quote", ['"', "'"], ids=["double", "single"])
+    def test_a_baseline_in_quotes_is_the_path_between_them(
+        self, api: Api, root: Path, monkeypatch: pytest.MonkeyPatch, quote: str
+    ) -> None:
+        """16:M3: a path copied with the quotes around it - Windows' Copy as path writes double
+        ones, a shell's quoting single ones - is read as the path between them, absolute or
+        relative: kept, the quotes made it a path relative to the root, the first quote its first
+        character, and refused as unreadable, naming the root and the path one after the other."""
+        monkeypatch.chdir(root)
+        dumped(root / "p.ddd.json", root / "baseline.json")
+        for baseline in (posix(root, "baseline.json"), "baseline.json"):
+            reply = get(api, "/api/compare", baseline=f"{quote}{baseline}{quote}")
+            assert reply.status == 200, reply.body
+            assert reply.body["verdict"] is True, baseline
+        assert get(api, "/api/compare", baseline=f"{quote}nothing.json{quote}") == Reply(
+            400,
+            {
+                "error": "bad-request",
+                "message": f"the baseline '{posix(root, 'nothing.json')}' is unreadable",
+            },
+        )
+
+    @pytest.mark.parametrize("quotes", ['""', "''"], ids=["double", "single"])
+    def test_quotes_around_nothing_are_no_baseline(self, api: Api, quotes: str) -> None:
+        """Nothing between them, the quotes name no file: refused as no path is."""
+        assert get(api, "/api/compare", baseline=quotes) == Reply(
+            400, {"error": "bad-request", "message": "compare takes ?baseline= as a file's path"}
+        )
+
+    @pytest.mark.parametrize(
+        "named",
+        ['"nothing.json', "nothing.json'", "\"nothing.json'", '"'],
+        ids=["opening-alone", "closing-alone", "two-unlike", "one-alone"],
+    )
+    def test_a_quote_that_is_not_one_of_a_pair_around_the_path_is_the_path_s_own(
+        self, api: Api, root: Path, monkeypatch: pytest.MonkeyPatch, named: str
+    ) -> None:
+        """Only a pair of like quotes at its two ends is taken off a baseline: any other quote is
+        one of its own characters, as a file's name may hold one."""
+        monkeypatch.chdir(root)
+        assert get(api, "/api/compare", baseline=named) == Reply(
+            400,
+            {
+                "error": "bad-request",
+                "message": f"the baseline '{posix(root, named)}' is unreadable",
+            },
+        )
+
     def test_a_baseline_path_with_a_nul_byte_is_refused(self, api: Api) -> None:
         """Reader input over the wire: ``parse_qs`` decodes ``%00`` into a real NUL. Before this
         was caught, that reached ``Path.resolve`` unguarded and left the terminal holding a
@@ -6088,7 +6552,7 @@ class TestCompare:
             400,
             {
                 "error": "bad-request",
-                "message": f"the baseline 'whatever.json' is unreadable: {error}",
+                "message": "the baseline 'whatever.json' is unreadable",
             },
         )
 
@@ -6350,7 +6814,7 @@ class TestTheDemo:
         before = contents(root)
         preview = get(api, "/api/unit-plan", action="adopt").body
         assert applied(api, preview, "the vocabulary adopted").status == 200
-        undo = get(api, "/api/undo").body
+        undo = get(api, "/api/undo", at=str(get(api, "/api/state").body["undoable"]["at"])).body
         assert undo["label"] == "the vocabulary adopted"
         changes = {Path(c["file"]).name: c for c in undo["changes"]}
         assert changes["units.ddd.json"]["gone"] is True
@@ -10075,6 +10539,125 @@ class TestTwoFilesOfOneNameThatDidNotLoad:
                 "y/b.ddd.json did not load",
             },
         )
+
+
+class TestTwoFilesOfOneNameInTheFindingsFilter:
+    """Two components, each ``b.ddd.json`` in a folder of its own, both loaded and both filing a
+    finding: the Findings tab's File column names each by as much of its path as tells the two
+    apart (``toldApart``, ``gui/src/lib/paths.ts``), and its text filter matches what that column
+    draws, so that a reader typing a name as the column shows it finds the row (16:M15)."""
+
+    @staticmethod
+    def opened(base: Path) -> Api:
+        return opened(
+            base,
+            {
+                "p.ddd.json": project("P", "x/b.ddd.json", "y/b.ddd.json", "c.ddd.json"),
+                "x/b.ddd.json": component("B1", declare("output", "Pace", typename="Speed_t")),
+                "y/b.ddd.json": component("B2", declare("output", "Pace", typename="Speed_t")),
+                "c.ddd.json": component("C", declare("output", "Pace", typename="Speed_t")),
+            },
+        )
+
+    @staticmethod
+    def files_of(api: Api, text: str) -> list[str]:
+        body = get(api, "/api/findings", text=text).body
+        return sorted({"/".join(found["file"].split("/")[-2:]) for found in body["findings"]})
+
+    def test_a_text_as_the_column_names_one_file_leaves_its_findings_alone(
+        self, tmp_path: Path
+    ) -> None:
+        api = self.opened(tmp_path)
+        assert self.files_of(api, "x/b.ddd.json") == ["x/b.ddd.json"]
+        assert self.files_of(api, "Y/B.ddd.json") == ["y/b.ddd.json"]
+
+    def test_a_text_as_the_column_names_a_file_of_a_name_of_its_own_is_unchanged(
+        self, tmp_path: Path
+    ) -> None:
+        api = self.opened(tmp_path)
+        assert {
+            Path(found["file"]).name
+            for found in get(api, "/api/findings", text="c.ddd.json").body["findings"]
+        } == {"c.ddd.json"}
+
+    def test_the_name_alone_leaves_both_files_and_a_folder_of_a_path_is_still_no_name(
+        self, tmp_path: Path
+    ) -> None:
+        api = self.opened(tmp_path)
+        assert self.files_of(api, "b.ddd.json") == ["x/b.ddd.json", "y/b.ddd.json"]
+        assert self.files_of(api, tmp_path.name) == []
+
+    def test_the_column_names_a_file_among_every_file_of_the_project_one_that_did_not_load_too(
+        self, tmp_path: Path
+    ) -> None:
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "x/b.ddd.json", "y/b.ddd.json"),
+                "x/b.ddd.json": component("B1", declare("output", "Pace", typename="Speed_t")),
+                "y/b.ddd.json": '{"component": {"name": "B2"',
+            },
+        )
+        # The one that did not load files its own error, and is named by its path as its
+        # neighbour of the same name is, which no finding was filed on while it was unread.
+        assert self.files_of(api, "y/b.ddd.json") == ["y/b.ddd.json"]
+        assert self.files_of(api, "x/b.ddd.json") == []
+
+    def test_a_text_that_is_a_file_s_whole_name_finds_that_file_alone(self) -> None:
+        """Two namesakes at the root of a drive: ``/x/b.ddd.json`` is contained in
+        ``a/x/b.ddd.json``, and the link that leads to the first must not list the second's
+        findings too (16:M15)."""
+        from ddd.diagnostics import Diagnostic, Severity
+        from ddd.gui.api import _holds
+        from ddd.gui.session import Filed
+
+        first, second = Path("/x/b.ddd.json"), Path("/a/x/b.ddd.json")
+        named = {first: "/x/b.ddd.json", second: "a/x/b.ddd.json"}
+        finding = Diagnostic("schema", Severity.ERROR, "m", None, ())
+        assert _holds(Filed(first, finding), "/x/b.ddd.json", named, exact=True)
+        assert not _holds(Filed(second, finding), "/x/b.ddd.json", named, exact=True)
+        # Typed as part of a name, the same text is found in both.
+        assert _holds(Filed(second, finding), "/x/b.ddd.json", named, exact=False)
+
+    def test_the_link_to_a_namesake_whose_name_another_contains_finds_its_own_alone(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Through the api: names as two namesakes at a drive's root draw them, one the other's
+        tail, ``/x/b.ddd.json`` and ``a/x/b.ddd.json``."""
+        api = self.opened(tmp_path)
+        first, second = (tmp_path / "x" / "b.ddd.json"), (tmp_path / "y" / "b.ddd.json")
+        monkeypatch.setattr(
+            "ddd.gui.api._file_names",
+            lambda revision: {
+                file.path: names
+                for file in revision.files
+                for path, names in ((first, "/x/b.ddd.json"), (second, "a/x/b.ddd.json"))
+                if file.path == path
+            },
+        )
+        assert self.files_of(api, "/x/b.ddd.json") == ["x/b.ddd.json"]
+        assert self.files_of(api, "a/x/b.ddd.json") == ["y/b.ddd.json"]
+        assert self.files_of(api, "x/b.ddd.json") == ["x/b.ddd.json", "y/b.ddd.json"]
+
+    def test_the_filter_reads_a_text_that_is_a_name_the_column_draws_as_a_whole_name(
+        self, tmp_path: Path
+    ) -> None:
+        api = self.opened(tmp_path)
+        assert self.files_of(api, "y/b.ddd.json") == ["y/b.ddd.json"]
+        # Part of a name is still found where it is: the one `y/b.ddd.json` among the findings.
+        assert self.files_of(api, "/b.ddd.json") == ["x/b.ddd.json", "y/b.ddd.json"]
+
+    def test_a_file_the_revision_does_not_list_is_named_by_its_own_name(self) -> None:
+        from ddd.diagnostics import Diagnostic, Severity
+        from ddd.gui.api import _holds
+        from ddd.gui.session import Filed
+
+        filed = Filed(
+            Path("/w/z/unlisted.ddd.json"), Diagnostic("schema", Severity.ERROR, "m", None, ())
+        )
+        assert _holds(filed, "unlisted.ddd", {}, exact=False)
+        assert not _holds(filed, "z/unlisted", {}, exact=False)
+        assert _holds(filed, "z/unlisted", {filed.file: "z/unlisted.ddd.json"}, exact=False)
 
 
 class TestAPlanOfWhatNoFileThatLoadedDeclares:

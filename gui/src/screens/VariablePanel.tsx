@@ -23,10 +23,18 @@ import {
   descriptionShown,
 } from "../lib/description";
 import { planEdit } from "../lib/projectUnits";
-import { panelShows, type Refused, refusalSentence, refusalShown } from "../lib/refusals";
+import {
+  heldOf,
+  offerShown,
+  panelReads,
+  panelShows,
+  pickedOnRefusal,
+  type Refused,
+  refusalSentence,
+} from "../lib/refusals";
 import { planShown, unsettled } from "../lib/typing";
 import { removeLabel, settleLabel } from "../lib/undo";
-import { editOf, outsideVocabulary, textOf } from "../lib/units";
+import { editOf, outsideVocabulary, planning, textOf } from "../lib/units";
 import {
   type Choice,
   type Held,
@@ -62,6 +70,9 @@ interface Props {
    * offered. */
   file: string | undefined;
   revision: number | undefined;
+  /** The files of the open project that did not load, as the banner under the masthead names
+   * them (`unloadedNames`, lib/unloaded.ts): what the removal's sentence says it was not told of. */
+  unread: readonly string[];
   stopped: boolean;
   /** A new value on every request to focus the picker; `null` asks for no focus. */
   focusPicker: number | null;
@@ -84,6 +95,7 @@ export function VariablePanel({
   name,
   file,
   revision,
+  unread,
   stopped,
   focusPicker,
   onClose,
@@ -98,10 +110,19 @@ export function VariablePanel({
     queryFn: () => getVariable(name),
     placeholderData: (previous) => previous,
   });
+  const units = useQuery({
+    queryKey: ["units", revision],
+    queryFn: () => getUnits(),
+    placeholderData: (previous) => previous,
+  });
   // What the panel shows of that answer (`panelShows`): refused because a file an edit wrote has
   // not been analysed yet, it says the findings are updating rather than the refusal, over the
-  // variable as it showed it, and never another variable's answer under this name.
-  const answer = panelShows(variable, (shown) => shown.name, name, updating);
+  // variable as it showed it, and never another variable's answer under this name. Its read of
+  // the units failed with nothing to draw from, it says why (`panelReads`).
+  const answer = panelReads(
+    panelShows(variable, (shown) => shown.name, name, updating),
+    units,
+  );
   const reply = answer.shown === "reply" ? answer.reply : undefined;
   // Spec 5.5: a variable renamed or removed on disk - or named by an address no file declares,
   // such as an old bookmark - is not declared any longer, and its panel closes. It says why on
@@ -112,11 +133,6 @@ export function VariablePanel({
   useEffect(() => {
     if (undeclared) onUndeclared();
   }, [undeclared, onUndeclared]);
-  const units = useQuery({
-    queryKey: ["units", revision],
-    queryFn: () => getUnits(),
-    placeholderData: (previous) => previous,
-  });
   // What removing this declaration from `file` would take - asked for only on a component's
   // page, which is what `file` being stated says; the project screen's own panel offers no
   // removal, and asks for no plan.
@@ -277,6 +293,15 @@ export function VariablePanel({
   // separate `pending` flag of its own (unlike `UnitPanel`'s `Offer`), so `preview`/`refusal`
   // below read `shownSettle` directly.
   const shownSettle = planShown(askedSettle, settleRequest, preview);
+  // What the settle offers beside a refusal, the one rule every panel follows (`offerShown`): a
+  // refusal of its Apply, held for the key it was refused for, said over the plan asked again,
+  // and nothing to apply beside its plan's own refusal. While the fields make no value, nothing
+  // was asked, and the note is the whole of what the panel has to say of the plan.
+  const settleOffer = offerShown(heldOf(refused, selected), {
+    plan: shownSettle.plan,
+    refusal: broken !== null ? null : shownSettle.refusal,
+    pending: shownSettle.pending,
+  });
   // Selecting a row starts that key afresh - what was chosen for the last one means nothing for
   // this one. Letting a row go is a choice too, not a blank: it must show the table alone even
   // while a row still disagrees, not hand the reader straight back to it.
@@ -298,12 +323,10 @@ export function VariablePanel({
     hold({ range: { ...next, typed: true }, typed: undefined });
     setRefused(null);
   };
+  // Pressed for the key on screen, which the refusal, if any, is of (`pickedOnRefusal`).
   const apply = useMutation({
-    mutationFn: () => {
-      const edit =
-        preview.data === undefined || selected === undefined
-          ? null
-          : editOf(preview.data, settleLabel(name, selected));
+    mutationFn: (key: string) => {
+      const edit = preview.data === undefined ? null : editOf(preview.data, settleLabel(name, key));
       if (edit === null) throw new Error("there is nothing to change");
       return postEdit(edit);
     },
@@ -324,11 +347,13 @@ export function VariablePanel({
       hold({ typed: undefined, changesShown: false });
       setRefused(null);
     },
-    onError: (error) =>
-      setRefused({
-        about: selected,
-        text: refusalSentence(error, STALE),
-      }),
+    // Held of the key pressed for, whose row stays open where the panel had opened it by itself
+    // (`pickedOnRefusal`): the analysis a stale refusal asks for can make that row agree, and the
+    // panel would move on to another, the sentence going out of view with the row.
+    onError: (error, key) => {
+      setRefused({ about: key, text: refusalSentence(error, STALE) });
+      setPicked((current) => pickedOnRefusal(current, key));
+    },
     // An Apply changes this variable's declarations, the units the project uses and the preview
     // it was made from, whose fingerprints the edit spent: those are asked for again, and Apply
     // stays unavailable until they answer. It changes the same file the removal offer beside it
@@ -498,18 +523,18 @@ export function VariablePanel({
       // previewed on before: the query is not asked, and an answer it kept is not shown. Nor is
       // the debounced request's own answer, while it is not yet what `target` now says
       // (`shownSettle.plan`) - that answer is an earlier target's, same as while any plan loads.
-      preview={broken === null && !unsettledText ? shownSettle.plan : null}
+      preview={broken === null && !unsettledText ? settleOffer.plan : null}
+      // Said while that plan is on its way, as long as nothing is said in its place instead.
+      planning={broken === null && !unsettledText && planning(settleOffer)}
       // A settlement refused is about the value that was asked for; while the fields make no
       // value, nothing was asked, and the note is the whole of what the panel has to say - nor
       // once the fields have moved past the target this refusal was about (`shownSettle.refusal`).
-      refusal={
-        unsettledText
-          ? null
-          : refusalShown(refused, broken !== null ? null : shownSettle.refusal, selected)
-      }
+      refusal={unsettledText ? null : settleOffer.refusal}
       changesShown={changesShown}
       onChangesShown={(shown) => hold({ changesShown: shown })}
-      onApply={() => apply.mutate()}
+      onApply={() => {
+        if (selected !== undefined) apply.mutate(selected);
+      }}
       // Left out on the project screen's own panel (`file` is `undefined` there, and so is
       // `from`, since nothing in `variable.declarations` can match a file that names none):
       // Task 7's optional prop then draws no offer at all.
@@ -519,6 +544,7 @@ export function VariablePanel({
           : {
               offer: removalOffer,
               from,
+              unread,
               shown: removalShown,
               onShown: setRemovalShown,
               onRemove: () => remove.mutate(),
@@ -534,11 +560,7 @@ export function VariablePanel({
                 setTypedDescription(text);
                 setDescriptionRefused(null);
               },
-              offer: {
-                plan: shownDescription.plan,
-                refusal: descriptionRefused ?? shownDescription.refusal,
-                pending: shownDescription.pending,
-              },
+              offer: offerShown(descriptionRefused, shownDescription),
               shown: descriptionShownDiff,
               onShown: setDescriptionShownDiff,
               onApply: () => {

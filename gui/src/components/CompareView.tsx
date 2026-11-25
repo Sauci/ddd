@@ -1,16 +1,26 @@
 import type { CompareReply, State } from "../api/types";
-import { compareLine, compareRouteReason, compareRows, fileNameIn } from "../lib/compare";
+import {
+  asksNothing,
+  compareLine,
+  compareRouteReason,
+  compareRows,
+  fileNameIn,
+  ownErrorsLine,
+  verdictLine,
+} from "../lib/compare";
 import { placeOf, routeHref, routeLabel, routeOf } from "../lib/findings";
 import type { Route } from "../lib/route";
 import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
+import { PanelTable } from "../ui/PanelTable";
 import { CompareTableView } from "./CompareTableView";
 import { FindingPanelView } from "./FindingPanelView";
 
 export interface CompareViewProps {
   /** The open project as the session last published it: what a finding that names a place in it
    * is routed against, exactly as the Findings tab routes its own (`routeLabel`,
-   * `noRouteReason`). */
+   * `noRouteReason`), and what counts the project's own errors under the verdict, as that tab's
+   * line counts them (`ownErrorsLine`). */
   state: State;
   /** Following a finding that names a place in the open project, which the app navigates to. */
   onOpen: (route: Route) => void;
@@ -20,6 +30,9 @@ export interface CompareViewProps {
   onBaseline: (path: string) => void;
   /** Submitting the field: compares the open project against `baseline` as it now reads. */
   onAsk: () => void;
+  /** The baseline last asked for, the one `reply` answers about, which the verdict names: the field
+   * may hold another, typed since and not asked. Empty before the reader has asked. */
+  asked: string;
   /** The last comparison the server answered, or `null` before the reader has asked, or while a
    * refused ask has cleared it. */
   reply: CompareReply | null;
@@ -59,18 +72,22 @@ export function CompareView(props: CompareViewProps) {
   const { reply, refusal, busy } = props;
   const rows = reply === null ? [] : compareRows(reply);
   const row = rows.find((entry) => entry.key === props.selected);
+  const own = reply === null ? null : ownErrorsLine(reply, props.state);
   return (
     <>
       <div className="compare-field">
         <label className="panel-field">
           Baseline
+          {/* A field that asks: disabled while its answer comes, it is given the focus back once the
+              answer has come, where the reader asked from (`landing`, ruling B11-40). */}
           <input
             type="text"
+            data-asks
             value={props.baseline}
             disabled={busy}
             onChange={(event) => props.onBaseline(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === "Enter" && props.baseline.trim() !== "") props.onAsk();
+              if (event.key === "Enter" && !asksNothing(props.baseline)) props.onAsk();
             }}
           />
         </label>
@@ -85,7 +102,7 @@ export function CompareView(props: CompareViewProps) {
         </p>
         <Button
           variant="primary"
-          isDisabled={busy || props.baseline.trim() === ""}
+          isDisabled={busy || asksNothing(props.baseline)}
           onPress={props.onAsk}
         >
           Compare
@@ -94,44 +111,50 @@ export function CompareView(props: CompareViewProps) {
       {reply !== null && (
         <>
           <p className={reply.verdict ? "verdict pass" : "verdict fail"} role="status">
-            {reply.verdict
-              ? "This project can replace the baseline."
-              : "This project cannot replace the baseline."}
+            {verdictLine(reply.verdict, props.asked)}
           </p>
+          {/* The project's own errors, which the verdict counts and the table below lists none of
+              (14:I1). */}
+          {own !== null && <p>{own}</p>}
           <p className="summary">{compareLine(reply)}</p>
-          <div className={row !== undefined ? "with-panel" : undefined}>
-            <div>
-              <CompareTableView rows={rows} selected={props.selected} onSelect={props.onSelect} />
-            </div>
-            {row !== undefined && (
-              <div key={props.selected}>
-                <FindingPanelView
-                  finding={row.finding}
-                  label={routeLabel(row.finding, props.state)}
-                  href={routeHref(row.finding)}
-                  reason={compareRouteReason(row, props.state)}
-                  place={placeOf(row.finding, fileNameIn(row.fromBaseline))}
-                  fileName={fileNameIn(row.fromBaseline)}
-                  onOpen={() => {
-                    const route = routeOf(row.finding);
-                    if (route !== null) props.onOpen(route);
-                  }}
-                  // Nothing here ever offers a fix: `POST /api/edit` changes the open project,
-                  // and a comparison's own finding names no place in it to change (see `reason`
-                  // above), while a baseline's finding is not about the open project at all.
-                  fixes={null}
-                  chosen={undefined}
-                  onChoose={() => {}}
-                  changesShown={false}
-                  onChangesShown={() => {}}
-                  onApply={() => {}}
-                  refusal={null}
-                  busy={busy}
-                  onClose={() => props.onSelect(undefined)}
-                />
+          {/* No table where the line says there is nothing to report: a long table draws the rows
+              in view, and with none its box is nothing high - the header cut away, and still in
+              the document for a screen reader. */}
+          {rows.length > 0 && (
+            <div className={row !== undefined ? "with-panel" : undefined}>
+              <div>
+                <CompareTableView rows={rows} selected={props.selected} onSelect={props.onSelect} />
               </div>
-            )}
-          </div>
+              {row !== undefined && (
+                <div key={props.selected}>
+                  <FindingPanelView
+                    finding={row.finding}
+                    label={routeLabel(row.finding, props.state)}
+                    href={routeHref(row.finding)}
+                    reason={compareRouteReason(row, props.state)}
+                    place={placeOf(row.finding, fileNameIn(row.fromBaseline))}
+                    fileName={fileNameIn(row.fromBaseline)}
+                    onOpen={() => {
+                      const route = routeOf(row.finding);
+                      if (route !== null) props.onOpen(route);
+                    }}
+                    // Nothing here ever offers a fix: `POST /api/edit` changes the open project,
+                    // and a comparison's own finding names no place in it to change (see `reason`
+                    // above), while a baseline's finding is not about the open project at all.
+                    fixes={null}
+                    chosen={undefined}
+                    onChoose={() => {}}
+                    changesShown={false}
+                    onChangesShown={() => {}}
+                    onApply={() => {}}
+                    refusal={null}
+                    busy={busy}
+                    onClose={() => props.onSelect(undefined)}
+                  />
+                </div>
+              )}
+            </div>
+          )}
           <h2 className="panel-heading">Renamed objects</h2>
           <p className="rename-note">
             A calibration dataset, a recording or a test script keyed by the old spelling needs this
@@ -140,7 +163,7 @@ export function CompareView(props: CompareViewProps) {
           {reply.renames.length === 0 ? (
             <p className="quiet">Nothing was renamed.</p>
           ) : (
-            <table className="panel-declarations">
+            <PanelTable>
               <thead>
                 <tr>
                   <th scope="col">Id</th>
@@ -157,7 +180,7 @@ export function CompareView(props: CompareViewProps) {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </PanelTable>
           )}
         </>
       )}

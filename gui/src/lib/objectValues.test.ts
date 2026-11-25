@@ -18,8 +18,10 @@ import {
   heldReadings,
   limitsLine,
   noGridNote,
+  nothingPasted,
   oneCell,
   pasted,
+  pastedValue,
   pasteHint,
   pasteSentence,
   pastes,
@@ -932,6 +934,7 @@ describe("a number a double cannot hold", () => {
   test("a pasted block holding one is refused in the same words, and plans nothing", () => {
     expect(pasted("9007199254740993\t9007199254740995", BIG, false)).toEqual({
       rows: null,
+      header: false,
       refusal: `'9007199254740993' is past 2^53, ${INEXACT}`,
       ambiguous: null,
     });
@@ -1407,13 +1410,44 @@ describe("the width of a column (`gridTexts`)", () => {
   });
 });
 
+/** CurveA made a curve of three, over the first three of AxisA's breakpoints: two rows of four are
+ * its shape with a row and a column more. */
+const CURVE_OF_THREE: ValuesReply = {
+  ...CURVE_A,
+  shape: [3],
+  rows: [[1200, 900, 800]],
+  axes: CURVE_A.axes.map((axis) => ({ ...axis, breakpoints: axis.breakpoints.slice(0, 3) })),
+};
+
+/** Two rows of four, which a curve of three reads as a header row and column around its values. */
+const TWO_ROWS_OF_FOUR = "10\t20\t30\t40\n50\t60\t70\t80";
+
 describe("pasteSentence", () => {
   test("names the object a pasted table is about to replace every value of", () => {
-    expect(pasteSentence(CURVE_A)).toBe("Replaces every value of CurveA");
+    expect(pasteSentence(CURVE_A, false)).toBe("Replaces every value of CurveA");
   });
 
   test("carries no count of its own, one-dimensional or not - the hint above already has it", () => {
-    expect(pasteSentence(MAP_A)).toBe("Replaces every value of MapA");
+    expect(pasteSentence(MAP_A, false)).toBe("Replaces every value of MapA");
+  });
+
+  test("says that the first row and column pasted are taken for a header and not written (decision 15.1)", () => {
+    expect(pasteSentence(CURVE_OF_THREE, true)).toBe(
+      "Replaces every value of CurveA; the first row and column pasted are taken for a header " +
+        "and not written",
+    );
+  });
+
+  test("so two rows of four pasted into a curve of three say what was not written", () => {
+    // Taken for a header row and column, 10, 20, 30, 40 and 50 are left out and 60, 70 and 80
+    // are the curve's: the sentence over the preview is where a reader who meant something else
+    // learns it, before opening Show changes.
+    const block = pasted(TWO_ROWS_OF_FOUR, CURVE_OF_THREE, false);
+    expect(block.rows).toEqual([[60, 70, 80]]);
+    expect(pasteSentence(CURVE_OF_THREE, block.header)).toBe(
+      "Replaces every value of CurveA; the first row and column pasted are taken for a header " +
+        "and not written",
+    );
   });
 });
 
@@ -1445,6 +1479,8 @@ describe("pasted", () => {
     const block = pasted("12\t9\t8\t7.5\t7\t6.5", CURVE_A, true);
     expect(block.refusal).toBeNull();
     expect(block.rows).toEqual([[1200, 900, 800, 750, 700, 650]]);
+    // The object's own shape: nothing is taken for a header.
+    expect(block.header).toBe(false);
   });
 
   test("in raw, the counts are taken as they are", () => {
@@ -1476,6 +1512,17 @@ describe("pasted", () => {
     expect(pasted(text, CURVE_A, true).rows).toEqual([[1200, 900, 800, 750, 700, 650]]);
   });
 
+  test("two rows of four pasted into a curve of three are taken for a header around its values, and say so", () => {
+    // Nothing but the block's size tells a header from values, so its first row and column are
+    // left out whatever they hold, and the answer says so (decision 15.1).
+    expect(pasted(TWO_ROWS_OF_FOUR, CURVE_OF_THREE, false)).toEqual({
+      rows: [[60, 70, 80]],
+      header: true,
+      refusal: null,
+      ambiguous: null,
+    });
+  });
+
   test("a map's header row and column are dropped too", () => {
     const text = [
       "\t0\t800\t1600\t3200\t4800\t8000",
@@ -1489,9 +1536,12 @@ describe("pasted", () => {
 
   test("breakpoints above values, with no labels, matches neither shape", () => {
     const text = ["0\t3200\t6400\t12800\t19200\t32000", "1200\t900\t800\t750\t700\t650"].join("\n");
-    expect(pasted(text, CURVE_A, false).refusal).toBe(
-      "expected 1 row of 6, or 2 rows of 7 with a header; got 2 rows of 6",
-    );
+    expect(pasted(text, CURVE_A, false)).toEqual({
+      rows: null,
+      header: false,
+      refusal: "expected 1 row of 6, or 2 rows of 7 with a header; got 2 rows of 6",
+      ambiguous: null,
+    });
   });
 
   test("a column is refused: the grid draws a curve as a row", () => {
@@ -1501,9 +1551,12 @@ describe("pasted", () => {
   });
 
   test("rows of different lengths are not a table", () => {
-    expect(pasted("1\t2\t3\t4\t5\t6\n7\t8\t9", MAP_A, false).refusal).toBe(
-      "this is not a table: its rows are 6 and 3 values long",
-    );
+    expect(pasted("1\t2\t3\t4\t5\t6\n7\t8\t9", MAP_A, false)).toEqual({
+      rows: null,
+      header: false,
+      refusal: "this is not a table: its rows are 6 and 3 values long",
+      ambiguous: null,
+    });
   });
 
   test("three different lengths are listed, not joined by two ands", () => {
@@ -1522,9 +1575,12 @@ describe("pasted", () => {
   });
 
   test("a block mixing a comma and a point does not know which it means", () => {
-    expect(pasted("12\t9\t8\t7.5\t7\t6,5", CURVE_A, true).refusal).toBe(
-      "this mixes '.' and ',' as decimal separators, so it is not clear what it means",
-    );
+    expect(pasted("12\t9\t8\t7.5\t7\t6,5", CURVE_A, true)).toEqual({
+      rows: null,
+      header: false,
+      refusal: "this mixes '.' and ',' as decimal separators, so it is not clear what it means",
+      ambiguous: null,
+    });
   });
 
   test("a block whose commas group thousands reads one that could be either so (M1)", () => {
@@ -1532,6 +1588,7 @@ describe("pasted", () => {
     // means is offered only where nothing in the block says it.
     expect(pasted("1,234,567\t1,500\t8\t7\t6\t5", BIG_CURVE, false)).toEqual({
       rows: [[1234567, 1500, 8, 7, 6, 5]],
+      header: false,
       refusal: null,
       ambiguous: null,
     });
@@ -1570,6 +1627,7 @@ describe("pasted", () => {
     // uint32 curve of 1,000 / 2,000 / 3,000 was written 1 / 2 / 3 and nothing said so.
     expect(pasted("1,200\t2\t3\t4\t5\t6", CURVE_A, false)).toEqual({
       rows: null,
+      header: false,
       refusal: "the comma in '1,200' could be a decimal point or a thousands separator",
       ambiguous: "1,200",
     });
@@ -1604,6 +1662,7 @@ describe("pasted", () => {
   test("a number in another notation pasted is refused in the one sentence, and asks nothing", () => {
     expect(pasted("0x10\t2\t3\t4\t5\t6", CURVE_A, false)).toEqual({
       rows: null,
+      header: false,
       refusal: "'0x10' is not a number in decimal notation",
       ambiguous: null,
     });
@@ -1645,16 +1704,65 @@ describe("pasted", () => {
   });
 });
 
+describe("pastedValue", () => {
+  test("one cell pasted is the one value it holds, a trailing line break aside (decision 15.2)", () => {
+    // What a spreadsheet puts on the clipboard for one cell copied: its text and a line break,
+    // which Windows writes as two characters.
+    expect(pastedValue("14")).toBe("14");
+    expect(pastedValue("14\n")).toBe("14");
+    expect(pastedValue("14\r\n")).toBe("14");
+  });
+
+  test("its text is kept as pasted, for the cell to read as it reads one typed", () => {
+    expect(pastedValue(" 7,5 ")).toBe(" 7,5 ");
+    expect(pastedValue("abc")).toBe("abc");
+  });
+
+  test("one with no text - nothing, or an image alone - is no value, and leaves the cell as it was", () => {
+    // A text field keeps its text where nothing, or an image alone, is pasted into it, its
+    // `text/plain` empty then: the cell keeps what was typed there, where it was emptied.
+    expect(pastedValue("")).toBeNull();
+  });
+
+  test("one empty cell, its line break alone, is a cell nothing is typed into", () => {
+    expect(pastedValue("\n")).toBe("");
+    expect(pastedValue("\r\n")).toBe("");
+  });
+
+  test("anything more is a block, which replaces every value", () => {
+    expect(pastedValue("14\t15")).toBeNull();
+    expect(pastedValue("14\n15")).toBeNull();
+    expect(pastedValue("14\t")).toBeNull();
+    // A second line break is a second row, empty.
+    expect(pastedValue("14\n\n")).toBeNull();
+  });
+});
+
+describe("nothingPasted", () => {
+  test("a paste with no text pastes nothing, which the grid reads no table of", () => {
+    expect(nothingPasted("")).toBe(true);
+  });
+
+  test("any text is pasted: a line break, a space, a value or a table", () => {
+    expect(nothingPasted("\n")).toBe(false);
+    expect(nothingPasted(" ")).toBe(false);
+    expect(nothingPasted("14")).toBe(false);
+    expect(nothingPasted("1\t2\n3\t4")).toBe(false);
+  });
+});
+
 describe("pasteHint", () => {
-  test("a curve asks for one row", () => {
+  test("a curve asks for one row, or one value into a cell", () => {
     expect(pasteHint(CURVE_A)).toBe(
-      "Paste 1 row of 6 values from a spreadsheet to replace them all.",
+      "Paste 1 row of 6 values from a spreadsheet to replace them all, or one value into a " +
+        "cell to set it.",
     );
   });
 
   test("a map asks for four", () => {
     expect(pasteHint(MAP_A)).toBe(
-      "Paste 4 rows of 6 values from a spreadsheet to replace them all.",
+      "Paste 4 rows of 6 values from a spreadsheet to replace them all, or one value into a " +
+        "cell to set it.",
     );
   });
 });

@@ -53,6 +53,7 @@ from ddd.editing import (
     EditError,
     FileChange,
     Operation,
+    Written,
     unchanged,
 )
 from ddd.file_plans import (
@@ -94,6 +95,7 @@ from ddd.gui.queries import (
     FilesPlanQuery,
     FindingsQuery,
     FixQuery,
+    NamesQuery,
     NoQuery,
     QueryModel,
     RasterPlanQuery,
@@ -121,6 +123,7 @@ from ddd.gui.queries import (
     StateQuery,
     TypePlanQuery,
     TypeQuery,
+    UndoQuery,
     UnitPlanQuery,
     UnitQuery,
     ValuePlanQuery,
@@ -247,6 +250,12 @@ _CLIENT_GONE: ContextVar[Callable[[], bool]] = ContextVar("ddd_gui_client_gone",
 its slices (:meth:`Api._snapshot_after`): set by :meth:`Api.handle` for the length of one
 request, from what the server hands it. A context variable rather than a parameter of every
 route's answer, since only the long poll waits."""
+
+NAMES_ANSWERED: Final = 50
+"""How many variables ``GET /api/names`` answers at most: what the masthead's go-to lists, saying
+under them how many more hold the text, and to type to narrow them. React Aria draws every entry
+of a list it is handed, and a project's names can be tens of thousands; fifty is what the declare
+form's Name list draws (``NAMES_SHOWN``, ``gui/src/lib/declarations.ts``)."""
 
 MEMO: Final = 256
 """How many answers the api keeps for the newest revision: the graph, the Types and Shared files
@@ -440,6 +449,10 @@ class Api:
                         {"record": record.as_posix(), "reason": reason}
                         for record, reason in found.refused
                     ],
+                    unreadable=[
+                        {"path": path.as_posix(), "reason": reason}
+                        for path, reason in found.unreadable
+                    ],
                 )
             ),
         )
@@ -583,18 +596,18 @@ class Api:
     def _findings(self, query: FindingsQuery, body: None) -> Reply:
         """A page of the newest revision's findings: from ``?offset=`` - ``0`` when none is given -
         at most ``?limit=`` of them, or every one from the offset on when no limit is given, of
-        those ``?severity=``, ``?file=`` (a file's path, however spelled) and ``?check=`` leave,
-        in the Findings tab's order, each with its key.
+        those ``?severity=``, ``?file=`` (a file's path, however spelled), ``?check=`` and
+        ``?text=`` (:func:`_holds`) leave, in the Findings tab's order, each with its key.
 
         Kept for the revision (:meth:`_memoised`), one answer per page and filters: a reader
         scrolling back to a page finds it made already."""
         revision = self._opened()
         offset, limit, severity = query.offset, query.limit, query.severity
-        file, check = query.file, query.check
+        file, check, text = query.file, query.check, query.text
         return self._memoised(
             revision,
-            ("findings", offset, limit, severity, file, check),
-            lambda: self._findings_of(revision, offset, limit, severity, file, check),
+            ("findings", offset, limit, severity, file, check, text),
+            lambda: self._findings_of(revision, offset, limit, severity, file, check, text),
         )
 
     def _findings_of(
@@ -605,6 +618,7 @@ class Api:
         severity: str | None,
         file: str | None,
         check: str | None,
+        text: str | None,
     ) -> Reply:
         """:meth:`_findings`' answer: the positions the filters leave, in the tab's order - a
         file's read from where its own findings stand, sorted by severity as stably as the whole
@@ -622,6 +636,13 @@ class Api:
             order = [at for at in order if findings[at].diagnostic.severity == severity]
         if check is not None:
             order = [at for at in order if findings[at].diagnostic.check == check]
+        if text is not None:
+            wanted = text.lower()
+            named = _file_names(revision)
+            # A text that is a whole name the column draws leads to that file alone: a link to
+            # `/x/b.ddd.json` must not list the findings of `a/x/b.ddd.json`, which contains it.
+            exact = wanted in {each.lower() for each in named.values()}
+            order = [at for at in order if _holds(findings[at], wanted, named, exact=exact)]
         page = order[offset:]
         if limit is not None:
             page = page[:limit]
@@ -778,16 +799,22 @@ class Api:
             ),
         )
 
-    def _undo(self, query: NoQuery, body: None) -> Reply:
-        """What putting the last edit back would give each file, read from the disk as it
-        stands."""
+    def _undo(self, query: UndoQuery, body: None) -> Reply:
+        """What putting the edit ``?at=`` names back would give each file, read from the disk as
+        it stands: refused ``stale`` where that edit is no longer the one on top, as its undo is
+        (:meth:`Session.to_undo`), and nothing taken off then. Its refusal is the undo's own
+        (:meth:`Session.preview_refused`): a file the edit wrote gone, or changed on disk since,
+        takes that edit off the stack, and the preview asked next is the one of the edit under
+        it. Named by the page, the edit a refusal is of is the one the page holds it as."""
         revision = self._opened()
-        top = self.session.undoable
-        if top is None:
-            return _error(404, "not-found", "no edit of this session is left to undo")
+        try:
+            top = self.session.to_undo(query.at)
+        except EditError as refused:
+            return _edit_refusal(refused)
         try:
             changes = _undone_changes(top)
         except EditError as refused:
+            self.session.preview_refused(top.at, refused)
             return _edit_refusal(refused)
         return Reply(
             200,
@@ -800,11 +827,19 @@ class Api:
 
     def _apply_undo(self, query: NoQuery, body: contract.UndoRequest) -> Reply:
         """Put that edit back, and answer the number the undo took, once the files are back -
-        before its analysis."""
+        before its analysis. Its refusal names a file as the preview's does (:func:`_by_name`):
+        where a file that cannot be read refuses the put back, and then the preview asked again
+        after it, the two are one refusal in one sentence, which the page says once. The files it
+        names so are those of the edit on top as the undo is asked: where the stack has moved
+        since, the undo is refused as of an edit no longer on top, a sentence naming no file."""
+        files: tuple[Written, ...] = ()
+        top = self.session.undoable
+        if top is not None and top.at == body.at:
+            files = top.files
         try:
             number = self.session.undo(body.at)
         except EditError as refused:
-            return _edit_refusal(refused)
+            return _edit_refusal(_by_name(refused, files))
         return Reply(200, written(contract.UndoReply(edit=number)))
 
     def _variable(self, query: VariableQuery, body: None) -> Reply:
@@ -849,6 +884,42 @@ class Api:
                         ],
                         cache,
                     ),
+                )
+            ),
+        )
+
+    def _names(self, query: NamesQuery, body: None) -> Reply:
+        """The variables of the newest revision whose names hold ``?text=``, whatever its case, as
+        the masthead's go-to asks for them (16:I14): the one the text spells exactly first, then
+        the others by name, at most :data:`NAMES_ANSWERED` of them, each with its kind and the
+        component the page opens its panel on (:func:`_named`), and how many hold the text in all.
+
+        Answered from the index the analysis built, as ``GET /api/declarable`` answers the names a
+        component may read: nothing is read from disk, and nothing said that ``GET /api/variable``
+        and ``GET /api/declarable`` do not say already - a name, its kind, a component declaring
+        it. Refused ``unreadable`` where there is no index, naming the files that did not load, or
+        the description where every file read loaded, as :func:`_nothing_loaded` names them."""
+        revision = self._opened()
+        built = revision.index
+        if built is None:
+            named = _unread(revision) or [revision.project.name]
+            return _did_not_load(named, "no variable of the project can be found")
+        derived = self._derive(revision)
+        wanted = query.text.lower()
+        exact = [query.text] if query.text in built.declarations else []
+        holding = [
+            *exact,
+            *sorted(
+                name for name in built.declarations if name != query.text and wanted in name.lower()
+            ),
+        ]
+        return Reply(
+            200,
+            written(
+                contract.NamesReply(
+                    revision=revision.number,
+                    total=len(holding),
+                    names=[_named(built, derived, name) for name in holding[:NAMES_ANSWERED]],
                 )
             ),
         )
@@ -1951,7 +2022,7 @@ ROUTES: Final[tuple[Route, ...]] = (
         Api._edit,
         Policy(writes=True, runs_plugins=True),
     ),
-    Route("/api/undo", "GET", NoQuery, None, Api._undo),
+    Route("/api/undo", "GET", UndoQuery, None, Api._undo),
     Route(
         "/api/undo",
         "POST",
@@ -1961,6 +2032,7 @@ ROUTES: Final[tuple[Route, ...]] = (
         Policy(writes=True, runs_plugins=True),
     ),
     Route("/api/variable", "GET", VariableQuery, None, Api._variable),
+    Route("/api/names", "GET", NamesQuery, None, Api._names),
     Route("/api/units", "GET", NoQuery, None, Api._units),
     Route("/api/settle", "GET", SettleQuery, None, Api._settle),
     Route("/api/fix", "GET", FixQuery, None, Api._fix),
@@ -2051,6 +2123,46 @@ def _finding(
             ),
         )
     )
+
+
+def _named(built: Index, derived: Derived, name: str) -> dict[str, str]:
+    """A variable as ``GET /api/names`` answers it: its name, its kind, and the component the page
+    opens its panel on - the first producing it, a local's own among them, as
+    :func:`ddd.declaration_plans.declarable` names a producer, or where none does the first
+    declaring it, in the order the project lists its components - by its file and its name."""
+    site = (built.producers.get(name) or built.declarations[name])[0]
+    return {
+        "name": name,
+        "kind": built.kinds.get(name, ""),
+        "file": derived.resolve(site.path).as_posix(),
+        "component": built.components[site.path],
+    }
+
+
+def _file_names(revision: Revision) -> dict[Path, str]:
+    """Each file of ``revision`` as the Findings tab's File column names it: by its name alone, and
+    two of one name in different folders by as much of their paths as tells them apart
+    (:func:`~ddd.lsp.navigation.told_apart`) among every file of the revision, as the page names
+    them (``toldApartAll``, ``gui/src/lib/paths.ts``)."""
+    paths = [file.path for file in revision.files]
+    return dict(zip(paths, told_apart(paths), strict=True))
+
+
+def _holds(filed: Filed, wanted: str, named: Mapping[Path, str], *, exact: bool) -> bool:
+    """Whether a text filter of ``GET /api/findings`` leaves ``filed`` (16:I14): its check, its
+    words or its file's name - as the Findings tab's File column draws it, which tells two files of
+    one name apart by their paths (``named``, :func:`_file_names`), and names one the revision does
+    not list by its own name - holds ``wanted``, the text the reader typed, in lower case as they
+    are compared. A folder of the file's path is not its name, unless it is what tells two files
+    apart: every finding's path holds the folders the project lies in.
+
+    ``exact`` is whether ``wanted`` is a whole name the column draws: the file's name must then be
+    that name, not hold it, so that the link leading to one of two namesakes, one's name contained
+    in the other's, lists its own file's findings alone."""
+    finding = filed.diagnostic
+    name = named.get(filed.file, filed.file.name).lower()
+    in_words = any(wanted in each.lower() for each in (finding.check, finding.message))
+    return in_words or (wanted == name if exact else wanted in name)
 
 
 def _route(route: FindingRoute | None) -> dict[str, Any] | None:
@@ -2796,6 +2908,21 @@ def _planned_changes(
     ]
 
 
+def _by_name(refused: EditError, files: Sequence[Written]) -> EditError:
+    """``refused`` naming each of ``files`` by its own name where it names that file by its path,
+    as the engine refuses with: the page shows an undo's refusal as it stands, and every other
+    sentence it shows names a file by its own name (16:M15). A ``stale`` refusal alone - a file
+    gone, changed on disk, or that can no longer be read - which an undo's preview and its put back
+    both answer, so that the one refusal reads alike from either; any other is the engine's own
+    sentence, as it stands."""
+    if refused.code != STALE:
+        return refused
+    message = str(refused)
+    for file in files:
+        message = message.replace(str(file.path), file.path.name, 1)
+    return EditError(refused.code, message)
+
+
 def _undone_changes(entry: Undoable) -> list[dict[str, Any]]:
     """The files an undo puts back and the lines each would get, read from the disk as it
     stands.
@@ -2809,11 +2936,7 @@ def _undone_changes(entry: Undoable) -> list[dict[str, Any]]:
         try:
             current = unchanged(file).decode("utf-8-sig")
         except EditError as refused:
-            # The page shows this sentence as it stands, and every other sentence it shows names a
-            # file by its own name rather than by the path the engine refuses with.
-            raise EditError(
-                refused.code, str(refused).replace(str(file.path), file.path.name, 1)
-            ) from None
+            raise _by_name(refused, (file,)) from None
         previous = "" if file.before is None else file.before.decode("utf-8-sig")
         changes.append(
             {

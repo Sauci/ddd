@@ -113,9 +113,17 @@ export function withAnswer(state: LayoutState, answer: LayoutAnswer, wanted: str
  * alone, or the canvas - which independently may carry the error banner for a *later* layout
  * that failed, the ranks-only note for one the fallback made, both, or neither. `GraphPage` reads
  * this tag and these two fields; it decides nothing about when either applies.
+ *
+ * `stopped` is whether ddd gui has stopped answering. A worker that failed then is the stop's own
+ * doing - its script is one more request the server no longer answers - and the page's line
+ * under the masthead already says what to do; the worker's own, to reload the page, would lose
+ * the tab to the browser's refused connection (16:M12). Said by nothing here, then: the canvas
+ * as it was, or no canvas where none had been drawn (`stopped`). A layout that failed for its own
+ * reason is still said.
  */
 export type LayoutScreen =
   | { readonly kind: "waiting" }
+  | { readonly kind: "stopped" }
   | { readonly kind: "failed"; readonly message: string }
   | {
       readonly kind: "drawn";
@@ -124,14 +132,16 @@ export type LayoutScreen =
       readonly note: string | null;
     };
 
-export function layoutScreen(state: LayoutState): LayoutScreen {
+export function layoutScreen(state: LayoutState, stopped: boolean): LayoutScreen {
+  const unsaid = stopped && state.error === WORKER_FAILED;
   if (state.placed === null) {
-    return state.error === null ? { kind: "waiting" } : { kind: "failed", message: state.error };
+    if (state.error === null) return { kind: "waiting" };
+    return unsaid ? { kind: "stopped" } : { kind: "failed", message: state.error };
   }
   return {
     kind: "drawn",
     placed: state.placed,
-    errorMessage: state.error,
+    errorMessage: unsaid ? null : state.error,
     note: state.ranksOnly ? RANKS_ONLY_NOTE : null,
   };
 }

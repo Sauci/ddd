@@ -357,6 +357,30 @@ test("an adopt refused because its units file now exists says so in the banner, 
   await expect(page.getByText("5 units · no units file")).toBeVisible();
 });
 
+test("an adopt whose plan the server fails on when asked again, once the adopt was refused, offers nothing to press", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Units" }).click();
+  const banner = page.getByRole("status").filter({ hasText: "This project has no units file" });
+  const adopt = banner.getByRole("button", { name: "Adopt 5 units" });
+  await expect(adopt).toBeEnabled();
+
+  // From here on the server fails the adopt, and the plan the tab asks again once it is answered:
+  // the query keeps the plan it had, whose fingerprints the server would refuse.
+  const edits = await failing(page, "/api/edit", "http");
+  const plans = await failing(page, "/api/unit-plan", "http");
+  await adopt.click();
+  await expect.poll(plans).toBeGreaterThanOrEqual(1);
+  // Beside its plan's own refusal, the banner offers nothing to press (`offerShown`), the refusal
+  // of the adopt said in it.
+  await expect(banner.getByText(`The change was refused: ${SERVER_FAILED}`)).toBeVisible();
+  await expect(adopt).toHaveCount(0);
+  await expect(banner.getByRole("button", { name: "Show changes" })).toHaveCount(0);
+  expect(edits()).toBe(1);
+});
+
 test("an adopt refused leaves no sentence behind it, and an adoption offered again starts with none", async ({
   page,
   gui,
@@ -483,6 +507,27 @@ test("a unit's panel whose unit fails to load says why, beside the table", async
       .getByRole("status")
       .filter({ hasText: "ms is no longer stated or listed in the open project." }),
   ).toHaveCount(0);
+  expect(failed()).toBeGreaterThanOrEqual(1);
+});
+
+test("a unit's panel whose read of the units fails on a new revision says why, beside the table the tab keeps", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Units", exact: true }).click();
+  const row = page.getByRole("row", { name: "ms", exact: true });
+  await row.click();
+  const panel = page.getByRole("complementary", { name: "ms", exact: true });
+  await expect(panel.getByRole("combobox", { name: "Rename ms to" })).toBeVisible();
+
+  // Every read of the units fails from here, and the restamp makes a new revision at once: the
+  // tab keeps its table under its alert (kept.spec.ts), and the unit's own read goes through.
+  const failed = await failing(page, "/api/units", "http");
+  restamp(gui.directory, CONTROLLER);
+  await expect(panel.getByRole("alert")).toHaveText(SERVER_FAILED);
+  await expect(panel.getByText("Reading ms…")).toHaveCount(0);
+  await expect(row).toBeVisible();
   expect(failed()).toBeGreaterThanOrEqual(1);
 });
 
@@ -617,6 +662,38 @@ test("a removal the server fails on says so in its words, is offered again, and 
   await expect(remove).toBeEnabled();
 });
 
+test("a removal whose plan the server fails on when asked again, once its apply was refused, offers nothing to press beside the refusal", async ({
+  page,
+  vocabularyGui,
+}) => {
+  await page.goto(vocabularyGui.address);
+  await page.getByRole("link", { name: "Units", exact: true }).click();
+  await page.getByRole("row", { name: "degC", exact: true }).click();
+  const panel = page.getByRole("complementary", { name: "degC", exact: true });
+  const removing = panel.getByRole("region", { name: "Remove from the vocabulary" });
+  const plan = removing.getByText("Changes 1 file: units.ddd.json", { exact: true });
+  await expect(plan).toBeVisible();
+
+  // From here on the server fails the Apply, and the plan the panel asks again once the Apply is
+  // answered: the query keeps the plan it had, whose fingerprints the server would refuse.
+  const edits = await failing(page, "/api/edit", "http");
+  const plans = await failing(page, "/api/unit-plan", "http");
+  const remove = removing.getByRole("button", { name: "Remove from the vocabulary" });
+  await remove.click();
+  await expect(removing.getByRole("status")).toHaveText(`The change was refused: ${SERVER_FAILED}`);
+  await expect.poll(plans).toBeGreaterThanOrEqual(1);
+  // Beside its plan's own refusal, a write offers nothing to apply (`offerShown`): neither the
+  // plan kept from before nor its button, the refusal of the Apply said over it.
+  await expect(remove).toHaveCount(0);
+  await expect(plan).toHaveCount(0);
+  // Once every query the Apply asked again has answered, the panel takes a choice again: still
+  // nothing to press, and still the one sentence.
+  await expect(panel.getByRole("textbox", { name: "Description" })).toBeEnabled();
+  await expect(remove).toHaveCount(0);
+  await expect(removing.getByRole("status")).toHaveText(`The change was refused: ${SERVER_FAILED}`);
+  expect(edits()).toBe(1);
+});
+
 test("a rename the plan refuses says why in the panel, and offers nothing to apply", async ({
   page,
   gui,
@@ -666,7 +743,7 @@ test("a unit listed twice is flagged by its chip, and its panel says it is alrea
   await row.click();
   const panel = page.getByRole("complementary", { name: "rpm", exact: true });
   await expect(panel.getByRole("listitem")).toHaveText([
-    "duplicate-unit unit 'rpm' is already declared",
+    "duplicate-unit error unit 'rpm' is already declared",
   ]);
 });
 
@@ -718,4 +795,21 @@ test("a wheel notch while the rename's list is open keeps what was typed, and th
   await expect(rename).toHaveValue("km/hyy");
   await rename.press("Tab");
   await expect(rename).toHaveValue("km/h");
+});
+
+test("a place of a unit's panel leads to the variable that states the unit there (16:M22)", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Units" }).click();
+  await page.getByRole("row", { name: "ms", exact: true }).click();
+  const panel = page.getByRole("complementary", { name: "ms" });
+  const places = panel.getByRole("grid", { name: "Where ms is stated" });
+  await expect(places.getByRole("row")).toHaveCount(2);
+  const [row] = await places.getByRole("link").all();
+  const name = (await row?.innerText()) ?? "";
+  await row?.click();
+  await expect(page).toHaveURL(new RegExp(`variable=${name}`));
+  await expect(page.getByRole("complementary", { name })).toBeVisible();
 });

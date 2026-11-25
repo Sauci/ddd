@@ -1,4 +1,7 @@
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
+import { crowd, dump, held, restamp } from "./demo";
 import { expect, test } from "./fixtures";
 
 /**
@@ -39,7 +42,9 @@ async function watchUnitCell(page: Page): Promise<void> {
         '[aria-label="Set the unit of C00000_O0000"]',
       );
       const status = document.querySelector(".updating-status");
-      frames.push([cell?.textContent ?? null, status?.textContent === "Updating the findings…"]);
+      // Said after what the page wrote, where it says that too (16:I13).
+      const updating = status?.textContent?.endsWith("Updating the findings…") === true;
+      frames.push([cell?.textContent ?? null, updating]);
       requestAnimationFrame(each);
     };
     requestAnimationFrame(each);
@@ -49,6 +54,30 @@ async function watchUnitCell(page: Page): Promise<void> {
 /** Every frame `watchUnitCell` has recorded so far, in order. */
 function unitFramesWatched(page: Page): Promise<UnitFrame[]> {
   return page.evaluate(() => (window as unknown as { watchedUnit: UnitFrame[] }).watchedUnit);
+}
+
+/** One frame of the Findings tab as a reader saw it: what the line beside its filter says, and how
+ * many rows its box draws - recorded as `watchUnitCell` records, from one continuous recording. */
+type ListingFrame = readonly [line: string, rows: number];
+
+async function watchListing(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const frames: ListingFrame[] = [];
+    (window as unknown as { watchedListing: ListingFrame[] }).watchedListing = frames;
+    const each = () => {
+      const line = document.querySelector(".filter-line")?.textContent ?? "";
+      frames.push([line, document.querySelectorAll(".findings-window [data-index]").length]);
+      requestAnimationFrame(each);
+    };
+    requestAnimationFrame(each);
+  });
+}
+
+/** Every frame `watchListing` has recorded so far, in order. */
+function listingFramesWatched(page: Page): Promise<ListingFrame[]> {
+  return page.evaluate(
+    () => (window as unknown as { watchedListing: ListingFrame[] }).watchedListing,
+  );
 }
 
 /**
@@ -153,6 +182,201 @@ test("the Findings table scrolled to its end", async ({ page, generatedGui }) =>
 });
 
 /**
+ * Close in the Findings tab's own window after a scroll (16:I13): Enter on the first of the
+ * generated project's 25,000 findings opens its panel, and the wheel takes the box thousands of
+ * rows on, the window letting the first row go. Close pressed from the keyboard scrolls the window
+ * back to the finding and gives the focus to its own row, once drawn - not to a row of the window's
+ * the reader never touched.
+ */
+test("Close in the Findings window after a scroll gives the focus back to the finding's own row", async ({
+  page,
+  generatedGui,
+}) => {
+  await page.goto(generatedGui.address);
+  await page.getByRole("link", { name: "Findings" }).click();
+  const box = page.locator(".findings-window");
+  const first = box.locator('[role="row"][data-index="0"]');
+  await expect(first.locator(".chip")).toBeVisible();
+  const words = await first.textContent();
+  await first.focus();
+  await page.keyboard.press("Enter");
+  const panel = page.getByRole("complementary");
+  await expect(panel).toBeVisible();
+
+  const bounds = await box.boundingBox();
+  if (bounds === null) throw new Error("no .findings-window to scroll");
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  for (let turns = 0; turns < 10; turns += 1) await page.mouse.wheel(0, 1500);
+  await expect.poll(() => box.evaluate((node) => node.scrollTop)).toBeGreaterThan(10_000);
+  await expect(first).toHaveCount(0);
+
+  await panel.getByRole("button", { name: /^Close / }).focus();
+  await page.keyboard.press("Enter");
+  await expect(panel).toHaveCount(0);
+  await expect.poll(() => rowFocused(page)).toBe(words);
+  await expect(first).toBeFocused();
+  await expect(first).toBeInViewport();
+});
+
+/** Where `placedInTheFindings` leaves the Findings tab's box: 20,000 px down the 15,000
+ * `missing-id` findings, row 606 the first in view. */
+const PLACE = 20_000;
+
+/** The row `placedInTheFindings` opens, a few rows into the box scrolled to `PLACE`. */
+const OPENED = 610;
+
+/**
+ * The Findings tab worked down as a reader works down a list (16:M16): filtered to its `missing-id`
+ * findings, its box scrolled to `PLACE` - as the scrollbar dragged there sets it - and the finding
+ * at row `OPENED` pressed, its panel open. Returns the box, the filter, the row and its panel.
+ */
+async function placedInTheFindings(page: Page) {
+  await page.getByRole("link", { name: "Findings", exact: true }).click();
+  const filter = page.getByRole("textbox", { name: "Filter findings" });
+  await filter.fill("missing-id");
+  await expect(filter).toHaveAccessibleDescription("15,000 of 25,000 findings");
+  const box = page.locator(".findings-window");
+  await box.evaluate((node, top) => {
+    node.scrollTop = top;
+  }, PLACE);
+  const row = box.locator(`[role="row"][data-index="${OPENED}"]`);
+  await expect(row.locator(".chip")).toBeVisible();
+  await row.click();
+  const panel = page.getByRole("complementary", { name: "missing-id" });
+  await expect(panel).toBeVisible();
+  return { box, filter, row, panel };
+}
+
+/**
+ * Back keeps the Findings tab's place (16:M16): a finding followed to its variable's page from
+ * 20,000 px down a filtered list, and Back, finds the tab as it was left - its filter's text, its
+ * box scrolled where it stood, and the finding's panel open on its row - not at its top with no
+ * panel, the place to be found again for each finding of the list worked down.
+ */
+test("Back from a finding followed finds the Findings tab as it was left: its filter, its scroll and its finding", async ({
+  page,
+  generatedGui,
+}) => {
+  await page.goto(generatedGui.address);
+  const { box, filter, row, panel } = await placedInTheFindings(page);
+  await panel.getByRole("link", { name: /^Open / }).click();
+  await expect(page).toHaveURL(/\/component\?file=.*&variable=/);
+  await expect(panel).toHaveCount(0);
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/project\?view=findings&text=missing-id$/);
+  await expect(filter).toHaveValue("missing-id");
+  await expect(panel).toBeVisible();
+  await expect(row).toHaveAttribute("aria-selected", "true");
+  await expect.poll(() => box.evaluate((node) => node.scrollTop)).toBe(PLACE);
+});
+
+/**
+ * The place kept until its listing's size has come (16:M16): a file saved again while the reader is
+ * on the finding's component, none of its bytes changed, lands a revision whose findings are the
+ * same, and Back asks the filter's first page of it afresh. Until that page comes the box holds no
+ * rows to stand where it was left, and is drawn at its top, which it does not take for the place:
+ * once the page has come, it stands where it was left.
+ */
+test("Back after a revision landed finds the Findings tab's box where it was left, once its listing's first page has come", async ({
+  page,
+  generatedGui,
+}) => {
+  await page.goto(generatedGui.address);
+  const { box, filter, row, panel } = await placedInTheFindings(page);
+  await panel.getByRole("link", { name: /^Open / }).click();
+  await expect(page).toHaveURL(/\/component\?file=.*&variable=/);
+  await expect(page.getByRole("grid", { name: /^Declarations of / })).toBeVisible();
+  // The component's page reads its file again for the revision the save lands.
+  const landed = page.waitForRequest((request) => new URL(request.url()).pathname === "/api/file");
+  restamp(generatedGui.directory, "units.ddd.json");
+  await landed;
+  const firstPage = await held(
+    page,
+    (url) =>
+      url.pathname === "/api/findings" &&
+      url.searchParams.get("text") === "missing-id" &&
+      url.searchParams.get("offset") === "0",
+  );
+  const asked = page.waitForRequest(
+    (request) => new URL(request.url()).searchParams.get("text") === "missing-id",
+  );
+  await page.goBack();
+  await expect(filter).toHaveValue("missing-id");
+  await asked;
+  await expect.poll(() => box.evaluate((node) => node.scrollTop)).toBe(0);
+  firstPage();
+  await expect.poll(() => box.evaluate((node) => node.scrollTop)).toBe(PLACE);
+  await expect(panel).toBeVisible();
+  await expect(row).toHaveAttribute("aria-selected", "true");
+});
+
+/**
+ * The Findings tab pressed opens it at its place (16:M16), as the Table's filter stays when its tab
+ * is pressed: pressed while on it, the finding's panel stays open and the box where it stood, where
+ * the tab drawn anew closed one and went back to the other's top; and pressed from another tab, the
+ * filter's text, the scroll and the panel are as the tab was left.
+ */
+test("the Findings tab pressed opens it at its place, from the tab itself and from another", async ({
+  page,
+  generatedGui,
+}) => {
+  await page.goto(generatedGui.address);
+  const { box, filter, row, panel } = await placedInTheFindings(page);
+  const findings = page
+    .getByRole("navigation", { name: "Project views" })
+    .getByRole("link", { name: "Findings", exact: true });
+  await findings.click();
+  await expect(panel).toBeVisible();
+  await expect(row).toHaveAttribute("aria-selected", "true");
+  await expect.poll(() => box.evaluate((node) => node.scrollTop)).toBe(PLACE);
+
+  await page.getByRole("link", { name: "Table", exact: true }).click();
+  await expect(page.getByRole("grid", { name: "Components" })).toBeVisible();
+  await findings.click();
+  await expect(page).toHaveURL(/\/project\?view=findings&text=missing-id$/);
+  await expect(filter).toHaveValue("missing-id");
+  await expect(panel).toBeVisible();
+  await expect(row).toHaveAttribute("aria-selected", "true");
+  await expect.poll(() => box.evaluate((node) => node.scrollTop)).toBe(PLACE);
+});
+
+/**
+ * The declare form's Name list, over the generated project's names (16:I7): React Aria
+ * draws every entry of a list it is handed, so the list is narrowed by what is typed, as the unit
+ * picker's is, and drawn to fifty (`NAMES_SHOWN`, lib/declarations.ts), its foot saying how many
+ * more match. Opened on C00000 with nothing typed, it draws fifty of every name it could read;
+ * typed key by key, `C00500_O` narrows it to that component's 15 outputs of the name, the first of
+ * them first, all drawn, with nothing more to say.
+ */
+test("the declare form's Name list is narrowed by what is typed, and drawn to a cap", async ({
+  page,
+  generatedGui,
+}) => {
+  await page.goto(generatedGui.address);
+  await page.getByRole("link", { name: "Table" }).click();
+  await page.getByRole("button", { name: "C00000", exact: true }).click();
+  await page.getByRole("button", { name: "Add a declaration" }).click();
+  const adding = page.getByRole("complementary", { name: "Add a declaration" });
+  await adding.getByRole("button", { name: "Show the choices for Name" }).click();
+
+  const options = page.getByRole("listbox").getByRole("option");
+  await expect(options).toHaveCount(50);
+  // The names are the server's, sorted, without the component's own (`declarable`).
+  await expect(options.first()).toHaveAccessibleName("C00001_O0000");
+  // 14,968 names, measured before the cap: every one was drawn.
+  await expect(
+    page.getByText("14,918 more names match: type to narrow the list.", { exact: true }),
+  ).toBeVisible();
+
+  await adding.getByRole("combobox", { name: "Name" }).pressSequentially("C00500_O");
+  await expect(options).toHaveCount(15);
+  await expect(options.first()).toHaveAccessibleName("C00500_O0000");
+  await expect(options.last()).toHaveAccessibleName("C00500_O0014");
+  await expect(page.getByText(/more names? match/)).toHaveCount(0);
+});
+
+/**
  * The keyboard walks past the rows drawn (task 9's window, MARGIN included): a row selected -
  * focusing it, the way React Aria's own table always does - then ArrowDown sixty times, well past
  * both the box's own dozen-odd rows in view and the MARGIN of twenty drawn beyond them
@@ -175,4 +399,632 @@ test("the keyboard walks past the rows drawn", async ({ page, generatedGui }) =>
   const focused = page.locator('[data-index="60"]');
   await expect.poll(() => withinFindingsWindow(page, focused)).toBe(true);
   await expect(first).toHaveCount(0);
+});
+
+/**
+ * Home, End and PageDown walk the listing, not the rows drawn: a row focused, End goes to the
+ * listing's last finding, 25,000 rows on, where React Aria's own stopped at the last row drawn;
+ * Home comes back to the first; and PageDown from the first goes a box's rows down.
+ */
+test("Home, End and PageDown walk the Findings listing past the rows drawn", async ({
+  page,
+  generatedGui,
+}) => {
+  await page.goto(generatedGui.address);
+  await page.getByRole("link", { name: "Findings" }).click();
+  const first = page.locator('[data-index="0"]');
+  await expect(first.locator(".chip")).toBeVisible();
+  await first.click();
+
+  await page.keyboard.press("End");
+  const last = page.locator('[data-index="24999"]');
+  await expect(last).toBeFocused();
+  await expect.poll(() => withinFindingsWindow(page, last)).toBe(true);
+
+  await page.keyboard.press("Home");
+  await expect(first).toBeFocused();
+
+  await page.keyboard.press("PageDown");
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        Number(document.activeElement?.closest("[data-index]")?.getAttribute("data-index")),
+      ),
+    )
+    .toBeGreaterThan(5);
+  const down = await page.evaluate(() =>
+    Number(document.activeElement?.closest("[data-index]")?.getAttribute("data-index")),
+  );
+  expect(down).toBeLessThan(20);
+});
+
+/**
+ * Compare's table of a verdict filing two thousand findings (16:M1): drawn through `LongTable`, as
+ * every long table but the Findings one is, it holds the rows in view, not the 2,000 the reply
+ * carries - every one of which was in the document before - and scrolled to its end it draws the
+ * last of them. The baseline is a dump of the chained project, whose analysis files nothing (the
+ * generated project's 25,000 findings would overflow the dump's captured output), with every unit
+ * it states spelled otherwise: each of its 2,000 objects is then no longer the same object.
+ */
+test("Compare's table draws the rows in view, of a verdict filing two thousand findings", async ({
+  page,
+  chainedGui,
+}) => {
+  dump(chainedGui.directory, "project.ddd.json", "baseline.json");
+  const baseline = join(chainedGui.directory, "baseline.json");
+  const text = readFileSync(baseline, "utf8");
+  writeFileSync(baseline, text.replaceAll('"unit": "', '"unit": "x'), "utf8");
+
+  await page.goto(chainedGui.address);
+  await page.getByRole("link", { name: "Compare" }).click();
+  await page.getByRole("textbox", { name: "Baseline" }).fill("baseline.json");
+  await page.getByRole("button", { name: "Compare" }).click();
+  await expect(page.getByText("2000 findings · 2000 errors")).toBeVisible();
+
+  const table = page.getByRole("grid", { name: "Findings" });
+  await expect(table.getByRole("row", { name: "changed-interface" }).first()).toBeVisible();
+  // The header and the rows of the box's 60vh, with React Aria's margin: 19 rows measured, where
+  // all 2,001 were in the document. The table still tells assistive technology of every row.
+  expect(await table.getByRole("row").count()).toBeLessThan(50);
+  await expect(table).toHaveAttribute("aria-rowcount", "2001");
+
+  // The box is the table itself (`.long`, ui.css): one large wheel takes it to its end.
+  const bounds = await table.boundingBox();
+  if (bounds === null) throw new Error("no table to scroll");
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  await page.mouse.wheel(0, 200_000);
+  const last = table.locator('[aria-rowindex="2001"]');
+  await expect(last).toBeVisible();
+  await expect(last).toContainText("'C01999_O0000' is not the same object any more");
+  expect(await table.getByRole("row").count()).toBeLessThan(50);
+});
+
+/**
+ * A rename reaching every file of the generated project (16:M17): `rpm`, which every one of its
+ * 666 components states. While the plan is asked for, the Rename section says "Planning…" where it
+ * said nothing, looking as it had before Enter; once the plan has come, its sentence names three
+ * of the files it writes and counts the rest, where it named every one of them above Apply.
+ */
+test("a rename reaching every file says it is planning, then names three files and counts the rest", async ({
+  page,
+  generatedGui,
+}) => {
+  await page.goto(generatedGui.address);
+  await page.getByRole("link", { name: "Units" }).click();
+  await page.getByRole("row", { name: "rpm", exact: true }).click();
+  const renaming = page
+    .getByRole("complementary", { name: "rpm" })
+    .getByRole("region", { name: "Rename" });
+  const picker = renaming.getByRole("combobox", { name: "Rename rpm to" });
+  await picker.clear();
+  await picker.pressSequentially("revs");
+
+  const release = await held(page, "/api/unit-plan");
+  try {
+    await picker.press("Enter");
+    await expect(renaming.getByText("Planning…", { exact: true })).toBeVisible();
+  } finally {
+    release();
+  }
+  await expect(renaming.getByText("Planning…")).toHaveCount(0);
+  await expect(
+    renaming.getByText(
+      "Changes 667 files: c00000.ddd.json, c00001.ddd.json, c00002.ddd.json and 664 more. " +
+        "rpm is renamed in units.ddd.json too.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(renaming.getByRole("button", { name: "Apply to 667 files" })).toBeEnabled();
+});
+
+/**
+ * The Table tab's filter (16:I14): of the generated project's 666 components the table draws the
+ * rows in view, so `C00500` is not in the document and no find of the browser's reaches it. Typed
+ * into the filter, the table holds that one row, the line beside the field says so, and the line
+ * above the table still counts the project's statements. A filter nothing matches says so, and no
+ * table is drawn under it.
+ */
+test("the Table tab's filter finds a component the table does not draw", async ({
+  page,
+  generatedGui,
+}) => {
+  await page.goto(generatedGui.address);
+  await page.getByRole("link", { name: "Table" }).click();
+  const table = page.getByRole("grid", { name: "Components" });
+  await expect(table.getByRole("button", { name: "C00000", exact: true })).toBeVisible();
+  await expect(table.getByRole("button", { name: "C00500", exact: true })).toHaveCount(0);
+
+  const filter = page.getByRole("textbox", { name: "Filter components" });
+  await filter.fill("nothing like it");
+  await expect(filter).toHaveAccessibleDescription("no component matches");
+  await expect(table).toHaveCount(0);
+
+  await filter.fill("c00500");
+  await expect(filter).toHaveAccessibleDescription("1 of 666 components");
+  // A status: a screen reader hears the count as it changes.
+  await expect(page.getByRole("status").filter({ hasText: "1 of 666 components" })).toBeVisible();
+  await expect(table.getByRole("row")).toHaveCount(2);
+  await expect(page.locator("p.summary")).toHaveText("0 errors, 10000 warnings");
+  await table.getByRole("button", { name: "C00500", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "C00500", level: 1 })).toBeVisible();
+});
+
+/**
+ * A component page's filter (16:I14): C00000's 32 declarations are more than its table draws, so
+ * its last, `C00000_X0015`, is not in the document until the filter leaves it, whose row then
+ * opens its panel as any row does. The filter is that component's: another component's page,
+ * reached from the go-to without leaving the page, starts with none.
+ */
+test("a component page's filter finds a declaration its table does not draw", async ({
+  page,
+  generatedGui,
+}) => {
+  await page.goto(generatedGui.address);
+  await page.getByRole("link", { name: "Table" }).click();
+  await page.getByRole("button", { name: "C00000", exact: true }).click();
+  const table = page.getByRole("grid", { name: "Declarations of C00000" });
+  await expect(table.getByRole("row", { name: /C00000_O0000/ })).toBeVisible();
+  await expect(table.getByRole("row", { name: /C00000_X0015/ })).toHaveCount(0);
+
+  const filter = page.getByRole("textbox", { name: "Filter declarations" });
+  await filter.fill("x00");
+  await expect(filter).toHaveAccessibleDescription("8 of 32 declarations");
+  await expect(table.getByRole("row")).toHaveCount(9);
+  await filter.fill("X0015");
+  await expect(filter).toHaveAccessibleDescription("1 of 32 declarations");
+  await table.getByRole("row", { name: /C00000_X0015/ }).click();
+  await expect(page.getByRole("complementary", { name: "C00000_X0015" })).toBeVisible();
+
+  const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+  await goTo.pressSequentially("C00530_O0000");
+  // The name itself, not a count: while the names are on their way, the list's one row is its
+  // sentence saying so.
+  await expect(
+    page.getByRole("listbox").getByRole("option", { name: "C00530_O0000", exact: true }),
+  ).toBeVisible();
+  await goTo.press("Enter");
+  await expect(page.getByRole("heading", { name: "C00530", level: 1 })).toBeVisible();
+  await expect(filter).toHaveValue("");
+  await expect(filter).toHaveAccessibleDescription("");
+  await expect(page.getByRole("grid", { name: "Declarations of C00530" })).toBeVisible();
+});
+
+/** Records each count of rows the grid named `name` says it has (`aria-rowcount`) from here on, as
+ * each commit of the page draws it: a MutationObserver sees every change, painted or not, and
+ * each record keeps the count it replaced. */
+async function watchRowCounts(page: Page, name: string): Promise<void> {
+  await page.evaluate((label) => {
+    const grid = document.querySelector(`[role="grid"][aria-label="${label}"]`);
+    if (grid === null) throw new Error(`no grid named ${label}`);
+    const replaced: (string | null)[] = [];
+    (window as unknown as { rowCountsReplaced: (string | null)[] }).rowCountsReplaced = replaced;
+    new MutationObserver((records) => {
+      for (const record of records) replaced.push(record.oldValue);
+    }).observe(grid, {
+      attributes: true,
+      attributeFilter: ["aria-rowcount"],
+      attributeOldValue: true,
+    });
+  }, name);
+}
+
+/** Every count the grid `watchRowCounts` watches has said since, in order, the one it says now
+ * last. */
+async function rowCountsWatched(page: Page, grid: Locator): Promise<(string | null)[]> {
+  const replaced = await page.evaluate(
+    () => (window as unknown as { rowCountsReplaced: (string | null)[] }).rowCountsReplaced,
+  );
+  return [...replaced, await grid.getAttribute("aria-rowcount")];
+}
+
+/**
+ * A unit's filter (16:I14): rpm is stated 2,500 times over the generated project, and its panel's
+ * table draws the places in view. Filtered by a file's name, it holds the four that file states.
+ * Emptied, every place comes back to the table a thousand at a time, each thousand in a commit of
+ * its own (`ROWS_PUT_BACK`, lib/filter.ts): its count of rows goes from the four left, and the
+ * header's row, to all 2,500 in three steps.
+ */
+test("a unit's filter finds the places one file states it", async ({ page, generatedGui }) => {
+  await page.goto(generatedGui.address);
+  await page.getByRole("link", { name: "Units" }).click();
+  await page.getByRole("row", { name: "rpm", exact: true }).click();
+  const panel = page.getByRole("complementary", { name: "rpm" });
+  const places = panel.getByRole("grid", { name: "Where rpm is stated" });
+  await expect(places.getByRole("row", { name: /C00000_O0000/ })).toBeVisible();
+  await expect(places.getByRole("row", { name: /C00530_O0008/ })).toHaveCount(0);
+
+  const filter = panel.getByRole("textbox", { name: "Filter places" });
+  await filter.fill("c00500.ddd.json");
+  await expect(filter).toHaveAccessibleDescription("4 of 2,500 places");
+  await expect(places.getByRole("row")).toHaveCount(5);
+  for (const name of ["C00500_O0002", "C00500_O0010", "C00530_O0000", "C00530_O0008"]) {
+    await expect(places.getByRole("row", { name: new RegExp(name) })).toBeVisible();
+  }
+
+  await watchRowCounts(page, "Where rpm is stated");
+  await filter.fill("");
+  await expect(filter).toHaveAccessibleDescription("");
+  await expect(places).toHaveAttribute("aria-rowcount", "2501");
+  expect(await rowCountsWatched(page, places)).toEqual(["5", "1005", "2005", "2501"]);
+});
+
+/**
+ * A panel closed while its table's rows come back (16:I13): Controller given 6,000 declarations
+ * more, a filter leaves out the last, whose panel is open, and emptied puts the rows back a
+ * thousand at a time. Rows put back before the one holding the focus move its place, and React Aria
+ * then draws another row where it stood, the focus on that one: Close pressed while they come back
+ * gives the focus to the table, and to the panel's row once every row is back - drawn where it
+ * stands, out of view, though the table moved its own place to ValueA meanwhile.
+ */
+test("Close gives the focus back to the panel's row while a widened filter puts the rows back", async ({
+  page,
+  copiedGui,
+}) => {
+  const gui = await copiedGui("demo", (directory) => crowd(directory, 6000));
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  const table = page.getByRole("grid", { name: "Declarations of Controller" });
+  const filter = page.getByRole("textbox", { name: "Filter declarations" });
+  const last = table.getByRole("row", { name: /Crowd05999/ });
+  await filter.fill("Crowd05999");
+  await last.click();
+  const panel = page.getByRole("complementary", { name: "Crowd05999" });
+  // Its keys drawn: the panel read, never drawn anew by its answer as Close's key goes down.
+  await expect(panel.getByRole("grid", { name: "Keys of Crowd05999" })).toBeVisible();
+  await filter.fill("ValueA");
+  await expect(last).toHaveCount(0);
+
+  // The count of rows the table says it holds as Close's key comes up, when the panel closes.
+  await page.evaluate(() => {
+    const grid = document.querySelector('[role="grid"][aria-label="Declarations of Controller"]');
+    const record = () => {
+      (window as unknown as { rowsAtClose: string | null }).rowsAtClose =
+        grid?.getAttribute("aria-rowcount") ?? null;
+    };
+    document.addEventListener("keyup", record, { capture: true, once: true });
+  });
+  await filter.fill("");
+  await panel.getByRole("button", { name: "Close Crowd05999" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(panel).toHaveCount(0);
+  await expect(table).toHaveAttribute("aria-rowcount", "6015");
+  await expect(last).toBeFocused();
+  // Pressed while the rows came back: the table held fewer than its 6,014 and its header's row.
+  const atClose = await page.evaluate(
+    () => (window as unknown as { rowsAtClose: string | null }).rowsAtClose,
+  );
+  expect(Number(atClose)).toBeLessThan(6015);
+});
+
+/** The words of the row the focus is in, itself or a control of it: `null` where the focus is in
+ * no row. */
+function rowFocused(page: Page): Promise<string | null> {
+  return page.evaluate(() => document.activeElement?.closest('[role="row"]')?.textContent ?? null);
+}
+
+/**
+ * The focus in a table while a widened filter puts its rows back before the focused row (16:I14):
+ * Controller given 6,000 declarations more, its filter leaves Crowd05999 alone, the last, and Tab
+ * takes the focus to its row. Shift+Tab back to the filter, emptied, and Tab at once: the focus is
+ * in the table as the rows come back a thousand at a time, every one of them before it. The row
+ * the focus stands on is Crowd05999's in every frame drawn meanwhile, and once they are all back -
+ * the row the table draws focused, the one a screen reader names - and the arrow keys go on from it.
+ */
+test("the focus stays on its row while a widened filter puts the rows back before it", async ({
+  page,
+  copiedGui,
+}) => {
+  const gui = await copiedGui("demo", (directory) => crowd(directory, 6000));
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  const table = page.getByRole("grid", { name: "Declarations of Controller" });
+  const filter = page.getByRole("textbox", { name: "Filter declarations" });
+  const last = table.getByRole("row", { name: /Crowd05999/ });
+  await filter.fill("Crowd05999");
+  await expect(table).toHaveAttribute("aria-rowcount", "2");
+  await page.keyboard.press("Tab");
+  await expect(last).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(filter).toBeFocused();
+
+  // The words of the row the focus is in, frame by frame, from the filter emptied on.
+  await page.evaluate(() => {
+    const watched = window as unknown as { rowsFocused: (string | null)[]; watching: boolean };
+    watched.rowsFocused = [];
+    watched.watching = true;
+    const each = () => {
+      const row = document.activeElement?.closest('[role="row"]');
+      watched.rowsFocused.push(row === null || row === undefined ? null : (row.textContent ?? ""));
+      if (watched.watching) requestAnimationFrame(each);
+    };
+    requestAnimationFrame(each);
+  });
+  await filter.fill("");
+  await page.keyboard.press("Tab");
+  await expect(table).toHaveAttribute("aria-rowcount", "6015");
+  await expect(table).not.toHaveAttribute("data-rows-to-come");
+  await expect.poll(() => rowFocused(page)).toMatch(/Crowd05999/);
+  await expect(last).toBeFocused();
+  const frames = await page.evaluate(() => {
+    const watched = window as unknown as { rowsFocused: (string | null)[]; watching: boolean };
+    watched.watching = false;
+    return watched.rowsFocused;
+  });
+  // No frame drew the focus on another row than Crowd05999's, the rows coming back or not.
+  expect(frames.filter((words) => words !== null && !words.includes("Crowd05999"))).toEqual([]);
+  await page.keyboard.press("ArrowUp");
+  await expect(table.getByRole("row", { name: /Crowd05998/ })).toBeFocused();
+});
+
+/**
+ * Tab back into a table whose filter was widened (16:I14): of Controller's 6,000 declarations
+ * more, `Crowd059` leaves the hundred last, End takes the focus to the last of them, Crowd05999,
+ * and a Backspace in the filter, `Crowd05`, puts nine hundred rows back before it in one commit.
+ * Tab goes back to Crowd05999's row, the row the table remembers, and the arrow keys go on from it.
+ */
+test("Tab back into a table its filter widened goes to the row it left", async ({
+  page,
+  copiedGui,
+}) => {
+  const gui = await copiedGui("demo", (directory) => crowd(directory, 6000));
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  const table = page.getByRole("grid", { name: "Declarations of Controller" });
+  const filter = page.getByRole("textbox", { name: "Filter declarations" });
+  const last = table.getByRole("row", { name: /Crowd05999/ });
+  await filter.fill("Crowd059");
+  await expect(table).toHaveAttribute("aria-rowcount", "101");
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("End");
+  await expect(last).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(filter).toBeFocused();
+
+  // The text Tab selects in the field left whole, its last letter taken away.
+  await page.keyboard.press("End");
+  await page.keyboard.press("Backspace");
+  await expect(filter).toHaveValue("Crowd05");
+  await expect(table).toHaveAttribute("aria-rowcount", "1001");
+  await page.keyboard.press("Tab");
+  await expect.poll(() => rowFocused(page)).toMatch(/Crowd05999/);
+  await expect(last).toBeFocused();
+  await page.keyboard.press("ArrowUp");
+  await expect(table.getByRole("row", { name: /Crowd05998/ })).toBeFocused();
+});
+
+/**
+ * The Findings tab's filter (16:I14): its rows are the server's pages, so the filter asks the
+ * server for the findings whose check, words or file's name hold its text. Of the generated
+ * project's 25,000, `c00500` leaves the 36 filed on c00500.ddd.json, none of which stood in the
+ * document before. Typed with the box scrolled to its last row, the filtered table starts at its
+ * top, its first row in view; the line beside the field says how many it leaves, and the line above
+ * the table goes on counting the revision's statements. A text no finding holds is said, and the
+ * filter emptied brings every finding back.
+ */
+test("the Findings tab's filter asks the server for the findings its text finds", async ({
+  page,
+  generatedGui,
+}) => {
+  await page.goto(generatedGui.address);
+  await page.getByRole("link", { name: "Findings" }).click();
+  const rows = page.locator(".findings-window [data-index]");
+  await expect(rows.first().locator(".chip")).toBeVisible();
+  await expect(rows.filter({ hasText: "c00500.ddd.json" })).toHaveCount(0);
+  const bounds = await page.locator(".findings-window").boundingBox();
+  if (bounds === null) throw new Error("no .findings-window to scroll");
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  await page.mouse.wheel(0, 2_000_000);
+  await expect(page.locator('[data-index="24999"]')).toBeVisible();
+
+  const filter = page.getByRole("textbox", { name: "Filter findings" });
+  await filter.fill("c00500");
+  await expect(filter).toHaveAccessibleDescription("36 of 25,000 findings");
+  const first = page.locator('[data-index="0"]');
+  await expect(first).toContainText("c00500.ddd.json");
+  await expect.poll(() => withinFindingsWindow(page, first)).toBe(true);
+  await expect(rows.filter({ hasNotText: "c00500.ddd.json" })).toHaveCount(0);
+  await expect(page.locator(".summary")).toHaveText("25000 findings · 10000 warnings, 15000 infos");
+
+  // A listing of more pages than one: each is asked under the filter, the last row of 15,000 the
+  // last of c00665.ddd.json's, as in the whole list's own order.
+  await filter.fill("missing-id");
+  await expect(filter).toHaveAccessibleDescription("15,000 of 25,000 findings");
+  await page.mouse.wheel(0, 2_000_000);
+  const last = page.locator('[data-index="14999"]');
+  await expect(last).toBeVisible();
+  await expect(last).toContainText("missing-id");
+  await expect(last).toContainText("c00665.ddd.json");
+
+  await filter.fill("nothing like it");
+  await expect(filter).toHaveAccessibleDescription("no finding matches");
+  await expect(rows).toHaveCount(0);
+
+  await filter.fill("");
+  await expect(filter).toHaveAccessibleDescription("");
+  await expect(rows.first().locator(".chip")).toBeVisible();
+  await expect(rows.filter({ hasText: "c00500.ddd.json" })).toHaveCount(0);
+
+  // Typed again with the box scrolled to its last row, its first page come already: drawn from its
+  // first row in the very frame its line says how many it leaves, never that line over no row, as
+  // the box's old place would draw it.
+  await page.mouse.wheel(0, 2_000_000);
+  await expect(page.locator('[data-index="24999"]')).toBeVisible();
+  await watchListing(page);
+  await filter.fill("c00500");
+  await expect(first).toContainText("c00500.ddd.json");
+  const frames = await listingFramesWatched(page);
+  expect(frames.some(([line]) => line === "36 of 25,000 findings")).toBe(true);
+  expect(frames.filter(([line, drawn]) => line === "36 of 25,000 findings" && drawn === 0)).toEqual(
+    [],
+  );
+});
+
+/**
+ * The masthead's go-to (16:I14): of the generated project's 20,000 declarations, typed key by key,
+ * `C005` holds more names than the go-to lists - fifty, its foot saying how many more and to type
+ * to narrow them - and `C00530_O0000` one, which Enter opens on the page of C00530, producing it,
+ * its panel open, the field emptied for the next. A name picked from the list opens the same way.
+ */
+test("the masthead's go-to opens a variable on the page of the component producing it", async ({
+  page,
+  generatedGui,
+}) => {
+  await page.goto(generatedGui.address);
+  const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+  await expect(goTo).toBeEnabled();
+  const options = page.getByRole("listbox").getByRole("option");
+  await goTo.pressSequentially("C005");
+  await expect(options).toHaveCount(50);
+  await expect(options.first()).toHaveAccessibleName("C00500_O0000");
+  await expect(
+    page.getByText("2,200 more names match: type to narrow the list.", { exact: true }),
+  ).toBeVisible();
+
+  await goTo.pressSequentially("30_O0000");
+  await expect(options).toHaveCount(1);
+  await expect(options.first()).toHaveAccessibleName("C00530_O0000");
+  await goTo.press("Enter");
+  await expect(page).toHaveURL(/\/component\?file=[^&]*c00530\.ddd\.json&variable=C00530_O0000$/);
+  await expect(page.getByRole("heading", { name: "C00530", level: 1 })).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "C00530_O0000" })).toBeVisible();
+  await expect(goTo).toHaveValue("");
+
+  await goTo.pressSequentially("C00500_X00");
+  await expect(options).toHaveCount(7);
+  await options.filter({ hasText: "C00500_X0013" }).click();
+  await expect(page).toHaveURL(/\/component\?file=[^&]*c00500\.ddd\.json&variable=C00500_X0013$/);
+  await expect(page.getByRole("heading", { name: "C00500", level: 1 })).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "C00500_X0013" })).toBeVisible();
+});
+
+/** The go-to's ask of the server for the names holding `text`, `GET /api/names?text=`. */
+function namesOf(text: string): (url: URL) => boolean {
+  return (url) => url.pathname === "/api/names" && url.searchParams.get("text") === text;
+}
+
+/** Every ask of the go-to's names, whatever its text. */
+function everyNames(url: URL): boolean {
+  return url.pathname === "/api/names";
+}
+
+/** Records the text of each ask of the go-to's names from the page's first script on, as the page
+ * makes it. */
+async function watchNamesAsked(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const watched = window as unknown as { namesAsked: string[] };
+    watched.namesAsked = [];
+    const fetching = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      const href =
+        typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      const url = new URL(href, window.location.href);
+      if (url.pathname === "/api/names")
+        watched.namesAsked.push(url.searchParams.get("text") ?? "");
+      return fetching(input, init);
+    };
+  });
+}
+
+/** The texts `watchNamesAsked` has seen asked so far, in order. */
+function namesAsked(page: Page): Promise<string[]> {
+  return page.evaluate(() => (window as unknown as { namesAsked: string[] }).namesAsked);
+}
+
+/**
+ * Enter on a name typed faster than its names come (16:I14): the go-to asks for the names of what
+ * is typed once typing pauses, so Enter pressed on `C00530_O0000` before then meets no answer
+ * holding it - every ask is held here until the page has asked for the name, Enter pressed. Enter
+ * is a commit: it asks for the text at once, and goes once the answer holding the name has come.
+ */
+test("Enter on a name typed faster than its names come goes to it once they come", async ({
+  page,
+  generatedGui,
+}) => {
+  await page.goto(generatedGui.address);
+  const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+  await expect(goTo).toBeEnabled();
+  const asked = page.waitForRequest((request) => namesOf("C00530_O0000")(new URL(request.url())));
+  const release = await held(page, everyNames, { every: true });
+  try {
+    await goTo.pressSequentially("C00530_O0000");
+    await goTo.press("Enter");
+    await asked;
+    await expect(page.getByRole("heading", { name: "C00530", level: 1 })).toHaveCount(0);
+  } finally {
+    release();
+  }
+  await expect(page).toHaveURL(/\/component\?file=[^&]*c00530\.ddd\.json&variable=C00530_O0000$/);
+  await expect(page.getByRole("heading", { name: "C00530", level: 1 })).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "C00530_O0000" })).toBeVisible();
+  await expect(goTo).toHaveValue("");
+});
+
+/**
+ * Enter asks at once for the names of the text it is pressed on (16:I14), as a commit does, where a
+ * text typed is asked for once typing pauses. The page's clock is stopped here while the go-to is
+ * typed into, so that no pause ends, and nothing is asked but what Enter asks. A text typed on
+ * after Enter, while Enter still waits for its names, waits for a pause again, as every text typed
+ * does: it is asked for once the clock goes on, and Enter's names, not its own, go nowhere.
+ */
+test("Enter asks at once for the names of the text it is pressed on, and typing on waits again", async ({
+  page,
+  generatedGui,
+}) => {
+  await watchNamesAsked(page);
+  await page.clock.install();
+  await page.goto(generatedGui.address);
+  const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+  await expect(goTo).toBeEnabled();
+  await goTo.focus();
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+  await page.keyboard.type("C00530_O000");
+  await expect(goTo).toHaveValue("C00530_O000");
+  expect(await namesAsked(page)).toEqual([]);
+  await page.keyboard.press("Enter");
+  await expect.poll(() => namesAsked(page)).toEqual(["C00530_O000"]);
+  await page.keyboard.press("0");
+  await expect(goTo).toHaveValue("C00530_O0000");
+  expect(await namesAsked(page)).toEqual(["C00530_O000"]);
+
+  await page.clock.resume();
+  await expect.poll(() => namesAsked(page)).toEqual(["C00530_O000", "C00530_O0000"]);
+  await expect(
+    page.getByRole("listbox").getByRole("option", { name: "C00530_O0000", exact: true }),
+  ).toBeVisible();
+  await expect(goTo).toHaveValue("C00530_O0000");
+  await expect(page.getByRole("heading", { name: "C00530", level: 1 })).toHaveCount(0);
+});
+
+/**
+ * Enter on a text no name spells exactly (16:I14) opens the list on the names its answer holds,
+ * where it closed the list and said nothing, the field holding the text as though it had been
+ * taken. `c00530_o0000`, Enter pressed before its names have come, holds `C00530_O0000` in another
+ * case, which the list then offers, and a pick goes to; `nothing like it`, its answer come, still
+ * says that no variable matches once Enter is pressed on it.
+ */
+test("Enter on a text no name spells exactly opens the list on what its answer holds", async ({
+  page,
+  generatedGui,
+}) => {
+  await page.goto(generatedGui.address);
+  const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+  await expect(goTo).toBeEnabled();
+  const offered = page
+    .getByRole("listbox")
+    .getByRole("option", { name: "C00530_O0000", exact: true });
+  await goTo.pressSequentially("c00530_o0000");
+  await goTo.press("Enter");
+  await expect(offered).toBeVisible();
+  await expect(goTo).toHaveValue("c00530_o0000");
+  await expect(page.getByRole("heading", { name: "C00530", level: 1 })).toHaveCount(0);
+  await offered.click();
+  await expect(page).toHaveURL(/\/component\?file=[^&]*c00530\.ddd\.json&variable=C00530_O0000$/);
+  await expect(goTo).toHaveValue("");
+
+  const none = page.getByRole("listbox").getByText("no variable matches", { exact: true });
+  await goTo.pressSequentially("nothing like it");
+  await expect(none).toBeVisible();
+  await goTo.press("Enter");
+  await expect(none).toBeVisible();
+  await expect(goTo).toHaveValue("nothing like it");
 });

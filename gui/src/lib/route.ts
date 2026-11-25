@@ -23,7 +23,10 @@ export type Route =
   // and the one a reader's click writes select the very same row. Optional, as `units`' and
   // `types`' own selection is: the bare tab is a route of its own, not an absent one.
   | { page: "project"; view: "files"; path?: string }
-  | { page: "project"; view: "findings" }
+  // `text` is what the tab's filter holds as it opens (16:I9): a file the banner under the masthead
+  // names as not loaded leads here, asking for the findings that hold its name. Optional, as a
+  // Files row's `path` is: the bare tab filters nothing.
+  | { page: "project"; view: "findings"; text?: string }
   | { page: "project"; view: "compare" }
   | { page: "component"; file: string; variable?: string }
   | { page: "component"; file: string; variable: string; view: "values" };
@@ -71,7 +74,12 @@ export function parseRoute(pathname: string, search: string): Route {
         ? { page: "project", view: "files" }
         : { page: "project", view: "files", path };
     }
-    if (view === "findings") return { page: "project", view: "findings" };
+    if (view === "findings") {
+      const text = query.get("text") || undefined;
+      return text === undefined
+        ? { page: "project", view: "findings" }
+        : { page: "project", view: "findings", text };
+    }
     if (view === "compare") return { page: "project", view: "compare" };
     return variable === undefined
       ? { page: "project", view: "graph" }
@@ -89,8 +97,28 @@ export function parseRoute(pathname: string, search: string): Route {
   return { page: "start" };
 }
 
-/** The address of a page. */
-export function hrefOf(route: Route): string {
+/** Half of a surrogate pair standing alone, in a name. Under the `u` flag a whole pair is one code
+ * point, an astral character's, so a code point of the category Cs (surrogate) is a half alone.
+ * ES2024's `isWellFormed` asks the same, but Firefox has it from 119 only, and the page is built
+ * for Firefox 114 (Vite's default targets): the guard must not throw where the page draws. */
+const LONE_HALF = /\p{Cs}/u;
+
+/** The address of a page, or `null` where the route names something no address can carry: half of
+ * a surrogate pair alone (`LONE_HALF`), which a json file can state as an escape and the loader
+ * reads as it is (15:I5). `encodeURIComponent` throws on it, so no link is drawn to such a route.
+ * Every name the route carries is checked, wherever the address writes it. */
+export function hrefOf(route: Route): string | null {
+  return Object.values(route).some((name) => LONE_HALF.test(name)) ? null : addressOf(route);
+}
+
+/** The address of one of the project screen's tabs with nothing selected in it, the one `hrefOf`
+ * writes for that tab's bare route: a tab names nothing of the project's, so it always has one. */
+export function tabHref(view: ProjectView): string {
+  return view === "graph" ? "/project" : `/project?view=${view}`;
+}
+
+/** The address of a page whose every name an address can carry. */
+function addressOf(route: Route): string {
   const variable =
     "variable" in route && route.variable !== undefined
       ? `variable=${encodeURIComponent(route.variable)}`
@@ -120,7 +148,11 @@ export function hrefOf(route: Route): string {
           ? "/project?view=files"
           : `/project?view=files&path=${encodeURIComponent(route.path)}`;
       }
-      if (route.view === "findings") return "/project?view=findings";
+      if (route.view === "findings") {
+        return route.text === undefined
+          ? "/project?view=findings"
+          : `/project?view=findings&text=${encodeURIComponent(route.text)}`;
+      }
       if (route.view === "compare") return "/project?view=compare";
       return variable === "" ? "/project" : `/project?${variable}`;
     case "component": {
@@ -144,4 +176,116 @@ export function hrefOf(route: Route): string {
  * address is spelled. */
 export function arrivedAfter(arrived: boolean, held: Route, followed: Route): boolean {
   return arrived && hrefOf(followed) === hrefOf(held);
+}
+
+/** What the page holds of its address (`useRoute`): the route it shows; whether that is still the
+ * route the page was loaded with (`arrivedAfter`); and how many times the reader has followed a
+ * link, or moved through the page's history to another route, since it loaded. A tab drawn anew
+ * from its address at each following is keyed on that count (the Findings tab, `App`): a move the
+ * page makes itself - writing a selection, or a filter's text as typing pauses, into its own
+ * address - is no following, and leaves the tab drawn as it is (16:I9). */
+export interface Held {
+  route: Route;
+  arrived: boolean;
+  followings: number;
+}
+
+/** What the page holds once it goes to `next` (`useRoute`'s `navigate`): a route the reader chose,
+ * and a following more, unless the page replaces its own address (`replace`). A link pressed again
+ * to the very address the page is at is a following all the same: the reader asked for that page,
+ * drawn as its address asks - a file's findings, whatever the filter was typed to since. */
+export function heldGoingTo(held: Held, next: Route, replace: boolean): Held {
+  return {
+    route: next,
+    arrived: false,
+    followings: replace ? held.followings : held.followings + 1,
+  };
+}
+
+/** What the page holds once a move through its history (`popstate`) leads to `followed`: a
+ * following more where it leads to another route - the reader's own Back or Forward - and none
+ * where the route is as it was, which a fragment navigation another window can make
+ * (`arrivedAfter`, ruling P19a-19). Compared as the addresses `hrefOf` writes. */
+export function heldFollowing(held: Held, followed: Route): Held {
+  return {
+    route: followed,
+    arrived: arrivedAfter(held.arrived, held.route, followed),
+    followings: hrefOf(followed) === hrefOf(held.route) ? held.followings : held.followings + 1,
+  };
+}
+
+/** Whether going to `next` from `here`, the route the page's address is at, replaces the page's
+ * entry in its history rather than adding one: where the page asks to (`replace`) - a selection,
+ * a filter's text - and where `next` is at the very address the page is at, as a browser following
+ * a link to the address it shows replaces its entry. Pressed again, a link adds no step for Back to
+ * walk through (16:I9). Compared as the addresses `hrefOf` writes, as `arrivedAfter` compares
+ * them; a route no address can carry adds a step, the address left as it stands, as it did. */
+export function replacing(here: Route, next: Route, replace: boolean): boolean {
+  return replace || hrefOf(next) === hrefOf(here);
+}
+
+/**
+ * The pages of the open project last shown, which the page leads back to (16:M16): the tab last
+ * shown, as its address had it - a component's page has no tabs of its own, and leads back to the
+ * one it was reached from (`wayBack`, lib/announcing.ts) - and the Findings tab's own address last
+ * shown, its filter's text, which the tab's link leads back to (`findingsLeadsTo`). Of one project,
+ * `project`, its description's path as the state names it.
+ */
+export interface ShownLast {
+  readonly project: string;
+  readonly tab: TabRoute;
+  readonly findings: Extract<TabRoute, { view: "findings" }>;
+}
+
+/** A tab of the project screen, with what its address selects in it. */
+export type TabRoute = Extract<Route, { page: "project" }>;
+
+/** The Findings tab with nothing asked of it: no filter's text. */
+const FINDINGS_TAB: ShownLast["findings"] = { page: "project", view: "findings" };
+
+/** How a route is told from another: by the address `hrefOf` writes, however it is spelled, and,
+ * for one no address can carry, by its names. */
+function routeKey(route: Route): string {
+  return hrefOf(route) ?? JSON.stringify(route);
+}
+
+/** What the page holds of the pages last shown (`ShownLast`) once it shows `route` of `project`
+ * - `null` before the project's state names one, when nothing is noted: a tab of the project noted
+ * as its address has it, and, where it is the Findings tab, that address as the tab's own. Any
+ * other page - a component's, its values, the start page - leaves what was noted, and so does the
+ * tab noted already, the very same answer, so that the page can tell nothing moved. Another
+ * project's are noted afresh, its Findings tab bare. */
+export function shownLastAfter(
+  last: ShownLast | null,
+  project: string | null,
+  route: Route,
+): ShownLast | null {
+  if (project === null || route.page !== "project") return last;
+  const own = last !== null && last.project === project ? last : null;
+  const findings = route.view === "findings" ? route : (own?.findings ?? FINDINGS_TAB);
+  if (
+    own !== null &&
+    routeKey(own.tab) === routeKey(route) &&
+    routeKey(own.findings) === routeKey(findings)
+  ) {
+    return own;
+  }
+  return { project, tab: route, findings };
+}
+
+/** Where the Findings tab's link leads (16:M16): back to its own address last shown in `project`,
+ * the filter's text it held, the tab opening at its place - the box's scroll and the finding whose
+ * panel was open (`placeOpened`, lib/findingsWindow.ts) - as the Table's filter stays when its tab
+ * is pressed; and to the bare tab before it was shown, or where what was noted is another
+ * project's. */
+export function findingsLeadsTo(last: ShownLast | null, project: string | null): Route {
+  return last !== null && last.project === project ? last.findings : FINDINGS_TAB;
+}
+
+/** Whether the page the route shows takes the whole window, freed of the 1,100 px measure every
+ * other page keeps (decision 16.4, 16:M8): the Graph, whose canvas is the wider the more modules it
+ * can show side by side, and a component's values grid, whose columns were cut at any screen. */
+export function takesWindow(route: Route): boolean {
+  if (route.page === "project") return route.view === "graph";
+  return route.page === "component" && "view" in route;
 }

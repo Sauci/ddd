@@ -1,6 +1,7 @@
 import type { DeclarableName, DeclarableReply, VariableKeyOffer } from "../api/types";
-import { decimalText, readNumber } from "./numbers";
+import { countText, decimalText, readNumber } from "./numbers";
 import { unsettled } from "./typing";
+import { namedFiles } from "./unloaded";
 import { shortValue } from "./variableKeys";
 
 /** Which of the two verbs the name field has landed on. */
@@ -66,7 +67,7 @@ export function definitionOf(
   for (const key of keysOf(kind, reply)) {
     const raw = values[key.key];
     if (raw === undefined || raw === "") {
-      if (key.carried[0]?.required === true) return null;
+      if (requires(key)) return null;
       continue;
     }
     try {
@@ -130,6 +131,9 @@ export function declareSentence(
   if (mode === "read") {
     const producer = chosenName(typed, reply.names)?.producer;
     const whose = producer === null || producer === undefined ? "this project" : producer;
+    // The verb follows the scope chosen: reading is what an input does, and the other two write.
+    if (scope === "output") return `Produces ${typed} as ${whose} declares it.`;
+    if (scope === "local") return `Keeps ${typed} to itself as ${whose} declares it.`;
     return `Reads ${typed} as ${whose} declares it.`;
   }
   if (kind === "") return `Choose a kind for ${typed}.`;
@@ -138,15 +142,25 @@ export function declareSentence(
 }
 
 /** What removing one declaration leaves behind, from what the panel already holds: the other
- * components declaring the variable, and what they do with it. */
+ * components declaring the variable, and what they do with it.
+ *
+ * The panel holds the declarations of the files that loaded alone. While a file did not load -
+ * `unread`, as the banner under the masthead names them (`unloadedNames`, lib/unloaded.ts) - one
+ * left alone says no other file that loaded declares it, and which did not load (16:I10), as the
+ * server says of a name no file that loaded declares: "no other component declares" it was false
+ * of a name the file that did not load still read, which then failed the project once it loaded.
+ * The components named as still holding it do, and are named as they are. */
 export function removalSentence(
   variable: { name: string; declarations: { component: string; role: string }[] },
   from: string,
+  unread: readonly string[] = [],
 ): string {
   const others = variable.declarations.filter((entry) => entry.component !== from);
   const readers = others.filter((entry) => entry.role === "reads").map((entry) => entry.component);
   if (others.length === 0) {
-    return `Removes ${variable.name}, which no other component declares.`;
+    return unread.length === 0
+      ? `Removes ${variable.name}, which no other component declares.`
+      : `Removes ${variable.name}, which no other file that loaded declares, and ${namedFiles(unread)} did not load.`;
   }
   if (readers.length === 0) {
     const names = others.map((e) => e.component);
@@ -166,9 +180,16 @@ function listed(names: string[]): string {
 /** The label a key's field shows for its committed value, `shortValue`'s own wording - the same
  * idea `labelOfRaw` reads for an existing variable's chooser, adapted for `values`' "absent
  * means unstated" instead of a `VariableReply` to read `null` from: a declaration being drafted
- * has none yet. */
-export function labelOf(key: string, raw: string | undefined): string {
-  return raw === undefined || raw === "" ? "state nothing" : shortValue(key, raw);
+ * has none yet. A key the kind requires, stated nowhere, reads empty rather than "state nothing":
+ * that is a choice the list never held (`stillNeeded`). */
+export function labelOf(key: string, raw: string | undefined, required = false): string {
+  if (raw === undefined || raw === "") return required ? "" : "state nothing";
+  return shortValue(key, raw);
+}
+
+/** Whether a kind requires this key of the declaration (`keysOf`'s first group). */
+export function requires(key: VariableKeyOffer): boolean {
+  return key.carried[0]?.required === true;
 }
 
 /** Whether the text typed into a key's field is not the value the form states for it
@@ -177,8 +198,9 @@ export function keyUnsettled(
   key: string,
   typed: Record<string, string | undefined>,
   values: Record<string, string>,
+  required = false,
 ): boolean {
-  return unsettled(typed[key], labelOf(key, values[key]));
+  return unsettled(typed[key], labelOf(key, values[key], required));
 }
 
 /** Whether any key's field of this kind's form holds text not yet taken: the form then offers no
@@ -190,5 +212,107 @@ export function formUnsettled(
   typed: Record<string, string | undefined>,
   values: Record<string, string>,
 ): boolean {
-  return keysOf(kind, reply).some((key) => keyUnsettled(key.key, typed, values));
+  return keysOf(kind, reply).some((key) => keyUnsettled(key.key, typed, values, requires(key)));
+}
+
+/** The values the form has stated, a value block's rows among them: the rows are folded in under
+ * the one key `definitionOf` reads them through, once every row states something. */
+export function statedValues(
+  values: Record<string, string>,
+  dimensions: string[],
+): Record<string, string> {
+  const raw = dimensionsRaw(dimensions);
+  return raw === null ? values : { ...values, dimensions: raw };
+}
+
+/** The one line saying what a new declaration still needs before the form can add it, `null`
+ * while it needs nothing, or is not one being declared (a name the project already has is read,
+ * a kind is chosen first). It is the reason `definitionOf` returns `null`, said in words: each
+ * key the kind requires and the form leaves unstated, the storage - `datatype` or `typename`,
+ * exactly one - as the one choice it is, and each field holding text not yet taken
+ * (`formUnsettled`), which holds Add back as much. */
+export function stillNeeded(
+  name: string,
+  kind: string,
+  values: Record<string, string>,
+  typed: Record<string, string | undefined>,
+  reply: DeclarableReply,
+): string | null {
+  if (name === "" || kind === "" || chosenName(name, reply.names) !== null) return null;
+  const keys = keysOf(kind, reply);
+  const stated = (key: string) => values[key] !== undefined && values[key] !== "";
+  const needs = keys.filter((key) => requires(key) && !stated(key.key)).map((key) => key.key);
+  const storage = keys.filter((key) => key.key === "datatype" || key.key === "typename");
+  if (storage.length > 0 && !storage.some((key) => stated(key.key))) {
+    needs.push(storage.map((key) => key.key).join(" or "));
+  }
+  const text = keys
+    .filter((key) => keyUnsettled(key.key, typed, values, requires(key)))
+    .map((key) => key.key);
+  const lines: string[] = [];
+  if (needs.length > 0) lines.push(`Still needs ${listed(needs)}.`);
+  if (text.length > 0) lines.push(`Text left in ${listed(text)} is not taken yet.`);
+  return lines.length === 0 ? null : lines.join(" ");
+}
+
+/** How many names the Name list draws at most. React Aria draws every entry of a list it is
+ * handed, and the list was drawn whole: over the journeys' generated project of 20,000
+ * declarations, C00000's opened on 14,968 names, every one of them in the document, and typing
+ * narrowed none. Past fifty the line under them says how many more match, and to type to narrow
+ * them (`nameList`). */
+export const NAMES_SHOWN = 50;
+
+/** One name the Name list offers: the variable, with its kind and the component producing it. */
+export interface NameChoice {
+  id: string;
+  label: string;
+  detail: string;
+}
+
+/** The Name list's one section, the project's variables. */
+export interface NameSection {
+  id: "names";
+  title: string;
+  choices: NameChoice[];
+}
+
+/** The Name list as the field's text leaves it: what it draws, and the line at its foot. */
+export interface NameList {
+  /** The list's one section, or none where no name holds the text: an empty list closes. */
+  sections: NameSection[];
+  /** How many more names hold the text than the list draws, and to type to narrow them; `undefined`
+   * while it draws every one. */
+  footnote: string | undefined;
+}
+
+/** The declare form's Name list for the text its field holds: every name of the project holding
+ * that text, whatever its case, as the unit picker narrows its own (`pickerSections`,
+ * lib/units.ts), drawn to `NAMES_SHOWN` - the name spelling the text exactly first, so that the cap
+ * never hides the very name typed - with the line saying how many more match. Only the names drawn
+ * are made into entries, so that a key typed costs the page fifty entries, not thousands. */
+export function nameList(names: readonly DeclarableName[], typed: string): NameList {
+  const wanted = typed.toLowerCase();
+  const exact = names.find((entry) => entry.name === typed);
+  const others = names.filter(
+    (entry) => entry !== exact && entry.name.toLowerCase().includes(wanted),
+  );
+  const matching = exact === undefined ? others : [exact, ...others];
+  const choices = matching.slice(0, NAMES_SHOWN).map((entry) => ({
+    id: entry.name,
+    label: entry.name,
+    detail: `${entry.kind} from ${entry.producer ?? "no producer"}`,
+  }));
+  return {
+    sections:
+      choices.length === 0 ? [] : [{ id: "names", title: "This project's variables", choices }],
+    footnote: moreNames(matching.length - choices.length),
+  };
+}
+
+/** The line at the foot of a list of names drawn to a cap: how many more names hold the text
+ * than it draws, and to type to narrow them; `undefined` while it draws every one. The declare
+ * form's Name list's, and the masthead's go-to's (`goToList`, lib/goTo.ts). */
+export function moreNames(more: number): string | undefined {
+  if (more === 0) return undefined;
+  return `${countText(more)} more ${more === 1 ? "name matches" : "names match"}: type to narrow the list.`;
 }

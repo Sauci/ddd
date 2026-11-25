@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   Button as AriaButton,
   ComboBox as AriaComboBox,
   Collection,
+  ComboBoxStateContext,
   Group,
   Header,
   Input,
@@ -53,6 +54,20 @@ interface Props {
   onClose: () => void;
   /** A line under the field, such as that a typed unit is not one of the project's. */
   note?: string | undefined;
+  /**
+   * A line at the foot of the open list, under its entries: how many more match than a list drawn
+   * to a cap draws (`nameList`, lib/declarations.ts). The entries then scroll inside the list's
+   * box, above the line, so that the line stays in view however many are drawn: the page scrolled
+   * instead, React Aria would close the list.
+   */
+  footnote?: string | undefined;
+  /**
+   * What the open list says while it holds no entry, for a list whose entries come after what is
+   * typed - the masthead's go-to's, asked of the server (`goToList`, lib/goTo.ts): React Aria opens
+   * a list on a text only where the list holds entries then, and this one then opens with none
+   * yet. `undefined`, as for every other list: an empty list closes.
+   */
+  empty?: string | undefined;
   isDisabled?: boolean;
   /**
    * Take the focus when this changes to a new value: a unit cell hands the reader over, even on
@@ -60,6 +75,12 @@ interface Props {
    * presses, and the field would not take the focus back. `null` asks for no focus.
    */
   autoFocus?: number | null;
+  /**
+   * Open the list when this changes to a new value, as `autoFocus` takes the focus: the go-to's,
+   * once the answer of a text Enter took nothing on has come (`entered`, lib/goTo.ts), so that the
+   * list says what that answer holds where Enter closed it. `null` opens nothing.
+   */
+  open?: number | null;
   /**
    * What opens the list: typing, ArrowDown or ▾ ("input"), or also the field taking the focus
    * ("focus") - which only a story wants, to photograph the list open. Opened on focus, the list
@@ -86,8 +107,11 @@ export function ComboBox({
   onEnter,
   onClose,
   note,
+  footnote,
+  empty,
   isDisabled = false,
   autoFocus = null,
+  open = null,
   menuTrigger = "input",
 }: Props) {
   const input = useRef<HTMLInputElement>(null);
@@ -97,7 +121,13 @@ export function ComboBox({
   // opens it.
   const [puttingBack, setPuttingBack] = useState(false);
   useEffect(() => {
-    if (autoFocus !== null) input.current?.focus();
+    if (autoFocus === null) return;
+    input.current?.focus();
+    // A row pressed by the mouse is drawn, and this field given the focus, as the button goes
+    // down: the browser then focuses the cell pressed, once the press's own event is over. Asked
+    // again after it, the field has the focus whichever way the row was chosen.
+    const again = setTimeout(() => input.current?.focus(), 0);
+    return () => clearTimeout(again);
   }, [autoFocus]);
   return (
     <AriaComboBox
@@ -117,10 +147,12 @@ export function ComboBox({
         setPuttingBack(true);
       }}
       allowsCustomValue
+      allowsEmptyCollection={empty !== undefined}
       menuTrigger={puttingBack ? "manual" : menuTrigger}
       isDisabled={isDisabled}
     >
       <Label>{label}</Label>
+      <OpensOn request={open} />
       {/* A Group, so that the list is placed against the whole field and as wide as it: without
           one, React Aria measures the input and its button alone. */}
       <Group className="combo-field">
@@ -153,7 +185,13 @@ export function ComboBox({
             if (endsTyped("blur")) onClose();
           }}
         />
-        <AriaButton aria-label={`Show the choices for ${label}`}>▾</AriaButton>
+        {/* Named by its own label alone: React Aria names the button by it and by the field's label
+            too, so that a screen reader read out the label twice (16:M22). An empty reference
+            is how a prop of the button's own overrides the one React Aria gives it. */}
+        {/* biome-ignore lint/a11y/useValidAriaValues: the empty list drops React Aria's own reference */}
+        <AriaButton aria-label={`Show the choices for ${label}`} aria-labelledby="">
+          ▾
+        </AriaButton>
       </Group>
       {/* Always drawn, empty while there is no note (`.combo-note:empty` takes no room): React
           Aria ties a field to its description only if the description's element is there when
@@ -164,8 +202,16 @@ export function ComboBox({
       </Text>
       {/* No offset of React Aria's own: the gap under the field is ui.css's margin alone, the
           chosen mockup's. Measured from the Group, React Aria's 8px would add to it. */}
-      <Popover className="combo-popover" offset={0}>
-        <ListBox<ComboSection> className="combo-list">
+      <Popover
+        className={footnote === undefined ? "combo-popover" : "combo-popover footed"}
+        offset={0}
+      >
+        <ListBox<ComboSection>
+          className="combo-list"
+          {...(empty === undefined
+            ? {}
+            : { renderEmptyState: () => <p className="combo-empty">{empty}</p> })}
+        >
           {(section) => (
             <ListBoxSection id={section.id}>
               <Header>{section.title}</Header>
@@ -187,7 +233,25 @@ export function ComboBox({
             </ListBoxSection>
           )}
         </ListBox>
+        {footnote !== undefined && <p className="combo-footnote">{footnote}</p>}
       </Popover>
     </AriaComboBox>
   );
+}
+
+/**
+ * Opens the list each time `request` changes to a new value (`open`). React Aria's own state, read
+ * inside its ComboBox, is the one way to open a list from outside it; opened as ▾ opens it
+ * ("manual"), whatever `menuTrigger` says while the caller's value is being put back. Before the
+ * page is painted, so that a list Enter closed is never drawn closed in between.
+ */
+function OpensOn({ request }: { request: number | null }) {
+  const state = useContext(ComboBoxStateContext);
+  const opened = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    if (request === null || request === opened.current) return;
+    opened.current = request;
+    state?.open(null, "manual");
+  }, [request, state]);
+  return null;
 }

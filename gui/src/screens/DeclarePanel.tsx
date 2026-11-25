@@ -11,18 +11,18 @@ import { useDebounced } from "../app/useDebounced";
 import { DeclarePanelView } from "../components/DeclarePanelView";
 import {
   definitionOf,
-  dimensionsRaw,
   followedScope,
   type Mode,
   modeOf,
   scopesOf,
+  statedValues,
 } from "../lib/declarations";
 import { planEdit } from "../lib/projectUnits";
+import { offerShown, refusalOf } from "../lib/refusals";
 import { planShown } from "../lib/typing";
 import { declareLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
-import { refusalOf } from "./UnitPanel";
 
 interface Props {
   /** The component being added to: its absolute, posix-separated path. */
@@ -53,9 +53,7 @@ function requestOf(
   // The value block's rows have no chooser of their own (`DeclarePanelView`'s own `dimensions`);
   // folded in here under the one key `definitionOf` reads them through, for whichever kind - if
   // any - actually carries a `dimensions` key.
-  const raw = dimensionsRaw(dimensions);
-  const withDimensions = raw === null ? values : { ...values, dimensions: raw };
-  const definition = definitionOf(typed, kind, withDimensions, reply);
+  const definition = definitionOf(typed, kind, statedValues(values, dimensions), reply);
   return definition === null ? null : { action: "declare", file, scope, definition };
 }
 
@@ -131,6 +129,10 @@ export function DeclarePanel({ file, component, revision, stopped, onClose, onDe
   // placeholder, nulls the plan and its own fetch refusal outright rather than disabling a
   // button.
   const shown = planShown(asked, request, plan);
+  // What the panel offers beside a refusal, the one rule every panel follows (`offerShown`): a
+  // refusal of its Apply said over the plan its revision answers, and nothing to apply beside its
+  // plan's own refusal.
+  const offer = offerShown(refusal, shown);
 
   const apply = useMutation({
     mutationFn: () => {
@@ -180,8 +182,8 @@ export function DeclarePanel({ file, component, revision, stopped, onClose, onDe
       values={values}
       typed_={typed_}
       dimensions={dimensions}
-      plan={shown.plan}
-      refusal={refusal ?? shown.refusal}
+      plan={offer.plan}
+      refusal={offer.refusal}
       changesShown={changesShown}
       busy={stopped || apply.isPending}
       onTyped={(text) => {

@@ -1,7 +1,17 @@
 import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { failing, held, SERVER_FAILED, UNITS, writeUnseen } from "./demo";
+import {
+  draggedAcross,
+  drift,
+  failing,
+  held,
+  PUMP,
+  restamp,
+  SERVER_FAILED,
+  UNITS,
+  writeUnseen,
+} from "./demo";
 import { expect, type Gui, test } from "./fixtures";
 
 /** A component the project does not include yet, declaring nothing - written into the copy
@@ -88,7 +98,7 @@ test("a component is created, an existing file is added, and one removal is refu
   // variable is `empty-component`, at info, and both of the bare ones this journey made carry
   // it - removing the units file leaves nothing behind, since no unit is checked without one.
   await page.getByRole("link", { name: "Findings" }).click();
-  await expect(page.getByText("2 findings · 2 notes")).toBeVisible();
+  await expect(page.getByText("2 findings · 2 infos")).toBeVisible();
   await expect(page.getByRole("row", { name: "empty-component" })).toHaveCount(2);
 });
 
@@ -226,6 +236,8 @@ test("the row the page was opened on waits for the reader before its removal is 
   const ask = unitsRemoving.getByRole("button", { name: "Plan its removal" });
   await expect(ask).toBeVisible();
   expect(planned).toEqual([]);
+  // Its press stands in place of the preview: nothing says it is planning (16:M17).
+  await expect(unitsRemoving.getByText("Planning…")).toHaveCount(0);
 
   // The address set to itself with a fragment, as any window holding a handle on this one can set
   // it - a cross-origin opener among them: a navigation within the page that fires `popstate` and
@@ -451,10 +463,114 @@ test("a Remove applied while the description changed on disk is refused, and goe
   ]);
 });
 
+test("a Remove pressed while a revision reaches the page is taken, the plan on screen applied", async ({
+  page,
+  vocabularyGui,
+}) => {
+  const project = join(vocabularyGui.directory, PROJECT);
+  await page.goto(vocabularyGui.address);
+  await page.getByRole("link", { name: "Files", exact: true }).click();
+  await page.getByRole("row", { name: UNITS }).click();
+  const removing = page
+    .getByRole("complementary", { name: UNITS })
+    .getByRole("region", { name: "Remove from the includes" });
+  const remove = removing.getByRole("button", { name: "Remove from the includes" });
+  await expect(removing.getByText("Changes 1 file: project.ddd.json")).toBeVisible();
+  await expect(remove).toBeEnabled();
+
+  // A revision reaches the page - a file of the project restamped, its bytes as they were - and
+  // the tab asks Remove's plan again for it: that ask is held, so that the moment the plan is on
+  // its way lasts. The plan on screen, the same removal's at the revision before, stays, and so
+  // does its Remove, where the tab took it away until the plan came, losing a press made then.
+  const release = await held(page, "/api/files-plan");
+  try {
+    const asked = page.waitForRequest(
+      (request) => new URL(request.url()).pathname === "/api/files-plan",
+    );
+    restamp(vocabularyGui.directory, PUMP);
+    await asked;
+    await expect(remove).toBeEnabled();
+    // Pressed then, the press is taken: the plan on screen is posted, and its files are as it read
+    // them, so the entry goes.
+    await remove.click();
+    await expect(page.getByRole("row", { name: UNITS })).toHaveCount(0);
+  } finally {
+    release();
+  }
+  expect(JSON.parse(readFileSync(project, "utf8")).project.includes).not.toContain(UNITS);
+});
+
 /** A component the project does not include yet, reading a variable no component writes: adding
  * it brings an error. Written into the copy `vocabularyGui` hands the journey, before the page
  * opens, as `EXTRA` is - which brings none. */
 const READER = "reader.ddd.json";
+
+/** An Add's plan on its way (16:M17): the panel says so where its consequence will stand, and says
+ * the consequence once the plan has come, held until then. */
+test("an Add a file says it is planning while its plan is on its way", async ({
+  page,
+  vocabularyGui,
+}) => {
+  writeFileSync(
+    join(vocabularyGui.directory, EXTRA),
+    JSON.stringify({ component: { name: "Extra", interface: [] } }),
+    "utf8",
+  );
+  await page.goto(vocabularyGui.address);
+  await page.getByRole("link", { name: "Files", exact: true }).click();
+  await page.getByRole("button", { name: "Add a file" }).click();
+  const adding = page.getByRole("complementary", { name: "Add a file" });
+
+  const release = await held(page, "/api/files-plan");
+  try {
+    await adding.getByRole("textbox", { name: "Path" }).fill(EXTRA);
+    await expect(adding.getByText("Planning…", { exact: true })).toBeVisible();
+  } finally {
+    release();
+  }
+  await expect(adding.getByText("Changes 1 file: project.ddd.json")).toBeVisible();
+  await expect(adding.getByText("Planning…")).toHaveCount(0);
+});
+
+test("an Add of another path offers nothing of the path before while its own plan is on its way", async ({
+  page,
+  vocabularyGui,
+}) => {
+  for (const name of [EXTRA, "spare.ddd.json"]) {
+    writeFileSync(
+      join(vocabularyGui.directory, name),
+      JSON.stringify({ component: { name: name === EXTRA ? "Extra" : "Spare", interface: [] } }),
+      "utf8",
+    );
+  }
+  await page.goto(vocabularyGui.address);
+  await page.getByRole("link", { name: "Files", exact: true }).click();
+  await page.getByRole("button", { name: "Add a file" }).click();
+  const adding = page.getByRole("complementary", { name: "Add a file" });
+  const path = adding.getByRole("textbox", { name: "Path" });
+  await path.fill(EXTRA);
+  await expect(adding.getByText("Changes 1 file: project.ddd.json")).toBeVisible();
+  const add = adding.getByRole("button", { name: /^Apply to/ });
+  await expect(add).toBeEnabled();
+
+  // Another path typed, its plan held: what the tab keeps on screen while a revision's plan is
+  // asked is the same request's alone, so nothing of the first path's plan is offered meanwhile.
+  const release = await held(page, "/api/files-plan");
+  try {
+    // Once typing has paused, the new path's plan is asked: the page asks for what it now shows.
+    const asked = page.waitForRequest(
+      (request) =>
+        new URL(request.url()).pathname === "/api/files-plan" && request.url().includes("spare"),
+    );
+    await path.fill("spare.ddd.json");
+    await asked;
+    await expect(adding.getByText("Planning…", { exact: true })).toBeVisible();
+    await expect(add).toHaveCount(0);
+  } finally {
+    release();
+  }
+  await expect(adding.getByText("Changes 1 file: project.ddd.json")).toBeVisible();
+});
 
 test("the errors a file would bring are listed in the Add a file preview, which still offers to add it", async ({
   page,
@@ -901,22 +1017,25 @@ function changeIncludes(
   writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`, "utf8");
 }
 
+/** examples/vocabulary's sections file in `directory` with .calib aligned to three bytes, as
+ * shared.spec.ts breaks it: still json and plainly a sections file, but no power of two, so the
+ * file fails its own model and does not load. */
+function unloadedSections(directory: string): void {
+  const path = join(directory, "sections.ddd.json");
+  const before = readFileSync(path, "utf8");
+  const broken = before.replace(
+    /("section": "\.calib"[^}]*?"alignment": )4/,
+    (_, head: string) => `${head}3`,
+  );
+  if (broken === before) throw new Error(`.calib states no alignment 4 in ${path}`);
+  writeFileSync(path, broken);
+}
+
 test("an entry whose file did not load is listed as not loaded, its kind still read", async ({
   page,
   copiedGui,
 }) => {
-  const gui = await copiedGui("vocabulary", (directory) => {
-    // .calib aligned to three bytes, as shared.spec.ts breaks it: still json and plainly a
-    // sections file, but no power of two, so the file fails its own model and does not load.
-    const path = join(directory, "sections.ddd.json");
-    const before = readFileSync(path, "utf8");
-    const broken = before.replace(
-      /("section": "\.calib"[^}]*?"alignment": )4/,
-      (_, head: string) => `${head}3`,
-    );
-    if (broken === before) throw new Error(`.calib states no alignment 4 in ${path}`);
-    writeFileSync(path, broken);
-  });
+  const gui = await copiedGui("vocabulary", unloadedSections);
   await page.goto(gui.address);
   await page.getByRole("link", { name: "Files", exact: true }).click();
 
@@ -927,6 +1046,28 @@ test("an entry whose file did not load is listed as not loaded, its kind still r
   // Against a file that loaded, whose State says nothing.
   const units = page.getByRole("row", { name: UNITS, exact: true });
   await expect(units.getByRole("gridcell")).toHaveText(["units", "", ""]);
+});
+
+test("a row whose file did not load leads to why, where the banner under the masthead leads it", async ({
+  page,
+  copiedGui,
+}) => {
+  // 16:M20: the row's panel offered its removal alone, as for every row.
+  const gui = await copiedGui("vocabulary", unloadedSections);
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Files", exact: true }).click();
+  await page.getByRole("row", { name: "sections.ddd.json", exact: true }).click();
+  const panel = page.getByRole("complementary", { name: "sections.ddd.json", exact: true });
+  // A sections file has no page of its own, and did not load: why is the one way it leads.
+  await expect(panel.getByRole("link")).toHaveText(["Why it did not load"]);
+  await panel.getByRole("link", { name: "Why it did not load", exact: true }).click();
+  await expect(page).toHaveURL(/\/project\?view=findings&text=sections\.ddd\.json$/);
+  await expect(page.getByRole("textbox", { name: "Filter findings" })).toHaveValue(
+    "sections.ddd.json",
+  );
+  await expect(
+    page.getByRole("row").filter({ hasText: "sections.ddd.json" }).first(),
+  ).toBeVisible();
 });
 
 test("an entry naming no file, and a pattern matching none, are listed as naming no file, with nothing beneath them", async ({
@@ -1016,6 +1157,63 @@ test("a pattern's row is listed with the files it matches beneath it, each one a
   await expect(logging.getByRole("gridcell").nth(0)).toHaveText("project");
 });
 
+test("a row's panel leads to its component's page and to its findings, beside its removal", async ({
+  page,
+  gui,
+}) => {
+  // 16:M20: selecting a row offered its removal alone, for a file a pattern brings in a refusal
+  // as the panel's whole content, and its Findings count is no link. Controller's reading of ValueA
+  // drifted from SensorHub's, so its file has a finding to lead to.
+  drift(gui.directory);
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Files", exact: true }).click();
+  const row = page.getByRole("row", { name: "components/controller.ddd.json", exact: true });
+  await expect(row.getByRole("gridcell").last()).toHaveText("1");
+  await row.click();
+  const panel = page.getByRole("complementary", {
+    name: "components/controller.ddd.json",
+    exact: true,
+  });
+  await expect(panel.getByRole("link")).toHaveText(["Open Controller", "Show its findings"]);
+  // The refusal stands beside them, as it did.
+  await expect(panel.getByRole("region", { name: "Remove from the includes" })).toContainText(
+    "has no entry of its own",
+  );
+
+  await panel.getByRole("link", { name: "Show its findings", exact: true }).click();
+  await expect(page).toHaveURL(/\/project\?view=findings&text=controller\.ddd\.json$/);
+  await expect(
+    page
+      .getByRole("row", { name: "definition-mismatch" })
+      .filter({ hasText: "controller.ddd.json" }),
+  ).toBeVisible();
+
+  // Back to the row's panel, and on to its component.
+  await page.goBack();
+  await panel.getByRole("link", { name: "Open Controller", exact: true }).click();
+  await expect(page).toHaveURL(/\/component\?file=[^&]+controller\.ddd\.json$/);
+  await expect(page.getByRole("heading", { name: "Controller", level: 1 })).toBeVisible();
+});
+
+test("an entry dragged over is selected, and opens no panel, where a click on its row does", async ({
+  page,
+  gui,
+}) => {
+  // 16:M21: a press on a row turned text selection off on it, and selected the row as it went
+  // down, its panel opening under a drag over its entry.
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Files", exact: true }).click();
+  const row = page.getByRole("row", { name: "components/controller.ddd.json", exact: true });
+  const entry = row.getByRole("rowheader");
+  expect(await draggedAcross(page, entry)).toBe("components/controller.ddd.json");
+  await expect(page.getByRole("complementary")).toHaveCount(0);
+  await expect(page).toHaveURL(/\/project\?view=files$/);
+  await entry.click();
+  await expect(
+    page.getByRole("complementary", { name: "components/controller.ddd.json", exact: true }),
+  ).toBeVisible();
+});
+
 test("a removal of a file only a pattern brings in is refused, naming the pattern, with nothing to press", async ({
   page,
   gui,
@@ -1068,6 +1266,35 @@ test("an Apply the server fails on is sent once, and refused in the Remove panel
   expect(failed()).toBe(1);
   // A guard against a write by another path: the POST is answered by `failing`, not the server.
   expect(readFileSync(join(vocabularyGui.directory, PROJECT))).toEqual(description);
+});
+
+test("a Remove whose plan the server fails on when asked again, once its apply was refused, offers nothing to press beside the refusal", async ({
+  page,
+  vocabularyGui,
+}) => {
+  await page.goto(vocabularyGui.address);
+  await page.getByRole("link", { name: "Files", exact: true }).click();
+  await page.getByRole("row", { name: UNITS, exact: true }).click();
+  const removing = page
+    .getByRole("complementary", { name: UNITS, exact: true })
+    .getByRole("region", { name: "Remove from the includes" });
+  const plan = removing.getByText("Changes 1 file: project.ddd.json", { exact: true });
+  await expect(plan).toBeVisible();
+
+  // From here on the server fails the Apply, and the plan the tab asks again once the Apply is
+  // answered: the query keeps the plan it had, whose fingerprints the server would refuse.
+  const edits = await failing(page, "/api/edit", "http");
+  const plans = await failing(page, "/api/files-plan", "http");
+  const remove = removing.getByRole("button", { name: "Remove from the includes" });
+  await remove.click();
+  await expect(removing.getByRole("status")).toHaveText(`The change was refused: ${SERVER_FAILED}`);
+  await expect.poll(plans).toBeGreaterThanOrEqual(1);
+  // Beside its plan's own refusal, a write offers nothing to apply (`offerShown`), the refusal of
+  // the Apply said over it.
+  await expect(remove).toHaveCount(0);
+  await expect(plan).toHaveCount(0);
+  await expect(removing.getByRole("status")).toHaveText(`The change was refused: ${SERVER_FAILED}`);
+  expect(edits()).toBe(1);
 });
 
 test("a removal or an add the server could not judge says so in its words, and is still offered", async ({

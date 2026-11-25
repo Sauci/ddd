@@ -264,6 +264,13 @@ export function decimalText(decimal: Decimal): string {
   return `${sign}${digits[0]}${rest}e${power < 0 ? "-" : "+"}${Math.abs(power)}`;
 }
 
+/** A count as a sentence says one: its digits, past a thousand grouped by commas three to a group,
+ * so that a large project's counts read at a glance - `1,166` of a project's modules, `14,918`
+ * more names than a list draws. Never a decimal: a count is a whole number. */
+export function countText(count: number): string {
+  return String(count).replace(/\B(?=(\d{3})+$)/g, ",");
+}
+
 /** The double nearest a decimal, as `Number` reads its digits - an infinity, or a zero, on its own
  * side for one past every double. Its exponent is spelled in digits, which `decimalOf` holds it to
  * (`EXPONENT_HELD`): spelled `1e+21` from 1e21 on, it made the digits NaN, which a cell then sent

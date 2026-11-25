@@ -248,6 +248,19 @@ A script or a client reading what the tool prints:
   - "The state says why the last analysis failed, and which build record cannot be used": a client
     typed from the page's contract adds `failed` and `refused` to `State`, each required; one that
     reads the json ignores them.
+  - "What did not load is said once, under the masthead of every page, with what to do next": a
+    client typed from the page's contract adds `unreadable`, required, to the reply of `GET
+    /api/projects`; one that reads the json ignores it.
+  - "Compare names the baseline it was asked for, keeps it from tab to tab, and refuses one in plain
+    sentences": a script that matched the refusal sentences of `GET /api/compare` for a baseline,
+    `is unreadable:` and the system's words, or `outside the session root`, matches `is unreadable`
+    and `outside the directory ddd gui was started in`.
+  - "The page asks again where the server could not answer, and refuses before sending what the
+    server would not read": a script that matched the text of the page the server serves to a
+    browser that is not signed in matches the new.
+  - "An edit whose file changed on disk leaves the undo stack, and a refused undo is offered again":
+    `GET /api/undo` takes `at`, the number of the edit `State.undoable` names, and answers `400`
+    without it.
 
 An editor, or a client of `ddd lsp`:
 
@@ -394,6 +407,19 @@ A user of `ddd tool from-elf`:
   - "An edit may be as large as a large project's rename, and a plan too long for its address says
     so": a values table past about 10,000 counts is set cell by cell, or in its file in an editor;
     `POST /api/edit` takes a body of up to 8 MiB, and every other request keeps its 1 MiB.
+  - "The page asks again where the server could not answer, and refuses before sending what the
+    server would not read": an edit whose body passes 8 MiB is refused by the page before it is
+    sent, in a sentence naming the edit and the limit: it is made in parts, or in an editor.
+  - "Opening the project already open goes to it, and keeps its undo": a reader who reopened the
+    open project to empty its undo stack opens another project first, or starts `ddd gui` again.
+  - "An optional key emptied in its field is taken away, so that a raster is made acyclic from its
+    panel": a description emptied in a raster's, a section's or a constant's panel is written as no
+    key, where the empty text was written; a project that wants the key present with no text writes
+    it in its file.
+  - "An edit whose file changed on disk leaves the undo stack, and a refused undo is offered again":
+    an edit whose file the reader put back by hand, byte for byte, after it changed on disk is not
+    put back by the page, which has taken it off the stack; one whose file only could not be read or
+    written stays.
 
 An install and the tool's python:
 
@@ -1287,12 +1313,13 @@ A build of DDD from its sources, and a release of it:
   build records that grade them, so one pair has one verdict whichever way it is asked, and the
   reply gains `own_errors`, an integer that is `0` for a project with none and is required, so that
   a client typed from the contract adds it, and one that reads the json ignores it.  The page itself
-  says "cannot replace" without the count until a later release draws it.  The tab also stamps a
-  baseline before it reads it and keeps the read only if every file it was made of carries the same
-  stamp afterwards, so a baseline saved during a read is read again instead of served stale, and a
-  description baseline that is one flat file is kept from its first read: measured on a description
-  of 20,000 declarations, the second ask took 0.92 s before and 0.14 s after.  A write that keeps a
-  file's time and size exactly is not told, as the session's own watch does not tell it.
+  says, under the verdict, how many errors the project has of its own and that the Findings tab
+  lists them.  The tab also stamps a baseline before it reads it and keeps the read only if every
+  file it was made of carries the same stamp afterwards, so a baseline saved during a read is read
+  again instead of served stale, and a description baseline that is one flat file is kept from its
+  first read: measured on a description of 20,000 declarations, the second ask took 0.92 s before
+  and 0.14 s after.  A write that keeps a file's time and size exactly is not told, as the session's
+  own watch does not tell it.
 
 * **An edit through `ddd gui` is held to what the reader could do by hand.**  An edit cannot change
   which plugins the project's descriptions name: `POST /api/edit` answers it `409`, saying what to
@@ -2024,6 +2051,187 @@ A build of DDD from its sources, and a release of it:
   where the print's error was answered.  Migrating costs a client typed from the page's contract the
   two fields `State` gains, `failed` and `refused`, which are required; one that reads the json
   ignores them.
+
+* **The page keeps asking its server, names the project the server has open, and leaves the masthead
+  in reach when a page cannot be drawn.**  A browser that believed the network lost held back the
+  page's reads and writes, though `ddd gui` answers on this computer: an Apply sent nothing, and the
+  long poll waited for a network that was not in its way.  The page now sends them whatever the
+  browser says of the network.  The server has one project open at a time, and every page now names
+  the one the state it follows is of, by its description's file until the server has said its name,
+  asks for its session again where the session names another project, and files the arrangement of
+  its canvas under the project it shows, where a page whose project another page had replaced went
+  on naming the first.  A page that failed while it was drawn left the browser's own blank page, the
+  masthead with it: one boundary now sits under the masthead and the banners, which stay, and says
+  "This page could not be drawn" and why, with "Reload the page" while `ddd gui` answers, and a
+  finding leading to a name no address can carry is drawn without a link, in the words that say
+  where it is.  Nothing to migrate.
+
+* **The Declare button stays above the Shared files table, and the declare form says what it still
+  needs.**  The Shared files tab drew its Declare button only while it listed nothing, so a project
+  that listed an entry could declare no other from the tab.  The button is now drawn above the table
+  whenever the tab lists any.  The declare form says under its sentence what it still needs, `Still
+  needs datatype or typename.` or the keys the kind requires that nothing states, and which text
+  typed into a field is not taken yet, where a required key's field read "state nothing" as an
+  optional key's does and is now empty; and the sentence for a name the project already lists says
+  by the scope chosen what the declaration does, `Produces` it, `Reads` it or `Keeps` it to itself,
+  naming the component that declares it.  Nothing to migrate.
+
+* **A large project's lists are narrowed, windowed and searched, and each says how many rows it
+  leaves.**  The declare form's Name list narrows by what is typed, draws at most fifty names and
+  says how many more hold the text; Compare's table draws only the rows in view, as every other long
+  table does, and none where a comparison files nothing; the Graph's search says under its box how
+  many modules it found of how many, or that none matches; and a plan that changes more than four
+  files names three of them and counts the rest, saying `Planning…` while it is asked for, where a
+  rename through a large project named every file.  The component table, a component's own
+  declarations, a unit's own places and the Findings tab each take a filter, which leaves the rows
+  holding the text typed, whatever its case, and says how many it leaves of how many.  The Findings
+  tab's is asked of the server, `GET /api/findings` taking `text`, and matches a finding's check,
+  its words or its file's name as the File column draws it.  The masthead goes to a variable by a
+  part of its name, listing at most fifty of the names holding it and saying how many more do, from
+  `GET /api/names`, and opens its panel on the page of the component producing it, or of the first
+  declaring it where none does.  Both routes, like the rest of the api, are a preview's and change
+  with the package.  Nothing to migrate.
+
+* **What did not load is said once, under the masthead of every page, with what to do next.**  One
+  banner under the masthead of every page of the open project, a component's among them, now says
+  why the last analysis failed and, while `ddd gui` runs, that it tries again about every second
+  until one succeeds; which files did not load, past four three of them and a count of the rest,
+  each leading to the Findings tab filtered to the finding that says why and the count to the Files
+  tab; and each build record this DDD cannot use, with its reason.  A panel says that no file that
+  loaded declares a name where a file did not load, and not that no file does, and a removal and the
+  masthead's go-to say it too; the Graph says that no module is drawn where the project's own
+  description did not load; a project that includes no component says, in the Graph and the Table,
+  that New file writes one; and the start page lists a project description it could not read,
+  because it cannot be opened, is not UTF-8 text or does not parse, with why, from the `unreadable`
+  of `GET /api/projects`.  Migrating costs a client typed from the page's contract the field that
+  reply gains, which is required; one that reads the json ignores it.
+
+* **The page can be used by keyboard and screen reader, in forced colours, in a narrow window and
+  with reduced motion.**  Every button draws a focus outline of two pixels in the accent colour, in
+  forced colours too, a chooser rings its field, its arrow and the choice its keys are on, and a
+  selected row has an outline of its own; an arrow whose ends agree is drawn in the quiet ink, where
+  it was too faint to read; and a finding's severity is toned one way wherever it is drawn and said
+  in a word, `error`, `warning` or `info`, as `ddd check` says it, so that colour is never its only
+  sign.  The Graph moves its view in no time where the browser asks for reduced motion.  After a
+  change of page the focus goes to the page's heading, until the reader's own key, pointer, wheel or
+  touch takes it elsewhere; Close gives it back to the control the panel was opened from, Apply
+  leaves it in the panel, and Put back, disabled while it puts the files back, gives it to the
+  page's heading; every page is titled by its name and the project's; and the heading's line says
+  what an edit or an undo wrote, and where, which a screen reader hears, a second write that says
+  what the first said as well.  A grid's field keeps the focus a screen reader gives it.  A narrow
+  window fits the page: a panel opened out of view is scrolled into it, and a panel's table scrolls
+  sideways in a box of its own.  Nothing to migrate.
+
+* **Compare names the baseline it was asked for, keeps it from tab to tab, and refuses one in plain
+  sentences.**  The Compare tab keeps its Baseline field and the comparison last asked for above the
+  tabs, so that leaving the tab and coming back finds them, its verdict names the baseline it was
+  asked for, and the field gets the focus back once what its Enter asked has answered.  A path
+  copied with the quotes a system puts round it, double or single, is read as the path.  A baseline
+  the page refuses is refused as `is unreadable`, and no more, where the system's own words, which
+  differ from one system to another, were added, and as outside the directory `ddd gui` was started
+  in, naming it, where the sentence said the session root.  Under the verdict the page says how many
+  errors the project has of its own, and that the Findings tab lists them.  Migrating costs a script
+  that matched the refusal's old sentences the new.
+
+* **The page keeps the reader's place and what they typed, and tells two files of one name apart.**
+  The Findings tab keeps its place above the tabs, the filter's text, the scroll and the finding
+  open, so that Back, or pressing the tab again, returns to where it was left, and a component's
+  page leads back to the tab it came from.  A type's description and rename, typed into their
+  fields, are kept when a key row is selected, and previewed again when the row is let go.  A row of
+  the Files tab leads to its component, to its findings, or to why its file did not load; the words
+  in a table's cells can be selected without opening what their row leads to; a pressed key row
+  gives its chooser the focus, its list closed, by mouse as by Enter; and a finding's own place is
+  drawn under its message, above its related lines.  Two files of one name in different folders are
+  told apart by as much of their paths as tells them apart wherever the page names a file, in the
+  Findings tab's File column, in a plan's consequence and the lines a change prints, and in the
+  banner's links and the Files tab's, each leading to its own findings, and the filter matches the
+  name as the column draws it.  A long name wraps in a panel, in the masthead and in the heading, so
+  that Close stays in view and the page is never wider than the window.  Nothing to migrate.
+
+* **The Graph and the values grid take the window, and what the Graph cannot draw says why.**  The
+  Graph and a component's values grid take the width of the window, where every page keeps 1,100
+  pixels, and a narrow window is as it was.  An arrow's tooltip is drawn outside the canvas's zoomed
+  layer, so that it keeps its size at every zoom, and is hidden while its arrow is out of the
+  canvas; a plot's margin grows to hold its longest reading, so that none loses a digit; and a
+  layout worker that cannot start says to reload the page only while `ddd gui` answers, and says
+  nothing of it once it has stopped.  Nothing to migrate.
+
+* **The page asks again where the server could not answer, and refuses before sending what the
+  server would not read.**  The long poll and the session, answered with a failure of the server's,
+  a `5xx` or a body cut half way, or not at all, are asked again after a short delay, the first
+  failure said nowhere and, from the second in a row, the server's own words or that `ddd gui` has
+  stopped; a refusal a repetition cannot mend, a `4xx`, still ends the ask.  A page waiting for its
+  first analysis promises none once `ddd gui` has stopped, and the page the server serves a browser
+  that is not signed in says, where the address was opened already, to stop `ddd gui` with Ctrl+C,
+  start it again and open the address it prints then.  A request is held to the limit of its own
+  route before it is sent, as the server holds it: an edit's body to 8 MiB and any other to 1 MiB,
+  the refusal naming the edit by its label, or the route, and the limit.  Migrating costs an edit
+  past 8 MiB its parts, made one at a time, or an editor; and a script that matched the text of the
+  page served to a browser that is not signed in matches the new.
+
+* **Opening the project already open goes to it, and keeps its undo.**  The start page offered the
+  open project as it offered any other, and pressing it opened it again, which put the undo stack
+  away.  Its button now says `Already open`, is marked as the current one, and goes to the project's
+  Graph as the masthead's project button does, asking nothing of the server, so that its undo stack
+  is kept, where opening it again emptied it; a page that followed another page's opening marks
+  that project, from the state, before the session says so.  Every other project opens as before,
+  emptying the stack.  Migrating costs a reader who reopened the open project to empty its undo
+  stack another project opened first, or `ddd gui` started again.
+
+* **A panel offers what a refusal leaves it, says why it draws nothing, and holds no answer a
+  refused read has left.**  One rule says what a panel offers beside a refusal: under a refusal held
+  of its Apply, the plan its revision answers, with its Apply, and beside its plan's own refusal, no
+  plan and no Apply; the sentences of a refused Apply and of a refused undo are chosen in one place
+  for every screen.  The variable panel's Remove alone stays withdrawn under any refusal.  A finding
+  whose place in its file alone moved keeps its panel, found again by its file, its severity, its
+  check and its words where its key moved; a panel whose read of the units failed says why it draws
+  nothing; an answer a screen kept is dropped once a read of it is refused, rather than drawn as
+  current; a settle's refusal keeps open the key it was of where the panel had opened it by itself;
+  the start page's list comes back once the project it opened is open; and a Files tab press made
+  while a revision lands applies the plan on screen.  Nothing to migrate.
+
+* **An optional key emptied in its field is taken away, so that a raster is made acyclic from its
+  panel.**  A raster's cycle and description, a section's description and a constant's description,
+  emptied in their fields, are sent as no key, and the key leaves the file, where the field's empty
+  text was sent as the key's value: a field of spaces alone is as empty as none, and the required
+  keys, access, alignment and event, are as they were.  A raster is made acyclic from its panel by
+  emptying its cycle.  Migrating costs a project that wants a key present with no text its file,
+  since the page now writes none.
+
+* **An edit whose file changed on disk leaves the undo stack, and a refused undo is offered again.**
+  An undo refused because a file it would put back changed on disk stayed on top of the stack for as
+  long as the server ran, so that every edit under it was out of reach.  An edit whose file is gone,
+  or holds other bytes than the edit left, now leaves the stack once the strip has said so, naming
+  the edit and that it can no longer be undone with nothing put back, and the edit beneath it comes
+  within reach; the strip says every edit taken off while it is open, and reads `Nothing left to
+  undo` where none is left, until it is closed.  An edit whose file only cannot be read or written,
+  a permission, a handle another program holds or a full disk, stays, its refusal said beside it and
+  its Put back offered again in the strip without closing it, with `Read the files again` where the
+  preview was refused.  The strip counts a file an undo removes apart from the files it puts back,
+  as the heading's line does: `Puts back 1 file: demo.ddd.json, and removes 1 file: units.ddd.json`.
+  `GET /api/undo` takes `at`, the number of the edit the state names, and refuses one that is no
+  longer on top as `stale`, so that a window reads and takes off no edit of another's.  Migrating
+  costs an edit whose file the reader put back by hand, byte for byte, after it changed, which the
+  page has taken off and no longer puts back, and a client that previewed an undo gives `GET
+  /api/undo` the `at` of the state's `undoable`, answered `400` without it.
+
+* **Home, End, PageUp and PageDown walk the whole Findings listing.**  The Findings tab draws only
+  the rows in view, and its keys walked only those.  Home and End now go to the first and the last
+  finding of the listing and PageUp and PageDown by a page, the row focused once it is drawn.  The
+  tab's type-to-find still matches the rows drawn alone; its filter, asked of the server, finds a
+  name in the whole listing.  Nothing to migrate.
+
+* **A pasted table says its header is not written, and one value pasted into a cell sets that
+  cell.**  A table pasted into the values grid whose first row and column were taken for a header
+  discarded them without a word, so one naming a different axis went unseen until the preview; the
+  preview's sentence now says that the first row and column pasted are taken for a header and not
+  written.  One value pasted into a focused cell, a single cell of text with a trailing line break
+  aside, was read as a table, and refused unless it was the object's whole shape; it now sets that
+  cell as if typed there, with the reading of white space, of a comma that could be either and of
+  text that is no number that a typed cell has, and joins the cells typed before it in one plan; a
+  paste of no text, an empty one or an image alone, changes nothing, the cell it is pasted into
+  keeping what was typed there.  A scalar's one cell takes a value so too.  Anything more, pasted
+  into a cell or elsewhere in the grid, is a table as before.  Nothing to migrate.
 
 * **A file that cannot be written is refused before anything is, on every system, and what is
   written is synced.**  On Windows a read-only file was staged, refused at the rename after

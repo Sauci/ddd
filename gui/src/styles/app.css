@@ -12,12 +12,36 @@ body {
   margin: 0 auto;
   padding: var(--space-4);
 }
+/* The Graph and a component's values grid take the window (decision 16.4): every other page keeps
+   the measure above. Padding stays, so that nothing meets the window's edge. */
+.app.wide {
+  max-width: none;
+}
 .masthead {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   gap: var(--space-3);
   padding-block: var(--space-2);
   border-bottom: 1px solid var(--rule);
+}
+/* The go-to (16:I14), last in the masthead: its label beside its field rather than above it, so
+   that the masthead keeps its one line, and a refusal under the field. As wide as its content
+   wherever it is drawn, and its field wide enough for its list - which is as wide - to hold a name
+   and its kind and component on one line. In a window too narrow for it, the masthead wraps it onto
+   a line of its own, and its field narrows to the line rather than reach past the window's edge
+   (16:M9). */
+.goto {
+  min-width: 0;
+}
+.goto .combo {
+  display: inline-grid;
+  grid-template-columns: auto minmax(0, 24em);
+  align-items: center;
+  column-gap: var(--space-2);
+}
+.goto .combo-note {
+  grid-column: 2;
 }
 .masthead nav {
   margin-left: auto;
@@ -34,6 +58,7 @@ body {
   letter-spacing: 0.06em;
 }
 h1 {
+  overflow-wrap: anywhere;
   font-size: var(--text-title);
   margin: var(--space-6) 0 var(--space-2);
 }
@@ -81,8 +106,10 @@ tr.has-error td:first-child {
 button {
   font: inherit;
 }
+/* A heading takes the focus where the page puts it there (16:I13): a page's, a panel's. */
 button:focus-visible,
-input:focus-visible {
+input:focus-visible,
+[data-heading]:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -104,6 +131,19 @@ input:focus-visible {
 }
 .projects .name {
   font-weight: 600;
+}
+/* The project open (15:M11): pressed, it is gone to rather than opened again, and its words say
+   so beside the border a selected entry has. */
+.projects button[aria-current="true"] {
+  border-color: var(--accent);
+}
+.projects .open {
+  color: var(--accent);
+  font-size: var(--text-small);
+}
+/* A project's path breaks where it must, in a window too narrow for it whole (16:M9). */
+.projects .path {
+  overflow-wrap: anywhere;
 }
 .badge {
   display: inline-block;
@@ -144,11 +184,29 @@ input:focus-visible {
   background: var(--warning-ground);
   color: var(--warning);
 }
+/* The banner under the masthead (16:I9): a line each for a failed analysis, the files that did not
+   load and each record not used, as close as the banner's own padding. */
+.banner-line {
+  margin: 0;
+}
+.banner-line + .banner-line {
+  margin-top: var(--space-2);
+}
+/* A link within a sentence (`Sentence`, ui/Sentence.tsx) - a file the banner names, an empty
+   project's New file - is drawn at the sentence's own size, and underlined, as a link in running
+   text is, rather than told apart from the words around it by its colour alone: not a
+   `.button.link`, which is drawn at a control's size, and underlined only under the pointer. */
+.sentence-link {
+  color: var(--accent);
+  text-decoration: underline;
+}
 /* The canvas's own controls, above it: find a module by name, lay the modules out again, and
    return to the view the canvas opened on (`openingViewport`) - the whole project where it fits
-   at the least zoom, its first rank where it does not. */
+   at the least zoom, its first rank where it does not. In a window too narrow for one line of
+   them, they wrap (16:M9). */
 .canvas-tools {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
   margin-bottom: var(--space-2);
 }
@@ -170,6 +228,16 @@ input:focus-visible {
   opacity: 0.2;
 }
 /* React Flow draws into whatever room it is given, so the canvas states its own. */
+/* The search's line under its box (GraphPage.tsx): a line high whether or not a search is typed -
+   a zero-width space holds it when empty - so that its words coming never move the canvas. */
+.canvas-search-line {
+  margin: 0 0 var(--space-2);
+  color: var(--ink-quiet);
+  font-size: var(--text-small);
+}
+.canvas-search-line::before {
+  content: "\200b";
+}
 .canvas {
   height: 70vh;
   min-height: 420px;
@@ -247,13 +315,15 @@ input:focus-visible {
   border-color: var(--warning);
   color: var(--warning);
 }
-/* What the arrow carries, while the reader is on it. Above its own label, and never under the
-   pointer: a tooltip that took the pointer would leave the arrow and so close itself. */
+/* What the arrow carries, while the reader is on it (FlowEdge.tsx): drawn in the window, outside the
+   canvas's zoomed layer and its edge (16:M11), above the arrow's own label where there is room,
+   and never under the pointer: a tooltip that took the pointer would leave the arrow and so close
+   itself. Above the panel and the masthead, in the window's own stacking. */
 .flow-tooltip {
-  position: absolute;
+  position: fixed;
   pointer-events: none;
-  z-index: 1;
-  max-width: 30em;
+  z-index: 10;
+  max-width: min(30em, calc(100vw - 2 * var(--space-2)));
   padding: var(--space-2) var(--space-3);
   background: var(--surface);
   border: 1px solid var(--rule);
@@ -286,4 +356,11 @@ input:focus-visible {
 }
 .flow-tooltip.warning .flow-check {
   color: var(--warning);
+}
+
+/* A project's name of the 128 characters the specification allows, in the masthead's button, breaks
+   where it must (16:M18). */
+.masthead nav button {
+  text-align: left;
+  overflow-wrap: anywhere;
 }

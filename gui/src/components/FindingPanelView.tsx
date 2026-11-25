@@ -1,5 +1,6 @@
 import type { MouseEvent } from "react";
 import type { Finding, FixReply } from "../api/types";
+import { toneOf } from "../lib/findings";
 import { consequence, shownChanges } from "../lib/units";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
@@ -10,9 +11,10 @@ export interface FindingPanelViewProps {
   finding: Finding;
   /** What the button that follows it says, or `null` when it leads nowhere. */
   label: string | null;
-  /** The address it carries, so the link is a real one; `null` with `label`. */
+  /** The address it carries, so the link is a real one; `null` with `label`, and where no address
+   * can carry the name it leads to (`hrefOf`). */
   href: string | null;
-  /** Why it leads nowhere, said when `label` is `null`. */
+  /** Why it leads nowhere, said where no link is drawn. */
   reason: string;
   /** Where the finding is, said when it leads nowhere (`placeOf`, `lib/findings.ts`): the line
    * and column in its file, or its pointer; `null` where it names no place. */
@@ -39,8 +41,7 @@ export interface FindingPanelViewProps {
 export function FindingPanelView(props: FindingPanelViewProps) {
   const { finding, label, href, reason, place, fileName, fixes, chosen, refusal, busy } = props;
   const offered = fixes?.fixes ?? [];
-  // Built here rather than inline, so that `label` and `href` - which are null together - narrow
-  // once for the whole row.
+  // Built here rather than inline, so that `label` and `href` narrow once for the whole row.
   const link =
     label !== null && href !== null ? (
       <a
@@ -60,9 +61,13 @@ export function FindingPanelView(props: FindingPanelViewProps) {
   return (
     <Panel title={finding.check} meta={fileName(finding.file)} onClose={props.onClose}>
       <p>
-        <Chip tone={toneOf(finding.severity)}>{severityWord(finding.severity)}</Chip>
+        <Chip tone={toneOf(finding.severity)}>{finding.severity}</Chip>
       </p>
       <p>{finding.message}</p>
+      {/* Where the finding itself is, said where it leads nowhere: under its message, above its
+          related lines, where it can be read as nothing but the finding's own place - drawn below
+          them, it read as the last one's (16:I8). */}
+      {link === null && place !== null && <p className="path">{place}</p>}
       {finding.notes.length > 0 && (
         <ul className="panel-notes">
           {finding.notes.map((note) => (
@@ -78,7 +83,6 @@ export function FindingPanelView(props: FindingPanelViewProps) {
           ))}
         </ul>
       )}
-      {link === null && place !== null && <p className="path">{place}</p>}
       {link === null && <p className="quiet">{reason}</p>}
       {/* What this finding offers, read in one line: where it leads, and each fix it carries.
           What a chosen fix reveals stays below them, at the panel's own width. */}
@@ -101,14 +105,16 @@ export function FindingPanelView(props: FindingPanelViewProps) {
         .filter((fix) => fix.title === chosen)
         .map((fix) => (
           <section key={fix.title} className="panel-offer" aria-label={fix.title}>
-            {refusal !== null ? (
+            {refusal !== null && (
               <p className="panel-refusal" role="status">
                 {refusal}
               </p>
-            ) : (
-              <p className="consequence">{consequence(fix.changes)}</p>
             )}
-            {refusal === null && fix.changes.length > 0 && (
+            {/* Under a refusal too, the fix the panel is given, and its Apply: what it offers
+                beside one is the screen's rule (`offerShown`), which hands no fix whose own ask
+                was refused. */}
+            <p className="consequence">{consequence(fix.changes)}</p>
+            {fix.changes.length > 0 && (
               <>
                 {props.changesShown && <Changes changes={shownChanges(fix.changes)} />}
                 <div className="panel-actions">
@@ -125,15 +131,4 @@ export function FindingPanelView(props: FindingPanelViewProps) {
         ))}
     </Panel>
   );
-}
-
-/** The chip's tone for a severity; `info` is the quiet one the design system calls neutral. */
-function toneOf(severity: Finding["severity"]) {
-  return severity === "error" ? "error" : severity === "warning" ? "warning" : "neutral";
-}
-
-/** The chip's own word for a severity - the title already says the check, so the chip is the one
- * place left to read which severity this is - the noun `findingCounts` already counts it under. */
-function severityWord(severity: Finding["severity"]) {
-  return severity === "error" ? "error" : severity === "warning" ? "warning" : "note";
 }

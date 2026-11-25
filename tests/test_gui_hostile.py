@@ -202,7 +202,9 @@ def _well_formed(
         "/api/state": {},
         "/api/findings": {},
         "/api/file": {"path": demo_json},
+        "/api/undo": {"at": "1"},
         "/api/variable": {"name": "ValueA"},
+        "/api/names": {"text": "Value"},
         "/api/unit": {"name": "rpm"},
         "/api/settle": {"name": "ValueA", "key": "unit"},
         "/api/fix": {
@@ -330,7 +332,7 @@ def test_every_key_of_every_route_s_query_is_never_answered_500(
                 cases += 1
                 reply = api.handle(route.method, route.path, {"zzz": [value]}, body)
                 assert reply.status != 500, (route.path, "zzz", value[:20], reply.body)
-    assert cases == 1320, "every route's query, every key, every hostile value: once each"
+    assert cases == 1342, "every route's query, every key, every hostile value: once each"
 
 
 def test_every_string_field_of_a_post_body_is_never_answered_500(
@@ -517,7 +519,7 @@ def test_a_baseline_no_file_can_bear_is_refused_400_from_the_directory_served(
         thread.join()
     assert (status, body["error"]) == (400, "bad-request"), body
     assert body["message"].startswith("the baseline '"), body
-    assert " is unreadable: " in body["message"], body
+    assert body["message"].endswith("' is unreadable"), body
     assert capsys.readouterr().err == ""
 
 

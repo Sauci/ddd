@@ -12,11 +12,18 @@ import { useUpdating } from "../app/updating";
 import { useDebounced } from "../app/useDebounced";
 import { TypePanelView } from "../components/TypePanelView";
 import { planEdit } from "../lib/projectUnits";
-import { panelShows, type Refused, refusalShown } from "../lib/refusals";
+import {
+  heldOf,
+  offerShown,
+  panelReads,
+  panelShows,
+  type Refused,
+  refusalOf,
+} from "../lib/refusals";
 import type { Route } from "../lib/route";
 import { planShown, unsettled } from "../lib/typing";
 import { typeLabel } from "../lib/undo";
-import { textOf, unitLabel } from "../lib/units";
+import { planning, textOf, unitLabel } from "../lib/units";
 import {
   limitsOf,
   limitsRaw,
@@ -41,14 +48,6 @@ interface Props {
   onMoved: (name: string) => void;
   /** Following a use, a member's type or a finding, without a reload. */
   onOpen: (route: Route) => void;
-}
-
-/** What the tab says when an edit it posted was refused: stale, as part 1's panel says it, or the
- * server's own reason. */
-export function refusalOf(error: Error): string {
-  return error instanceof ApiError && error.code === "stale"
-    ? "A file changed on disk, so nothing was written. The page now shows the files as they are."
-    : `The change was refused: ${error.message}`;
 }
 
 /**
@@ -139,7 +138,11 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
 
   // What the panel shows of that answer (`panelShows`): a type just renamed to this spelling is
   // refused until the rename is analysed, and the panel says the findings are updating meanwhile.
-  const answer = panelShows(reply, (shown) => shown.name, name, updating);
+  // Its read of the units failed with nothing to draw from, it says why (`panelReads`).
+  const answer = panelReads(
+    panelShows(reply, (shown) => shown.name, name, updating),
+    units,
+  );
   const type = answer.shown === "reply" ? answer.reply : undefined;
   const offer = type?.keys.find((entry) => entry.key === selected);
   const starting = offer?.values[0]?.raw ?? null;
@@ -220,11 +223,17 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
   // has since typed past. This panel has no separate `pending` flag of its own (unlike
   // `UnitPanel`'s `Offer`):
   // `TypePanelView`'s own gate (`pending && preview !== null`) draws neither a consequence nor an
-  // Apply once `preview` below is `null`, which is exactly when `shown.pending` holds.
+  // Apply once `preview` below is `null` - its plan pending, or none asked for - and says
+  // `PLANNING` in their place while the plan is on its way (`planning`, lib/units.ts). What it
+  // offers beside a refusal is the one rule every panel follows (`offerShown`): a refusal of the
+  // path's Apply said over the plan asked again, and nothing to apply beside its plan's own.
   const shown =
     active === null
       ? { plan: null, refusal: null, pending: false }
-      : planShown(asked[active], requests[active], plans[active]);
+      : offerShown(
+          heldOf(refused, active),
+          planShown(asked[active], requests[active], plans[active]),
+        );
   // What the chooser's field reads while nothing is being typed (`settledLabel`, the rule a
   // variable's panel reads its own by), and whether what is typed is not that: text typed and left
   // is no choice yet (decision 15.3), so while it stands no plan is drawn for the value before it
@@ -312,10 +321,6 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
         // The panel shows one preview at a time: selecting a row dirties this path, so whichever
         // of the other two was previewed stops being - a deselection (key undefined) is the
         // opposite, ending this path, and must touch neither.
-        if (key !== undefined) {
-          setRenameTo(null);
-          setDescription(undefined);
-        }
       }}
       typed={typed ?? shownLabel}
       unsettled={unsettledText}
@@ -382,15 +387,15 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
         }
       }}
       preview={unsettledText ? null : shown.plan}
+      // Said while that plan is on its way, as long as nothing is said in its place instead.
+      planning={!unsettledText && planning(shown)}
       changesShown={changesShown}
       onChangesShown={setChangesShown}
       onApply={() => {
         if (active !== null) apply.mutate(active);
       }}
       onOpen={onOpen}
-      refusal={
-        active === null || unsettledText ? null : refusalShown(refused, shown.refusal, active)
-      }
+      refusal={active === null || unsettledText ? null : shown.refusal}
       busy={stopped || apply.isPending}
       onClose={onClose}
     />

@@ -1,7 +1,9 @@
-import { useRef } from "react";
+import { type MouseEvent, useRef } from "react";
 import type { FilesPlanReply } from "../api/types";
 import { asksComponentName, type FileRemoval, previewOf } from "../lib/files";
-import { shownChanges } from "../lib/units";
+import { hrefOf, type Route } from "../lib/route";
+import { PLANNING, shownChanges } from "../lib/units";
+import type { Lead } from "../lib/unloaded";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
 import { ComboBox } from "../ui/ComboBox";
@@ -35,15 +37,20 @@ export function FileActionsView({ onNewFile, onAddFile }: FileActionsViewProps) 
  * Where one of the three actions stands: its plan once it has come, and why it cannot be applied -
  * the two facts `ConstantPanelView`'s own `Offer` keeps for each of a constant's changes, less its
  * `pending`: these plans are never kept on screen while the next is asked for, as `SharedAdd`'s
- * own three - debounced the same way (spec §6) - keep none of theirs either (fix round 2).
+ * own three - debounced the same way (spec §6) - keep none of theirs either (fix round 2). What
+ * `pending` would say of a plan on its way, `planning` says.
  */
 export interface FileOffer {
   /** The plan; `null` while it is being asked for, when it was refused, and while the form does
-   * not yet hold what the request needs (`fileCreate`, `fileAdd`). */
+   * not yet hold what the request needs (`fileCreate`, `fileAdd`). Drawn under a refusal of its
+   * Apply too (`offerShown`, `lib/refusals.ts`). */
   plan: FilesPlanReply | null;
   /** Why the plan was refused when asked for - the server's own sentence - or why applying it
-   * was; `null` when neither was (`refusalShown`, `lib/refusals.ts`, chose which). */
+   * was; `null` when neither was (`offerShown`, `lib/refusals.ts`, chose which). */
   refusal: string | null;
+  /** Whether the plan is asked for and has not come: the preview then says `PLANNING` where its
+   * consequence stands, while it says no refusal (`planning`, lib/units.ts). */
+  planning?: boolean;
 }
 
 export interface NewFileViewProps {
@@ -205,8 +212,10 @@ export function AddFileView(props: AddFileViewProps) {
 }
 
 export interface RemoveFileViewProps {
-  /** The row the route selects, and the plan asked for it (`fileRemoval`). */
+  /** The row the route selects, where it leads, and the plan asked for it (`fileRemoval`). */
   removal: FileRemoval;
+  /** Following one of the row's leads: the route it leads to, which the app navigates to. */
+  onFollow: (to: Route) => void;
   /** `FilesReply.project`: what the file a pattern keeps in is named relative to. */
   project: string;
   /** The press that asks the plan, present while it waits (`removalAsked`, `lib/files.ts`). */
@@ -220,11 +229,13 @@ export interface RemoveFileViewProps {
 }
 
 /**
- * A row's own panel (design §3's Remove): the plan the server makes of taking its entry out of
- * the includes, asked for as soon as the row is selected within the page, or the server's refusal
- * in its own words - a file whose declarations something uses, naming the first error it would
- * leave; a file only a pattern brings in, naming the pattern. The page never decides on its own
- * whether Remove is possible: the button is drawn under a plan the server made, and nowhere else.
+ * A row's own panel (design §3's Remove): where the row leads - its component's page, its findings,
+ * or why its file did not load (`fileRemoval`'s `leads`, 16:M20) - and the plan the server makes of
+ * taking its entry out of the includes, asked for as soon as the row is selected within the page,
+ * or the server's refusal in its own words - a file whose declarations something uses, naming the
+ * first error it would leave; a file only a pattern brings in, naming the pattern. The page never
+ * decides on its own whether Remove is possible: the button is drawn under a plan the server made,
+ * and nowhere else.
  *
  * The row the page was loaded with waits instead (`waiting`, P18b-10): its plan re-analyses the
  * project, running its plugins, so the panel waits - saying only that what removing the row would
@@ -243,6 +254,7 @@ export function RemoveFileView(props: RemoveFileViewProps) {
   const waiting = props.waiting;
   return (
     <Panel title={props.removal.title} onClose={props.onClose}>
+      <Leads leads={props.removal.leads} onFollow={props.onFollow} />
       {/* Focusable by the page alone (`tabIndex` -1), never a stop of Tab's own: kept so once the
           plan is drawn, since focus on an element that stops being focusable falls to the body.
           `file-remove` is its focus ring (ui.css), and names this region alone. */}
@@ -281,6 +293,37 @@ export function RemoveFileView(props: RemoveFileViewProps) {
         )}
       </section>
     </Panel>
+  );
+}
+
+/** Where a row leads (16:M20), each lead a link drawn as the page's buttons are - a finding's panel
+ * draws its own so - followed without a reload, as the tabs are, and its words alone where no
+ * address can carry the name it leads to (`hrefOf`). Nothing where the row leads nowhere. */
+function Leads({ leads, onFollow }: { leads: readonly Lead[]; onFollow: (to: Route) => void }) {
+  if (leads.length === 0) return null;
+  return (
+    <div className="panel-offers">
+      {leads.map((lead) => {
+        const href = hrefOf(lead.to);
+        if (href === null) return <span key={lead.text}>{lead.text}</span>;
+        return (
+          <a
+            key={lead.text}
+            className="button secondary"
+            href={href}
+            onClick={(event: MouseEvent<HTMLAnchorElement>) => {
+              // A modified or secondary click asks the browser for a new tab or window.
+              const modified = event.ctrlKey || event.metaKey || event.shiftKey || event.altKey;
+              if (modified || event.button !== 0) return;
+              event.preventDefault();
+              onFollow(lead.to);
+            }}
+          >
+            {lead.text}
+          </a>
+        );
+      })}
+    </div>
   );
 }
 
@@ -323,6 +366,9 @@ function Preview({
         <p className="panel-refusal" role="status">
           {refusal}
         </p>
+      )}
+      {refusal === null && plan === null && offer.planning === true && (
+        <p className="consequence">{PLANNING}</p>
       )}
       {plan !== null && preview !== null && (
         <>

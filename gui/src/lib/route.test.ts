@@ -1,5 +1,18 @@
 import { expect, test } from "vitest";
-import { arrivedAfter, hrefOf, parseRoute } from "./route";
+import {
+  arrivedAfter,
+  findingsLeadsTo,
+  type Held,
+  heldFollowing,
+  heldGoingTo,
+  hrefOf,
+  parseRoute,
+  type Route,
+  replacing,
+  shownLastAfter,
+  tabHref,
+  takesWindow,
+} from "./route";
 
 test.each([
   ["/", "", { page: "start" }],
@@ -116,6 +129,37 @@ test.each([
 });
 
 test.each([
+  [
+    "/project",
+    "?view=findings&text=controller.ddd.json",
+    { page: "project", view: "findings", text: "controller.ddd.json" },
+  ],
+  [
+    "/project",
+    "?view=findings&text=a%2Fpump.ddd.json%20",
+    { page: "project", view: "findings", text: "a/pump.ddd.json " },
+  ],
+  // An empty `text`, like an empty `path`, is as bare an address as leaving it out.
+  ["/project", "?view=findings&text=", { page: "project", view: "findings" }],
+  ["/project", "?view=table&text=controller.ddd.json", { page: "project", view: "table" }],
+] as const)("%s%s carries the findings filter's text %o", (pathname, search, route) => {
+  expect(parseRoute(pathname, search)).toEqual(route);
+});
+
+test.each([
+  [
+    { page: "project", view: "findings", text: "controller.ddd.json" },
+    "/project?view=findings&text=controller.ddd.json",
+  ],
+  [
+    { page: "project", view: "findings", text: "a/pump.ddd.json & co" },
+    "/project?view=findings&text=a%2Fpump.ddd.json%20%26%20co",
+  ],
+] as const)("%o is at %s", (route, href) => {
+  expect(hrefOf(route)).toBe(href);
+});
+
+test.each([
   [{ page: "project", view: "files" }, "/project?view=files"],
   [
     // A path holding characters an address must escape: `:`, `/` and the space, the same fixture
@@ -229,15 +273,60 @@ test.each([
   ["/project", "?view=files"],
   ["/project", "?view=files&path=C%3A%2Fp%2Fa%20b.ddd.json"],
   ["/project", "?view=findings"],
+  ["/project", "?view=findings&text=controller.ddd.json"],
   ["/project", "?view=compare"],
   ["/component", "?file=C%3A%2Fp%2Fa.ddd.json"],
   ["/component", "?file=C%3A%2Fp%2Fa.ddd.json&variable=CurveA"],
   ["/component", "?file=C%3A%2Fp%2Fa.ddd.json&variable=CurveA&view=values"],
+  // The bytes utf-8 would give U+D800 alone, which it gives none: decoded, they are replacement
+  // characters, a name an address carries.
+  ["/project", "?view=units&unit=%ED%A0%80x"],
 ] as const)("%s%s is written back as an address of the same route", (pathname, search) => {
   const route = parseRoute(pathname, search);
-  const written = new URL(hrefOf(route), "http://127.0.0.1");
+  const href = hrefOf(route);
+  // A route read off an address never names what no address can carry.
+  if (href === null) throw new Error(`${pathname}${search} was read as a route with no address`);
+  const written = new URL(href, "http://127.0.0.1");
   expect(parseRoute(written.pathname, written.search)).toEqual(route);
 });
+
+/** The two halves of a surrogate pair, each alone a string no address can carry: a json file can
+ * state one as an escape, and the loader reads it as it is (15:I5). */
+const HIGH = String.fromCharCode(0xd800);
+const LOW = String.fromCharCode(0xdc00);
+
+test.each([
+  ["the graph's variable", { page: "project", view: "graph", variable: `${HIGH}x` }],
+  ["a unit", { page: "project", view: "units", unit: `${HIGH}x` }],
+  ["a type", { page: "project", view: "types", type: `x${LOW}` }],
+  ["a shared entry", { page: "project", view: "shared", kind: "constant", name: `${HIGH}x` }],
+  ["a Files row", { page: "project", view: "files", path: `C:/p/${LOW}.ddd.json` }],
+  ["the findings filter's text", { page: "project", view: "findings", text: `${HIGH}.ddd.json` }],
+  ["a component's file", { page: "component", file: `C:/p/${HIGH}.ddd.json` }],
+  ["a component's variable", { page: "component", file: "C:/p/a.ddd.json", variable: `${HIGH}x` }],
+  [
+    "a values grid's variable",
+    { page: "component", file: "C:/p/a.ddd.json", variable: `x${LOW}`, view: "values" },
+  ],
+] as const)("%s holding half of a surrogate pair alone has no address", (_, route) => {
+  expect(hrefOf(route)).toBeNull();
+});
+
+test("a name holding a whole surrogate pair is carried, in utf-8", () => {
+  const unit = String.fromCodePoint(0x1f321);
+  expect(hrefOf({ page: "project", view: "units", unit })).toBe(
+    "/project?view=units&unit=%F0%9F%8C%A1",
+  );
+});
+
+// Every tab with nothing selected in it names nothing of the project's, so it always has an
+// address: the one `hrefOf` writes for its bare route.
+test.each(["graph", "table", "units", "types", "shared", "files", "findings", "compare"] as const)(
+  "the %s tab's address is its bare route's",
+  (view) => {
+    expect(tabHref(view)).toBe(hrefOf(parseRoute("/project", `?view=${view}`)));
+  },
+);
 
 /** A Files row's route, as the page was loaded with it. */
 const ROW = parseRoute("/project", "?view=files&path=C%3A%2Fp%2Fa.ddd.json");
@@ -269,4 +358,164 @@ test("a move through history to another route turns it false", () => {
 
 test("once false it stays false, on the route the page was loaded with too", () => {
   expect(arrivedAfter(false, ROW, ROW)).toBe(false);
+});
+
+/** The Findings tab's route asking for `text`, as a link of the banner under the masthead writes
+ * it, or the bare tab. */
+const findings = (text?: string): Route =>
+  text === undefined
+    ? { page: "project", view: "findings" }
+    : { page: "project", view: "findings", text };
+
+/** A page that has followed three links since it loaded, on the findings of controller.ddd.json. */
+const HELD: Held = { route: findings("controller.ddd.json"), arrived: false, followings: 3 };
+
+test("a link followed is a following, and a selection or a filter's text the page writes is none", () => {
+  // 16:I9: the Findings tab is drawn anew at each following, from the text its address asks for,
+  // and left as it is while the address follows what the reader types into its filter.
+  expect(heldGoingTo(HELD, findings("sensor"), true)).toEqual({
+    route: findings("sensor"),
+    arrived: false,
+    followings: 3,
+  });
+  expect(heldGoingTo({ ...HELD, arrived: true }, findings("sensor"), true).arrived).toBe(false);
+  // Pressed again where the page is, a link is followed all the same: the reader asked for it.
+  expect(heldGoingTo(HELD, findings("controller.ddd.json"), false)).toEqual({
+    route: findings("controller.ddd.json"),
+    arrived: false,
+    followings: 4,
+  });
+});
+
+test("a move through history to another route is a following, and one leaving the route as it was is none", () => {
+  expect(heldFollowing(HELD, parseRoute("/project", "?view=findings&text=sensor"))).toEqual({
+    route: findings("sensor"),
+    arrived: false,
+    followings: 4,
+  });
+  // A fragment navigation, which another window can make, however the address is spelled.
+  expect(
+    heldFollowing(HELD, parseRoute("/project", "?text=controller.ddd.json&view=findings")),
+  ).toEqual({ route: findings("controller.ddd.json"), arrived: false, followings: 3 });
+  // Whether the page still holds the route it was loaded with, as `arrivedAfter` says.
+  const loaded = { ...HELD, arrived: true };
+  expect(heldFollowing(loaded, findings("controller.ddd.json")).arrived).toBe(true);
+  expect(heldFollowing(loaded, findings("sensor")).arrived).toBe(false);
+});
+
+test("going to the address the page is at replaces its entry in the history, as the page's own writes do", () => {
+  // A link pressed again adds no step for Back to walk through, as a browser following a link to
+  // the address it shows adds none.
+  const here = parseRoute("/project", "?view=findings&text=controller.ddd.json");
+  expect(replacing(here, findings("controller.ddd.json"), false)).toBe(true);
+  expect(
+    replacing(
+      parseRoute("/project", "?text=controller.ddd.json&view=findings&from=x"),
+      findings("controller.ddd.json"),
+      false,
+    ),
+  ).toBe(true);
+  // What the page writes of its own replaces it wherever it leads; a link to another address
+  // adds a step.
+  expect(replacing(here, findings("sensor"), true)).toBe(true);
+  expect(replacing(here, findings("sensor"), false)).toBe(false);
+  expect(replacing(here, findings(), false)).toBe(false);
+  // A route no address can carry adds a step, the address left as it stands, as it did.
+  expect(replacing(here, { page: "project", view: "units", unit: HIGH }, false)).toBe(false);
+});
+
+test.each([
+  // The Graph and a component's values grid take the window; the 1,100 px measure stays for the rest
+  // (decision 16.4).
+  [{ page: "project", view: "graph" }, true],
+  [{ page: "project", view: "graph", variable: "ValueA" }, true],
+  [{ page: "component", file: "/p/a.ddd.json", variable: "ValueA", view: "values" }, true],
+  [{ page: "project", view: "table" }, false],
+  [{ page: "project", view: "findings" }, false],
+  [{ page: "component", file: "/p/a.ddd.json" }, false],
+  [{ page: "start" }, false],
+] as const)("%o takes the window: %s", (route, takes) => {
+  expect(takesWindow(route)).toBe(takes);
+});
+
+/** The pages of the demo last shown (16:M16), noted by `shownLastAfter`. */
+const DEMO = "C:/work/demo/demo.ddd.json";
+const CONTROLLER = "C:/work/demo/components/controller.ddd.json";
+
+test("a tab shown is noted as its address has it, and the Findings tab's address with it", () => {
+  const units: Route = { page: "project", view: "units", unit: "Hz" };
+  expect(shownLastAfter(null, DEMO, units)).toEqual({
+    project: DEMO,
+    tab: units,
+    findings: findings(),
+  });
+  const filtered = shownLastAfter(null, DEMO, findings("sensor"));
+  expect(filtered).toEqual({
+    project: DEMO,
+    tab: findings("sensor"),
+    findings: findings("sensor"),
+  });
+  // Another tab shown after it keeps the Findings tab's address, the filter's text.
+  expect(shownLastAfter(filtered, DEMO, { page: "project", view: "table" })).toEqual({
+    project: DEMO,
+    tab: { page: "project", view: "table" },
+    findings: findings("sensor"),
+  });
+});
+
+test("a page that is no tab leaves what was noted, and the tab noted already is the very same", () => {
+  const noted = shownLastAfter(null, DEMO, findings("sensor"));
+  expect(shownLastAfter(noted, DEMO, { page: "component", file: CONTROLLER })).toBe(noted);
+  expect(
+    shownLastAfter(noted, DEMO, {
+      page: "component",
+      file: CONTROLLER,
+      variable: "MapA",
+      view: "values",
+    }),
+  ).toBe(noted);
+  expect(shownLastAfter(noted, DEMO, { page: "start" })).toBe(noted);
+  // However its address is spelled.
+  expect(shownLastAfter(noted, DEMO, parseRoute("/project", "?text=sensor&view=findings"))).toBe(
+    noted,
+  );
+  // And before the state names a project, nothing is noted.
+  expect(shownLastAfter(noted, null, { page: "project", view: "table" })).toBe(noted);
+  expect(shownLastAfter(null, null, findings("sensor"))).toBeNull();
+});
+
+test("a tab whose address cannot carry what it selects is told apart by its names", () => {
+  // A unit named by half of a surrogate pair alone (15:I5), which no address carries.
+  const lone: Route = { page: "project", view: "units", unit: `${HIGH}x` };
+  const noted = shownLastAfter(null, DEMO, lone);
+  expect(noted).toEqual({ project: DEMO, tab: lone, findings: findings() });
+  expect(shownLastAfter(noted, DEMO, { ...lone })).toBe(noted);
+  const other: Route = { page: "project", view: "units", unit: `${HIGH}y` };
+  expect(shownLastAfter(noted, DEMO, other)).toEqual({
+    project: DEMO,
+    tab: other,
+    findings: findings(),
+  });
+});
+
+test("another project's tabs are noted afresh, its Findings tab bare", () => {
+  const noted = shownLastAfter(null, DEMO, findings("sensor"));
+  const second = "C:/work/demo/second/second.ddd.json";
+  expect(shownLastAfter(noted, second, { page: "project", view: "graph" })).toEqual({
+    project: second,
+    tab: { page: "project", view: "graph" },
+    findings: findings(),
+  });
+});
+
+test("the Findings tab leads back to its address last shown, of the project shown", () => {
+  const noted = shownLastAfter(shownLastAfter(null, DEMO, findings("sensor")), DEMO, {
+    page: "project",
+    view: "graph",
+  });
+  expect(findingsLeadsTo(noted, DEMO)).toEqual(findings("sensor"));
+  // To the bare tab before it was shown, or where what was noted is another project's.
+  expect(findingsLeadsTo(null, DEMO)).toEqual(findings());
+  expect(findingsLeadsTo(noted, "C:/work/demo/second/second.ddd.json")).toEqual(findings());
+  expect(findingsLeadsTo(noted, null)).toEqual(findings());
 });

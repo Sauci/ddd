@@ -9,6 +9,7 @@ import errno
 import hashlib
 import http.client
 import json
+import math
 import os
 import re
 import select
@@ -892,7 +893,9 @@ class TestWhoMayAsk:
         _, data = ask(server, "GET", "/project", headers={"Sec-Fetch-Site": "same-site"})
         assert data == (
             b'<!doctype html><html lang="en"><meta charset="utf-8"><title>ddd gui</title>'
-            b"<p>Open the address <code>ddd gui</code> printed in its terminal.</p></html>"
+            b"<p>Open the address <code>ddd gui</code> printed in its terminal, or, if that "
+            b"address was opened already, stop <code>ddd gui</code> (Ctrl+C), start it again and "
+            b"open the address it prints then.</p></html>"
         )
 
     @pytest.mark.parametrize("site", [None, "same-origin", "none"])
@@ -2949,6 +2952,39 @@ class TestTheStandardLibrarysLimits:
         """Not 100: the standard library counts the blank line that ends the headers among its
         hundred, on python 3.12 to 3.14."""
         assert status_of(server, headed(server, 99)) == 401
+
+
+PAGE_CLIENT: Final = EXAMPLES.parent / "gui" / "src" / "api" / "client.ts"
+"""The page's client, whose ``request`` refuses before sending it what this server would refuse
+unread: an address past the request line the standard library reads, and a body past what this
+server reads of its route's. Each limit is a copy, written into the page."""
+
+
+def page_limit(source: str, name: str) -> int:
+    """The number ``client.ts`` gives ``name``: a whole number, or a product of them, as it is
+    written there."""
+    stated = re.search(rf"^(?:export )?const {name} = ([0-9_]+(?: \* [0-9_]+)*);$", source, re.M)
+    assert stated is not None, f"gui/src/api/client.ts no longer states {name} as a number"
+    return math.prod(int(factor.replace("_", "")) for factor in stated.group(1).split(" * "))
+
+
+class TestThePageHoldsThisServersLimits:
+    """3:I8 and 15:I4. The page refuses, before sending them, an address this server would answer
+    ``414`` and a body it would refuse ``413`` unread, each by a copy of a limit written into
+    ``client.ts``: ``LINE_LIMIT``, the standard library's request line, and ``EDIT_BODY`` and
+    ``MAX_BODY``, this server's bodies, the edit's and any other route's. A copy left behind when
+    its limit moves refuses what the server would take, or sends what it refuses unread, which
+    on Windows can lose the refusal to a reset. The request line is read off this server's own
+    answers, as ``TestTheStandardLibrarysLimits`` reads it."""
+
+    def test_each_limit_the_page_refuses_past_is_this_servers(self, server) -> None:
+        source = PAGE_CLIENT.read_text(encoding="utf-8")
+        assert page_limit(source, "EDIT_BODY") == EDIT_BODY
+        assert page_limit(source, "MAX_BODY") == MAX_BODY
+        line = page_limit(source, "LINE_LIMIT")
+        end = f"Host: 127.0.0.1:{server.port}\r\nConnection: close\r\n\r\n".encode("ascii")
+        assert status_of(server, request_line(line) + end) == 401
+        assert status_of(server, request_line(line + 1)) == 414
 
 
 def whole_answer(

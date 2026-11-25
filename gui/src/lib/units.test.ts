@@ -2,14 +2,20 @@ import { expect, describe as group, test } from "vitest";
 import type { PlannedChange, SettleReply, UnitsReply, VariableDeclaration } from "../api/types";
 import {
   baseName,
+  changedNames,
   consequence,
   declaredUnits,
   editOf,
   enteredUnit,
+  FILES_NAMED,
   hunkLines,
   outsideVocabulary,
+  PLANNING,
   pickerSections,
+  planning,
   rawOf,
+  sentenceKeys,
+  settleConsequence,
   shownChanges,
   textOf,
   unitLabel,
@@ -97,7 +103,12 @@ const ONE_FILE: SettleReply = {
   unloadable: [],
 };
 const ONE_FILE_CHANGE = ONE_FILE.changes[0];
+
 if (ONE_FILE_CHANGE === undefined) throw new Error("ONE_FILE must have one change");
+
+/** Four changes, to a.ddd.json, b.ddd.json, c.ddd.json and d.ddd.json in that order. */
+const files4 = (): PlannedChange[] =>
+  ["a", "b", "c", "d"].map((name) => ({ ...ONE_FILE_CHANGE, file: `/p/${name}.ddd.json` }));
 
 const CREATED_FILE_CHANGE: PlannedChange = {
   file: UNITS_FILE,
@@ -279,24 +290,99 @@ group("what a preview says and sends", () => {
     expect(baseName("a.ddd.json")).toBe("a.ddd.json");
   });
 
+  test("two files of one name are told apart by their paths, among every file the change writes", () => {
+    // `left/gauge.ddd.json` and `right/gauge.ddd.json` read `gauge.ddd.json` twice (16:M15).
+    const files = (...paths: string[]) => paths.map((file) => ({ ...ONE_FILE_CHANGE, file }));
+    expect(consequence(files("/p/left/gauge.ddd.json", "/p/right/gauge.ddd.json"))).toBe(
+      "Changes 2 files: left/gauge.ddd.json, right/gauge.ddd.json",
+    );
+    // Among all of them, not only the three named: the fourth file of the name tells the first
+    // two apart too.
+    expect(
+      consequence(
+        files(
+          "/p/a/s.ddd.json",
+          "/p/b/c.ddd.json",
+          "/p/d/e.ddd.json",
+          "/p/b/s.ddd.json",
+          "/p/f.ddd.json",
+        ),
+      ),
+    ).toBe("Changes 5 files: a/s.ddd.json, c.ddd.json, e.ddd.json and 2 more");
+    expect(
+      changedNames(files("/p/left/s.ddd.json", "/p/right/s.ddd.json", "/p/t.ddd.json")),
+    ).toEqual(["left/s.ddd.json", "right/s.ddd.json", "t.ddd.json"]);
+  });
+
+  // Pinned by the literal, not by the constant, which a test comparing against it would follow.
+  test("past a few files the consequence names three and counts the rest", () => {
+    expect(FILES_NAMED).toBe(3);
+    const files = (count: number) =>
+      Array.from({ length: count }, (_, index) => ({
+        ...ONE_FILE_CHANGE,
+        file: `C:/w/components/c${String(index).padStart(5, "0")}.ddd.json`,
+      }));
+    expect(consequence(files(5))).toBe(
+      "Changes 5 files: c00000.ddd.json, c00001.ddd.json, c00002.ddd.json and 2 more",
+    );
+    // Written as the Apply under it writes its own count, "Apply to 1200 files".
+    expect(consequence(files(1200))).toBe(
+      "Changes 1200 files: c00000.ddd.json, c00001.ddd.json, c00002.ddd.json and 1197 more",
+    );
+  });
+
+  test("a file the count would stand for alone is named instead: never one more", () => {
+    expect(consequence(files4())).toBe(
+      "Changes 4 files: a.ddd.json, b.ddd.json, c.ddd.json, d.ddd.json",
+    );
+    expect(consequence(files4().slice(0, 3))).toBe(
+      "Changes 3 files: a.ddd.json, b.ddd.json, c.ddd.json",
+    );
+  });
+
+  test("a plan asked for and not come yet says so where its consequence stands", () => {
+    expect(PLANNING).toBe("Planning…");
+    expect(planning({ plan: null, refusal: null, pending: true })).toBe(true);
+  });
+
+  test("a plan come, a refusal said, or nothing asked for is no planning", () => {
+    expect(planning({ plan: ONE_FILE, refusal: null, pending: false })).toBe(false);
+    expect(
+      planning({ plan: null, refusal: "units.ddd.json is there already", pending: true }),
+    ).toBe(false);
+    expect(planning({ plan: null, refusal: null, pending: false })).toBe(false);
+    // A plan drawn is never said to be planning, whatever its offer says of the next.
+    expect(planning({ plan: ONE_FILE, refusal: null, pending: true })).toBe(false);
+  });
+
   test("a plan says which files it would leave unable to load, in the server's words and order", () => {
     const said = [
       "the declaration of 'ValueA' in controller.ddd.json would not load with that datatype: a string conversion needs a byte datatype, uint8 or sint8, got 'uint16'",
       "the declaration of 'ValueA' in sensor_hub.ddd.json would not load with that datatype: enum conversion 'Mode_t' requires an integer datatype, got 'uint16'",
     ];
-    expect(unloadableOf({ ...ONE_FILE, unloadable: said }, null)).toEqual(said);
+    expect(unloadableOf({ ...ONE_FILE, unloadable: said })).toEqual(said);
+  });
+
+  test("a settle's preview says that the readers' code is not touched, as the fix's title does", () => {
+    expect(settleConsequence(ONE_FILE.changes)).toBe(
+      "Changes 1 file: controller.ddd.json (the code of the readers is not touched)",
+    );
+    expect(settleConsequence([])).toBe("Nothing to change");
+  });
+
+  test("each sentence of a plan has a key of its own, two alike told apart by which they are", () => {
+    // Two files of one name would not load for one reason: the same words twice, and a panel
+    // keying each sentence by its words alone drew one of them twice under one key.
+    const same = "the declaration of 'ValueA' in b.ddd.json would not load with that dimensions";
+    const keyed = sentenceKeys([same, "another", same]);
+    expect(keyed.map((each) => each.text)).toEqual([same, "another", same]);
+    expect(new Set(keyed.map((each) => each.key)).size).toBe(3);
+    expect(sentenceKeys([])).toEqual([]);
   });
 
   test("a plan every file of which still loads says nothing of it, and neither does no plan", () => {
-    expect(unloadableOf(ONE_FILE, null)).toEqual([]);
-    expect(unloadableOf(null, null)).toEqual([]);
-  });
-
-  test("nothing is said of a plan the panel does not draw: it says why it cannot be applied", () => {
-    const said = [
-      "the declaration of 'ValueA' in controller.ddd.json would not load with that datatype: x",
-    ];
-    expect(unloadableOf({ ...ONE_FILE, unloadable: said }, "A file changed on disk")).toEqual([]);
+    expect(unloadableOf(ONE_FILE)).toEqual([]);
+    expect(unloadableOf(null)).toEqual([]);
   });
 
   test("names a file a change creates as new, and every other by its line", () => {

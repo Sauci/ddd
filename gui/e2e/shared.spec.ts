@@ -58,6 +58,91 @@ async function openEntry(page: Page, gui: Gui, name: string): Promise<Locator> {
   return page.getByRole("complementary", { name });
 }
 
+/** Each panel of the tab, and its form, while its plan is on its way (16:M17): it says so where
+ * the consequence will stand, and says the consequence once the plan has come, held until then. */
+test("a constant's value typed says it is planning while its plan is on its way", async ({
+  page,
+  vocabularyGui,
+}) => {
+  const value = (await openEntry(page, vocabularyGui, "TREND_SAMPLES")).getByRole("region", {
+    name: "Value",
+  });
+  const release = await held(page, "/api/constant-plan");
+  try {
+    await value.getByRole("textbox", { name: "Value" }).fill("32");
+    await expect(value.getByText("Planning…", { exact: true })).toBeVisible();
+  } finally {
+    release();
+  }
+  await expect(value.getByText("Changes 1 file: constants.ddd.json")).toBeVisible();
+  await expect(value.getByText("Planning…")).toHaveCount(0);
+});
+
+test("a section's access picked says it is planning while its plan is on its way", async ({
+  page,
+  vocabularyGui,
+}) => {
+  const access = (await openEntry(page, vocabularyGui, ".calib")).getByRole("region", {
+    name: "Access",
+  });
+  await access.getByRole("combobox", { name: "Access" }).press("ArrowDown");
+  const release = await held(page, "/api/section-plan");
+  try {
+    await page.getByRole("option", { name: "read-write", exact: true }).click();
+    await expect(access.getByText("Planning…", { exact: true })).toBeVisible();
+  } finally {
+    release();
+  }
+  await expect(access.getByText("Changes 1 file: sections.ddd.json")).toBeVisible();
+  await expect(access.getByText("Planning…")).toHaveCount(0);
+});
+
+test("a raster's event typed says it is planning while its plan is on its way", async ({
+  page,
+  vocabularyGui,
+}) => {
+  const event = (await openEntry(page, vocabularyGui, "100ms")).getByRole("region", {
+    name: "Event",
+  });
+  const release = await held(page, "/api/raster-plan");
+  try {
+    await event.getByRole("textbox", { name: "Event" }).fill("5");
+    await expect(event.getByText("Planning…", { exact: true })).toBeVisible();
+  } finally {
+    release();
+  }
+  await expect(event.getByText("Changes 1 file: rasters.ddd.json")).toBeVisible();
+  await expect(event.getByText("Planning…")).toHaveCount(0);
+});
+
+test("a constant declared says it is planning while its plan is on its way", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Shared files", exact: true }).click();
+  await page.getByRole("button", { name: "Declare an entry" }).click();
+  await page
+    .getByRole("complementary", { name: "Declare an entry" })
+    .getByRole("combobox", { name: "Vocabulary" })
+    .press("ArrowDown");
+  await page.getByRole("option", { name: "constants", exact: true }).click();
+  const form = page.getByRole("complementary", { name: "Declare a constant" });
+  await form.getByRole("textbox", { name: "Name" }).fill("SPARE_SLOTS");
+  // Nothing is asked for while the value is empty, and nothing says it is planning.
+  await expect(form.getByText("Planning…")).toHaveCount(0);
+
+  const release = await held(page, "/api/constant-plan");
+  try {
+    await form.getByRole("textbox", { name: "Value" }).fill("4");
+    await expect(form.getByText("Planning…", { exact: true })).toBeVisible();
+  } finally {
+    release();
+  }
+  await expect(form.getByText("Changes 2 files: constants.ddd.json, demo.ddd.json")).toBeVisible();
+  await expect(form.getByText("Planning…")).toHaveCount(0);
+});
+
 test("a raster nothing measures in is removed, row and panel", async ({ page, vocabularyGui }) => {
   const kept = entriesOf(vocabularyGui.directory, "rasters").filter(
     (entry) => entry.raster !== "100ms",
@@ -139,6 +224,30 @@ test("a raster's event, cycle and description are each saved from its panel, and
   await eventField.fill("0");
   await expect(event.getByRole("status")).toHaveText("event 0 is already claimed by raster '1ms'");
   await expect(event.getByRole("button", { name: "Save" })).toHaveCount(0);
+});
+
+test("a raster's cycle emptied is saved from its panel as a raster with no cycle", async ({
+  page,
+  vocabularyGui,
+}) => {
+  const directory = vocabularyGui.directory;
+  const before = entryOf(directory, "rasters", "100ms");
+  expect(before).toHaveProperty("cycle", "100ms");
+  const panel = await openEntry(page, vocabularyGui, "100ms");
+  const cycle = panel.getByRole("region", { name: "Cycle" });
+  const cycleField = cycle.getByRole("textbox", { name: "Cycle" });
+  await expect(cycleField).toHaveValue("100ms");
+  await cycleField.fill("");
+  // The plan is offered, not a refusal of the empty text.
+  await expect(cycle.getByText("Changes 1 file: rasters.ddd.json")).toBeVisible();
+  await expect(cycle.getByRole("status")).toHaveCount(0);
+  await cycle.getByRole("button", { name: "Save" }).click();
+  await expect
+    .poll(() => entryOf(directory, "rasters", "100ms"))
+    .toEqual(
+      Object.fromEntries(Object.entries(before as object).filter(([key]) => key !== "cycle")),
+    );
+  await expect(cycle.getByText("Changes 1 file")).toHaveCount(0);
 });
 
 /** Records, from now on and at every frame the page paints, the name of every panel drawn beside
@@ -264,6 +373,16 @@ async function openForm(
   await expect(form.getByRole("textbox", { name: "Name" })).toHaveValue(name);
   return form;
 }
+
+test("the Shared files tab offers a declaration once it lists entries", async ({
+  page,
+  vocabularyGui,
+}) => {
+  await page.goto(vocabularyGui.address);
+  await page.getByRole("link", { name: "Shared files", exact: true }).click();
+  await expect(page.getByRole("row").nth(1)).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Declare/ })).toBeVisible();
+});
 
 test("a project declaring nothing offers a blank form, whose vocabulary brings its fields, and a constant declared from it is listed", async ({
   page,
@@ -478,7 +597,7 @@ test("a constant nothing names is removed, row and panel, where one in use says 
   // In use: ManifoldPressure is sized by PRESSURE_CELLS, so its panel offers no Remove.
   const used = await openEntry(page, gui, "PRESSURE_CELLS");
   const blocked = used.getByRole("region", { name: "Remove from the constants" });
-  await expect(blocked).toHaveText("1 shape names PRESSURE_CELLS, so it cannot be removed.");
+  await expect(blocked).toHaveText("1 place names PRESSURE_CELLS, so it cannot be removed.");
   await expect(blocked.getByRole("button")).toHaveCount(0);
 
   await page.getByRole("row", { name: "TREND_SAMPLES", exact: true }).click();
@@ -726,7 +845,8 @@ test("a shared file saved half-written is named above the table, whatever it dec
   // entries missing are its own, only that whatever the file declares is not listed.
   const whole = readFileSync(path);
   writeFileSync(path, whole.subarray(0, Math.floor(whole.length / 2)));
-  await expect(page.getByRole("status").filter({ hasText: "did not load" })).toHaveText(
+  // The tab's own, beside the banner under the masthead, which names the file too (16:I9).
+  await expect(page.getByRole("status").filter({ hasText: "not listed" })).toHaveText(
     "rasters.ddd.json did not load, so whatever is declared there is not listed.",
   );
   await expect(page.getByText("2 constants · 2 sections", { exact: true })).toBeVisible();
@@ -753,7 +873,8 @@ test("a shared file that parses but breaks its model is named above the table, t
   );
   if (broken === before) throw new Error(`.calib states no alignment 4 in ${path}`);
   writeFileSync(path, broken);
-  await expect(page.getByRole("status").filter({ hasText: "did not load" })).toHaveText(
+  // The tab's own, beside the banner under the masthead, which names the file too (16:I9).
+  await expect(page.getByRole("status").filter({ hasText: "not listed" })).toHaveText(
     "sections.ddd.json did not load, so the entries declared there are not listed.",
   );
   await expect(page.getByText("2 constants · 3 rasters", { exact: true })).toBeVisible();
@@ -917,7 +1038,7 @@ test("a constant declared inside a component leads to that component's page, whe
   await expect(page.getByRole("complementary")).toHaveCount(0);
 });
 
-test("the add form's apply that is out of date is refused, and nothing is written", async ({
+test("the add form's apply that is out of date is refused, nothing is written, and the plan of the file as it is is offered under the sentence", async ({
   page,
   vocabularyGui,
 }) => {
@@ -929,20 +1050,38 @@ test("the add form's apply that is out of date is refused, and nothing is writte
   await expect(apply).toBeEnabled();
 
   // The file changes under the page, between the preview it holds and the press that sends it, as
-  // the constant's save journey above has it: its description, one word for another as long,
-  // written where the session's own watcher does not see it (`writeUnseen`).
+  // the constant's save journey above has it: TREND_SAMPLES' description, one word for another as
+  // long, and its value, 16 to 17, written where the session's own watcher does not see it
+  // (`writeUnseen`).
   const before = readFileSync(path, "utf8");
-  const changed = before.replace("sample slots", "sample cells");
-  if (changed === before) throw new Error(`TREND_SAMPLES describes no sample slots in ${path}`);
+  const changed = before
+    .replace("sample slots", "sample cells")
+    .replace('"value": 16', '"value": 17');
+  if (!changed.includes("sample cells") || !changed.includes('"value": 17')) {
+    throw new Error(`TREND_SAMPLES no longer reads as this journey expects in ${path}`);
+  }
   writeUnseen(vocabularyGui.directory, FILES.constants.file, changed);
   await apply.click();
 
-  // Refused, in the form: the plan and its Apply are drawn only under no refusal (`SharedAddView`),
-  // so none is left to press while it stands.
-  await expect(form.getByRole("status")).toHaveText(STALE);
-  await expect(form.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+  // Refused, in the form, and held there until the next edit of the form.
+  const refused = form.getByRole("status");
+  await expect(refused).toHaveText(STALE);
   // Nothing was written: the file is as the change from outside left it, and declares no SPARE.
   expect(readFileSync(path, "utf8")).toBe(changed);
+
+  // The analysis the refusal asks for has landed once the table, made once a revision, states 17.
+  // The sentence is still there, and under it the plan of the file as it now is, and its Apply
+  // (`offerShown`): pressed, SPARE is declared beside the change from outside.
+  await expect(
+    page.getByRole("row", { name: "TREND_SAMPLES", exact: true }).getByRole("gridcell").nth(1),
+  ).toHaveText("17");
+  await expect(refused).toHaveText(STALE);
+  await expect(apply).toBeEnabled();
+  await apply.click();
+  await expect(page.getByRole("complementary", { name: "SPARE", exact: true })).toBeVisible();
+  const declared = readFileSync(path, "utf8");
+  expect(declared).toContain("sample cells");
+  expect(declared).toContain('"SPARE"');
 });
 
 /** One save from each vocabulary's panel: the entry, the region whose field is saved and what is
@@ -979,4 +1118,60 @@ for (const { kind, vocabulary, name, region, text } of SAVES) {
     // A guard against a write by another path: the POST is answered by `failing`, not the server.
     expect(entryOf(vocabularyGui.directory, vocabulary, name)).toEqual(before);
   });
+
+  test(`a save made from a ${kind}'s panel whose plan the server fails on when asked again offers nothing to press beside the refusal`, async ({
+    page,
+    vocabularyGui,
+  }) => {
+    const panel = await openEntry(page, vocabularyGui, name);
+    const saving = panel.getByRole("region", { name: region });
+    const field = saving.getByRole("textbox", { name: region });
+    await field.fill(text);
+    const plan = saving.getByText(`Changes 1 file: ${FILES[vocabulary].file}`, { exact: true });
+    await expect(plan).toBeVisible();
+
+    // From here on the server fails the Apply, and the plan the panel asks again once the Apply
+    // is answered: the query keeps the plan it had, whose fingerprints the server would refuse.
+    const edits = await failing(page, "/api/edit", "http");
+    const plans = await failing(page, `/api/${kind}-plan`, "http");
+    const save = saving.getByRole("button", { name: "Save" });
+    await save.click();
+    await expect(saving.getByRole("status")).toHaveText(`The change was refused: ${SERVER_FAILED}`);
+    await expect.poll(plans).toBeGreaterThanOrEqual(1);
+    // Beside its plan's own refusal, a write offers nothing to apply (`offerShown`): neither the
+    // plan kept from before nor its Save, the refusal of the Apply said over it - once every query
+    // the Apply asked again has answered, the field taking what is typed again.
+    await expect(save).toHaveCount(0);
+    await expect(plan).toHaveCount(0);
+    await expect(field).toBeEnabled();
+    await expect(save).toHaveCount(0);
+    await expect(saving.getByRole("status")).toHaveText(`The change was refused: ${SERVER_FAILED}`);
+    expect(edits()).toBe(1);
+  });
 }
+
+/** ManifoldPressure's declaration in a copy of examples/vocabulary's pump.ddd.json given a
+ * condition spelling PRESSURE_CELLS too, as its dimension does, from outside the page: the one
+ * declaration then names the constant twice. */
+function conditionOnManifoldPressure(directory: string): void {
+  const path = join(directory, PUMP);
+  const before = readFileSync(path, "utf8");
+  const text = before.replace(
+    /("scope": "local",\s*)("definition": \{\s*"name": "ManifoldPressure")/,
+    '$1"condition": "PRESSURE_CELLS > 4",\n        $2',
+  );
+  if (text === before) throw new Error(`ManifoldPressure not found in ${path}`);
+  writeFileSync(path, text, "utf8");
+}
+
+test("a declaration spelling a constant twice is one row of its Used by table (14:M13)", async ({
+  page,
+  copiedGui,
+}) => {
+  const gui = await copiedGui("vocabulary", conditionOnManifoldPressure);
+  const panel = await openEntry(page, gui, "PRESSURE_CELLS");
+  const uses = panel.getByRole("table").getByRole("row").filter({ hasText: "ManifoldPressure" });
+  await expect(uses).toHaveCount(1);
+  const blocked = panel.getByRole("region", { name: "Remove from the constants" });
+  await expect(blocked).toHaveText("1 place names PRESSURE_CELLS, so it cannot be removed.");
+});

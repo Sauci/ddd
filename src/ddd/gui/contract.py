@@ -71,6 +71,8 @@ __all__ = [
     "IncludedEntryReply",
     "KindForm",
     "ListedFinding",
+    "NamedVariable",
+    "NamesReply",
     "Note",
     "OpenProject",
     "OpenRequest",
@@ -101,6 +103,7 @@ __all__ = [
     "UnitPlace",
     "UnitReply",
     "UnitsReply",
+    "UnreadDescription",
     "UsedUnit",
     "ValuesReply",
     "VariableDeclaration",
@@ -206,6 +209,17 @@ class RefusedBuild(_Frozen):
     """Why it could not be used, as the language server would log it."""
 
 
+class UnreadDescription(_Frozen):
+    """A project description the walk found and could not read, and why."""
+
+    path: str
+    """Absolute, posix-separated path of the file."""
+
+    reason: str
+    """Why it could not be read, as a clause to say after the path: it cannot be opened, is not
+    UTF-8 text, or does not parse, with where."""
+
+
 class Found(_Frozen):
     """What ``GET /api/projects`` answers."""
 
@@ -217,6 +231,10 @@ class Found(_Frozen):
 
     refused: tuple[RefusedBuild, ...]
     """Every build record found but not usable, sorted by path."""
+
+    unreadable: tuple[UnreadDescription, ...]
+    """Every ``*.ddd.json`` the walk found and could not read, sorted by path. A description that
+    parses and states no project (a component's) is not one of them."""
 
 
 # --- GET /api/state ------------------------------------------------------------------------
@@ -387,8 +405,9 @@ class State(_Frozen):
     the first. No analysis applies their severities."""
 
     undoable: UndoableEdit | None
-    """The last edit the interface made and has not put back, or ``None`` when it has made
-    none: what makes the Undo control appear without a request of its own."""
+    """The last edit the interface made that is still on the undo stack - neither put back, nor
+    taken off it because a file it would put back changed on disk since - or ``None`` where none
+    is: what makes the Undo control appear without a request of its own."""
 
     analysing: bool
     """Whether an analysis is asked for or running: the findings may be about to change."""
@@ -661,6 +680,44 @@ class VariableReply(_Frozen):
 
     findings: tuple[Finding, ...]
     """Every finding located on one of them, both sides of a disagreement included."""
+
+
+# --- GET /api/names -------------------------------------------------------------------------
+
+
+class NamedVariable(_Frozen):
+    """One variable the masthead's go-to finds, and the component the page opens its panel on."""
+
+    name: str
+    """The variable's name, as its declarations spell it."""
+
+    kind: str
+    """``measurement`` … ``axis``: what its first declaration states, in the order the project
+    lists its components."""
+
+    file: str
+    """Absolute, posix-separated path of the component the page opens it on: the one producing
+    it - a local's own among them - or, where none does, the first declaring it, in the order the
+    project lists its components."""
+
+    component: str
+    """That component's name."""
+
+
+class NamesReply(_Frozen):
+    """What ``GET /api/names`` answers: the variables of the newest revision whose names hold the
+    text asked, whatever its case - the one it spells exactly first, then the others by name - at
+    most :data:`ddd.gui.api.NAMES_ANSWERED` of them."""
+
+    revision: int
+    """The revision these names are of."""
+
+    total: int
+    """How many names hold the text, in all: more than ``names`` holds where the cap left some
+    out."""
+
+    names: tuple[NamedVariable, ...]
+    """The names answered, the one the text spells exactly first."""
 
 
 # --- GET /api/units -------------------------------------------------------------------------
@@ -1824,6 +1881,7 @@ _ENDPOINTS: tuple[tuple[type[BaseModel], Literal["validation", "serialization"]]
     (UndoRequest, "validation"),
     (UndoReply, "serialization"),
     (VariableReply, "serialization"),
+    (NamesReply, "serialization"),
     (UnitsReply, "serialization"),
     (SettleReply, "serialization"),
     (FixReply, "serialization"),
@@ -1844,7 +1902,9 @@ _ENDPOINTS: tuple[tuple[type[BaseModel], Literal["validation", "serialization"]]
     (queries.StateQuery, "validation"),
     (queries.FindingsQuery, "validation"),
     (queries.FileQuery, "validation"),
+    (queries.UndoQuery, "validation"),
     (queries.VariableQuery, "validation"),
+    (queries.NamesQuery, "validation"),
     (queries.SettleQuery, "validation"),
     (queries.FixQuery, "validation"),
     (queries.UnitQuery, "validation"),

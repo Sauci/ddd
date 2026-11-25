@@ -602,8 +602,9 @@ class TestTheModels:
         self,
     ) -> None:
         query = FindingsQuery.model_validate({})
-        assert (query.offset, query.limit, query.severity, query.file, query.check) == (
+        assert (query.offset, query.limit, query.severity, query.file, query.check, query.text) == (
             0,
+            None,
             None,
             None,
             None,
@@ -623,6 +624,12 @@ class TestTheModels:
         """What a blank has always meant here: a filter, by a file or a check nothing has."""
         query = FindingsQuery.model_validate({"file": "", "check": ""})
         assert (query.file, query.check) == ("", "")
+
+    def test_a_text_is_read_as_typed_and_a_blank_one_as_the_empty_text(self) -> None:
+        """A text filter (16:I14) holds what the reader typed, its case and its spaces; a blank one
+        is the empty text, which every finding holds."""
+        assert FindingsQuery.model_validate({"text": " ValueE "}).text == " ValueE "
+        assert FindingsQuery.model_validate({"text": ""}).text == ""
 
     def test_a_blank_raw_takes_the_key_away_as_leaving_it_out_does(self) -> None:
         for given in (
@@ -1165,6 +1172,8 @@ REFUSED = [
     ("/api/findings", {"check": "missing\x00id"}, "findings takes ?check= as a check's name"),
     ("/api/findings", {"check": "x" * (MAX_NAME + 1)}, "findings takes ?check= as a check's name"),
     ("/api/findings", {"limit": "1", "page": "2"}, "findings takes no ?page="),
+    ("/api/findings", {"text": "Value\x00E"}, "findings takes ?text= as the text to find"),
+    ("/api/findings", {"text": "x" * (MAX_NAME + 1)}, "findings takes ?text= as the text to find"),
     ("/api/file", {}, "file takes ?path="),
     ("/api/file", {"path": ""}, "file takes ?path="),
     ("/api/file", {"path": "/p/a\x00.ddd.json"}, "file takes ?path= as a file's path"),
@@ -1236,12 +1245,26 @@ REFUSED = [
         {"file": "/p/a.ddd.json", "pointer": "", "check": "x" * (MAX_NAME + 1)},
         "fix takes ?check= as a check's name",
     ),
+    ("/api/names", {}, "names takes ?text="),
+    ("/api/names", {"text": ""}, "names takes ?text="),
+    ("/api/names", {"text": "Value\x00A"}, "names takes ?text= as a part of a variable's name"),
+    (
+        "/api/names",
+        {"text": "x" * (MAX_NAME + 1)},
+        "names takes ?text= as a part of a variable's name",
+    ),
+    ("/api/names", {"text": "Speed", "limit": "5"}, "names takes no ?limit="),
     ("/api/declarable", {}, "declarable takes ?file="),
     ("/api/declarable", {"file": ""}, "declarable takes ?file="),
     ("/api/declarable", {"file": "/p/\x00"}, "declarable takes ?file= as a file's path"),
     ("/api/compare", {}, "compare takes ?baseline="),
     ("/api/compare", {"baseline": ""}, "compare takes ?baseline="),
     ("/api/compare", {"baseline": "base\ud800.json"}, "compare takes ?baseline= as a file's path"),
+    ("/api/undo", {}, "undo takes ?at="),
+    ("/api/undo", {"at": ""}, "undo takes ?at="),
+    ("/api/undo", {"at": "0"}, "undo takes ?at= as the number of an edit, from 1"),
+    ("/api/undo", {"at": "the top"}, "undo takes ?at= as the number of an edit, from 1"),
+    ("/api/undo", {"at": "1", "x": "1"}, "undo takes no ?x="),
     *[
         (f"/api/{route}", {"x": "1"}, f"{route} takes no ?x=")
         for route in (
@@ -1254,7 +1277,6 @@ REFUSED = [
             "types",
             "shared",
             "files",
-            "undo",
         )
     ],
     *PLANS_REFUSED,

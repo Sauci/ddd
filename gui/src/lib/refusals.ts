@@ -37,24 +37,64 @@ export function refusalSentence(error: Error, stale: string): string {
   return isStale(error) ? stale : `The change was refused: ${error.message}`;
 }
 
+/** The page's own sentence for an Apply refused because a file changed on disk: said by every
+ * panel but the variable panel and the Findings tab, which say what they now show in words of
+ * their own. */
+export const STALE =
+  "A file changed on disk, so nothing was written. The page now shows the files as they are.";
+
+/** What a panel says of an Apply refused, in the page's own sentence for a file changed on disk
+ * (`STALE`, through `refusalSentence`): the Units, Types and Shared files tabs' panels, the
+ * adoption, the Files tab, the values grid and the declare panel. The Units and Types tabs once
+ * chose it each for itself, and the others borrowed the Units tab's. */
+export function refusalOf(error: Error): string {
+  return refusalSentence(error, STALE);
+}
+
+/** The sentence a panel of several writes holds of the Apply of `about`, `null` where what it
+ * holds, if anything, is of another of its writes: a refusal held of another of the panel's
+ * writes is not shown beside this one, nor does it take this one's Apply away (`offerShown`). */
+export function heldOf<A>(held: Refused<A> | null, about: A): string | null {
+  return held !== null && held.about === about ? held.text : null;
+}
+
+/** Where one write of a panel stands, as its view draws it: the plan it offers to apply, the one
+ * refusal it says, and whether the plan may still change - `planShown`'s three (`lib/typing.ts`),
+ * once a refusal held of its Apply is said with them (`offerShown`). */
+export interface Offered<P> {
+  plan: P | null;
+  refusal: string | null;
+  pending: boolean;
+}
+
 /**
- * The one refusal a panel of several writes shows beside its write `about`: the refusal it holds
- * of that write's Apply (`Refused`), else why the write's plan was refused when asked for, in the
- * server's own words - `asked`, read straight off `planShown`'s own `refusal` (`lib/typing.ts`) -
- * else none. A panel of one write shows the sentence it holds, else its plan's, the same way.
+ * What a panel offers of one write beside the refusal it says: one rule, which every panel and
+ * tab that writes follows (15:M15), where each once drew its own.
  *
- * `asked` is the answer of the revision on screen, the plan being asked for again at every one, so
- * a revision landing moves it - none while the new plan is asked for, then that plan's own answer -
- * and never the refusal held, which only the reader's next choice takes away. A refusal held of
- * another of the panel's writes is not shown beside this one, nor does it take this one's Apply
- * away.
+ * - **The refusal said** is the one the panel holds of the write's Apply (`held`, until the
+ *   reader's next choice), else why the write's plan was refused when asked for (`asked.refusal`).
+ * - **Beside a refusal held of its Apply**, the panel offers the plan the revision on screen
+ *   answers for the write as it stands, and so its Apply: the reader applies it with one press,
+ *   or makes another choice, and nothing waits for the panel to close. Refused because a file
+ *   changed on disk, the Apply asked for the analysis that reads it, whose revision reaches the
+ *   page within milliseconds, and its plan is then the plan of the files as they now are, which
+ *   the sentence says the panel shows. Most panels ask their plan again as soon as the Apply is
+ *   answered, as they always did; the declare panel, the Shared files tab's add form and the
+ *   values grid wait for that revision, and a press made before it is refused once more, saying
+ *   so again.
+ * - **Beside its plan's own refusal**, it offers nothing to apply. A plan asked for again and
+ *   refused leaves the answer before it in its query's hands, whose fingerprints are no longer the
+ *   files': an Apply drawn from it would only be refused as stale.
+ *
+ * The variable panel's removal alone draws nothing to press under any refusal: whether it should
+ * draw Remove under a held refusal's sentence is a question left with the maintainer (P19b-24).
  */
-export function refusalShown<A>(
-  held: Refused<A> | null,
-  asked: string | null,
-  about: A,
-): string | null {
-  return held !== null && held.about === about ? held.text : asked;
+export function offerShown<P>(held: string | null, asked: Offered<P>): Offered<P> {
+  return {
+    plan: asked.refusal === null ? asked.plan : null,
+    refusal: held ?? asked.refusal,
+    pending: asked.pending,
+  };
 }
 
 /** What a page holds of the refusal of an offer it makes - adopting a vocabulary - once it has
@@ -117,4 +157,35 @@ export function panelShows<T>(
   }
   if (own !== undefined) return { shown: "reply", reply: own };
   return answer.error === null ? { shown: "reading" } : { shown: "updating" };
+}
+
+/**
+ * What a panel shows once it reads the project's units beside its entity - the unit, type and
+ * variable panels, for what their choosers list (`GET /api/units`): what it shows of its entity
+ * (`panelShows`) while that is not the entity's answer; once it is, that it is reading while the
+ * units have not come, and their read's failure in its place once that read failed with nothing to
+ * draw from, where the panel said it was reading, for good (15:M15). A read that failed while the
+ * query still holds the units of an earlier read draws from them, as the Units tab draws the table
+ * it keeps beside the same failure.
+ */
+export function panelReads<T>(
+  shows: PanelShows<T>,
+  units: { data: unknown; error: Error | null },
+): PanelShows<T> {
+  if (shows.shown !== "reply" || units.data !== undefined) return shows;
+  return units.error === null
+    ? { shown: "reading" }
+    : { shown: "refusal", refusal: units.error.message };
+}
+
+/**
+ * The key a variable's panel shows once the Apply of `key` was refused: the reader's own choice
+ * where they made one (`picked`, `null` for a row let go), else that key, which the panel had
+ * opened by itself as the first row that disagrees. The refusal is held of the key it was refused
+ * for, and the analysis the refusal asks for can make that row agree: left to the panel's own
+ * choice, the panel then moved on to another row, or none, and the sentence went out of view
+ * with the row. Picked, the row stays open until the reader's next choice, as the sentence does.
+ */
+export function pickedOnRefusal<K>(picked: K | null | undefined, key: K): K | null {
+  return picked === undefined ? key : picked;
 }

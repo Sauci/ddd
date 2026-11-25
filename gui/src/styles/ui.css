@@ -6,8 +6,8 @@
    Row, …): both are what this file selects on. */
 
 /* Button: the one action of a view (primary), any other (secondary), or a link (link). Its own
-   focus ring replaces the browser's outline, which would otherwise double up on a <button>; its
-   own text-decoration replaces the browser's default underline, which a plain <a> styled as one
+   focus ring is the outline app.css sets on every button, kept (a box-shadow is not drawn in
+   forced colours, an outline is); its own text-decoration replaces the browser's default underline, which a plain <a> styled as one
    of these - the Findings panel's Open, spec 5.2 - would otherwise carry. */
 .button {
   font: inherit;
@@ -18,10 +18,8 @@
   text-decoration: none;
 }
 .button:focus-visible {
-  outline: none;
-}
-.button[data-focus-visible] {
-  box-shadow: 0 0 0 3px var(--focus);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .button[data-disabled] {
   cursor: default;
@@ -58,12 +56,8 @@
 
 /* A plain <a> styled as one of these - the Findings panel's Open (spec 5.2), a finding's link on
    a component's page or in a variable's panel - carries none of React Aria's data attributes, so
-   `.button:focus-visible`'s own outline: none above would otherwise leave it with no ring at all
-   for a reader tabbing through. Its focus ring and hover feedback come from the native
-   pseudo-classes instead, an anchor always has both. */
-a.button:focus-visible {
-  box-shadow: 0 0 0 3px var(--focus);
-}
+   its hover feedback comes from the native pseudo-class instead; its focus ring is the one rule
+   above, `:focus-visible` being native too. */
 a.button.link:hover {
   text-decoration: underline;
 }
@@ -91,12 +85,38 @@ a.button.link:hover {
   background: var(--canvas);
   color: var(--ink-quiet);
 }
+/* The word a chip's severity is said in, beside it: severity is not told by colour alone. */
+.severity-word {
+  color: var(--ink-quiet);
+  font-size: var(--text-small);
+}
+/* A finding's chip and word on a table's one line (FindingChip.tsx's `FindingLine`): where the two
+   run past the column, the chip gives up the room and cuts the check's name short, never the word
+   (16:M14). The word keeps the space before it, which parts it from the chip on the screen and in
+   what is read out. */
+.finding-line {
+  display: flex;
+  align-items: baseline;
+}
+.finding-line .chip {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.finding-line .severity-word {
+  flex: none;
+  white-space: pre;
+}
 
 /* Panel: a framed aside beside the page's main view, and the grid that puts the two side by
    side - one column once the viewport is too narrow for both. The grid's gap is spec 5.1's
    14px ("spacing: … gaps | … 14 px and 8 px"), which names a bare pixel value rather than a
    token, as the chosen mockup's own .split { gap: 14px } does. */
 .panel {
+  /* A name of the 128 characters the specification allows has no place to break: broken anywhere,
+     it wraps inside the panel, in its title, its notes and its sentences, and Close stays beside
+     it in view (16:M18). */
+  overflow-wrap: anywhere;
   background: var(--surface);
   border: 1px solid var(--rule);
   border-radius: var(--radius-frame);
@@ -112,6 +132,12 @@ a.button.link:hover {
   margin: 0;
   font-size: var(--text-body);
   font-weight: 600;
+}
+/* Close keeps its width, as its title wraps where it must (`.panel`'s `overflow-wrap`): the
+   button inherits that, and shrunk under the title's pressure it would break inside its word
+   (16:M18). */
+.panel-header > button {
+  flex: none;
 }
 .panel-meta {
   margin: 0 0 var(--space-2);
@@ -134,9 +160,17 @@ a.button.link:hover {
   gap: 14px;
   align-items: start;
 }
+/* A component's page has its heading in the grid's first column and no heading above the grid: its
+   panel is let down by the heading's own top margin, so that its border does not stand on the
+   masthead's rule (16:M22). */
+.with-panel.from-the-masthead > .panel {
+  margin-top: var(--space-6);
+}
+/* One column, no wider than the window: a plain `1fr` grows to its widest content - a long table's
+   inner width, which its own box scrolls - and with it the panel, past the window's edge (16:M9). */
 @media (max-width: 899.98px) {
   .with-panel {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -159,11 +193,18 @@ a.button.link:hover {
 .panel-declarations th {
   font-weight: 600;
 }
+/* In a window too narrow for a panel's table (`PanelTable`), it scrolls sideways in its own box, as
+   the values grid does, rather than the page (16:M9): a structure's six columns of members, or a
+   type's uses by their names, are wider than a phone's window. */
+@media (max-width: 899.98px) {
+  .panel-table {
+    overflow-x: auto;
+  }
+}
 tr.changing td {
   background: var(--warning-ground);
 }
 .tag {
-  margin-left: var(--space-1);
   color: var(--warning);
   font-size: var(--text-small);
 }
@@ -229,13 +270,27 @@ tr.changing td {
   gap: var(--space-3);
   margin-top: var(--space-2);
 }
+.undo-label {
+  display: block;
+  max-width: min(36em, calc(100vw - 6em));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .undo-open {
   flex-basis: 100%;
   margin-bottom: var(--space-3);
 }
+/* Each refusal the strip says is a paragraph of its own, in the order they came. */
 .undo-refusal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
   margin: 0;
   color: var(--ink-quiet);
+}
+.undo-refusal p {
+  margin: 0;
 }
 .hunk {
   display: block;
@@ -281,6 +336,31 @@ tr.changing td {
   gap: var(--space-2);
 }
 
+/* FilterField: the field above a long table that filters it (16:I14), drawn as the Graph's search
+   is, and the line saying how many rows it leaves beside it - under it, where the row is too narrow
+   for both, as in a panel. */
+.filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  margin-block: var(--space-2);
+}
+.filter input {
+  font: inherit;
+  flex: 0 1 16em;
+  min-width: 0;
+  padding: var(--cell);
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
+.filter-line {
+  color: var(--ink-quiet);
+  font-size: var(--text-small);
+}
+
 /* ComboBox: a labelled field that opens a popover of sectioned choices, and takes any typed
    text. The popover's width tracks the field's through React Aria's own --trigger-width. */
 .combo {
@@ -311,8 +391,10 @@ tr.changing td {
   font: inherit;
   color: var(--ink);
 }
-.combo-field .react-aria-Input,
-.combo-field .react-aria-Button {
+/* The field's own ring is its box's, drawn around the text and the ▾ alike (below). The ▾ keeps
+   the page's ring (app.css): React Aria leaves it out of the Tab order and a press leaves the
+   focus in the field, but a screen reader may put the focus on it (16:I12). */
+.combo-field .react-aria-Input {
   outline: none;
 }
 .combo-field .react-aria-Button {
@@ -323,9 +405,13 @@ tr.changing td {
   font-size: inherit;
   cursor: pointer;
 }
+/* The field focused, by a click or a key, as a text field shows it: the page's ring, which forced
+   colours draw too, where a shadow is drawn in none and the border's colour is the system's
+   (16:I12). */
 .combo[data-focused] .combo-field {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--focus);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .combo[data-disabled] .combo-field {
   background: var(--ground);
@@ -349,9 +435,6 @@ tr.changing td {
   border-radius: var(--radius);
   box-shadow: var(--shadow-popover);
 }
-.combo-list {
-  outline: none;
-}
 .combo-list .react-aria-Header {
   padding: var(--space-2) var(--space-3) var(--space-1);
   color: var(--ink-quiet);
@@ -368,9 +451,44 @@ tr.changing td {
 .combo-choice[data-focused] {
   background: var(--accent-ground);
 }
+/* The list never takes the focus: the field keeps it and names the choice the keys are on, which
+   its tint alone marked - faint, and drawn in no forced colour (16:I12). It takes the page's ring
+   too, inside its own box, where the list's edge cannot cut it; the pointer's choice keeps the tint
+   alone, as a hover does. */
+.combo-choice[data-focus-visible] {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
 .combo-detail {
   color: var(--ink-quiet);
   text-align: right;
+}
+/* A list drawn to a cap, with its footnote (ComboBox.tsx): React Aria bounds the popover's height
+   to the room it has, so the entries scroll in that box and the footnote stays at its foot. Kept to
+   a footed list, so that every other list is drawn as it was. */
+.combo-popover.footed {
+  display: flex;
+  flex-direction: column;
+}
+.combo-popover.footed .combo-list {
+  min-height: 0;
+  overflow-y: auto;
+}
+/* What a list says while it holds no entry, where it may open with none (ComboBox.tsx's
+   `empty`). */
+.combo-empty {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  color: var(--ink-quiet);
+  font-size: var(--text-small);
+}
+.combo-footnote {
+  flex: none;
+  margin: 0;
+  padding: var(--space-2) var(--space-3) var(--space-1);
+  border-top: 1px solid var(--rule);
+  color: var(--ink-quiet);
+  font-size: var(--text-small);
 }
 
 /* Table: React Aria's, under the names it gives its own parts when a screen takes it as it
@@ -391,6 +509,14 @@ tr.changing td {
   font-size: var(--text-small);
   font-weight: 600;
 }
+/* The words of a cell can be selected, a path or a message to copy, as a panel's can (16:M21):
+   React Aria turns selection off on a row for as long as a press on it lasts (`usePress`'s
+   `disableTextSelection` sets `user-select: none` on the row), which a cell's own value keeps from
+   reaching its words. A press that selected some opens nothing (`selectsText`, lib/pressing.ts). */
+.react-aria-Cell {
+  -webkit-user-select: text;
+  user-select: text;
+}
 /* ValuesGridView's own grid (spec 5.2): every header and cell is a number (or blank), so the
    whole table reads right aligned, like a spreadsheet's - placed ahead of the row-selection and
    error tints below so their own, more specific selectors keep winning over this one. */
@@ -400,6 +526,25 @@ tr.changing td {
 }
 .react-aria-Row[data-selected] .react-aria-Cell {
   background: var(--accent-ground);
+}
+/* A selected row's mark besides its tint (a tint alone is 1.16:1 and forced colours drop it): an
+   outline, which forced colours draw, as they do not a box-shadow. */
+.react-aria-Row[data-selected] {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+/* A long table's cells are each drawn in a box of their own, positioned over the row (the doc
+   further down): they covered that outline, so that a selected row showed its tint alone, and in
+   forced colours, which drop the tint, nothing at all (16:I12). The mark is drawn over the cells
+   instead: a border forced colours keep, on a box laid over the row - over the box React Aria
+   positions the row in, as it does each cell - which lets every press through to the cells. */
+.react-aria-Table.long .react-aria-Row[data-selected]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border: 2px solid var(--accent);
+  pointer-events: none;
 }
 /* Milestone 1's red inset on a row's first cell, kept exactly (app.css's tr.has-error). */
 .react-aria-Row.has-error .react-aria-Cell:first-child {
@@ -582,13 +727,18 @@ tr.changing td {
   color: var(--ink-quiet);
   font-size: var(--text-small);
 }
+/* The adoption banner's sentence and its two buttons beside it, which go under it in a window too
+   narrow for both on one line (16:M9): the sentence wraps beside the buttons while it keeps at least
+   15em, its own words wrapping as they did. */
 .adopt-banner {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
 }
 .adopt-banner p {
+  flex: 1 1 15em;
   margin: 0;
 }
 .adopt-actions {
@@ -647,8 +797,11 @@ tr.changing td {
 .findings-window .react-aria-TableHeader .react-aria-Column {
   background: var(--surface);
 }
+/* Check holds a check's chip and its severity's word side by side for all but the few longest of
+   ddd's checks, whose names are cut short in their chips instead (`.finding-line`, 16:M14); as wide
+   as Compare's (CompareTableView.tsx). */
 .findings-window .react-aria-Column.check {
-  width: 10.5rem;
+  width: 12.5rem;
 }
 .findings-window .react-aria-Column.file {
   width: 11rem;
@@ -662,10 +815,14 @@ tr.changing td {
   list-style: none;
 }
 
-/* The project screen's tabs, moved out of app.css unchanged. */
+/* The project screen's tabs, moved out of app.css. In a window too narrow for one line of them - a
+   phone's 375px holds six of the eight, or fewer in a wider font - they wrap onto more, rather than
+   reach past its edge and scroll the page sideways (16:M9); each tab's own padding parts the
+   lines. */
 .tabs {
   display: flex;
-  gap: var(--space-4);
+  flex-wrap: wrap;
+  column-gap: var(--space-4);
   margin-bottom: var(--space-3);
   border-bottom: 1px solid var(--rule);
 }
@@ -768,6 +925,13 @@ tr.changing td {
 }
 .values-table {
   margin-bottom: var(--space-2);
+}
+/* In a window too narrow for the grid, it scrolls sideways in its own box, as a long table does,
+   rather than the page (16:M9). */
+@media (max-width: 899.98px) {
+  .values-table {
+    overflow-x: auto;
+  }
 }
 /* A grid of one cell - a scalar's value - keeps the width of its own row and column, not the page's. */
 .values-one .react-aria-Table {
@@ -872,7 +1036,8 @@ tr.changing td {
 .values-plot-tick {
   text-anchor: middle;
 }
-.values-plot-row {
+.values-plot-row,
+.values-plot-side {
   text-anchor: end;
 }
 /* The x axis's own name: drawn at the frame's right-hand end rather than its left (task 2's own

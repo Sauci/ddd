@@ -7,6 +7,7 @@ import { useKept } from "../app/useKept";
 import { SharedAddView } from "../components/SharedAddView";
 import { SharedTableView } from "../components/SharedTableView";
 import { unreadable } from "../lib/findings";
+import { offerShown, refusalOf } from "../lib/refusals";
 import type { Route } from "../lib/route";
 import {
   addFormRefusal,
@@ -23,11 +24,11 @@ import {
 } from "../lib/shared";
 import { planShown } from "../lib/typing";
 import { constantLabel, rasterLabel, sectionLabel } from "../lib/undo";
+import { planning } from "../lib/units";
 import { Banner } from "../ui/Banner";
 import { ConstantPanel, useConstantPlan } from "./ConstantPanel";
 import { RasterPanel, useRasterPlan } from "./RasterPanel";
 import { SectionPanel, useSectionPlan } from "./SectionPanel";
-import { refusalOf } from "./UnitPanel";
 
 interface Props {
   state: State | null;
@@ -309,6 +310,10 @@ function SharedAdd({
   // fields now say, or while the answer is an earlier request's kept as a placeholder - never a
   // plan, nor its own fetch refusal, for text the reader has since typed past.
   const shown = planShown(asked, request, plan);
+  // What the form offers beside a refusal, the one rule every panel follows (`offerShown`): a
+  // refusal of its Apply said over the plan its revision answers, and nothing to apply beside its
+  // plan's own refusal - the form's own refusal of a field asks for no plan at all.
+  const offer = offerShown(refusal, shown);
   // The vocabulary being declared into travels with the change rather than being read again when
   // it lands: what is invalidated and which panel opens are then the same choice the plan was
   // made under, and cannot be a later reading of the chooser.
@@ -381,7 +386,8 @@ function SharedAdd({
         setEvent(text);
         setRefusal(null);
       }}
-      plan={shown.plan}
+      plan={offer.plan}
+      planning={planning(offer)}
       refusal={addFormRefusal(kind, { raw, alignment, event }, refusal, shown.refusal)}
       changesShown={changesShown}
       onChangesShown={setChangesShown}

@@ -1,7 +1,19 @@
-import { existsSync, readFileSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { CONTROLLER, drift, driftIn, failing, held, SERVER_FAILED, UNITS } from "./demo";
+import {
+  CONTROLLER,
+  chooseUnit,
+  drift,
+  driftIn,
+  failing,
+  held,
+  openPanel,
+  placed,
+  renameValueA,
+  SERVER_FAILED,
+  UNITS,
+} from "./demo";
 import { expect, type Gui, test } from "./fixtures";
 
 /** The strip the Undo button opens. */
@@ -41,6 +53,27 @@ test("a unit settled from a panel is put back exactly as the file was", async ({
   await expect(page.getByLabel("SensorHub to Controller: 2 variables, error")).toBeVisible();
 });
 
+test("Put back pressed from the keyboard leaves the focus on the page's heading", async ({
+  page,
+  gui,
+}) => {
+  const panel = await openPanel(page, gui.address, "ValueA");
+  await chooseUnit(page, "rpm");
+  await panel.getByRole("button", { name: "Apply to 2 files" }).click();
+  const undo = page.getByRole("button", { name: "Undo the unit of ValueA" });
+  await undo.click();
+  // Put back, and the Undo control beside it, are disabled while the files are put back, and the
+  // strip closes after: the focus goes to the heading they stand beside.
+  await strip(page).getByRole("button", { name: "Put back 2 files" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(undo).toBeHidden();
+  await expect(page.getByRole("heading", { name: "Controller", level: 1 })).toBeFocused();
+  // And the heading says what was put back, as it said what Apply wrote.
+  await expect(page.locator(".heading").getByRole("status")).toHaveText(
+    "Undid the unit of ValueA, putting back 2 files: controller.ddd.json, sensor_hub.ddd.json.",
+  );
+});
+
 test("an adopted vocabulary is taken away again, file and include", async ({ page, gui }) => {
   const adopted = join(gui.directory, UNITS);
   const described = readFileSync(join(gui.directory, "demo.ddd.json"));
@@ -52,19 +85,28 @@ test("an adopted vocabulary is taken away again, file and include", async ({ pag
 
   const undo = page.getByRole("button", { name: "Undo the vocabulary adopted" });
   await undo.click();
+  // The file it takes away is counted apart from the one it puts back, as the heading says them
+  // once the undo is answered (16:I13).
   await expect(
-    strip(page).getByText("Puts back 2 files: demo.ddd.json, units.ddd.json"),
+    strip(page).getByText("Puts back 1 file: demo.ddd.json, and removes 1 file: units.ddd.json", {
+      exact: true,
+    }),
   ).toBeVisible();
   await strip(page).getByRole("button", { name: "Show changes" }).click();
   await expect(strip(page).getByText("units.ddd.json, removed")).toBeVisible();
-  await strip(page).getByRole("button", { name: "Put back 2 files" }).click();
+  await strip(page).getByRole("button", { name: "Put back 1 file and remove 1 file" }).click();
 
   await expect.poll(() => existsSync(adopted)).toBe(false);
   expect(readFileSync(join(gui.directory, "demo.ddd.json")).equals(described)).toBe(true);
   await expect(page.getByText("5 units · no units file")).toBeVisible();
+  // The heading says what the undo did to each file, in the strip's own word for the one it took
+  // away (16:I13).
+  await expect(page.locator(".heading").getByRole("status")).toHaveText(
+    "Undid the vocabulary adopted, putting back 1 file: demo.ddd.json, and removing 1 file: units.ddd.json.",
+  );
 });
 
-test("an undo of an edit whose file was changed by hand is refused, and keeps its place", async ({
+test("an undo of an edit whose file was changed by hand is refused, and the edit leaves the stack once the strip says so", async ({
   page,
   gui,
 }) => {
@@ -80,16 +122,210 @@ test("an undo of an edit whose file was changed by hand is refused, and keeps it
   const undo = page.getByRole("button", { name: "Undo the unit of ValueA" });
   await expect(undo).toBeVisible();
 
-  // Saved from outside, the file the edit wrote is somebody else's now.
+  // Saved from outside, the file the edit wrote is somebody else's now: the edit can never be
+  // put back as that file stands, and the server takes it off the stack, which the strip says.
   driftIn(gui.directory, CONTROLLER, "ValueA", "kPa");
   await undo.click();
-  await expect(strip(page).getByText(/changed on disk/)).toBeVisible();
+  // Nothing is left to undo once the state says so, and the control says that for as long as the
+  // strip says why - asked only then, the sentence is the one the strip holds, not the preview's
+  // own refusal drawn a moment before the state moved.
+  const nothing = page.getByRole("button", { name: "Nothing left to undo" });
+  await expect(nothing).toHaveAttribute("aria-expanded", "true");
+  await expect(strip(page).getByRole("status")).toHaveText(
+    "controller.ddd.json changed on disk since it was written, so the unit of ValueA can no " +
+      "longer be undone. Nothing was put back; the page shows the files as they are.",
+  );
   await expect(strip(page).getByRole("button", { name: /^Put back/ })).toHaveCount(0);
 
-  // Nothing was written, and the entry keeps its place: the reader may put the file back and
-  // ask again.
+  // Nothing was written, and closing the strip takes the sentence and the control away.
   expect(readFileSync(join(gui.directory, CONTROLLER)).toString()).toContain('"kPa"');
+  await nothing.click();
+  await expect(strip(page)).toHaveCount(0);
+  await expect(nothing).toHaveCount(0);
+  await expect(undo).toHaveCount(0);
+});
+
+test("an edit whose file was saved from outside leaves the stack, and the strip offers the one before it without being closed", async ({
+  page,
+  gui,
+}) => {
+  // The first edit: ValueA's unit settled from Controller's panel, controller.ddd.json alone.
+  await settledAndAnalysed(page, gui);
+  // The second, of other files: the vocabulary adopted from the Units tab.
+  await page.getByRole("button", { name: "DemoDevice" }).click();
+  await page.getByRole("link", { name: "Units" }).click();
+  const banner = page.getByRole("status").filter({ hasText: "This project has no units file" });
+  await banner.getByRole("button", { name: /^Adopt \d+ units$/ }).click();
+  const undo = page.getByRole("button", { name: "Undo the vocabulary adopted" });
   await expect(undo).toBeVisible();
+  await expect(page.locator(".updating-status")).toHaveText(/^Wrote 2 files for the vocabulary/);
+
+  // Saved from outside, a file the second edit wrote is somebody else's now.
+  const description = join(gui.directory, "demo.ddd.json");
+  writeFileSync(description, `${readFileSync(description, "utf8")}\n`);
+  await undo.click();
+  // The edit before it is the one to undo now, offered whole in the strip still open, under the
+  // sentence that says why the other went - asked once the state names the next, so that it is
+  // the sentence the strip holds, not the preview's own refusal drawn a moment before.
+  await expect(page.getByRole("button", { name: "Undo the unit of ValueA" })).toBeVisible();
+  await expect(strip(page).getByText("Puts back 1 file: controller.ddd.json")).toBeVisible();
+  await expect(strip(page).getByRole("status")).toHaveText(
+    "demo.ddd.json changed on disk since it was written, so the vocabulary adopted can no " +
+      "longer be undone. Nothing was put back; the page shows the files as they are.",
+  );
+  await strip(page).getByRole("button", { name: "Put back 1 file" }).click();
+
+  // Put back as an undo of it always was; the vocabulary, taken off and not undone, stays.
+  await expect.poll(() => unitOfValueA(gui)).toBe("rpm");
+  expect(existsSync(join(gui.directory, UNITS))).toBe(true);
+  await expect(page.getByRole("button", { name: /^Undo / })).toHaveCount(0);
+});
+
+test("two edits of one file saved from outside both leave the stack, each said in the strip", async ({
+  page,
+  gui,
+}) => {
+  // Both write Controller's file: its unit of ValueA settled, then its limits from the same panel.
+  await settledAndAnalysed(page, gui);
+  const panel = page.getByRole("complementary", { name: "ValueA" });
+  await panel.getByRole("row", { name: /^limits/ }).click();
+  await panel.getByLabel("Max").fill("50");
+  await panel.getByRole("button", { name: /^Apply to/ }).click();
+  const undo = page.getByRole("button", { name: "Undo the limits of ValueA" });
+  await expect(undo).toBeVisible();
+
+  // The one save refuses both: the second edit's undo, and then the first's, which would put the
+  // file back to what it held before the second.
+  driftIn(gui.directory, CONTROLLER, "ValueA", "kPa");
+  await undo.click();
+  // Once nothing is left, the strip says both, in the order they went: asked only then, neither
+  // is a preview's own refusal drawn a moment before the state moved.
+  await expect(page.getByRole("button", { name: "Nothing left to undo" })).toBeVisible();
+  await expect(strip(page).getByRole("status").locator("p")).toHaveText([
+    "controller.ddd.json changed on disk since it was written, so the limits of ValueA can no " +
+      "longer be undone. Nothing was put back; the page shows the files as they are.",
+    "controller.ddd.json changed on disk since it was written, so the unit of ValueA can no " +
+      "longer be undone. Nothing was put back; the page shows the files as they are.",
+  ]);
+  await expect(strip(page).getByRole("button", { name: /^Put back/ })).toHaveCount(0);
+  expect(unitOfValueA(gui)).toBe("kPa");
+});
+
+test("a window behind the server names the edit it asked to preview, once another window took it off", async ({
+  page,
+  gui,
+}) => {
+  // Two edits of Controller's file in this window: its unit of ValueA settled, then its limits.
+  await settledAndAnalysed(page, gui);
+  const panel = page.getByRole("complementary", { name: "ValueA" });
+  await panel.getByRole("row", { name: /^limits/ }).click();
+  await panel.getByLabel("Max").fill("50");
+  await panel.getByRole("button", { name: /^Apply to/ }).click();
+  const ours = page.getByRole("button", { name: "Undo the limits of ValueA" });
+  await expect(ours).toBeVisible();
+
+  // A second window on the same server, its strip open on the limits, every preview it asks for
+  // held: whatever it asks is answered only once this window has emptied the stack.
+  const other = await page.context().newPage();
+  try {
+    await other.goto(gui.address);
+    const theirs = other.getByRole("button", { name: "Undo the limits of ValueA" });
+    await expect(theirs).toBeVisible();
+    const release = await held(other, "/api/undo", { every: true });
+    try {
+      await theirs.click();
+      driftIn(gui.directory, CONTROLLER, "ValueA", "kPa");
+      await ours.click();
+      await expect(page.getByRole("button", { name: "Nothing left to undo" })).toBeVisible();
+      await expect(strip(page).getByRole("status").locator("p")).toHaveCount(2);
+    } finally {
+      release();
+    }
+    // Answered now, the other window's preview is refused as of the edit it named, which it says
+    // can no longer be undone, where a preview of whatever was on top answered that nothing was
+    // left and it said nothing at all.
+    await expect(other.getByRole("button", { name: "Nothing left to undo" })).toBeVisible();
+    await expect(strip(other).getByRole("status")).toContainText(
+      "edit 2 is not the one to undo any more, so the limits of ValueA can no longer be undone. " +
+        "Nothing was put back; the page shows the files as they are.",
+    );
+  } finally {
+    await other.close();
+  }
+});
+
+test("a preview refused after the strip was closed leaves nothing standing beside the name", async ({
+  page,
+  gui,
+}) => {
+  await settledAndAnalysed(page, gui);
+  const undo = page.getByRole("button", { name: "Undo the unit of ValueA" });
+  // The strip opened and closed again while its preview is held: the reader chose before the
+  // answer came.
+  const release = await held(page, "/api/undo");
+  try {
+    await undo.click();
+    await expect(strip(page).getByText("Reading the files…", { exact: true })).toBeVisible();
+    await undo.click();
+    await expect(strip(page)).toHaveCount(0);
+  } catch (error) {
+    release();
+    throw error;
+  }
+  // Saved from outside meanwhile, so that the preview, let through now, is refused and the edit
+  // taken off the stack.
+  driftIn(gui.directory, CONTROLLER, "ValueA", "kPa");
+  const refused = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === "/api/undo" && response.status() === 409,
+  );
+  release();
+  await refused;
+  // The control goes with the edit, and no word of it is left standing with the strip closed.
+  await expect(undo).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Nothing left to undo" })).toHaveCount(0);
+});
+
+test("a preview refused for a file that cannot be read is read again from the strip, which then offers the edit", async ({
+  page,
+  gui,
+}) => {
+  await settledAndAnalysed(page, gui);
+  // The server refuses the preview of a file it cannot read, and keeps the edit (R22). The route
+  // answers this one preview as it does, word for word: a mode does not stop a read on Windows,
+  // and a journey runs there too. Every later request goes to the server.
+  let refused = 0;
+  await page.route(
+    (url) => url.pathname === "/api/undo",
+    async (route) => {
+      if (route.request().method() !== "GET" || refused > 0) {
+        await route.fallback();
+        return;
+      }
+      refused += 1;
+      await route.fulfill({
+        status: 409,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: "stale",
+          message: "controller.ddd.json can no longer be read",
+        }),
+      });
+    },
+  );
+  await page.getByRole("button", { name: "Undo the unit of ValueA" }).click();
+  await expect(strip(page).getByRole("status")).toHaveText(
+    "controller.ddd.json can no longer be read. Nothing was put back; the page shows the files " +
+      "as they are.",
+  );
+  await expect(strip(page).getByRole("button", { name: /^Put back/ })).toHaveCount(0);
+
+  // The file mended, the strip reads it again, never closed, and offers the edit whole.
+  await strip(page).getByRole("button", { name: "Read the files again" }).click();
+  await expect(strip(page).getByText("Puts back 1 file: controller.ddd.json")).toBeVisible();
+  await expect(strip(page).getByRole("status")).toHaveCount(0);
+  await strip(page).getByRole("button", { name: "Put back 1 file" }).click();
+  await expect.poll(() => unitOfValueA(gui)).toBe("rpm");
+  expect(refused).toBe(1);
 });
 
 test("the control stands beside a component's name too", async ({ page, gui }) => {
@@ -125,7 +361,11 @@ async function settledAndAnalysed(page: Page, gui: Gui): Promise<void> {
   const panel = page.getByRole("complementary", { name: "ValueA" });
   await panel.getByRole("button", { name: "Apply to 1 file" }).click();
   await expect(panel.getByText("Nothing to change")).toBeVisible();
-  await expect(page.locator(".updating-status")).toHaveText("");
+  // Analysed: the heading's status says what Apply wrote, and no longer that the findings are
+  // updating (16:I13).
+  await expect(page.locator(".updating-status")).toHaveText(
+    "Wrote 1 file for the unit of ValueA: controller.ddd.json.",
+  );
 }
 
 /** The unit Controller's file states for ValueA. */
@@ -152,7 +392,7 @@ test("the strip says it is reading the files an undo would put back, until it ha
   await expect(strip(page).getByText("Reading the files…", { exact: true })).toHaveCount(0);
 });
 
-test("an undo the server fails on is refused in the strip in its words, is still offered, and is sent once", async ({
+test("an undo the server fails on is refused in the strip in its words, and offered again there, each press sent once", async ({
   page,
   gui,
 }) => {
@@ -163,19 +403,51 @@ test("an undo the server fails on is refused in the strip in its words, is still
   const putBack = strip(page).getByRole("button", { name: "Put back 1 file" });
   // Only now, with the preview read: the one request it meets is the press's `POST`. The preview
   // is asked again at a new revision only, and none is coming.
-  const failed = await failing(page, "/api/undo", "http");
+  const failed = await failing(page, "/api/undo", "http", 1);
   await putBack.click();
-  // The refusal is the whole of the strip (an undo is all or nothing): the preview is gone.
+  // The refusal is said, and the entry, still on the stack, is offered again under it, whole: the
+  // reader presses again with no need to close the strip (R22).
   await expect(strip(page).getByRole("status")).toHaveText(
     `The undo was refused: ${SERVER_FAILED}`,
   );
-  await expect(putBack).toHaveCount(0);
+  await expect(strip(page).getByText("Puts back 1 file: controller.ddd.json")).toBeVisible();
+  await expect(putBack).toBeEnabled();
   // A guard against a write by another path: the POST is answered by `failing`, not the server.
   expect(unitOfValueA(gui)).toBe("%");
-  // The entry is still there to try again.
-  await expect(undo).toBeEnabled();
-  // A `POST` is never sent again (`sentAgain`, client.ts).
+  // A `POST` is never sent again of itself (`sentAgain`, client.ts): a press sends each one.
   expect(failed()).toBe(1);
+  await putBack.click();
+  await expect.poll(() => unitOfValueA(gui)).toBe("rpm");
+  await expect(undo).toHaveCount(0);
+  expect(failed()).toBe(1);
+});
+
+test("an undo refused because a file is read-only is offered again in the strip, and goes through once the file is writable", async ({
+  page,
+  gui,
+}) => {
+  await settledAndAnalysed(page, gui);
+  const controller = join(gui.directory, CONTROLLER);
+  await page.getByRole("button", { name: "Undo the unit of ValueA" }).click();
+  const putBack = strip(page).getByRole("button", { name: "Put back 1 file" });
+  await expect(putBack).toBeVisible();
+  chmodSync(controller, 0o444);
+  try {
+    await putBack.click();
+    await expect(strip(page).getByRole("status")).toHaveText(
+      /^The undo was refused: .*controller\.ddd\.json is read-only, so nothing was put back$/,
+    );
+    // Nothing was written, and the edit stays on the stack, offered again under the sentence.
+    expect(unitOfValueA(gui)).toBe("%");
+    await expect(strip(page).getByText("Puts back 1 file: controller.ddd.json")).toBeVisible();
+    await expect(putBack).toBeEnabled();
+  } finally {
+    chmodSync(controller, 0o644);
+  }
+  // The file made writable again, the same press goes through, the strip never closed between.
+  await putBack.click();
+  await expect.poll(() => unitOfValueA(gui)).toBe("rpm");
+  await expect(strip(page)).toHaveCount(0);
 });
 
 test("an undo refused keeps its sentence for its own entry, and an edit made with the strip open is offered to undo", async ({
@@ -203,19 +475,69 @@ test("an undo refused keeps its sentence for its own entry, and an edit made wit
   await expect(refused).toHaveCount(0);
 });
 
-test("a preview the server fails on is refused in the strip, before any undo was asked", async ({
+test("a preview the server fails on is said to have failed in the strip, before any undo was asked", async ({
   page,
   gui,
 }) => {
   await settledAndAnalysed(page, gui);
   // Registered before the strip is opened, whose first ask is the preview's `GET`: failed, it
-  // leaves no "Put back" to press, so no `POST` follows.
+  // leaves no "Put back" to press, so no `POST` follows. Nothing was refused, and no undo asked:
+  // the strip says that reading the files failed.
   const failed = await failing(page, "/api/undo", "http");
   await page.getByRole("button", { name: "Undo the unit of ValueA" }).click();
   await expect(strip(page).getByRole("status")).toHaveText(
-    `The undo was refused: ${SERVER_FAILED}`,
+    `Reading the files failed: ${SERVER_FAILED}.`,
   );
   await expect(strip(page).getByRole("button", { name: /^Put back/ })).toHaveCount(0);
   expect(unitOfValueA(gui)).toBe("%");
   expect(failed()).toBe(1);
+});
+
+test("an Undo button of a long label appearing moves neither Add a declaration nor the table", async ({
+  page,
+  copiedGui,
+}) => {
+  // A variable of 86 characters: the label of its unit's undo is 100 characters long.
+  const variable = "V".repeat(86);
+  const gui = await copiedGui("demo", (directory) => renameValueA(directory, variable));
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  const add = page.getByRole("button", { name: "Add a declaration" });
+  const table = page.getByRole("grid").first();
+  await expect(add).toBeVisible();
+  const [addBefore, tableBefore] = [await add.boundingBox(), await table.boundingBox()];
+  await page.getByRole("button", { name: `Set the unit of ${variable}` }).click();
+  const panel = page.getByRole("complementary", { name: variable });
+  const picker = panel.getByRole("combobox", { name: `Unit of ${variable}` });
+  await picker.fill("rpm");
+  await page.getByRole("option", { name: "rpm", exact: true }).first().click();
+  await panel.getByRole("button", { name: /^Apply to/ }).click();
+  const undo = page.getByRole("button", { name: /^Undo / });
+  await expect(undo).toBeVisible();
+  await panel.getByRole("button", { name: /^Close/ }).click();
+  expect((await add.boundingBox())?.y).toBe(addBefore?.y);
+  expect((await table.boundingBox())?.y).toBe(tableBefore?.y);
+});
+
+/**
+ * The Undo control joins a heading's row after the controls in it, just before the row's status,
+ * as the project's own heading has it (16:M23): drawn before Add a declaration and the way back to
+ * the tab the page was reached from, it moved both by its width as an Apply's edit reached the
+ * state, and a press made on either then opened the strip.
+ */
+test("Add a declaration and the way back keep their place in a component's heading as the Undo control joins it", async ({
+  page,
+  gui,
+}) => {
+  const panel = await openPanel(page, gui.address, "ValueA");
+  const add = page.getByRole("button", { name: "Add a declaration" });
+  const back = page.getByRole("button", { name: "Back to Graph", exact: true });
+  await expect(panel.getByRole("combobox", { name: "Unit of ValueA" })).toBeVisible();
+  await expect(back).toBeVisible();
+  const before = [await placed(add), await placed(back)];
+  await chooseUnit(page, "rpm");
+  await panel.getByRole("button", { name: "Apply to 2 files" }).click();
+  await expect(page.getByRole("button", { name: "Undo the unit of ValueA" })).toBeVisible();
+  expect([await placed(add), await placed(back)]).toEqual(before);
 });

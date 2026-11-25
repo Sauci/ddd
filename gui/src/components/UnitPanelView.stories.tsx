@@ -16,6 +16,16 @@ import {
 } from "../stories/fixtures";
 import { type Offer, type UnitAction, UnitPanelView } from "./UnitPanelView";
 
+/** MERGE's change to the first of its files, made to each of 1,200 components of a large project,
+ * `c00000.ddd.json` on: the plan of a rename reaching every file. */
+const WIDE_MERGE: PlanReply = {
+  ...MERGE,
+  changes: Array.from({ length: 1200 }, (_, index) => ({
+    ...(MERGE.changes[0] as PlanReply["changes"][number]),
+    file: `C:/work/large/components/c${String(index).padStart(5, "0")}.ddd.json`,
+  })),
+};
+
 export default { title: "Components / UnitPanelView" };
 
 interface Props {
@@ -30,6 +40,8 @@ interface Props {
   shown?: UnitAction;
   /** The findings may be about to change: an edit waits for its analysis, or one runs. */
   updating?: boolean;
+  /** What the filter of the places holds as the story opens. */
+  placesFilter?: string;
 }
 
 /** The panel over one scenario's fixtures, with its own draft, spelling and Show changes, kept
@@ -43,11 +55,13 @@ function View({
   rename,
   shown: initiallyShown,
   updating = false,
+  placesFilter = "",
 }: Props) {
   const [description, setDescription] = useState(draft?.description);
   const [typed, setTyped] = useState<string | undefined>(undefined);
   const [to, setTo] = useState<string | null>(rename?.to ?? null);
   const [shown, setShown] = useState<UnitAction | null>(initiallyShown ?? null);
+  const [places, setPlaces] = useState(placesFilter);
   const planned =
     vocabulary === undefined ? null : { plan: vocabulary, refusal: null, pending: false };
   return (
@@ -55,6 +69,9 @@ function View({
       unit={unit}
       reply={reply}
       units={PROJECT_UNITS}
+      placesFilter={places}
+      onPlacesFilter={setPlaces}
+      onOpen={() => {}}
       description={description ?? unit.description ?? ""}
       onDescription={setDescription}
       typed={typed ?? to ?? unit.unit}
@@ -133,8 +150,36 @@ export const Refused = () => (
   />
 );
 
+/** RPM renamed to rpm in every one of 1200 components (16:M17): the sentence names three of the
+ * files the rename writes and counts the rest, where it named every one of them above Apply. */
+export const AWideRename = () => (
+  <View
+    unit={UNKNOWN_RPM}
+    reply={UNKNOWN_RPM_PANEL}
+    vocabulary={ADDITION}
+    rename={{ to: "rpm", offer: { plan: WIDE_MERGE, refusal: null, pending: false } }}
+  />
+);
+
+/** The same rename while its plan is asked for (16:M17): the panel says so where the sentence will
+ * stand, and offers no Apply yet. */
+export const ARenameBeingPlanned = () => (
+  <View
+    unit={UNKNOWN_RPM}
+    reply={UNKNOWN_RPM_PANEL}
+    vocabulary={ADDITION}
+    rename={{ to: "rpm", offer: { plan: null, refusal: null, pending: true } }}
+  />
+);
+
 /** An edit waits for its analysis: the panel says its findings are updating where it lists them,
  * and lists them below as they were. */
 export const FindingsUpdating = () => (
   <View unit={UNKNOWN_RPM} reply={UNKNOWN_RPM_PANEL} vocabulary={ADDITION} updating />
+);
+
+/** The places filtered by a file's name (16:I14): the one place pump.ddd.json states rpm in, and
+ * the line beside the filter counting it among the two. */
+export const PlacesFiltered = () => (
+  <View unit={LISTED_RPM} reply={LISTED_RPM_PANEL} placesFilter="pump" />
 );

@@ -1,7 +1,18 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
-import { CONTROLLER, drift, driftMax, EVENT_LOGGER, held, renameValueA } from "./demo";
+import {
+  CONTROLLER,
+  drift,
+  driftMax,
+  EVENT_LOGGER,
+  failing,
+  held,
+  includesNothing,
+  renameValueA,
+  restamp,
+  twoFrames,
+} from "./demo";
 import { expect, test } from "./fixtures";
 
 // The canvas's own actions and states - no dictionary, Fit, the module search and its Enter,
@@ -67,6 +78,25 @@ async function wheelOverCanvas(page: Page, deltaY: number): Promise<void> {
   await page.mouse.wheel(0, deltaY);
 }
 
+/** What the Graph and the Table say of a project that includes no component (16:M13). */
+const NEW_FILE =
+  "This project includes no component yet: New file, on the Files tab, writes one and includes it.";
+
+test("a project that includes no component points at New file from its canvas", async ({
+  page,
+  copiedGui,
+}) => {
+  const gui = await copiedGui("demo", includesNothing);
+  await page.goto(gui.address);
+  await expect(page.getByRole("region", { name: "Modules" })).toBeVisible();
+  const line = page.getByText("This project includes no component yet:");
+  await expect(line).toHaveText(NEW_FILE);
+  // To the tab whose New file writes one, as the line says.
+  await line.getByRole("link", { name: "New file", exact: true }).click();
+  await expect(page).toHaveURL(/\/project\?view=files$/);
+  await expect(page.getByRole("button", { name: "New file", exact: true })).toBeVisible();
+});
+
 test("a project with a file that does not load is drawn without arrows, and says why", async ({
   page,
   gui,
@@ -77,11 +107,29 @@ test("a project with a file that does not load is drawn without arrows, and says
   const bytes = readFileSync(path);
   writeFileSync(path, bytes.subarray(0, Math.floor(bytes.length / 2)));
   await page.goto(gui.address);
+  // Named as the cause, where the file's own module is gone from the canvas (16:I9).
   await expect(page.getByRole("status").filter({ hasText: "no dictionary" })).toHaveText(
-    "This project has no dictionary, so its modules are drawn without arrows.",
+    "controller.ddd.json did not load, so this project has no dictionary, and its modules are " +
+      "drawn without arrows.",
   );
   await expect(page.getByRole("button", { name: "SensorHub", exact: true })).toBeVisible();
   await expect(page.locator(".react-flow__edge")).toHaveCount(0);
+});
+
+test("a project whose own description does not load says no module is drawn, not that its arrows are missing", async ({
+  page,
+  gui,
+}) => {
+  // Cut in half: nothing past the description is read, so no file of the project loads and the
+  // canvas has no module to draw.
+  const path = join(gui.directory, "demo.ddd.json");
+  const bytes = readFileSync(path);
+  writeFileSync(path, bytes.subarray(0, Math.floor(bytes.length / 2)));
+  await page.goto(gui.address);
+  await expect(page.getByRole("status").filter({ hasText: "no dictionary" })).toHaveText(
+    "demo.ddd.json did not load, so this project has no dictionary and no module is drawn.",
+  );
+  await expect(page.locator(".react-flow__node")).toHaveCount(0);
 });
 
 test("Fit returns the viewport to the one the canvas opened on", async ({ page, gui }) => {
@@ -126,6 +174,33 @@ test("a search typed dims every module whose name does not contain it", async ({
   // What a reader sees of it: `.module[data-faded="true"]` is drawn at a fifth of its opacity.
   await expect(moduleOf(page, "Controller")).toHaveCSS("opacity", "0.2");
   await expect(moduleOf(page, "SensorHub")).toHaveCSS("opacity", "1");
+});
+
+/**
+ * A search says what it found (16:M10), on a line under the box that is the box's description:
+ * the modules holding the text of the four the demo has, or that none does - where everything
+ * fades and the module found may be out of view, the line is what says whether anything was
+ * found. Nothing is said while the box is empty.
+ */
+test("a search says how many modules it found, or that none matches", async ({ page, gui }) => {
+  await page.goto(gui.address);
+  await expect(moduleOf(page, "SensorHub")).toBeVisible();
+  const search = page.getByRole("textbox", { name: "Search modules" });
+
+  await search.fill("Sensor");
+  // A status, so that a screen reader hears each count as the text changes.
+  await expect(page.getByRole("status").filter({ hasText: "1 of 4 modules" })).toBeVisible();
+  await expect(search).toHaveAccessibleDescription("1 of 4 modules");
+  // Controller, UserInterface and EventLogger hold "er"; SensorHub does not.
+  await search.fill("er");
+  await expect(search).toHaveAccessibleDescription("3 of 4 modules");
+  await search.fill("Pump");
+  await expect(page.getByText("no module matches", { exact: true })).toBeVisible();
+  await expect(search).toHaveAccessibleDescription("no module matches");
+
+  await search.fill("");
+  await expect(search).toHaveAccessibleDescription("");
+  await expect(page.getByText(/ of 4 modules|no module matches/)).toHaveCount(0);
 });
 
 test("a search's Enter centres the first module it finds", async ({ page, gui }) => {
@@ -280,6 +355,33 @@ test("a layout worker that cannot start says to reload, and a reload draws the c
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
 
+test("a layout worker that cannot start says nothing of a reload once ddd gui has stopped", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await expect(page.getByRole("button", { name: "Controller", exact: true })).toBeVisible();
+  // Away from the canvas and back to it, as a reader finds the server gone: the canvas, left, lets
+  // its worker go, and the one the next visit makes asks the server for its script.
+  await page.getByRole("link", { name: "Units" }).click();
+  await expect(page.getByRole("grid", { name: "Units" })).toBeVisible();
+  // The server gone, as the long poll finds it (start.spec.ts), and so every request of the page.
+  await failing(page, "/api/state", "network");
+  restamp(gui.directory, CONTROLLER);
+  const stopped = "ddd gui has stopped. Start it again and open the address it prints.";
+  await expect(page.getByRole("alert").filter({ hasText: "has stopped" })).toHaveText(stopped);
+  const asked = await failing(page, /^\/assets\/layoutWorker-[^/]+\.js$/, "network");
+  await page.getByRole("link", { name: "Graph" }).click();
+  // The worker created once more failed too: its script asked for twice, no more.
+  await expect.poll(asked).toBe(2);
+  await expect(page.getByText("Laying the project out…", { exact: true })).toHaveCount(0);
+  // A reload would meet the browser's refused connection and lose the tab: only the page's own
+  // line says what to do.
+  await expect(page.getByText("The layout worker stopped", { exact: false })).toHaveCount(0);
+  await expect(page.getByRole("alert").filter({ hasText: "layout worker" })).toHaveCount(0);
+  await expect(page.getByRole("alert")).toHaveText(stopped);
+});
+
 /** Records, from now on and at every frame the page paints, what the components table's summary
  * line reads, as `demo.ts`'s `watchFrames` records a field: a state as short as this one, which a
  * wait on any one moment can step over. Measured in Chrome on the Linux development PC, the line
@@ -375,9 +477,10 @@ test("a module whose file does not load is drawn as not loaded, named by its fil
     await expect(moduleOf(page, name)).toHaveCSS("border-top-style", "solid");
   }
   await expect(page.getByRole("button", { name: "Controller", exact: true })).toHaveCount(0);
-  // A project with a file that did not load has no dictionary, so no arrows, and says so.
+  // A project with a file that did not load has no dictionary, so no arrows, and says why.
   await expect(page.getByRole("status").filter({ hasText: "no dictionary" })).toHaveText(
-    "This project has no dictionary, so its modules are drawn without arrows.",
+    "controller.ddd.json did not load, so this project has no dictionary, and its modules are " +
+      "drawn without arrows.",
   );
 });
 
@@ -471,6 +574,177 @@ test("an arrow reached by the keyboard says what is wrong, until the keyboard le
   }
   await expect(page.getByRole("button", { name: "Controller", exact: true })).toBeFocused();
   await expect(tooltip).toHaveCount(0);
+});
+
+test("an arrow's tooltip keeps its size at every zoom and is drawn outside the canvas, whole", async ({
+  page,
+  gui,
+}) => {
+  drift(gui.directory);
+  await page.goto(gui.address);
+  const arrow = page.getByRole("button", { name: "SensorHub to Controller: 2 variables, error" });
+  await expect(arrow).toBeVisible();
+  const zoomIn = page.getByRole("button", { name: "Zoom In", exact: true });
+  // The canvas's greatest zoom, 2: the tooltip was twice its size there, and its first line out of
+  // the canvas.
+  for (let presses = 0; presses < 10 && (await zoomIn.isEnabled()); presses += 1) {
+    await zoomIn.click();
+  }
+  await expect(zoomIn).toBeDisabled();
+  await expect.poll(async () => (await viewportOf(page)).zoom).toBeCloseTo(2, 3);
+  for (let stop = 0; stop < 50; stop += 1) {
+    if (await arrow.evaluate((element) => element === document.activeElement)) break;
+    await page.keyboard.press("Tab");
+  }
+  await expect(arrow).toBeFocused();
+  const tooltip = page.getByRole("tooltip");
+  await expect(tooltip.locator(".objects")).toHaveText("ValueA, ValueB");
+  // Drawn at its own size: the box it paints is the box it lays out.
+  const scale = await tooltip.evaluate(
+    (element) => element.getBoundingClientRect().width / (element as HTMLElement).offsetWidth,
+  );
+  expect(scale).toBe(1);
+  // Outside the canvas, which cuts what is past its edge, and outside the layer it zooms.
+  expect(
+    await tooltip.evaluate((element) => element.closest(".canvas, .react-flow") === null),
+  ).toBe(true);
+  // Whole in the window, first line included, wherever the arrow is.
+  const box = await tooltip.boundingBox();
+  const size = page.viewportSize();
+  if (box === null || size === null) throw new Error("the tooltip draws no box");
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(size.width);
+  expect(box.y + box.height).toBeLessThanOrEqual(size.height);
+  // Still the arrow's description, though drawn elsewhere in the page.
+  await expect(arrow).toHaveAccessibleDescription(/^ValueA, ValueB definition-mismatch/);
+});
+
+test("an arrow's tooltip sits above its label's middle, while the pointer is on the label", async ({
+  page,
+  gui,
+}) => {
+  drift(gui.directory);
+  await page.goto(gui.address);
+  const label = page.locator(".flow-label.error");
+  await expect(label).toBeVisible();
+  await label.hover();
+  const tooltip = page.getByRole("tooltip");
+  await expect(tooltip.locator(".objects")).toHaveText("ValueA, ValueB");
+  const [said, on] = await Promise.all([tooltip.boundingBox(), label.boundingBox()]);
+  if (said === null || on === null) throw new Error("the tooltip or its label draws no box");
+  expect(said.y + said.height).toBeLessThanOrEqual(on.y + on.height / 2);
+  expect(Math.abs(said.x + said.width / 2 - (on.x + on.width / 2))).toBeLessThanOrEqual(1);
+  // Gone with the pointer.
+  await page.mouse.move(5, 5);
+  await expect(tooltip).toHaveCount(0);
+});
+
+/** The arrow SensorHub to Controller, reached the way a keyboard reaches it, so that its tooltip
+ * is up while the canvas is moved under it. */
+async function reachArrow(page: Page): Promise<Locator> {
+  const arrow = page.getByRole("button", { name: "SensorHub to Controller: 2 variables, error" });
+  await expect(arrow).toBeVisible();
+  for (let stop = 0; stop < 50; stop += 1) {
+    if (await arrow.evaluate((element) => element === document.activeElement)) break;
+    await page.keyboard.press("Tab");
+  }
+  await expect(arrow).toBeFocused();
+  await expect(page.getByRole("tooltip")).toBeVisible();
+  return arrow;
+}
+
+/** How far the tooltip's middle is from the arrow's label's, along x, in px. */
+async function offLabel(page: Page): Promise<number> {
+  const [said, on] = await Promise.all([
+    page.getByRole("tooltip").boundingBox(),
+    page.locator(".flow-label.error").boundingBox(),
+  ]);
+  if (said === null || on === null) throw new Error("the tooltip or its label draws no box");
+  return Math.abs(said.x + said.width / 2 - (on.x + on.width / 2));
+}
+
+test("an arrow's tooltip follows its label as the canvas is zoomed with the arrow reached", async ({
+  page,
+  gui,
+}) => {
+  drift(gui.directory);
+  await page.goto(gui.address);
+  await reachArrow(page);
+  const tooltip = page.getByRole("tooltip");
+  await expect.poll(() => offLabel(page)).toBeLessThanOrEqual(1);
+  const before = await tooltip.boundingBox();
+  const canvas = await page.getByRole("region", { name: "Modules" }).boundingBox();
+  if (canvas === null) throw new Error("the canvas draws no box");
+  // The wheel over the canvas's own top left corner zooms about it, moving the label with the
+  // arrow, and the focus stays where it is.
+  await page.mouse.move(canvas.x + 4, canvas.y + 4);
+  await page.mouse.wheel(0, -200);
+  await expect.poll(async () => (await viewportOf(page)).zoom).toBeGreaterThan(1.3);
+  await expect.poll(async () => (await tooltip.boundingBox())?.x).not.toBe(before?.x);
+  await expect.poll(() => offLabel(page)).toBeLessThanOrEqual(1);
+});
+
+test("an arrow's tooltip follows its label as the page is scrolled, and the window resized", async ({
+  page,
+  gui,
+}) => {
+  drift(gui.directory);
+  await page.setViewportSize({ width: 1280, height: 500 });
+  await page.goto(gui.address);
+  await reachArrow(page);
+  const tooltip = page.getByRole("tooltip");
+  await expect.poll(() => offLabel(page)).toBeLessThanOrEqual(1);
+  // The page scrolled by a script, as a key or the scrollbar would, the arrow keeping its focus.
+  const labelAt = async () => (await page.locator(".flow-label.error").boundingBox())?.y ?? 0;
+  const was = await labelAt();
+  await page.evaluate(() => window.scrollBy(0, 40));
+  await expect.poll(labelAt).toBeLessThan(was);
+  const at = async () => {
+    const [said, on] = await Promise.all([
+      tooltip.boundingBox(),
+      page.locator(".flow-label.error").boundingBox(),
+    ]);
+    return said !== null && on !== null ? said.y + said.height - (on.y + on.height / 2) : NaN;
+  };
+  // Where it stands against its label is what it stood at before, once drawn again.
+  await expect.poll(at).toBeCloseTo(-12, 0);
+  // A window made too short for the place it stood in: it is kept in view, drawn again.
+  await page.setViewportSize({ width: 1280, height: 300 });
+  await expect
+    .poll(async () => {
+      const box = await tooltip.boundingBox();
+      return box !== null && box.y + box.height <= 300;
+    })
+    .toBe(true);
+});
+
+test("an arrow's tooltip is not drawn while its arrow is panned out of the canvas", async ({
+  page,
+  gui,
+}) => {
+  drift(gui.directory);
+  await page.goto(gui.address);
+  const arrow = await reachArrow(page);
+  const canvas = await page.getByRole("region", { name: "Modules" }).boundingBox();
+  if (canvas === null) throw new Error("the canvas draws no box");
+  // The pane dragged by its empty corner, past the label's own distance from it, which takes the
+  // focus off the arrow: reached again once the label is out.
+  await page.mouse.move(canvas.x + 6, canvas.y + 6);
+  await page.mouse.down();
+  await page.mouse.move(canvas.x + 6 + canvas.width, canvas.y + 6 + canvas.height, { steps: 8 });
+  await page.mouse.up();
+  await arrow.focus();
+  await expect(arrow).toBeFocused();
+  const label = await page.locator(".flow-label.error").boundingBox();
+  const outside =
+    label !== null &&
+    (label.x > canvas.x + canvas.width ||
+      label.y > canvas.y + canvas.height ||
+      label.x + label.width < canvas.x ||
+      label.y + label.height < canvas.y);
+  expect(outside).toBe(true);
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
 });
 
 test("the canvas's own buttons zoom it in and out, and stop zooming out at its least zoom", async ({
@@ -604,4 +878,102 @@ test("a row of the components table opens its component, pressed beside its name
   await page.keyboard.press("Enter");
   await expect(page.getByRole("heading", { name: "SensorHub", level: 1 })).toBeVisible();
   await expect(page).toHaveURL(/\/component\?file=.*sensor_hub\.ddd\.json$/);
+});
+
+test("a panel opened beside the canvas leaves no module cut, without Fit", async ({
+  page,
+  gui,
+}) => {
+  drift(gui.directory);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(gui.address);
+  const canvas = page.getByRole("region", { name: "Modules" });
+  const nodes = page.locator(".react-flow__node");
+  /** How far the modules reach past the canvas's box, in px: nothing where every one is inside. */
+  const cut = async () => {
+    const frame = await canvas.boundingBox();
+    const boxes = await nodes.evaluateAll((all) =>
+      all.map((node) => {
+        const { left, right } = node.getBoundingClientRect();
+        return { left, right };
+      }),
+    );
+    return Math.max(
+      0,
+      ...boxes.map((box) =>
+        Math.max((frame?.x ?? 0) - box.left, box.right - ((frame?.x ?? 0) + (frame?.width ?? 0))),
+      ),
+    );
+  };
+  await expect(nodes).toHaveCount(4);
+  expect(await cut()).toBe(0);
+  await page.locator(".flow-label.error").click();
+  await expect(page.getByRole("complementary", { name: "ValueA" })).toBeVisible();
+  // The box narrowed under the panel: the view follows it, as Fit would have it.
+  await expect.poll(cut).toBe(0);
+});
+
+test("a view the reader zoomed by hand is kept as a panel opens beside the canvas", async ({
+  page,
+  gui,
+}) => {
+  drift(gui.directory);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(gui.address);
+  const label = page.locator(".flow-label.error");
+  await expect(label).toBeVisible();
+  const opened = await viewportOf(page);
+  await page.getByRole("button", { name: "Zoom In", exact: true }).click();
+  await expect.poll(async () => (await viewportOf(page)).zoom).toBeGreaterThan(opened.zoom);
+  // The reader's own view, once it has stopped moving.
+  let held = await viewportOf(page);
+  await expect
+    .poll(async () => {
+      const [before, after] = [held, await viewportOf(page)];
+      held = after;
+      return JSON.stringify(before) === JSON.stringify(after);
+    })
+    .toBe(true);
+  const reader = held;
+  await label.click();
+  await expect(page.getByRole("complementary", { name: "ValueA" })).toBeVisible();
+  await twoFrames(page);
+  expect(await viewportOf(page)).toEqual(reader);
+  // And closing it, which widens the box again, leaves the view as it is too.
+  await page
+    .getByRole("complementary", { name: "ValueA" })
+    .getByRole("button", { name: /^Close/ })
+    .click();
+  await expect(page.getByRole("complementary", { name: "ValueA" })).toHaveCount(0);
+  await twoFrames(page);
+  expect(await viewportOf(page)).toEqual(reader);
+});
+
+test("a canvas fitted again after the window narrowed is fitted again as a panel opens", async ({
+  page,
+  gui,
+}) => {
+  drift(gui.directory);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(gui.address);
+  const canvas = page.getByRole("region", { name: "Modules" });
+  const nodes = page.locator(".react-flow__node");
+  const cut = async () => {
+    const frame = await canvas.boundingBox();
+    const [left, right] = [frame?.x ?? 0, (frame?.x ?? 0) + (frame?.width ?? 0)];
+    const boxes = await nodes.evaluateAll((all) =>
+      all.map((node) => {
+        const box = node.getBoundingClientRect();
+        return { left: box.left, right: box.right };
+      }),
+    );
+    return Math.max(0, ...boxes.map((box) => Math.max(left - box.left, box.right - right)));
+  };
+  await expect(nodes).toHaveCount(4);
+  // The window narrowed: the view fitted to it, as Fit would have it, so the fitted view moved.
+  await page.setViewportSize({ width: 1000, height: 900 });
+  await expect.poll(cut).toBe(0);
+  await page.locator(".flow-label.error").click();
+  await expect(page.getByRole("complementary", { name: "ValueA" })).toBeVisible();
+  await expect.poll(cut).toBe(0);
 });

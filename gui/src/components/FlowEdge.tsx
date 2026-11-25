@@ -4,8 +4,20 @@ import {
   EdgeLabelRenderer,
   type EdgeProps,
   getBezierPath,
+  useStore,
 } from "@xyflow/react";
-import { type FlowData, STROKE, stateOf } from "../lib/canvas";
+import { useLayoutEffect, useReducer, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import {
+  type FlowData,
+  insideBox,
+  type Point,
+  type Size,
+  STROKE,
+  stateOf,
+  tooltipSpot,
+  windowPointOf,
+} from "../lib/canvas";
 
 // The custom edge always carries our own data; EdgeProps types it optional only because an edge
 // in general need not have any.
@@ -62,28 +74,78 @@ export function FlowEdge({
         >
           {data.objects.length}
         </span>
-        {data.active && (
-          <div
-            className={`flow-tooltip ${state}`}
-            role="tooltip"
-            // The arrow points at this with aria-describedby, so reaching it by keyboard reads
-            // out what is wrong rather than only that something is.
-            id={data.tooltip}
-            style={{ transform: `translate(-50%, -100%) translate(${labelX}px, ${labelY - 12}px)` }}
-          >
-            <p className="objects">{data.objects.join(", ")}</p>
-            {data.disagreements.length > 0 && (
-              <ul>
-                {data.disagreements.map((disagreement) => (
-                  <li key={`${disagreement.check} ${disagreement.object} ${disagreement.message}`}>
-                    <span className="flow-check">{disagreement.check}</span> {disagreement.message}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
       </EdgeLabelRenderer>
+      {data.active && <Tooltip data={data} state={state} anchor={{ x: labelX, y: labelY }} />}
     </>
+  );
+}
+
+/**
+ * What the arrow carries, while the reader is on it, drawn outside the canvas (16:M11): a tooltip
+ * inside React Flow's label layer is scaled with the canvas, twice its size at the greatest zoom,
+ * and cut by the canvas's edge, the line listing its variables with it. It is
+ * placed in the window instead (`tooltipSpot`), over the arrow's own middle as the viewport puts
+ * it (`windowPointOf`), and kept in view; it is told where the arrow is again whenever the canvas
+ * pans or zooms, the page scrolls or the window changes.
+ */
+function Tooltip({ data, state, anchor }: { data: FlowData; state: string; anchor: Point }) {
+  const transform = useStore((store) => store.transform);
+  const canvas = useStore((store) => store.domNode);
+  // Drawn again where the page itself moves under it: scrolled, or the window resized.
+  const [, moved] = useReducer((count: number) => count + 1, 0);
+  useLayoutEffect(() => {
+    window.addEventListener("scroll", moved, true);
+    window.addEventListener("resize", moved);
+    return () => {
+      window.removeEventListener("scroll", moved, true);
+      window.removeEventListener("resize", moved);
+    };
+  }, []);
+  const box = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState<Size | null>(null);
+  // Measured where it is drawn, before the first paint: the place it takes depends on its size.
+  useLayoutEffect(() => {
+    const element = box.current;
+    if (element === null) return;
+    const measured = { width: element.offsetWidth, height: element.offsetHeight };
+    setSize((was) =>
+      was !== null && was.width === measured.width && was.height === measured.height
+        ? was
+        : measured,
+    );
+  });
+  const corner =
+    canvas === null ? { x: 0, y: 0, width: 0, height: 0 } : canvas.getBoundingClientRect();
+  const middle = windowPointOf(anchor, transform, { x: corner.x, y: corner.y });
+  // Not drawn while the arrow's middle is out of the canvas, panned or scrolled away: it would
+  // float over the page, pointing at nothing.
+  if (!insideBox(middle, corner)) return null;
+  const spot =
+    size === null
+      ? { x: 0, y: 0 }
+      : tooltipSpot(middle, size, { width: window.innerWidth, height: window.innerHeight });
+  return createPortal(
+    <div
+      ref={box}
+      className={`flow-tooltip ${state}`}
+      role="tooltip"
+      // The arrow points at this with aria-describedby, so reaching it by keyboard reads out what
+      // is wrong rather than only that something is.
+      id={data.tooltip}
+      // Hidden until measured, so that it is never painted in a place meant for another size.
+      style={{ left: spot.x, top: spot.y, visibility: size === null ? "hidden" : "visible" }}
+    >
+      <p className="objects">{data.objects.join(", ")}</p>
+      {data.disagreements.length > 0 && (
+        <ul>
+          {data.disagreements.map((disagreement) => (
+            <li key={`${disagreement.check} ${disagreement.object} ${disagreement.message}`}>
+              <span className="flow-check">{disagreement.check}</span> {disagreement.message}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>,
+    document.body,
   );
 }

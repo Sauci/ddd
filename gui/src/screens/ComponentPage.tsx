@@ -4,16 +4,31 @@ import { useMemo, useState } from "react";
 import { getFile, getFindings, getTypes } from "../api/client";
 import type { ListedFinding, State } from "../api/types";
 import { useUpdating } from "../app/updating";
+import { useDrawnRows } from "../app/useDrawnRows";
 import { useKept } from "../app/useKept";
+import { useWritten } from "../app/useWritten";
+import { FindingChip } from "../components/FindingChip";
+import {
+  DECLARATIONS,
+  declarationKey,
+  declarationsShown,
+  filterLine,
+  filterOn,
+  rowsToCome,
+  tableDrawn,
+} from "../lib/filter";
 import { leadsElsewhere, routeHref, routeOf } from "../lib/findings";
 import { findingsByRow } from "../lib/findingsByRow";
 import type { ComponentFile } from "../lib/formats";
 import { pointerOf, valueAt } from "../lib/pointer";
+import type { Route } from "../lib/route";
 import { shapeColumn, typeKinds } from "../lib/shapeColumn";
+import { type Lead, unloadedNames } from "../lib/unloaded";
 import { asList, asText } from "../lib/values";
 import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
-import { Chip } from "../ui/Chip";
+import { FilterField } from "../ui/FilterField";
+import { PageHeading } from "../ui/PageHeading";
 import { Cell, Column, LongTable, Row, TableBody, TableHeader } from "../ui/Table";
 import { UpdatingNote, UpdatingStatus } from "../ui/UpdatingNote";
 import { DeclarePanel } from "./DeclarePanel";
@@ -36,13 +51,22 @@ interface Props {
   /** Following a `dimensions` entry of the open variable's panel to the constant it names - the
    * Shared files tab, which leaves this page too, for the same reason. */
   onOpenConstant: (name: string) => void;
+  /** The way back to the tab of the project this page was reached from (`wayBack`,
+   * lib/announcing.ts; 16:M16) - the page has no tabs of its own - or `null` where none was shown
+   * before it. */
+  wayBack: Lead | null;
+  /** Following the way back: the route it leads to, which the app navigates to. */
+  onFollow: (to: Route) => void;
 }
 
 /** No findings, while this file's own have not come: one array for every such render, so that
  * the rows grouped from them (`byRow`, below) are grouped once rather than again each render. */
 const NONE: readonly ListedFinding[] = [];
 
-/** One component: its declarations, the panel of the one selected, and the findings in it. */
+/** One component: its declarations, the panel of the one selected, and the findings in it. The
+ * filter above the table leaves the declarations whose name holds what is typed
+ * (`declarationsShown`), each the row it was, so that the one selected stays selected; it is this
+ * component's, and another component's page starts with none. */
 export function ComponentPage({
   file,
   variable,
@@ -52,8 +76,12 @@ export function ComponentPage({
   onValues,
   onOpenType,
   onOpenConstant,
+  wayBack,
+  onFollow,
 }: Props) {
   const updating = useUpdating();
+  // What the heading says the page last wrote, on this component's page.
+  const written = useWritten(file);
   // A new number on every unit cell press, even a second press of the same cell, so the
   // picker's focus request always changes; null when a row selects its variable without one.
   const [focusPicker, setFocusPicker] = useState<number | null>(null);
@@ -66,6 +94,10 @@ export function ComponentPage({
   // of the table's own three ways to one - closes this one.
   const [adding, setAdding] = useState(false);
   if (undeclared !== null && undeclared.file !== file) setUndeclared(null);
+  // What the filter above the table holds, and the component it was typed on: read as nothing on
+  // another's page (`filterOn`).
+  const [filtering, setFiltering] = useState({ file, text: "" });
+  const filter = filterOn(filtering, file);
   const content = useQuery({
     queryKey: ["file", file, state.revision],
     queryFn: () => getFile(file),
@@ -157,6 +189,13 @@ export function ComponentPage({
       };
     });
   }, [data, byRow, kinds]);
+  const shown = useMemo(() => declarationsShown(rows, filter), [rows, filter]);
+  // The rows the table draws: those the filter leaves, put back a thousand at a time where it is
+  // widened past the rows drawn (`useDrawnRows`).
+  const drawn = useDrawnRows(shown, declarationKey);
+  // The files that did not load, as the banner under the masthead names them: what a removal's
+  // sentence says it was not told of (16:I10).
+  const unread = useMemo(() => unloadedNames(state.files), [state.files]);
 
   if (answer === undefined) {
     if (content.isError) return <Banner tone="error">{content.error.message}</Banner>;
@@ -196,11 +235,12 @@ export function ComponentPage({
   const selected = new Set(rows.filter((row) => row.name === variable).map((row) => row.id));
 
   return (
-    <section className={variable === undefined && !adding ? undefined : "with-panel"}>
+    <section
+      className={variable === undefined && !adding ? undefined : "with-panel from-the-masthead"}
+    >
       <div>
         <div className="heading">
-          <h1>{name}</h1>
-          <UndoStrip state={state} stopped={stopped} />
+          <PageHeading>{name}</PageHeading>
           <Button
             variant="secondary"
             isDisabled={stopped}
@@ -211,8 +251,18 @@ export function ComponentPage({
           >
             Add a declaration
           </Button>
+          {/* Back to the tab this page was reached from, as the values grid leads back to its
+              component (16:M16). */}
+          {wayBack !== null && (
+            <Button variant="link" onPress={() => onFollow(wayBack.to)}>
+              {wayBack.text}
+            </Button>
+          )}
+          {/* After the controls it would move, joining the row once an edit is written: drawn
+              before them, it moved them by its width, under a press aimed at one (16:M23). */}
+          <UndoStrip state={state} stopped={stopped} />
           {/* Last in the row, so that none of the controls before it ever moves. */}
-          <UpdatingStatus updating={updating} />
+          <UpdatingStatus updating={updating} written={written} />
         </div>
         {/* A server that stopped answering leaves the table as it was, and says so above it. */}
         {content.isError && <Banner tone="error">{content.error.message}</Banner>}
@@ -221,20 +271,28 @@ export function ComponentPage({
             {undeclared.name} is no longer declared in the open project.
           </Banner>
         )}
-        <LongTable
-          aria-label={`Declarations of ${name}`}
-          selectionMode="single"
-          selectedKeys={selected}
-          onSelectionChange={(keys) => {
-            const key = keys === "all" ? undefined : [...keys][0];
-            setFocusPicker(null);
-            setUndeclared(null);
-            setAdding(false);
-            onVariable(rows.find((row) => row.id === key)?.name);
-          }}
-        >
-          <TableHeader>
-            {/* Widths measured in Chrome (fix round 3) on scratch copies of examples/demo, of a
+        <FilterField
+          label="Filter declarations"
+          value={filter}
+          onChange={(text) => setFiltering({ file, text })}
+          line={filterLine(filter, shown.length, rows.length, DECLARATIONS)}
+        />
+        {tableDrawn(filter, shown.length) && (
+          <LongTable
+            aria-label={`Declarations of ${name}`}
+            rowsToCome={rowsToCome(shown, drawn)}
+            selectionMode="single"
+            selectedKeys={selected}
+            onSelectionChange={(keys) => {
+              const key = keys === "all" ? undefined : [...keys][0];
+              setFocusPicker(null);
+              setUndeclared(null);
+              setAdding(false);
+              onVariable(rows.find((row) => row.id === key)?.name);
+            }}
+          >
+            <TableHeader>
+              {/* Widths measured in Chrome (fix round 3) on scratch copies of examples/demo, of a
                 generated project of 10,000 declarations and of examples/vocabulary. Scope and Kind
                 are fixed, their words the schema's own: "output" takes 63px of Scope's 70px
                 (`minWidth` repeats it, as React Aria floors a column with none of its own at 75px),
@@ -254,90 +312,90 @@ export function ComponentPage({
                 1072px where a browser draws the box's own vertical scrollbar and the page's, 15px
                 each - and narrower, until the panel moves under the table at 900px, the box scrolls
                 sideways; with no panel the table fits a window down to about 547px (577px). */}
-            <Column width={70} minWidth={70}>
-              Scope
-            </Column>
-            <Column isRowHeader width="3fr" minWidth={140}>
-              Name
-            </Column>
-            <Column width={115}>Kind</Column>
-            <Column width="3fr" minWidth={45}>
-              Type
-            </Column>
-            <Column width="2fr" minWidth={40}>
-              Shape
-            </Column>
-            <Column width="1fr" minWidth={55}>
-              Unit
-            </Column>
-            <Column width="4fr" minWidth={50}>
-              Findings
-            </Column>
-          </TableHeader>
-          <TableBody
-            items={rows}
-            // The cells' buttons are disabled with `stopped`, which `rows` does not hold: React
-            // Aria keeps each row it has rendered for its item, and draws it again only when the
-            // item changes or a value named here does.
-            dependencies={[stopped]}
-          >
-            {(row) => (
-              <Row
-                id={row.id}
-                className={({ defaultClassName }) =>
-                  row.own.some((finding) => finding.severity === "error")
-                    ? `${defaultClassName} has-error`
-                    : (defaultClassName ?? "")
-                }
-              >
-                <Cell>{row.scope}</Cell>
-                <Cell>{row.name}</Cell>
-                <Cell>{row.kind}</Cell>
-                <Cell>{row.type}</Cell>
-                <Cell>
-                  {row.shape !== null &&
-                    (row.offered ? (
-                      <Button
-                        variant="link"
-                        aria-label={`Show the values of ${row.name}`}
-                        isDisabled={stopped}
-                        onPress={() => onValues(row.name)}
-                      >
-                        {row.shape}
-                      </Button>
-                    ) : (
-                      row.shape
-                    ))}
-                </Cell>
-                <Cell>
-                  <Button
-                    variant="link"
-                    aria-label={`Set the unit of ${row.name}`}
-                    isDisabled={stopped}
-                    onPress={() => {
-                      setFocusPicker((request) => (request ?? 0) + 1);
-                      setUndeclared(null);
-                      setAdding(false);
-                      onVariable(row.name);
-                    }}
-                  >
-                    {row.unit === "" ? <span className="quiet">none</span> : row.unit}
-                  </Button>
-                </Cell>
-                <Cell>
-                  {row.own.map((finding) => (
-                    <Chip
-                      key={finding.key}
-                      tone={finding.severity === "error" ? "error" : "warning"}
+              <Column width={70} minWidth={70}>
+                Scope
+              </Column>
+              <Column isRowHeader width="3fr" minWidth={140}>
+                Name
+              </Column>
+              <Column width={115}>Kind</Column>
+              <Column width="3fr" minWidth={45}>
+                Type
+              </Column>
+              <Column width="2fr" minWidth={40}>
+                Shape
+              </Column>
+              <Column width="1fr" minWidth={55}>
+                Unit
+              </Column>
+              <Column width="4fr" minWidth={50}>
+                Findings
+              </Column>
+            </TableHeader>
+            <TableBody
+              items={drawn}
+              // The cells' buttons are disabled with `stopped`, which `rows` does not hold: React
+              // Aria keeps each row it has rendered for its item, and draws it again only when the
+              // item changes or a value named here does.
+              dependencies={[stopped]}
+            >
+              {(row) => (
+                <Row
+                  id={declarationKey(row)}
+                  className={({ defaultClassName }) =>
+                    row.own.some((finding) => finding.severity === "error")
+                      ? `${defaultClassName} has-error`
+                      : (defaultClassName ?? "")
+                  }
+                >
+                  <Cell>{row.scope}</Cell>
+                  <Cell>{row.name}</Cell>
+                  <Cell>{row.kind}</Cell>
+                  <Cell>{row.type}</Cell>
+                  <Cell>
+                    {row.shape !== null &&
+                      (row.offered ? (
+                        <Button
+                          variant="link"
+                          aria-label={`Show the values of ${row.name}`}
+                          isDisabled={stopped}
+                          onPress={() => onValues(row.name)}
+                        >
+                          {row.shape}
+                        </Button>
+                      ) : (
+                        row.shape
+                      ))}
+                  </Cell>
+                  <Cell>
+                    <Button
+                      variant="link"
+                      aria-label={`Set the unit of ${row.name}`}
+                      isDisabled={stopped}
+                      onPress={() => {
+                        setFocusPicker((request) => (request ?? 0) + 1);
+                        setUndeclared(null);
+                        setAdding(false);
+                        onVariable(row.name);
+                      }}
                     >
-                      {finding.check}
-                    </Chip>
-                  ))}
-                </Cell>
-              </Row>
-            )}
-          </TableBody>
-        </LongTable>
+                      {row.unit === "" ? <span className="quiet">none</span> : row.unit}
+                    </Button>
+                  </Cell>
+                  <Cell>
+                    {row.own.map((finding) => (
+                      <FindingChip
+                        key={finding.key}
+                        severity={finding.severity}
+                        check={finding.check}
+                      />
+                    ))}
+                  </Cell>
+                </Row>
+              )}
+            </TableBody>
+          </LongTable>
+        )}
         <h2>Findings in this component</h2>
         {/* Said also while there are none: an edit may be about to bring the first. */}
         <UpdatingNote updating={updating} />
@@ -385,6 +443,7 @@ export function ComponentPage({
           name={variable}
           file={file}
           revision={state.revision}
+          unread={unread}
           stopped={stopped}
           focusPicker={focusPicker}
           onClose={() => onVariable(undefined)}

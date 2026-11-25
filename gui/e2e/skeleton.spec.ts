@@ -1,7 +1,22 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { CONTROLLER, chooseUnit, drift, SENSOR_HUB, withUnitOfValueA, writeUnseen } from "./demo";
+import {
+  CONTROLLER,
+  chooseUnit,
+  draggedAcross,
+  drift,
+  gainLink,
+  held,
+  includesNothing,
+  namingAScalarType,
+  openValues,
+  PAST_THE_WAITS,
+  SENSOR_HUB,
+  twoFrames,
+  withUnitOfValueA,
+  writeUnseen,
+} from "./demo";
 import { expect, test } from "./fixtures";
 
 const COMPONENTS = ["Controller", "SensorHub", "UserInterface", "EventLogger"];
@@ -60,6 +75,34 @@ test("a unit set from the panel is written as one value in every file declaring 
   for (const [index, file] of files.entries()) {
     await expect.poll(() => readFileSync(file).equals(before[index] as Buffer)).toBe(true);
   }
+});
+
+/** A unit's settlement on its way (16:M17): the panel says so where its consequence will stand,
+ * and says the consequence once the plan has come, held until then. */
+test("a unit chosen says it is planning while its settlement is on its way", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("button", { name: "Set the unit of ValueA" }).click();
+  const panel = page.getByRole("complementary", { name: "ValueA" });
+  const settle = panel.getByRole("region", { name: "Settle the key" });
+  const picker = panel.getByRole("combobox", { name: "Unit of ValueA" });
+  await picker.clear();
+  await picker.pressSequentially("rpm");
+
+  const release = await held(page, "/api/settle");
+  try {
+    await page.getByRole("option", { name: "rpm", exact: true }).first().click();
+    await expect(settle.getByText("Planning…", { exact: true })).toBeVisible();
+  } finally {
+    release();
+  }
+  await expect(
+    settle.getByText("Changes 2 files: controller.ddd.json, sensor_hub.ddd.json"),
+  ).toBeVisible();
+  await expect(settle.getByText("Planning…")).toHaveCount(0);
 });
 
 test("a unit chosen but not applied changes nothing", async ({ page, gui }) => {
@@ -214,6 +257,11 @@ test("clicking a module opens its component page, and the back button returns to
 
 test("the table is one tab away", async ({ page, gui }) => {
   await page.goto(gui.address);
+  // The tab is an address of its own, which a new tab or window opens as well.
+  await expect(page.getByRole("link", { name: "Table" })).toHaveAttribute(
+    "href",
+    "/project?view=table",
+  );
   await page.getByRole("link", { name: "Table" }).click();
   await expect(componentRow(page, "Controller").getByRole("gridcell").nth(0)).toHaveText("0");
   await expect(page).toHaveURL(/\?view=table$/);
@@ -221,6 +269,357 @@ test("the table is one tab away", async ({ page, gui }) => {
   await page.reload();
   await expect(componentRow(page, "Controller").getByRole("gridcell").nth(0)).toHaveText("0");
   await expect(page).toHaveURL(/\?view=table$/);
+});
+
+test("a path dragged over in the Table tab is selected, and opens no component, where a click on its row does", async ({
+  page,
+  gui,
+}) => {
+  // 16:M21: a press on a row turned text selection off on it, and the drag's press opened the
+  // component, so no path in a table could be copied.
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Table" }).click();
+  const path = componentRow(page, "Controller").locator(".path span");
+  await expect(path).toHaveText("components/controller.ddd.json");
+  expect(await draggedAcross(page, path)).toBe("components/controller.ddd.json");
+  await expect(page).toHaveURL(/\?view=table$/);
+  await path.click();
+  await expect(page.getByRole("heading", { name: "Controller", level: 1 })).toBeVisible();
+});
+
+test("a row followed from the keyboard opens its page with the focus on its heading, and Back the page before with its own", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Table" }).click();
+  await componentRow(page, "Controller").focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("heading", { name: "Controller", level: 1 })).toBeFocused();
+  // The keyboard goes on from the page's top: its first control, not the masthead's.
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "Add a declaration" })).toBeFocused();
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: "DemoDevice", level: 1 })).toBeFocused();
+});
+
+test("a tab, the masthead's Projects and a grid's way back put the focus on the heading of the page they open", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Units" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\?view=units$/);
+  await expect(page.getByRole("heading", { name: "DemoDevice", level: 1 })).toBeFocused();
+  // A row selected is no change of page: the focus stays on it as its panel opens.
+  const row = page.getByRole("grid", { name: "Units" }).getByRole("row", { name: /Hz/ });
+  await row.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("complementary", { name: "Hz" })).toBeVisible();
+  await expect(row).toBeFocused();
+
+  await openValues(page, gui.address, "MapA");
+  await expect(page.getByRole("heading", { name: "MapA", level: 1 })).toBeFocused();
+  await page.getByRole("button", { name: "Back to Controller" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("heading", { name: "Controller", level: 1 })).toBeFocused();
+
+  await page.getByRole("button", { name: "Projects" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("heading", { name: "Open a project", level: 1 })).toBeFocused();
+});
+
+test("every page is titled by its name and the project's", async ({ page, gui }) => {
+  await page.goto(gui.address);
+  await expect(page).toHaveTitle("Graph · DemoDevice · ddd gui");
+  await page.getByRole("link", { name: "Units" }).click();
+  await expect(page).toHaveTitle("Units · DemoDevice · ddd gui");
+  await page.getByRole("link", { name: "Table" }).click();
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await expect(page).toHaveTitle("Controller · DemoDevice · ddd gui");
+  await openValues(page, gui.address, "MapA");
+  await expect(page).toHaveTitle("MapA · Controller · DemoDevice · ddd gui");
+  await page.getByRole("button", { name: "Projects" }).click();
+  await expect(page).toHaveTitle("Open a project · ddd gui");
+});
+
+test("a page's heading drawn once its file is read takes the focus then, unless a key was pressed meanwhile", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Table" }).click();
+  const reading = page.getByText("Reading the file…");
+  let release = await held(page, "/api/file");
+  try {
+    await componentRow(page, "Controller").focus();
+    await page.keyboard.press("Enter");
+    await expect(reading).toBeVisible();
+  } finally {
+    release();
+  }
+  await expect(page.getByRole("heading", { name: "Controller", level: 1 })).toBeFocused();
+
+  // The reader in the masthead's go-to, a key pressed there while SensorHub's file is read: the
+  // heading drawn after leaves the focus where the reader has it.
+  await page.goBack();
+  const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+  release = await held(page, "/api/file");
+  try {
+    await componentRow(page, "SensorHub").focus();
+    await page.keyboard.press("Enter");
+    await expect(reading).toBeVisible();
+    await goTo.focus();
+    await page.keyboard.press("Shift");
+  } finally {
+    release();
+  }
+  await expect(page.getByRole("heading", { name: "SensorHub", level: 1 })).toBeVisible();
+  // Two frames on, the heading's own effects have run.
+  await page.evaluate(
+    () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+  );
+  await expect(goTo).toBeFocused();
+});
+
+/**
+ * A change of page whose panel is drawn after the page (16:I13, ruling B11-41): GainA's panel on
+ * the Graph links to Gain_t, the scalar type giving it its unit, on the Types tab, which draws its
+ * table and the type's panel once the project's types are read. The page's heading holds the focus
+ * meanwhile, and the type's panel takes it as it is drawn.
+ */
+test("a type a panel links to takes the focus once its panel is drawn, the page's heading holding it meanwhile", async ({
+  page,
+  copiedGui,
+}) => {
+  const gui = await copiedGui("demo", namingAScalarType);
+  await page.goto(gui.address);
+  const graph = new URL(page.url());
+  graph.pathname = "/project";
+  graph.search = "?variable=GainA";
+  await page.goto(graph.href);
+  const link = page
+    .getByRole("complementary", { name: "GainA" })
+    .getByRole("link", { name: "Gain_t" })
+    .first();
+  await expect(link).toBeVisible();
+  const release = await held(page, "/api/types");
+  try {
+    await link.click();
+    await expect(page.getByText("Reading the project's types…")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "DemoDevice", level: 1 })).toBeFocused();
+  } finally {
+    release();
+  }
+  await expect(
+    page
+      .getByRole("complementary", { name: "Gain_t" })
+      .getByRole("heading", { name: "Gain_t", level: 2 }),
+  ).toBeFocused();
+});
+
+/**
+ * The page scrolled by the reader as a change of page opens a panel (16:M9): the go-to opens
+ * ParameterA beside Controller's declarations in a window 1000 by 420, its panel still reading its
+ * variable, and the reader scrolls the page down past the panel's heading, by the wheel or by a
+ * key. The panel, read and drawn taller, leaves the page where the reader scrolled it: only what
+ * the page itself moved is scrolled back to the panel.
+ */
+for (const way of ["wheel", "key"] as const) {
+  test(`a page the reader scrolls by the ${way} as the go-to opens a panel stays where it is scrolled`, async ({
+    page,
+    gui,
+  }) => {
+    await page.setViewportSize({ width: 1000, height: 420 });
+    await page.goto(gui.address);
+    const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+    await expect(goTo).toBeEnabled();
+    await goTo.pressSequentially("ParameterA");
+    await expect(page.getByRole("option", { name: "ParameterA" })).toBeVisible();
+    const panel = page.getByRole("complementary", { name: "ParameterA" });
+    const release = await held(page, "/api/variable");
+    let scrolled = 0;
+    try {
+      await goTo.press("Enter");
+      await expect(panel.getByText("Reading ParameterA…")).toBeVisible();
+      if (way === "wheel") {
+        const box = await panel.boundingBox();
+        if (box === null) throw new Error("the panel is not drawn");
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+        await page.mouse.wheel(0, 400);
+      } else {
+        await page.keyboard.press("PageDown");
+      }
+      // Past the panel's heading, the scroll come to rest.
+      const heading = panel.getByRole("heading", { name: "ParameterA", level: 2 });
+      await expect(heading).not.toBeInViewport();
+      await expect
+        .poll(async () => {
+          const before = await page.evaluate(() => window.scrollY);
+          await page.waitForTimeout(100);
+          return (await page.evaluate(() => window.scrollY)) === before;
+        })
+        .toBe(true);
+      scrolled = await page.evaluate(() => window.scrollY);
+    } finally {
+      release();
+    }
+    await expect(panel.getByRole("grid", { name: "Keys of ParameterA" })).toBeVisible();
+    // Two frames on, what the page watches of its own layout has run.
+    await page.evaluate(
+      () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+    );
+    expect(await page.evaluate(() => window.scrollY)).toBe(scrolled);
+  });
+}
+
+/**
+ * A focus moved by no key and no pointer once a change of page's panel has read (16:I13, ruling
+ * B11-45): the go-to opens ParameterA beside Controller's declarations in a window 1000 by 420, its
+ * heading in view and focused. An assistive technology moves the focus on to the panel's Remove
+ * button, the page scrolling it into view, and the window then narrows. The focus stays where it
+ * was moved, in view: nothing the change of page left waiting takes it, or the page, back.
+ */
+test("a focus moved by no key and no pointer once a change of page's panel has read stays where it was moved, in view", async ({
+  page,
+  gui,
+}) => {
+  await page.setViewportSize({ width: 1000, height: 420 });
+  await page.goto(gui.address);
+  const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+  await expect(goTo).toBeEnabled();
+  await goTo.pressSequentially("ParameterA");
+  await expect(page.getByRole("option", { name: "ParameterA" })).toBeVisible();
+  await goTo.press("Enter");
+  const panel = page.getByRole("complementary", { name: "ParameterA" });
+  await expect(panel.getByRole("grid", { name: "Keys of ParameterA" })).toBeVisible();
+  await expect(panel.getByRole("heading", { name: "ParameterA", level: 2 })).toBeFocused();
+  const remove = panel.getByRole("button", { name: "Remove from Controller" });
+  await expect(remove).toBeVisible();
+  await remove.focus();
+  await expect(remove).toBeInViewport();
+  await page.setViewportSize({ width: 960, height: 420 });
+  await twoFrames(page);
+  await expect(remove).toBeFocused();
+  await expect(remove).toBeInViewport();
+});
+
+/**
+ * A focus moved by no key and no pointer while a change of page waits for its panel (16:I13,
+ * ruling B11-45): GainA's link to Gain_t opens the Types tab, whose types are held back, the
+ * page's heading holding the focus meanwhile. An assistive technology moves the focus on to the
+ * Units tab: the type's panel, drawn once the types are read, leaves it there.
+ */
+test("a focus moved by no key and no pointer while a type a panel links to is read stays where it was moved", async ({
+  page,
+  copiedGui,
+}) => {
+  const gui = await copiedGui("demo", namingAScalarType);
+  const link = await gainLink(page, gui.address);
+  const units = page.getByRole("link", { name: "Units", exact: true });
+  const release = await held(page, "/api/types");
+  try {
+    await link.click();
+    await expect(page.getByText("Reading the project's types…")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "DemoDevice", level: 1 })).toBeFocused();
+    await units.focus();
+  } finally {
+    release();
+  }
+  await expect(
+    page
+      .getByRole("complementary", { name: "Gain_t" })
+      .getByRole("heading", { name: "Gain_t", level: 2 }),
+  ).toBeVisible();
+  await twoFrames(page);
+  await expect(units).toBeFocused();
+});
+
+/**
+ * A change of page whose panel is drawn past a short wait (16:I13, ruling B11-45): GainA's link
+ * to Gain_t opens the Types tab, the project's types held back longer than the page waits for
+ * them, the page's heading holding the focus meanwhile. The type's panel, drawn at last, leaves the
+ * focus there: what the change asked for is over, and nothing gives the focus again once the
+ * reader may be reading on.
+ */
+test("a type a panel links to, drawn past a short wait, leaves the focus on the page's heading that held it", async ({
+  page,
+  copiedGui,
+}) => {
+  const gui = await copiedGui("demo", namingAScalarType);
+  const link = await gainLink(page, gui.address);
+  const heading = page.getByRole("heading", { name: "DemoDevice", level: 1 });
+  const release = await held(page, "/api/types");
+  try {
+    await link.click();
+    await expect(page.getByText("Reading the project's types…")).toBeVisible();
+    await expect(heading).toBeFocused();
+    await page.waitForTimeout(PAST_THE_WAITS);
+  } finally {
+    release();
+  }
+  await expect(
+    page
+      .getByRole("complementary", { name: "Gain_t" })
+      .getByRole("heading", { name: "Gain_t", level: 2 }),
+  ).toBeVisible();
+  await twoFrames(page);
+  await expect(heading).toBeFocused();
+});
+
+/**
+ * The page scrolled by no wheel, no key and no pointer past a short wait after a change of page's
+ * panel has read (16:M9, ruling B11-45): the go-to opens ParameterA beside Controller's
+ * declarations in a window 1000 by 420, its heading in view. Later, as a screen reader's own
+ * cursor carries the page on, the page is scrolled past the panel's heading, and the window then
+ * narrows. The page stays where it was scrolled: the watch that scrolls the panel into view as its
+ * page settles is over.
+ */
+test("a page scrolled by no wheel, key or pointer past a short wait after a change of page's panel has read stays where it is scrolled", async ({
+  page,
+  gui,
+}) => {
+  await page.setViewportSize({ width: 1000, height: 420 });
+  await page.goto(gui.address);
+  const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+  await expect(goTo).toBeEnabled();
+  await goTo.pressSequentially("ParameterA");
+  await expect(page.getByRole("option", { name: "ParameterA" })).toBeVisible();
+  await goTo.press("Enter");
+  const panel = page.getByRole("complementary", { name: "ParameterA" });
+  const heading = panel.getByRole("heading", { name: "ParameterA", level: 2 });
+  await expect(panel.getByRole("grid", { name: "Keys of ParameterA" })).toBeVisible();
+  await expect(heading).toBeFocused();
+  await expect(heading).toBeInViewport();
+  await page.waitForTimeout(PAST_THE_WAITS);
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect(heading).not.toBeInViewport();
+  await page.setViewportSize({ width: 960, height: 420 });
+  await twoFrames(page);
+  await expect(heading).not.toBeInViewport();
+});
+
+/** What the Graph and the Table say of a project that includes no component (16:M13). */
+const NEW_FILE =
+  "This project includes no component yet: New file, on the Files tab, writes one and includes it.";
+
+test("a project that includes no component points at New file from its table", async ({
+  page,
+  copiedGui,
+}) => {
+  const gui = await copiedGui("demo", includesNothing);
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Table", exact: true }).click();
+  await expect(page.getByText("0 errors, 0 warnings", { exact: true })).toBeVisible();
+  const line = page.getByText("This project includes no component yet:");
+  await expect(line).toHaveText(NEW_FILE);
+  // The table stays in the page as it was while nothing is typed in its filter (`tableDrawn`): a
+  // table with no row, whose box stands nothing high.
+  await expect(page.getByRole("grid", { name: "Components" })).toHaveCount(1);
+  await line.getByRole("link", { name: "New file", exact: true }).click();
+  await expect(page).toHaveURL(/\/project\?view=files$/);
+  await expect(page.getByRole("button", { name: "New file", exact: true })).toBeVisible();
 });
 
 test("a dragged module stays where it was put after a revision, and Tidy puts it back", async ({
@@ -256,4 +655,130 @@ test("a dragged module stays where it was put after a revision, and Tidy puts it
   await expect
     .poll(() => controller.evaluate((node) => (node as HTMLElement).style.transform))
     .toBe(original);
+});
+
+/**
+ * The masthead's go-to (16:I14): its list opens on the first key, saying it is finding names until
+ * they come from the server, and that none matches where none does; Escape empties it. `ValueA`,
+ * which Controller - the component the project lists first - reads and SensorHub produces, typed
+ * key by key, is listed with its kind and its producer, and Enter opens it on SensorHub's page, its
+ * panel open.
+ */
+test("the masthead's go-to opens a variable on the page of the component producing it", async ({
+  page,
+  gui,
+}) => {
+  // Every text the go-to asks the server for: never the empty one, which the field holds before
+  // anything is typed and again once a name is gone to.
+  const asked: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/names") asked.push(url.searchParams.get("text") ?? "");
+  });
+  await page.goto(gui.address);
+  const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+  await expect(goTo).toBeEnabled();
+  const list = page.getByRole("listbox");
+  const options = list.getByRole("option");
+  const release = await held(page, "/api/names");
+  try {
+    await goTo.pressSequentially("V");
+    // React Aria draws what an empty list says as its one row.
+    await expect(options).toHaveText(["Finding names…"]);
+  } finally {
+    release();
+  }
+  // Every name holding a v, by name: CurveA first.
+  await expect(options.first()).toHaveAccessibleName("CurveA");
+  await goTo.pressSequentially("alueZ");
+  await expect(options).toHaveText(["no variable matches"]);
+  await goTo.press("Escape");
+  await expect(goTo).toHaveValue("");
+
+  await goTo.pressSequentially("ValueA");
+  await expect(options).toHaveCount(1);
+  await expect(options.first()).toHaveAccessibleName("ValueA");
+  await expect(options.first()).toHaveAccessibleDescription("measurement in SensorHub");
+  await goTo.press("Enter");
+  await expect(page).toHaveURL(/\/component\?file=[^&]*sensor_hub\.ddd\.json&variable=ValueA$/);
+  await expect(page.getByRole("heading", { name: "SensorHub", level: 1 })).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "ValueA" })).toBeVisible();
+  await expect(goTo).toHaveValue("");
+  expect(asked).toContain("ValueA");
+  expect(asked).not.toContain("");
+});
+
+/**
+ * A name only a file that did not load declares is in no index (B11-28): the go-to's list says no
+ * variable of a file that loaded matches, and names the file, rather than that no variable does -
+ * as a removal's sentence says it (16:I10). ParameterA is Controller's own calibration.
+ */
+test("the masthead's go-to says no variable of a file that loaded matches while a file did not load", async ({
+  page,
+  gui,
+}) => {
+  const path = join(gui.directory, CONTROLLER);
+  const bytes = readFileSync(path);
+  writeFileSync(path, bytes.subarray(0, Math.floor(bytes.length / 2)));
+  await page.goto(gui.address);
+  // The banner under the masthead says it once the revision reading the cut file has landed.
+  await expect(page.getByRole("status").filter({ hasText: "project's checks" })).toHaveText(
+    "controller.ddd.json did not load, so the project's checks wait until it does, and the pages " +
+      "show what the files that loaded declare.",
+  );
+  const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+  await goTo.pressSequentially("ParameterA");
+  await expect(page.getByRole("listbox").getByRole("option")).toHaveText([
+    "no variable of a file that loaded matches, and controller.ddd.json did not load",
+  ]);
+});
+
+/**
+ * A project the analysis could not index (16:I14): the go-to says why under its field, in the
+ * server's words, rather than listing nothing as though no name held the text.
+ */
+test("the masthead's go-to says why a project it cannot search lists no name", async ({
+  page,
+  copiedGui,
+}) => {
+  const gui = await copiedGui("demo", (directory) => {
+    const description = { project: { name: "DemoDevice", includes: 3 } };
+    writeFileSync(join(directory, "demo.ddd.json"), JSON.stringify(description), "utf8");
+  });
+  await page.goto(gui.address);
+  const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+  await expect(goTo).toBeEnabled();
+  await goTo.pressSequentially("Value");
+  await expect(goTo).toHaveAccessibleDescription(
+    "demo.ddd.json did not load, so no variable of the project can be found",
+  );
+  await expect(page.getByRole("listbox")).toHaveCount(0);
+});
+
+/**
+ * The go-to stands in the masthead from the session's answer, as the project's button does, drawn
+ * disabled until the project's first analysis lands, whose index it asks names of (16:I14). Drawn
+ * only then, it joined the row as that analysis landed, and moved Projects and the project's button
+ * by its width: a press made on Projects in that moment landed on the go-to's field.
+ */
+test("Projects keeps its place in the masthead as the project's first analysis lands", async ({
+  page,
+  gui,
+}) => {
+  const masthead = page.getByRole("banner");
+  const projects = masthead.getByRole("button", { name: "Projects", exact: true });
+  const goTo = masthead.getByRole("combobox", { name: "Go to a variable" });
+  // The page's first ask of the state held: the session has answered, and no analysis has landed.
+  const release = await held(page, "/api/state");
+  let before: Awaited<ReturnType<typeof projects.boundingBox>> = null;
+  try {
+    await page.goto(gui.address);
+    await expect(masthead.getByRole("button", { name: "DemoDevice" })).toBeVisible();
+    before = await projects.boundingBox();
+  } finally {
+    release();
+  }
+  await expect(goTo).toBeEnabled();
+  expect(before).not.toBeNull();
+  expect(await projects.boundingBox()).toEqual(before);
 });

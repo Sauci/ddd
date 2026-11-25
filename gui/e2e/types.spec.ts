@@ -185,6 +185,30 @@ function entryOf(directory: string, name: string): Record<string, unknown> {
   return entry;
 }
 
+/** A rename's plan on its way (16:M17): the panel says so where its consequence will stand, and
+ * says the consequence once the plan has come, held until then. */
+test("a type's rename says it is planning while its plan is on its way", async ({
+  page,
+  structuresGui,
+}) => {
+  await page.goto(structuresGui.address);
+  await page.getByRole("link", { name: "Types" }).click();
+  await page.getByRole("row", { name: "Sensor_t", exact: true }).click();
+  const panel = page.getByRole("complementary", { name: "Sensor_t" });
+
+  const release = await held(page, "/api/type-plan");
+  try {
+    await panel.getByRole("textbox", { name: "Rename Sensor_t to" }).fill("Probe_t");
+    await expect(panel.getByText("Planning…", { exact: true })).toBeVisible();
+  } finally {
+    release();
+  }
+  await expect(
+    panel.getByText("Changes 3 files: monitoring.ddd.json, sensing.ddd.json, types.ddd.json"),
+  ).toBeVisible();
+  await expect(panel.getByText("Planning…")).toHaveCount(0);
+});
+
 test("text typed past a type's chosen unit offers no Apply for the earlier one, until it is taken", async ({
   page,
   structuresGui,
@@ -239,6 +263,74 @@ test("a type's range is settled from its two fields, and written", async ({
     .toEqual({ ...before, limits: { min: -40, max: 120 } });
   await expect(limits).toContainText("-40 … 120");
 });
+
+test("a type's range that is no range says so under the chooser, and offers no Apply", async ({
+  page,
+  structuresGui,
+}) => {
+  // 16:M5 stays closed: a bound that is no number is told, where the list and Apply once went.
+  await page.goto(structuresGui.address);
+  await page.getByRole("link", { name: "Types" }).click();
+  await page.getByRole("row", { name: "Temperature_t", exact: true }).click();
+  const panel = page.getByRole("complementary", { name: "Temperature_t" });
+  await panel.getByRole("row", { name: "Limits", exact: true }).click();
+  const min = panel.getByLabel("Min", { exact: true });
+  await min.click();
+  await min.clear();
+  await min.pressSequentially("abc");
+  const chooser = panel.getByRole("combobox", { name: "Limits of Temperature_t" });
+  await expect(chooser).not.toHaveAccessibleDescription("");
+  await expect(panel.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+});
+
+test("a key row, pressed by the mouse or by Enter, hands the focus to its chooser with the list closed", async ({
+  page,
+  structuresGui,
+}) => {
+  // 16:M6: the keyboard once opened the list over the panel, the mouse gave no focus at all.
+  await page.goto(structuresGui.address);
+  await page.getByRole("link", { name: "Types" }).click();
+  await page.getByRole("row", { name: "Temperature_t", exact: true }).click();
+  const panel = page.getByRole("complementary", { name: "Temperature_t" });
+  const chooser = panel.getByRole("combobox", { name: "Unit of Temperature_t" });
+  const unit = panel.getByRole("row", { name: "Unit", exact: true });
+
+  await unit.click();
+  await expect(chooser).toBeFocused();
+  await expect(chooser).toHaveAttribute("aria-expanded", "false");
+
+  const limits = panel.getByRole("row", { name: "Limits", exact: true });
+  await limits.focus();
+  await limits.press("Enter");
+  await expect(panel.getByRole("combobox", { name: "Limits of Temperature_t" })).toBeFocused();
+  await expect(panel.getByRole("combobox", { name: "Limits of Temperature_t" })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
+  await expect(panel.getByRole("textbox", { name: "Rename Temperature_t to" })).toBeVisible();
+});
+
+for (const typed of ["Description", "Rename Temperature_t to"]) {
+  test(`a type's ${typed === "Description" ? "description" : "new name"} typed stays in its field when a key row is chosen`, async ({
+    page,
+    structuresGui,
+  }) => {
+    // 16:M4: the words were dropped without a sound, nothing written, so no undo could bring them
+    // back.
+    const before = entryOf(structuresGui.directory, "Temperature_t");
+    const words = "Warmth_t";
+    await page.goto(structuresGui.address);
+    await page.getByRole("link", { name: "Types" }).click();
+    await page.getByRole("row", { name: "Temperature_t", exact: true }).click();
+    const panel = page.getByRole("complementary", { name: "Temperature_t" });
+    const field = panel.getByRole("textbox", { name: typed, exact: true });
+    await field.fill(words);
+    await panel.getByRole("row", { name: "Unit", exact: true }).click();
+    await expect(panel.getByRole("combobox", { name: "Unit of Temperature_t" })).toBeVisible();
+    await expect(field).toHaveValue(words);
+    expect(entryOf(structuresGui.directory, "Temperature_t")).toEqual(before);
+  });
+}
 
 /** Temperature_t made a uint64 read as it is stored, its limits up to the most a uint64 holds,
  * written as text: as a number here the maximum would already be the double nearest it. */
@@ -696,6 +788,57 @@ test("a type's panel says it is reading the type until it is read", async ({
   await expect(reading).toHaveCount(0);
 });
 
+test("a type's panel whose read of the project's units fails says why, where it said it was reading", async ({
+  page,
+  structuresGui,
+}) => {
+  // The type's own read goes through: the units its chooser lists fail, every one of them, and
+  // nothing else on the Types tab reads them.
+  const failed = await failing(page, "/api/units", "http");
+  await page.goto(structuresGui.address);
+  await page.getByRole("link", { name: "Types", exact: true }).click();
+  const row = page.getByRole("row", { name: "Temperature_t", exact: true });
+  await row.click();
+
+  const panel = page.getByRole("complementary", { name: "Temperature_t", exact: true });
+  await expect(panel.getByRole("heading", { name: "Temperature_t" })).toBeVisible();
+  await expect(panel.getByRole("alert")).toHaveText(SERVER_FAILED);
+  await expect(panel.getByText("Reading Temperature_t…")).toHaveCount(0);
+  await expect(row).toBeVisible();
+  expect(failed()).toBeGreaterThanOrEqual(1);
+});
+
+test("an apply made from a type's panel whose plan the server fails on when asked again offers nothing to press beside the refusal", async ({
+  page,
+  structuresGui,
+}) => {
+  await page.goto(structuresGui.address);
+  await page.getByRole("link", { name: "Types", exact: true }).click();
+  await page.getByRole("row", { name: "Temperature_t", exact: true }).click();
+  const panel = page.getByRole("complementary", { name: "Temperature_t", exact: true });
+  const field = panel
+    .getByRole("region", { name: "Description" })
+    .getByRole("textbox", { name: "Description" });
+  await field.fill("A temperature the server will not plan again");
+  const plan = panel.getByText("Changes 1 file: types.ddd.json", { exact: true });
+  await expect(plan).toBeVisible();
+
+  // From here on the server fails the Apply, and the plan the panel asks again once the Apply is
+  // answered: the query keeps the plan it had, whose fingerprints the server would refuse.
+  const edits = await failing(page, "/api/edit", "http");
+  const plans = await failing(page, "/api/type-plan", "http");
+  await panel.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect(panel.getByRole("status")).toHaveText(`The change was refused: ${SERVER_FAILED}`);
+  await expect.poll(plans).toBeGreaterThanOrEqual(1);
+  // Beside its plan's own refusal, a write offers nothing to apply (`offerShown`), the refusal of
+  // the Apply said over it - once every query the Apply asked again has answered too.
+  await expect(panel.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+  await expect(plan).toHaveCount(0);
+  await expect(field).toBeEnabled();
+  await expect(panel.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+  expect(edits()).toBe(1);
+});
+
 test("a type's panel whose type fails to load says why, beside the table", async ({
   page,
   structuresGui,
@@ -739,7 +882,8 @@ test("a types file saved half-written is named above the table, whatever it decl
   // only say that whatever was declared there is missing, not that its own types are.
   const whole = readFileSync(path);
   writeFileSync(path, whole.subarray(0, Math.floor(whole.length / 2)));
-  const banner = page.getByRole("status").filter({ hasText: "did not load" });
+  // The tab's own, beside the banner under the masthead, which names the file too (16:I9).
+  const banner = page.getByRole("status").filter({ hasText: "not listed" });
   await expect(banner).toHaveText(
     "types.ddd.json did not load, so whatever is declared there is not listed.",
   );
@@ -774,7 +918,8 @@ test("a types file that parses but breaks its model is named above the table, it
   );
   if (after === before) throw new Error(`${path} no longer gives Temperature_t a uint16 datatype`);
   writeFileSync(path, after, "utf8");
-  const banner = page.getByRole("status").filter({ hasText: "did not load" });
+  // The tab's own, beside the banner under the masthead, which names the file too (16:I9).
+  const banner = page.getByRole("status").filter({ hasText: "not listed" });
   await expect(banner).toHaveText(
     "types.ddd.json did not load, so the types declared there are not listed.",
   );
@@ -901,7 +1046,7 @@ test("a finding in a type's panel leads to the unit it names, on the Units tab",
   );
 });
 
-test("an apply made from a type's panel that the server fails on says so in its words, is withdrawn with what was typed kept, and is sent once", async ({
+test("an apply made from a type's panel that the server fails on says so in its words, over the plan asked again, with what was typed kept, and is sent once", async ({
   page,
   structuresGui,
 }) => {
@@ -921,10 +1066,13 @@ test("an apply made from a type's panel that the server fails on says so in its 
   const failed = await failing(page, "/api/edit", "http");
   await panel.getByRole("button", { name: "Apply to 1 file" }).click();
   // The server's own words behind `refusalOf`'s prefix (`panel-refusal`, TypePanelView).
-  await expect(panel.getByRole("status")).toHaveText(`The change was refused: ${SERVER_FAILED}`);
-  // The refusal stands where the plan was: nothing is offered to apply until the reader chooses
-  // again, and what was typed is kept.
-  await expect(panel.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+  const refused = panel.getByRole("status");
+  await expect(refused).toHaveText(`The change was refused: ${SERVER_FAILED}`);
+  // Under the sentence, held until the reader chooses again, the plan asked again once the Apply
+  // was answered, and its Apply (`offerShown`), as every panel offers it; what was typed is kept.
+  await expect(panel.getByText("Changes 1 file: types.ddd.json", { exact: true })).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Apply to 1 file" })).toBeEnabled();
+  await expect(refused).toHaveText(`The change was refused: ${SERVER_FAILED}`);
   await expect(field).toHaveValue(description);
   // A guard against a write by another path: the POST is answered by `failing`, not the server.
   expect(entryOf(structuresGui.directory, "Temperature_t")).toEqual(before);

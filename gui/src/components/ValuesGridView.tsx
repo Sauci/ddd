@@ -12,6 +12,8 @@ import {
 } from "react";
 import { TableStateContext } from "react-aria-components";
 import type { PlanReply, ValuesReply } from "../api/types";
+import { focusCameByTab } from "../app/focus";
+import type { WrittenLine } from "../lib/announcing";
 import { keptByCell } from "../lib/cellKeys";
 import { distinctFindings, keyedFindings } from "../lib/findings";
 import { cellId, takesFocusedCell } from "../lib/gridCells";
@@ -25,7 +27,9 @@ import {
   cornerLabel,
   limitsLine,
   noGridNote,
+  nothingPasted,
   oneCell,
+  pastedValue,
   pasteHint,
   pastes,
   plotDrawn,
@@ -37,13 +41,14 @@ import {
   wanted,
 } from "../lib/objectValues";
 import { commaAsked, offerName, offerSentence, typedOffer } from "../lib/typedCells";
-import { consequence, NO_UNIT, shownChanges } from "../lib/units";
+import { consequence, NO_UNIT, PLANNING, shownChanges } from "../lib/units";
 import { shortValue } from "../lib/variableKeys";
 import { Button } from "../ui/Button";
-import { Chip } from "../ui/Chip";
+import { PageHeading } from "../ui/PageHeading";
 import { Cell, Column, Row, Table, TableBody, TableHeader } from "../ui/Table";
 import { UpdatingNote, UpdatingStatus } from "../ui/UpdatingNote";
 import { Changes } from "./Changes";
+import { FindingChip } from "./FindingChip";
 import { ValuesPlotView } from "./ValuesPlotView";
 
 export interface ValuesGridViewProps {
@@ -57,6 +62,9 @@ export interface ValuesGridViewProps {
    * strip where it always is") rather than in a row of its own - omitted where nothing hosts one,
    * which is every story but the ones about undoing. */
   undoStrip?: ReactNode;
+  /** What the heading says the page last wrote (`useWritten`, 16:I13): the cells or the table
+   * applied, or an undo putting them back - omitted where nothing was, every story's. */
+  written?: WrittenLine | null;
   /** Drawn under the heading, over the grid: the screen's banner saying its read of the next
    * revision failed, the grid drawn being the last one read (`useKept`) - omitted where nothing
    * failed, which is every story. */
@@ -67,11 +75,18 @@ export interface ValuesGridViewProps {
    * owns the offer, or nothing has been typed. */
   typed: readonly TypedCell[];
   plan: PlanReply | null;
+  /** Whether the offer's plan is asked for and has not come: the offer then says `PLANNING`
+   * where its consequence stands, while it says no refusal (`planning`, lib/units.ts). */
+  planning?: boolean;
   refusal: string | null;
   /** The value of a pasted block whose comma could be a decimal point or a thousands separator,
    * which is what the block is refused for (`Pasted.ambiguous`); `null` otherwise, and while no
    * block is pasted. */
   pasteAmbiguous?: string | null;
+  /** Whether the block pasted had its first row and column taken for a header, which is not
+   * written (`Pasted.header`): the sentence over its preview says so (decision 15.1). `false`
+   * while no block is pasted. */
+  pasteHeader: boolean;
   /** The reader's answer to what such a comma means, typed or pasted: one press. */
   onComma?: (meaning: CommaMeaning) => void;
   changesShown: boolean;
@@ -82,7 +97,8 @@ export interface ValuesGridViewProps {
   onChangesShown: (shown: boolean) => void;
   onApply: () => void;
   onBack: () => void;
-  /** The clipboard's text, from a paste anywhere in the grid. The component reads the event and
+  /** The clipboard's text, from a paste anywhere in the grid - but one value pasted into a cell,
+   * which sets that cell as typed (`onTyped`, `pastedValue`). The component reads the event and
    * hands over its text; what the text means is the screen's and `pasted`'s business. */
   onPaste: (text: string) => void;
   /** Whether the findings may be about to change (spec 6): the grid says so where it lists them,
@@ -129,10 +145,13 @@ interface CellFieldProps {
  * thousands beside it (15:M8). A move of the focus draws every field, each reading the table's
  * state for the cell it focuses (`TableStateContext`), and so does a draw of the table. On a grid's
  * first entry the table holds no focused cell and moves the focus of a field
- * to its first row, where the keys that follow go; so a field taking the focus tells the table
- * that its own cell is the focused one, where the table holds none (`gridCells`'
- * `takesFocusedCell`). Where it holds one, its own handling stands: a click sets the clicked cell,
- * and Tab and Shift+Tab give the focus back to the cell it remembers. */
+ * to its first row, where the keys that follow go; and where it holds one, it gives the focus back
+ * to that cell as the focus enters it. So a field taking the focus tells the table that its own
+ * cell is the focused one (`gridCells`' `takesFocusedCell`) - unless Tab brought the focus
+ * (`focusCameByTab`), where the table's own handling stands: Tab and Shift+Tab give the focus back
+ * to the cell it remembers. A field a screen reader or voice control moves the focus to keeps it
+ * (16:C1). One value pasted into the field sets its cell as if typed there (`pastedValue`,
+ * decision 15.2), where anything more is the grid's table. */
 function CellField(props: CellFieldProps) {
   const { reply, row, column, physical, store } = props;
   const key = cellId(row, column);
@@ -151,10 +170,22 @@ function CellField(props: CellFieldProps) {
       disabled={props.disabled}
       onFocus={(event) => {
         const manager = state?.selectionManager;
-        if (manager && takesFocusedCell(manager.focusedKey)) manager.setFocusedKey(key);
+        if (manager && takesFocusedCell(manager.focusedKey, focusCameByTab())) {
+          manager.setFocusedKey(key);
+        }
         props.onFocused(event.currentTarget);
       }}
       onChange={(event) => props.onTyped({ row, column, typed: event.target.value, physical })}
+      // One value is this cell's: the field takes it whole, as its text, and the grid's own
+      // handler around the table, which reads a paste as a table, never sees it. Cancelled, the
+      // browser drops nothing into the field. Anything more goes on to that handler.
+      onPaste={(event) => {
+        const value = pastedValue(event.clipboardData.getData("text/plain"));
+        if (value === null) return;
+        event.preventDefault();
+        event.stopPropagation();
+        props.onTyped({ row, column, typed: value, physical });
+      }}
       // Enter settles what was typed and nothing more: the preview is already below the grid,
       // and spec 5.3 is explicit that no cell writes on its own - only Apply writes. Taken here
       // all the same, so a habit of finishing a number with Enter reaches neither the table's own
@@ -295,7 +326,7 @@ export function ValuesGridView(props: ValuesGridViewProps) {
   // `plan` is still null.
   const offered = typed.length === 0 ? null : typedOffer(typed, reply);
   const refused = offered?.refusal ?? refusal;
-  const sentence = offerSentence(reply, offered, physical);
+  const sentence = offerSentence(reply, offered, physical, props.pasteHeader);
   // The text whose comma could be a decimal point or a thousands separator, typed or pasted: the
   // offer asks which it is, with one press (`commaChoices`).
   const asked = commaAsked(offered, props.pasteAmbiguous ?? null);
@@ -335,26 +366,34 @@ export function ValuesGridView(props: ValuesGridViewProps) {
         // which no table is pasted into (`pastes`). A grid with
         // an apply in flight takes nothing either: every input and Apply are disabled while
         // `busy`, so a cell cannot be typed into, and a paste taken here would be cleared
-        // without a word by that apply's own `onSuccess` the moment it landed.
+        // without a word by that apply's own `onSuccess` the moment it landed. Nor does a paste of
+        // no text at all, nothing or an image alone, which changes nothing - the cell it was
+        // pasted into keeping what was typed there - as no text field takes it (`nothingPasted`).
         //
         // The `busy` half is the one arm of this component nothing pins: a journey would have to
         // paste inside the window an apply is in flight, which it cannot open on purpose, and a
         // test that waited for it would be the race this suite refuses to write. It is left here
         // unguarded by any test on purpose, and said so rather than left to be discovered.
-        if (readOnly !== null || noGrid !== null || !pastes(reply) || busy) return;
+        const text = event.clipboardData.getData("text/plain");
+        if (nothingPasted(text) || readOnly !== null || noGrid !== null || !pastes(reply) || busy) {
+          return;
+        }
         // A cell is a text field: without this the browser also drops the whole block into
-        // whichever one has focus.
+        // whichever one has focus. One value pasted into a cell never reaches here: the cell's
+        // field takes it (`CellField`).
         event.preventDefault();
-        props.onPaste(event.clipboardData.getData("text/plain"));
+        props.onPaste(text);
       }}
     >
       <div className="heading">
-        <h1>{reply.name}</h1>
-        {undoStrip}
+        <PageHeading>{reply.name}</PageHeading>
         <Button variant="link" onPress={props.onBack}>
           Back to {backTo}
         </Button>
-        <UpdatingStatus updating={props.updating === true} />
+        {/* After the way back, which it would shift as it joins the row once an edit is written,
+            and before the status, kept at the row's end for the same reason (16:M23). */}
+        {undoStrip}
+        <UpdatingStatus updating={props.updating === true} written={props.written ?? null} />
       </div>
       {banner}
       <p className="values-meta">{meta}</p>
@@ -409,13 +448,13 @@ export function ValuesGridView(props: ValuesGridViewProps) {
         <ul className="panel-findings">
           {keyedFindings(distinctFindings(reply.findings)).map(([finding, key]) => (
             <li key={key}>
-              <Chip tone={finding.severity === "error" ? "error" : "warning"}>{finding.check}</Chip>{" "}
+              <FindingChip severity={finding.severity} check={finding.check} />{" "}
               <span className="quiet">{finding.message}</span>
             </li>
           ))}
         </ul>
       )}
-      {(refused !== null || plan !== null) && (
+      {(refused !== null || plan !== null || props.planning === true) && (
         // Gated on what there is to show rather than on the cells typed alone: a pasted table
         // owns this same section too, with no cell of its own to name (spec 2: "one edit, one
         // preview, one entry in the undo stack" either way). Held at the window's foot while it
@@ -443,6 +482,9 @@ export function ValuesGridView(props: ValuesGridViewProps) {
                 </Button>
               ))}
             </div>
+          )}
+          {refused === null && plan === null && props.planning === true && (
+            <p className="consequence">{PLANNING}</p>
           )}
           {plan !== null && sentence !== null && (
             // What it sets, and the file it lands in - the way `renameConsequence` folds

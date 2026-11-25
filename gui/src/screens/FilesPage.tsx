@@ -26,12 +26,14 @@ import {
   rowsOf,
 } from "../lib/files";
 import { type FilesHold, filesHoldAfter, filesHoldOf, filesShown } from "../lib/filesHold";
+import { offerShown, refusalOf } from "../lib/refusals";
+import type { Route } from "../lib/route";
 import { planEdit } from "../lib/shared";
 import { planShown } from "../lib/typing";
 import { filesLabel } from "../lib/undo";
+import { planning } from "../lib/units";
 import { ownEdits } from "../state/edits";
 import { Banner } from "../ui/Banner";
-import { refusalOf } from "./UnitPanel";
 
 interface Props {
   state: State | null;
@@ -45,6 +47,9 @@ interface Props {
   onPath: (path: string | undefined) => void;
   /** The server stopped: nothing can be applied. */
   stopped: boolean;
+  /** Following where a row leads - its component's page, its findings, why its file did not load
+   * (16:M20): the route, which the app navigates to. */
+  onOpen: (route: Route) => void;
 }
 
 /** The open project's Files tab (design §2 and §3): the root project's own `includes`, one row per
@@ -58,7 +63,7 @@ interface Props {
  * changed (`filesHoldOf`) and draws the answer with it (`filesShown`) until an answer shows it,
  * the page's own undo puts it back, or an answer of a revision including the edit comes
  * (`filesHoldAfter`). An edit refused holds nothing, and its row stays as it was. */
-export function FilesPage({ state, path, arrived, onPath, stopped }: Props) {
+export function FilesPage({ state, path, arrived, onPath, stopped, onOpen }: Props) {
   const revision = state?.revision;
   const files = useQuery({
     queryKey: ["files", revision],
@@ -85,7 +90,7 @@ export function FilesPage({ state, path, arrived, onPath, stopped }: Props) {
   }
   const reply = filesShown(holding, answer);
   const read = state?.files ?? [];
-  const removal = fileRemoval(rowsOf(reply, read), path, reply.project);
+  const removal = fileRemoval(rowsOf(reply, read), path, reply.project, read);
   const open = (next: "create" | "add") => {
     onPath(undefined);
     setForm(next);
@@ -119,6 +124,7 @@ export function FilesPage({ state, path, arrived, onPath, stopped }: Props) {
             stopped={stopped}
             onClose={() => onPath(undefined)}
             onHeld={setHold}
+            onFollow={onOpen}
           />
         ) : form === "create" ? (
           <NewFile
@@ -191,17 +197,23 @@ function useFilesApply(
 ) {
   const queries = useQueryClient();
   const [refused, setRefused] = useState<string | null>(null);
+  // The plan on screen: the query's own, or, while a revision's is asked, the one the revision
+  // before answered for the same request (`useKept`, the request its question). A revision
+  // reaching the page asks every plan again, and the tab drew no Apply until the plan came, so a
+  // press made in that moment was lost, with no request and no sentence: it is taken now, the plan
+  // on screen posted, applied where its files are as it read them and refused as stale where they
+  // are not. None of a request typed past, nor any once a plan was refused.
+  const onScreen = useKept(plan, JSON.stringify(asked));
   // The plan to offer, and why its own fetch was refused if it was - `planShown`'s own,
   // `lib/typing.ts` (review fix round 1): `null`/`null` while `asked` has not caught up with
-  // `request`, or while `plan`'s answer is an earlier request's kept as a placeholder - never a
-  // plan, nor its own fetch refusal, for text the reader has since typed past.
-  const shown = planShown(asked, request, plan);
+  // `request` - never a plan, nor its own fetch refusal, for text the reader has since typed past.
+  const shown = planShown(asked, request, { ...plan, data: onScreen });
   const apply = useMutation({
     // Answers the plan it posted, and the request it was asked with, beside the edit's own
     // answer: what the tab holds is read off the very plan applied, whatever the query holds by
     // the time the answer comes.
     mutationFn: async () => {
-      const applied = plan.data;
+      const applied = onScreen;
       const edit =
         request === null || applied === undefined
           ? null
@@ -223,12 +235,18 @@ function useFilesApply(
         queries.invalidateQueries({ queryKey: ["files-plan"] }),
       ]),
   });
+  // What the panel offers beside a refusal, the one rule every panel follows (`offerShown`): an
+  // Apply refused said over the plan asked again - it is about an Apply already made, not a plan
+  // still loading, so it is not affected by `shown` - and nothing to apply beside the plan's own
+  // refusal.
+  const offer = offerShown(refused, shown);
   return {
     apply,
-    plan: shown.plan,
-    // An Apply refused takes precedence, as it always did - it is about an Apply already made,
-    // not a plan still loading, so it is not affected by `shown`.
-    refusal: refused ?? shown.refusal,
+    plan: offer.plan,
+    refusal: offer.refusal,
+    /** Whether the plan is on its way (`planning`, lib/units.ts). A removal waiting for the
+     * reader's press draws the press in place of its preview, and says nothing of it. */
+    planning: planning(offer),
     /** The reader chose again: what an earlier Apply was refused for says nothing of this plan. */
     chose: () => setRefused(null),
   };
@@ -270,6 +288,7 @@ function NewFile({
     apply,
     plan: offerPlan,
     refusal,
+    planning: offerPlanning,
     chose,
   } = useFilesApply(request, asked, project, plan, onClose, onHeld);
   return (
@@ -299,7 +318,7 @@ function NewFile({
         setTypedKind(true);
         chose();
       }}
-      offer={{ plan: offerPlan, refusal }}
+      offer={{ plan: offerPlan, refusal, planning: offerPlanning }}
       changesShown={changesShown}
       onChangesShown={setChangesShown}
       onApply={() => apply.mutate()}
@@ -335,6 +354,7 @@ function AddFile({
     apply,
     plan: offerPlan,
     refusal,
+    planning: offerPlanning,
     chose,
   } = useFilesApply(request, asked, project, plan, onClose, onHeld);
   return (
@@ -345,7 +365,7 @@ function AddFile({
         setPath(text);
         chose();
       }}
-      offer={{ plan: offerPlan, refusal }}
+      offer={{ plan: offerPlan, refusal, planning: offerPlanning }}
       changesShown={changesShown}
       onChangesShown={setChangesShown}
       onApply={() => apply.mutate()}
@@ -367,6 +387,7 @@ function RemoveFile({
   stopped,
   onClose,
   onHeld,
+  onFollow,
 }: {
   removal: FileRemoval;
   /** Whether the route is still the one the page was loaded with (`FilesPage`'s own `arrived`). */
@@ -377,6 +398,8 @@ function RemoveFile({
   onClose: () => void;
   /** Applied: the key taken out, whose entries the tab leaves out until its entries do. */
   onHeld: (hold: FilesHold | null) => void;
+  /** Following where the row leads (`FileRemoval.leads`). */
+  onFollow: (to: Route) => void;
 }) {
   const [changesShown, setChangesShown] = useState(false);
   // Whether the reader pressed for the plan of the row the page was loaded with. Kept for as long
@@ -395,13 +418,15 @@ function RemoveFile({
     apply,
     plan: offerPlan,
     refusal,
+    planning: offerPlanning,
   } = useFilesApply(removal.request, requested, project, plan, onClose, onHeld);
   return (
     <RemoveFileView
       removal={removal}
+      onFollow={onFollow}
       project={project}
       waiting={asked ? undefined : () => setPressed(true)}
-      offer={{ plan: offerPlan, refusal }}
+      offer={{ plan: offerPlan, refusal, planning: offerPlanning }}
       changesShown={changesShown}
       onChangesShown={setChangesShown}
       onApply={() => apply.mutate()}

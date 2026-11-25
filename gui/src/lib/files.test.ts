@@ -9,6 +9,7 @@ import type {
 import {
   asksComponentName,
   cellsOf,
+  emptyProjectLine,
   fileAdd,
   fileCreate,
   fileRemoval,
@@ -17,9 +18,12 @@ import {
   rowsOf,
   selectedIndices,
 } from "./files";
+import { loadBanner } from "./unloaded";
 
 const PROJECT = "C:/work/demo/demo.ddd.json";
 const A = "C:/work/demo/a.ddd.json";
+/** Where the panel of a row whose file is the component `A`, loaded, leads first (16:M20). */
+const OPEN_A = { text: "Open A", to: { page: "component", file: A } };
 const SENSORS_X = "C:/work/demo/sensors/x.ddd.json";
 const SENSORS_Y = "C:/work/demo/sensors/y.ddd.json";
 
@@ -434,33 +438,36 @@ describe("fileRemoval", () => {
   const rows = rowsOf(reply([literal, pattern]), [sourceFile()]);
 
   test("no row selected asks nothing", () => {
-    expect(fileRemoval(rows, undefined, PROJECT)).toBeNull();
+    expect(fileRemoval(rows, undefined, PROJECT, [])).toBeNull();
   });
 
   test("a key no row carries asks nothing, and opens no panel", () => {
-    expect(fileRemoval(rows, "C:/work/demo/sub/nested.ddd.json", PROJECT)).toBeNull();
+    expect(fileRemoval(rows, "C:/work/demo/sub/nested.ddd.json", PROJECT, [])).toBeNull();
   });
 
   test("a literal entry's row is asked for by its key, and named as its entry is spelled", () => {
-    expect(fileRemoval(rows, A, PROJECT)).toEqual({
+    expect(fileRemoval(rows, A, PROJECT, [])).toEqual({
       title: "./a.ddd.json",
       request: { action: "remove", path: A },
+      leads: [OPEN_A],
     });
   });
 
   test("a pattern's own row is asked for by the pattern's key, to take it out whole", () => {
-    expect(fileRemoval(rows, "C:/work/demo/sensors/*.ddd.json", PROJECT)).toEqual({
+    expect(fileRemoval(rows, "C:/work/demo/sensors/*.ddd.json", PROJECT, [])).toEqual({
       title: "sensors/*.ddd.json",
       request: { action: "remove", path: "C:/work/demo/sensors/*.ddd.json" },
+      leads: [],
     });
   });
 
   test("a pattern's matched file is asked for by its own path, for the server to refuse", () => {
     // `remove_plan` refuses a file no entry of its own names, naming the pattern: asked with the
     // child's own key, the refusal reaches the reader in the server's words.
-    expect(fileRemoval(rows, SENSORS_X, PROJECT)).toEqual({
+    expect(fileRemoval(rows, SENSORS_X, PROJECT, [])).toEqual({
       title: "sensors/x.ddd.json",
       request: { action: "remove", path: SENSORS_X },
+      leads: [],
     });
   });
 
@@ -477,9 +484,10 @@ describe("fileRemoval", () => {
     });
     const shared = rowsOf(reply([literal, catchAll]), [sourceFile()]);
     expect(selectedIndices(shared, A)).toEqual([0, 2]);
-    expect(fileRemoval(shared, A, PROJECT)).toEqual({
+    expect(fileRemoval(shared, A, PROJECT, [sourceFile()])).toEqual({
       title: "./a.ddd.json",
       request: { action: "remove", path: A },
+      leads: [OPEN_A],
     });
   });
 
@@ -496,10 +504,93 @@ describe("fileRemoval", () => {
     const later = entry({ index: 1, entry: "./a.ddd.json", names: true, key: A, files: [A] });
     const shared = rowsOf(reply([catchAll, later]), [sourceFile()]);
     expect(selectedIndices(shared, A)).toEqual([1, 2]);
-    expect(fileRemoval(shared, A, PROJECT)).toEqual({
+    expect(fileRemoval(shared, A, PROJECT, [sourceFile()])).toEqual({
       title: "a.ddd.json",
       request: { action: "remove", path: A },
+      leads: [OPEN_A],
     });
+  });
+});
+
+describe("where a row's panel leads (16:M20)", () => {
+  /** The panel of the row `a.ddd.json` names, its file as the state holds it. */
+  const leadsOfA = (file: SourceFile) =>
+    fileRemoval(rowsOf(reply([entry()]), [file]), A, PROJECT, [file])?.leads;
+  /** The Findings tab, asking for the findings that hold a.ddd.json's own name. */
+  const findingsOfA = { page: "project", view: "findings", text: "a.ddd.json" };
+
+  test("to its component's page, where its file is a component that loaded", () => {
+    expect(leadsOfA(sourceFile())).toEqual([OPEN_A]);
+    // Named by its file where the state holds no name of its component's.
+    expect(leadsOfA(sourceFile({ name: null }))).toEqual([
+      { text: "Open a.ddd.json", to: { page: "component", file: A } },
+    ]);
+  });
+
+  test("and to its findings, where its file has any: the Findings tab asked for its name", () => {
+    expect(leadsOfA(sourceFile({ findings: { error: 0, warning: 1, info: 2 } }))).toEqual([
+      OPEN_A,
+      { text: "Show its findings", to: findingsOfA },
+    ]);
+    // A file of another kind has no page of its own: its findings alone.
+    const units = sourceFile({
+      kind: "units",
+      name: null,
+      findings: { error: 0, warning: 0, info: 1 },
+    });
+    expect(leadsOfA(units)).toEqual([{ text: "Show its findings", to: findingsOfA }]);
+  });
+
+  test("to why, where its file did not load: its findings, the error saying why among them", () => {
+    // Led where the banner under the masthead leads it (`loadBanner`, lib/unloaded.ts): its kind
+    // read or not, a file that did not load has no page to draw.
+    const broken = { loaded: false, findings: { error: 1, warning: 0, info: 0 } };
+    const expected = [{ text: "Why it did not load", to: findingsOfA }];
+    expect(leadsOfA(sourceFile({ ...broken, kind: "unknown", name: null }))).toEqual(expected);
+    expect(leadsOfA(sourceFile({ ...broken, kind: "component" }))).toEqual(expected);
+    expect(
+      loadBanner(
+        PROJECT,
+        { files: [sourceFile({ ...broken, kind: "unknown", name: null })] },
+        null,
+        [],
+        false,
+      )?.lines[0]?.[0],
+    ).toEqual({ text: "a.ddd.json", to: findingsOfA });
+  });
+
+  test("to the name the File column draws its file by, where another of the project has its name", () => {
+    // Two files of one name lead to their own findings, not to both (16:M15).
+    const other = sourceFile({ path: "C:/work/demo/other/a.ddd.json" });
+    const broken = sourceFile({ loaded: false, findings: { error: 1, warning: 0, info: 0 } });
+    const files = [broken, other];
+    const asked = fileRemoval(rowsOf(reply([entry()]), files), A, PROJECT, files)?.leads;
+    expect(asked).toEqual([
+      {
+        text: "Why it did not load",
+        to: { page: "project", view: "findings", text: "demo/a.ddd.json" },
+      },
+    ]);
+  });
+
+  test("nowhere, for a file that loaded with nothing filed on it and no page of its own", () => {
+    expect(leadsOfA(sourceFile({ kind: "constants", name: null }))).toEqual([]);
+  });
+
+  test("nowhere, for a row of no file the analysis read: its panel offers its removal alone", () => {
+    const nothing = entry({
+      entry: "missing.ddd.json",
+      names: false,
+      key: "C:/work/demo/missing.ddd.json",
+      files: [],
+      findings: 1,
+    });
+    expect(
+      fileRemoval(rowsOf(reply([nothing]), []), "C:/work/demo/missing.ddd.json", PROJECT, [])
+        ?.leads,
+    ).toEqual([]);
+    // A file the revision did not read: the row names it, and nothing is known of it yet.
+    expect(fileRemoval(rowsOf(reply([entry()]), []), A, PROJECT, [])?.leads).toEqual([]);
   });
 });
 
@@ -629,5 +720,50 @@ describe("previewOf", () => {
     // `kept_by` is always `None` for an add and a create (`FilesPlanReply.kept_by`'s own doc), and
     // the sentence needs the file a removal was asked with, which neither has.
     expect(previewOf(plan({ kept_by: "*.ddd.json" }), PROJECT, null).kept).toBeNull();
+  });
+});
+
+describe("emptyProjectLine", () => {
+  /** A file of the state, loaded unless said otherwise. */
+  const listed = (path: string, kind: string, loaded = true): SourceFile => ({
+    path,
+    kind,
+    name: null,
+    loaded,
+    fingerprint: "0".repeat(64),
+    findings: { error: loaded ? 0 : 1, warning: 0, info: 0 },
+  });
+  const NEW_FILE = [
+    "This project includes no component yet: ",
+    { text: "New file", to: { page: "project", view: "files" } },
+    ", on the Files tab, writes one and includes it.",
+  ];
+
+  test("points a project that includes no component at New file, on the Files tab", () => {
+    // 16:M13: its Graph an empty grid and its Table a header, with no word of what to do next.
+    expect(emptyProjectLine([listed(PROJECT, "project")])).toEqual(NEW_FILE);
+    // Its units, its types and its plugins draw nothing on the Graph or the Table either.
+    expect(
+      emptyProjectLine([
+        listed(PROJECT, "project"),
+        listed(A, "units"),
+        listed("C:/work/demo/p.py", "plugin"),
+      ]),
+    ).toEqual(NEW_FILE);
+  });
+
+  test("says nothing of a project that includes one, loaded or not", () => {
+    expect(emptyProjectLine([listed(PROJECT, "project"), listed(A, "component")])).toBeNull();
+    // A component that parses and fails its shape is still a component, drawn as not loaded.
+    expect(
+      emptyProjectLine([listed(PROJECT, "project"), listed(A, "component", false)]),
+    ).toBeNull();
+  });
+
+  test("says nothing while a file did not load: it may be the component, as the banner says", () => {
+    // A component saved half-written is of no kind (`unknown`), and the project description that
+    // did not load included who knows what.
+    expect(emptyProjectLine([listed(PROJECT, "project"), listed(A, "unknown", false)])).toBeNull();
+    expect(emptyProjectLine([listed(PROJECT, "project", false)])).toBeNull();
   });
 });

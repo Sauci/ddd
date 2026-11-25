@@ -3,6 +3,7 @@ import {
   ambiguousComma,
   COMMA_BOTH_WAYS,
   commaChoices,
+  countText,
   type Decimal,
   decimalOfDouble,
   decimalText,
@@ -590,6 +591,20 @@ describe("significant", () => {
     expect(significant(Number.POSITIVE_INFINITY, 12)).toBe(Number.POSITIVE_INFINITY);
     expect(significant(Number.NaN, 12)).toBeNaN();
     expect(significant(0, 12)).toBe(0);
+  });
+});
+
+describe("countText", () => {
+  test("a count past a thousand is grouped by commas, three digits to a group", () => {
+    expect(countText(1166)).toBe("1,166");
+    expect(countText(26218)).toBe("26,218");
+    expect(countText(1000000)).toBe("1,000,000");
+  });
+
+  test("a count under a thousand is its digits alone", () => {
+    expect(countText(0)).toBe("0");
+    expect(countText(7)).toBe("7");
+    expect(countText(999)).toBe("999");
   });
 });
 

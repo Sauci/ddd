@@ -1033,6 +1033,40 @@ class TestTheCommandPage:
             "place"
         ) in text
 
+    def test_a_header_pasted_is_said_to_be_taken_for_one_and_not_written(self) -> None:
+        """What ``objectValues.ts``'s ``pasted`` and ``pasteSentence`` do with a table of the size a
+        header makes (decision 15.1), said where the grid is described: its first row and column
+        are left out unread, and the preview's sentence says so."""
+        text = flattened(self.COMMAND_PAGE)
+        assert "caught only by that preview" not in text
+        assert (
+            "Its header is discarded unread, and the preview's sentence says that the first row "
+            "and column pasted are taken for a header and not written: a table of that size is "
+            "read so whatever it holds"
+        ) in text
+        assert (
+            "one whose header names a different axis is caught by that preview, not by the paste "
+            "itself"
+        ) in text
+
+    def test_one_value_pasted_into_a_cell_is_said_to_set_it(self) -> None:
+        """What ``objectValues.ts``'s ``pastedValue`` and the grid's cells do with one value pasted
+        (decision 15.2), said where the grid is described: it sets the cell it is pasted into as a
+        cell typed, a scalar's one cell included, anything more is a table, and a paste of no text
+        at all changes nothing (``nothingPasted``)."""
+        text = flattened(self.COMMAND_PAGE)
+        assert "nothing is drawn of one point, nor pasted into it" not in text
+        assert "nothing is drawn of one point, nor a table pasted into it" in text
+        assert (
+            "One value pasted into a cell - a single cell of text, a trailing line break aside - "
+            "is no table: it sets that cell as if typed into it, held with the cells typed before "
+            "it; anything more, pasted into a cell or anywhere else in the grid, is a table"
+        ) in text
+        assert (
+            "A paste of no text at all - nothing, or an image alone - changes nothing: the cell it "
+            "is pasted into keeps what was typed there, as any text field keeps its text."
+        ) in text
+
     def test_the_readme_lists_the_same_schema_kinds(self) -> None:
         listed = re.search(r"\| `ddd schema ([a-z|\\]+)`", README)
         assert listed is not None
@@ -11543,6 +11577,90 @@ class TestTheGuiRowSaysWhatThePageIsTold:
             "file is: the repetition is listed on its panel and counted on its row at both places "
             "it is filed."
         ) in said
+
+
+class TestEveryPageNamesTheProjectOpen:
+    """15:I3. The server has one project open at a time, and a page asked which as it loaded or
+    opened one, and never again: once another page opened another project, it went on naming the
+    first while it drew the second. A page names the project the state it follows is of now, by
+    its description's file until the session, asked again, names it, and the command page's gui
+    row says so where it said the name was kept from then on."""
+
+    def test_the_command_page_says_every_page_names_the_project_opened_last(self) -> None:
+        said = flattened(COMMAND_LINE_INTERFACE)
+        assert (
+            "Opening a project answers at once with its name, read from its description as it "
+            "stands and kept in the heading until another project is opened, in that page or "
+            "another: the server has one project open at a time, and every page names the new one "
+            "from then on, by its description's file until the server has said its name;"
+        ) in said
+        assert "kept in the heading from then on" not in said
+
+
+class TestTwoFilesOfOneNameAreToldApartOnThePage:
+    """16:M15. Two components of one name in two folders were two rows of one name in the Findings
+    tab's File column, one name in a plan's consequence and in the lines a change prints, and the
+    filter and the banner's links led to the findings of both. The command page says that each is
+    named by as much of its path as tells it apart, and that the filter matches the name drawn."""
+
+    def test_the_command_page_says_where_they_are_told_apart_and_that_the_filter_matches(
+        self,
+    ) -> None:
+        said = flattened(COMMAND_LINE_INTERFACE)
+        assert (
+            "a finding, asked of the server, by its check, its words or its file's name as the "
+            "File column draws it - by its own name, and by as much of its path as tells it apart "
+            "from another file of that name - and says how many rows it leaves of how many."
+        ) in said
+        assert (
+            "A text that is a whole name the File column draws leaves that file's findings, and of "
+            "every other file only those whose check or words hold it, where part of a name is "
+            "found wherever it stands."
+        ) in said
+        assert (
+            "The Findings tab's File column, a plan's consequence and the lines a change prints "
+            "name two files of one name in different folders by as much of their paths as tells "
+            "them apart."
+        ) in said
+
+
+class TestEveryPageSaysWhatItCannotShow:
+    """16:I9. While a file did not load, every page was drawn from the files that did, and only the
+    Findings tab said so: the Graph read "no dictionary" over modules with no arrow, naming neither
+    file nor cause. Why the last analysis failed and which build records this DDD cannot use were
+    in the state and on no page, a first analysis that failed reading as analysing for good. The
+    command page's gui row says that every page of the project says all three under its masthead,
+    and that nothing stands in a tab's place once the first analysis failed. A failed analysis is
+    tried again at each poll, about a second apart, whether a file changed or not: the row says so,
+    while ``ddd gui`` runs, and not that the next change of a file asks for another."""
+
+    def test_the_command_page_says_every_page_says_it_under_the_masthead(self) -> None:
+        said = flattened(COMMAND_LINE_INTERFACE)
+        assert (
+            "Every page of the open project, a component's among them, says under its masthead "
+            "why the last analysis failed, and, while ``ddd gui`` runs, that it tries again about "
+            "every second until one succeeds; the files that did not load, each named as a "
+            "refusal names it and leading to the Findings tab filtered by the name its File column "
+            "draws it by, where the finding saying why is listed - past four, three of them and a "
+            "count of the rest, "
+            "which leads to the Files tab; and each build record this DDD cannot use, by its path "
+            "from the project's directory, with its reason. While a file did not load, the "
+            "Graph's line on a project with no dictionary names it as the cause."
+        ) in said
+        assert "that the next change of a file it reads asks for another" not in said
+
+    def test_the_command_page_says_nothing_stands_in_a_tab_s_place_once_it_failed(self) -> None:
+        """15:M1: nor once ``ddd gui`` has stopped before the first analysis landed, which its own
+        banner says: no analysis is on its way then."""
+        said = flattened(COMMAND_LINE_INTERFACE)
+        assert (
+            "until the first analysis lands, ``Analysing the project…`` stands where the tab's own "
+            "content goes, and nothing does once one has failed or ``ddd gui`` has stopped, which "
+            "a banner under the masthead says, and every answer needing a revision is refused, in "
+            "the same words - ``the open project has not been analysed yet``."
+        ) in said
+        assert "stands where the tab's own content goes, until the first analysis lands" not in said
+        assert "nothing does once one has failed, which the banner under the masthead" not in said
 
 
 class TestLimitsAreOneValueExactly:

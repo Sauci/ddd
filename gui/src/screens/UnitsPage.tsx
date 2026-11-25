@@ -12,10 +12,11 @@ import {
   planEdit,
   tabTitle,
 } from "../lib/projectUnits";
-import { refusalOfOffer } from "../lib/refusals";
+import { offerShown, refusalOf, refusalOfOffer } from "../lib/refusals";
+import type { Route } from "../lib/route";
 import { unitLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
-import { refusalOf, UnitPanel, usePlan } from "./UnitPanel";
+import { UnitPanel, usePlan } from "./UnitPanel";
 
 interface Props {
   state: State | null;
@@ -23,11 +24,12 @@ interface Props {
   unit: string | undefined;
   stopped: boolean;
   onUnit: (unit: string | undefined) => void;
+  onOpen: (route: Route) => void;
 }
 
 /** The open project's Units tab (spec 5.1): every unit it states or lists, the panel of the one
  * selected, and adoption for a project whose units files list no unit (spec 5.3). */
-export function UnitsPage({ state, unit, stopped, onUnit }: Props) {
+export function UnitsPage({ state, unit, stopped, onUnit, onOpen }: Props) {
   const queries = useQueryClient();
   const revision = state?.revision;
   const units = useQuery({
@@ -83,6 +85,14 @@ export function UnitsPage({ state, unit, stopped, onUnit }: Props) {
   const offered = answer !== undefined && adoptionOffered(answer);
   const kept = refusalOfOffer(refused, offered);
   if (kept !== refused) setRefused(kept);
+  // What the banner offers beside a refusal, the one rule every panel follows (`offerShown`): a
+  // refused adopt said over the plan asked again, and nothing to adopt beside the plan's own
+  // refusal - nor a preview of a plan so refused.
+  const adopting = offerShown(refused, {
+    plan: adoption.data ?? null,
+    refusal: adoption.error?.message ?? null,
+    pending: false,
+  });
 
   if (answer === undefined) {
     if (units.isError) return <Banner tone="error">{units.error.message}</Banner>;
@@ -93,7 +103,7 @@ export function UnitsPage({ state, unit, stopped, onUnit }: Props) {
     setPreviewing(false);
     onUnit(next);
   };
-  const preview = unit === undefined && previewing ? (adoption.data ?? null) : null;
+  const preview = unit === undefined && previewing ? adopting.plan : null;
   return (
     <>
       <p className="summary">{tabTitle(answer.units, hasUnitsFile(answer))}</p>
@@ -106,8 +116,8 @@ export function UnitsPage({ state, unit, stopped, onUnit }: Props) {
         <AdoptBannerView
           adoptable={answer.adoptable}
           hasUnitsFile={hasUnitsFile(answer)}
-          plan={adoption.data ?? null}
-          refusal={refused ?? adoption.error?.message ?? null}
+          plan={adopting.plan}
+          refusal={adopting.refusal}
           onShowChanges={() => {
             select(undefined);
             setPreviewing(true);
@@ -132,6 +142,7 @@ export function UnitsPage({ state, unit, stopped, onUnit }: Props) {
               onUnit(undefined);
             }}
             onMoved={select}
+            onOpen={onOpen}
           />
         ) : (
           preview !== null && (

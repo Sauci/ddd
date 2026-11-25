@@ -2,7 +2,6 @@ import { describe, expect, it, test } from "vitest";
 import { ApiError, ServerUnreachable } from "../api/client";
 import type { Finding, PlanReply, State, UndoneChange, UndoPreview } from "../api/types";
 import {
-  answeringUnder,
   answerOf,
   askedAgainAfterUndo,
   constantLabel,
@@ -727,16 +726,6 @@ describe("a refused undo, and the entries under it (16:M23)", () => {
     expect(takenOff).toEqual([{ ...undoRefused(STALE, LIMITS), covered: true }]);
     expect(heldUnder(takenOff, UNIT)).toBe(takenOff);
     expect(said(undoShown(takenOff, stateOf(UNIT), asked(previewOf(UNIT))))).toEqual([LIMITS_GONE]);
-  });
-
-  it("lets go of the answer kept of an entry a newer one covers, and keeps any other", () => {
-    // Covered, the entry is asked of the server anew if it comes back to the top.
-    const kept = { at: 2, answer: "edit 2's answer" };
-    expect(answeringUnder(kept, NEWER)).toBeNull();
-    expect(answeringUnder(kept, LIMITS)).toBe(kept);
-    expect(answeringUnder(kept, UNIT)).toBe(kept);
-    expect(answeringUnder(kept, null)).toBe(kept);
-    expect(answeringUnder(null, NEWER)).toBeNull();
   });
 
   it("offers to read the files again beside a refusal of the preview of the entry on top", () => {

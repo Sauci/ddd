@@ -6,7 +6,6 @@ import { UndoStripView } from "../components/UndoStripView";
 import { putBackOf, type Write } from "../lib/announcing";
 import {
   type Answering,
-  answeringUnder,
   answerOf,
   askedAgainAfterUndo,
   heldUnder,
@@ -85,13 +84,12 @@ export function UndoStrip({ state, stopped }: Props) {
   // What the strip holds as the state names its top (`heldUnder`): an entry a newer one covers may
   // come back to the top - another window undoing the newer edit, or the server taking it off -
   // and is offered whole then, a `stale` refusal of it gone as it is drawn, never said for a frame.
-  // Kept so once drawn, as an update of what is held by then, so that a refusal come since stays;
-  // the answer kept of an entry covered goes with it (`answeringUnder`), its preview asked anew if
-  // it comes back.
+  // Kept so once drawn, as an update of what is held by then, so that a refusal come since stays.
+  // No answer of the covered entry is kept by then: the newer one's preview, asked as it is drawn,
+  // takes its place (`answerOf`, one entry's at a time), and the one come back is asked anew.
   const standing = heldUnder(held, undoable);
   useEffect(() => {
     if (standing !== held) setHeld((before) => heldUnder(before, undoable));
-    answering.current = answeringUnder(answering.current, undoable);
   }, [held, standing, undoable]);
   // No preview of the entry on top while the strip holds a `stale` refusal of it (`previewAsked`).
   const asks = undoable !== null && previewAsked(standing, undoable);

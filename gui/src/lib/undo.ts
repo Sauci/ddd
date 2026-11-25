@@ -291,15 +291,6 @@ export function answerOf<T>(answering: Answering<T> | null, entry: { at: number 
   return answering !== null && answering.at === entry.at ? answering.answer : null;
 }
 
-/** What the strip keeps of an answer once the state names `top` on top: nothing of an entry a
- * newer one covers, which is asked anew if it comes back to the top (`heldUnder`). */
-export function answeringUnder<T>(
-  answering: Answering<T> | null,
-  top: Entry | null,
-): Answering<T> | null {
-  return answering !== null && top !== null && answering.at < top.at ? null : answering;
-}
-
 /** What the strip keeps once `answer` has come: the very answer, where the strip holds the `stale`
  * refusal it came with (`held`), until the reader's next choice forgets it with what the strip
  * holds - decided at the ask, so that an ask in the frame before the refusal is drawn gets it and

@@ -362,6 +362,7 @@ test("an edit a newer one covered, back on top once another window undoes the ne
   // The first edit, in this window: ValueA's unit settled from Controller's panel.
   await settledAndAnalysed(page, gui);
   const other = await page.context().newPage();
+  const analysedThere = analysedEdits(other);
   try {
     // A second window, its strip open on that edit, its preview held on its way while this window
     // makes a newer edit: the preview, let through then, is refused as no longer on top.
@@ -397,6 +398,13 @@ test("an edit a newer one covered, back on top once another window undoes the ne
     // Refused before the newer edit goes, so that the strip holds that refusal as it comes back.
     await refused;
     await expect(strip(other).getByRole("button", { name: /^Put back/ })).toBeVisible();
+    // The newer edit, the session's second, analysed in both windows before this one undoes it:
+    // the second window's strip, open on it, asks it again under the revision that analysis
+    // brings, and asked after the undo, it is refused as no longer on top.
+    await expect(page.locator(".updating-status")).toHaveText(
+      "Wrote 2 files for the limits of ValueA: controller.ddd.json, sensor_hub.ddd.json.",
+    );
+    await expect.poll(analysedThere).toBeGreaterThanOrEqual(2);
 
     // This window undoes the newer edit: the first is back on top, and the second window offers it
     // whole - its preview and its Put back, nothing said of a refusal no longer true.
@@ -594,6 +602,22 @@ async function settledAndAnalysed(page: Page, gui: Gui): Promise<void> {
   await expect(page.locator(".updating-status")).toHaveText(
     "Wrote 1 file for the unit of ValueA: controller.ddd.json.",
   );
+}
+
+/** The last edit `page` has read an analysis of, as its own state answers say (`State.edits`, once
+ * `analysing` is over): read as the journey goes. */
+function analysedEdits(page: Page): () => number {
+  let last = 0;
+  page.on("response", (response) => {
+    if (new URL(response.url()).pathname !== "/api/state") return;
+    response
+      .json()
+      .then((body: { analysing: boolean; edits: number }) => {
+        if (!body.analysing) last = Math.max(last, body.edits);
+      })
+      .catch(() => undefined);
+  });
+  return () => last;
 }
 
 /** Saves the project's description from outside, and waits until the page has drawn the revision

@@ -136,6 +136,7 @@ test("a variable the masthead's go-to opens in a window 800 by 600 has its panel
   await page.setViewportSize({ width: 800, height: 600 });
   await page.goto(gui.address);
   const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+  await expect(goTo).toBeEnabled();
   await goTo.pressSequentially("ParameterA");
   await expect(page.getByRole("option", { name: "ParameterA" })).toBeVisible();
   const panel = page.getByRole("complementary", { name: "ParameterA" });
@@ -310,6 +311,7 @@ test("a wheel turned as the go-to's change of page reads its file, in a window 8
   await page.setViewportSize({ width: 800, height: 600 });
   await page.goto(gui.address);
   const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+  await expect(goTo).toBeEnabled();
   await goTo.pressSequentially("ParameterA");
   await expect(page.getByRole("option", { name: "ParameterA" })).toBeVisible();
   const release = await held(page, "/api/file");
@@ -346,6 +348,7 @@ test("a wheel turning as the go-to's change of page draws its panel, in a window
   await page.setViewportSize({ width: 800, height: 600 });
   await page.goto(gui.address);
   const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+  await expect(goTo).toBeEnabled();
   await goTo.pressSequentially("ParameterA");
   await expect(page.getByRole("option", { name: "ParameterA" })).toBeVisible();
   const turned = await wheelFromFocus(page, "ParameterA", 30);

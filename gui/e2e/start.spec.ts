@@ -226,11 +226,11 @@ function placeOf(node: Locator): Promise<string> {
 }
 
 /** Waits for the masthead of a page of the open project to settle, before a press of its controls
- * (15:I3, ruling B11-43): the go-to, the last control to join it, comes once the project's first
- * analysis has landed, after the heading, which the session's answer brings. The masthead aligns
- * its controls to its right, the go-to last, so the go-to's coming moves Projects and the project's
- * own button to the left by its whole width - the same buttons, moved: a press aimed at Projects
- * just before lands on the go-to's field. */
+ * (15:I3, ruling B11-43): the project's own button and the go-to join it with the session's answer,
+ * which brings the heading too, the go-to drawn disabled until the project's first analysis has
+ * landed (16:I14). The masthead aligns its controls to its right, so their coming moves Projects to
+ * the left by their whole width - the same button, moved: a press aimed at Projects just before
+ * lands on the go-to's field. */
 async function settled(page: Page): Promise<void> {
   await expect(
     page.getByRole("banner").getByRole("combobox", { name: "Go to a variable" }),

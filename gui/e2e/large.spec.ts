@@ -871,6 +871,7 @@ test("the masthead's go-to opens a variable on the page of the component produci
 }) => {
   await page.goto(generatedGui.address);
   const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+  await expect(goTo).toBeEnabled();
   const options = page.getByRole("listbox").getByRole("option");
   await goTo.pressSequentially("C005");
   await expect(options).toHaveCount(50);
@@ -941,6 +942,7 @@ test("Enter on a name typed faster than its names come goes to it once they come
 }) => {
   await page.goto(generatedGui.address);
   const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+  await expect(goTo).toBeEnabled();
   const asked = page.waitForRequest((request) => namesOf("C00530_O0000")(new URL(request.url())));
   const release = await held(page, everyNames, { every: true });
   try {
@@ -972,6 +974,7 @@ test("Enter asks at once for the names of the text it is pressed on, and typing 
   await page.clock.install();
   await page.goto(generatedGui.address);
   const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+  await expect(goTo).toBeEnabled();
   await goTo.focus();
   await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
   await page.keyboard.type("C00530_O000");
@@ -1005,6 +1008,7 @@ test("Enter on a text no name spells exactly opens the list on what its answer h
 }) => {
   await page.goto(generatedGui.address);
   const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+  await expect(goTo).toBeEnabled();
   const offered = page
     .getByRole("listbox")
     .getByRole("option", { name: "C00530_O0000", exact: true });

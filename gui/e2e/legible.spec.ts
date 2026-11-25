@@ -227,7 +227,8 @@ for (const forced of [false, true]) {
     await page.goto(gui.address);
     // The masthead's go-to, the one chooser of every page.
     const field = page.getByRole("combobox", { name: "Go to a variable" });
-    await expect(field).toBeVisible();
+    // Enabled once the project's first analysis has landed: Tab passes over it until then.
+    await expect(field).toBeEnabled();
     for (let tabs = 0; tabs < 12; tabs += 1) {
       await page.keyboard.press("Tab");
       if (await field.evaluate((node) => node === document.activeElement)) break;

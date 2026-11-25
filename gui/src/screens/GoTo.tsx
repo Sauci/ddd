@@ -8,8 +8,9 @@ import { type Entered, entered, ownAnswer } from "../lib/goTo";
 import type { Route } from "../lib/route";
 
 interface Props {
-  /** The open project's newest revision, whose index the names are asked of. */
-  revision: number;
+  /** The open project's newest revision, whose index the names are asked of: `null` until its
+   * first analysis has landed, the field disabled until then, holding its place in the masthead. */
+  revision: number | null;
   /** The files of that revision that did not load, as the banner under the masthead names them:
    * in no index, a name only they declare is found by no text (B11-28). */
   unread: readonly string[];
@@ -34,7 +35,7 @@ export function GoTo({ revision, unread, stopped, onGo }: Props) {
   const names = useQuery({
     queryKey: ["names", revision, asking],
     queryFn: () => getNames(asking),
-    enabled: asking !== "",
+    enabled: revision !== null && asking !== "",
     placeholderData: (previous) => previous,
   });
   const own = ownAnswer(names.data, names.isPlaceholderData, asking, field.typed);
@@ -65,7 +66,7 @@ export function GoTo({ revision, unread, stopped, onGo }: Props) {
       onClose={() => setField({ typed: "", entered: false })}
       note={names.error?.message}
       unread={unread}
-      isDisabled={stopped}
+      isDisabled={stopped || revision === null}
       listing={listing}
     />
   );

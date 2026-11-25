@@ -434,6 +434,7 @@ for (const way of ["wheel", "key"] as const) {
     await page.setViewportSize({ width: 1000, height: 420 });
     await page.goto(gui.address);
     const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+    await expect(goTo).toBeEnabled();
     await goTo.pressSequentially("ParameterA");
     await expect(page.getByRole("option", { name: "ParameterA" })).toBeVisible();
     const panel = page.getByRole("complementary", { name: "ParameterA" });
@@ -487,6 +488,7 @@ test("a focus moved by no key and no pointer once a change of page's panel has r
   await page.setViewportSize({ width: 1000, height: 420 });
   await page.goto(gui.address);
   const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+  await expect(goTo).toBeEnabled();
   await goTo.pressSequentially("ParameterA");
   await expect(page.getByRole("option", { name: "ParameterA" })).toBeVisible();
   await goTo.press("Enter");
@@ -581,6 +583,7 @@ test("a page scrolled by no wheel, key or pointer past a short wait after a chan
   await page.setViewportSize({ width: 1000, height: 420 });
   await page.goto(gui.address);
   const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+  await expect(goTo).toBeEnabled();
   await goTo.pressSequentially("ParameterA");
   await expect(page.getByRole("option", { name: "ParameterA" })).toBeVisible();
   await goTo.press("Enter");
@@ -674,6 +677,7 @@ test("the masthead's go-to opens a variable on the page of the component produci
   });
   await page.goto(gui.address);
   const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+  await expect(goTo).toBeEnabled();
   const list = page.getByRole("listbox");
   const options = list.getByRole("option");
   const release = await held(page, "/api/names");
@@ -743,9 +747,38 @@ test("the masthead's go-to says why a project it cannot search lists no name", a
   });
   await page.goto(gui.address);
   const goTo = page.getByRole("combobox", { name: "Go to a variable" });
+  await expect(goTo).toBeEnabled();
   await goTo.pressSequentially("Value");
   await expect(goTo).toHaveAccessibleDescription(
     "demo.ddd.json did not load, so no variable of the project can be found",
   );
   await expect(page.getByRole("listbox")).toHaveCount(0);
+});
+
+/**
+ * The go-to stands in the masthead from the session's answer, as the project's button does, drawn
+ * disabled until the project's first analysis lands, whose index it asks names of (16:I14). Drawn
+ * only then, it joined the row as that analysis landed, and moved Projects and the project's button
+ * by its width: a press made on Projects in that moment landed on the go-to's field.
+ */
+test("Projects keeps its place in the masthead as the project's first analysis lands", async ({
+  page,
+  gui,
+}) => {
+  const masthead = page.getByRole("banner");
+  const projects = masthead.getByRole("button", { name: "Projects", exact: true });
+  const goTo = masthead.getByRole("combobox", { name: "Go to a variable" });
+  // The page's first ask of the state held: the session has answered, and no analysis has landed.
+  const release = await held(page, "/api/state");
+  let before: Awaited<ReturnType<typeof projects.boundingBox>> = null;
+  try {
+    await page.goto(gui.address);
+    await expect(masthead.getByRole("button", { name: "DemoDevice" })).toBeVisible();
+    before = await projects.boundingBox();
+  } finally {
+    release();
+  }
+  await expect(goTo).toBeEnabled();
+  expect(before).not.toBeNull();
+  expect(await projects.boundingBox()).toEqual(before);
 });

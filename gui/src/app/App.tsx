@@ -459,12 +459,14 @@ export function App() {
             </Button>
           )}
         </nav>
-        {/* Once the open project's first analysis has landed, whose index the names are asked of:
-            every page of the project, a component's among them, reaches a variable from here. */}
-        {opened !== null && state !== null && (
+        {/* Every page of the project, a component's among them, reaches a variable from here. Drawn
+            from the session's answer, as the project's button is, and disabled until the project's
+            first analysis lands, whose index the names are asked of: drawn only then, it joined the
+            row under a press and moved the buttons before it by its width (16:I14). */}
+        {opened !== null && (
           <GoTo
-            revision={state.revision}
-            unread={unloadedNames(state.files)}
+            revision={state?.revision ?? null}
+            unread={unloadedNames(state?.files ?? [])}
             stopped={stopped}
             onGo={navigate}
           />

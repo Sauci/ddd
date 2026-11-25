@@ -583,6 +583,13 @@ describe("a refused undo, and the entries under it (16:M23)", () => {
       "a.ddd.json changed on disk since it was written, so the limits of ValueA can no longer be " +
         "undone. Nothing was put back; the page shows the files as they are.",
     );
+    // A stale refusal before it put nothing back either - a file that could not be read - and
+    // this one still says so.
+    const unread = [undoRefused(UNREAD, LIMITS), undoRefused(after, LIMITS)];
+    expect(said(undoShown(unread, stateOf(UNIT), asked(undefined)))[1]).toBe(
+      "a.ddd.json changed on disk since it was written, so the limits of ValueA can no longer be " +
+        "undone. Nothing was put back; the page shows the files as they are.",
+    );
   });
 
   it("offers the entry again beside a refusal of its Put back that leaves it on the stack", () => {

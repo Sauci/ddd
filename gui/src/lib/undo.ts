@@ -6,7 +6,7 @@ import type {
   TypePlanRequest,
   UnitPlanRequest,
 } from "../api/client";
-import type { Finding, PlanReply, State, UndoneChange } from "../api/types";
+import type { Finding, PlanReply, State, UndoneChange, UndoPreview } from "../api/types";
 import type { Mode } from "./declarations";
 import { relativeToProject } from "./findings";
 import { elementLabel } from "./objectValues";
@@ -171,13 +171,126 @@ export function shownUndo(changes: readonly UndoneChange[]): ShownChange[] {
   return changes.map(({ file, gone, hunks }) => ({ file, hunks, note: gone ? "removed" : null }));
 }
 
-/** What the Undo strip says when its preview or its undo was refused: where a file changed on
- * disk (`isStale`), the server's own sentence, which names the file, and what that means for the
- * reader; else the server's own reason. */
-export function undoRefusal(error: Error): string {
+/** What the Undo strip says when the preview or the undo of the edit `label` names was refused:
+ * where a file changed on disk (`isStale`), the server's own sentence, which names the file, that
+ * the edit can no longer be undone - the server takes it off the stack, so that the button names
+ * the one under it by then - and what that means for the reader; else the server's own reason. */
+export function undoRefusal(error: Error, label: string): string {
   return isStale(error)
-    ? `${error.message}. Nothing was put back; the page shows the files as they are.`
+    ? `${error.message}, so ${label} can no longer be undone. Nothing was put back; the page ` +
+        "shows the files as they are."
     : `The undo was refused: ${error.message}`;
+}
+
+/** An entry of the undo stack as the state names it (`State.undoable`). */
+interface Entry {
+  at: number;
+  label: string;
+}
+
+/**
+ * What the Undo strip holds of a refusal of one entry, held until the reader's next choice in the
+ * strip - Put back pressed again, or the strip closed - as a panel holds its own (`Refused`,
+ * lib/refusals.ts).
+ *
+ * `leaves` says whether the server took the entry off the stack with it: refused `stale`, a file
+ * the entry would put back having changed on disk since, the disk has moved past that edit, which
+ * can never be put back as the file stands, and the entries under it come within reach
+ * (`ddd.gui.session.Session.undo`); or the entry was no longer the one on top. Any other refusal
+ * leaves the entry where it was.
+ */
+export interface UndoRefused {
+  /** The entry the refusal is of (`UndoableEdit.at`). */
+  at: number;
+  /** What the strip says of it (`undoRefusal`). */
+  text: string;
+  leaves: boolean;
+}
+
+/** The refusal the strip holds once the Put back of `entry` was refused, whatever its code. */
+export function undoRefused(error: Error, entry: Entry): UndoRefused {
+  return { at: entry.at, text: undoRefusal(error, entry.label), leaves: isStale(error) };
+}
+
+/** What the strip holds once the preview of `entry` was refused: the refusal, where the server took
+ * the entry off the stack with it (`stale`), so that the strip says why the entry went beside the
+ * one under it once the state names that one; none for any other, which the strip says in the
+ * preview's place for as long as the preview stands refused (`undoShown`). */
+export function previewRefused(error: Error, entry: Entry): UndoRefused | null {
+  return isStale(error) ? undoRefused(error, entry) : null;
+}
+
+/** `held` with `refused` after the others, and the very same list where it holds that refusal
+ * already: the preview of an entry asked again is refused again in the same words, and said once. */
+export function holding(
+  held: readonly UndoRefused[],
+  refused: UndoRefused,
+): readonly UndoRefused[] {
+  const already = held.some(({ at, text }) => at === refused.at && text === refused.text);
+  return already ? held : [...held, refused];
+}
+
+/** What the Undo button says once nothing is left to undo while the strip still says why an entry
+ * left the stack: pressed, it closes the strip, and the control goes with it. */
+export const NOTHING_LEFT = "Nothing left to undo";
+
+/** What the Undo control and the strip it opens draw (`undoShown`). */
+export interface UndoShown {
+  /** What the button says: `Undo` and the entry on top (`undoButton`), `NOTHING_LEFT` with none
+   * left while a refusal is said, and `null` where the control is not drawn at all. */
+  label: string | null;
+  /** Every refusal the strip says, in the order they came, each keyed by the entry it is of. */
+  refusals: readonly { key: string; text: string }[];
+  /** The entry the strip offers to put back, once its preview has come: its line, its changes and
+   * its Put back. `null` while none is. */
+  preview: UndoPreview | null;
+  /** Whether the strip says it is reading the files: the preview of the entry on top is asked for,
+   * has not come, and nothing refused of it is said. */
+  reading: boolean;
+}
+
+/**
+ * What the Undo strip says and offers (16:M23): the refusals it holds (`held`), the state's entry
+ * on top, and that entry's preview as its query has it (`asked`).
+ *
+ * - **An entry taken off the stack** - refused `stale`, its preview or its Put back - is said for
+ *   as long as the strip holds its refusal, beside whatever the stack's top then offers: the entry
+ *   under it, offered whole, its preview and its Put back, with no need to close the strip. Each
+ *   entry taken off while the strip is open is said, in the order they went: the save that
+ *   refused one often refuses the next, an edit before it having written the same file. While the
+ *   state still names it on top, the strip offers nothing of it.
+ * - **A refusal held of an entry a newer one covers** - an edit a panel makes while the strip is
+ *   open - goes unsaid, the newer one offered whole (branch 2, D0): the entry refused may come
+ *   back to the top, and is offered whole then.
+ * - **The preview's own refusal** is said in its place, and nothing is offered to put back: asked
+ *   again and refused, the preview before it is no longer what the undo would do. One refused
+ *   `stale` is the strip's to hold as its entry's (`previewRefused`), and is said once.
+ * - **Beside a refusal held of the Put back of the entry on top** that leaves it there, nothing is
+ *   offered: the refusal is the whole of what the strip says of that entry.
+ */
+export function undoShown(
+  held: readonly UndoRefused[],
+  state: State | null,
+  asked: { data: UndoPreview | undefined; error: Error | null },
+): UndoShown {
+  const top = state?.undoable ?? null;
+  const standing = held.filter((refused) => top === null || refused.at >= top.at);
+  const own = standing.filter((refused) => refused.at === top?.at);
+  const refusals = standing.map(({ at, text }) => ({ key: `${at}:${text}`, text }));
+  const offered = top === null || own.length > 0 ? null : top;
+  let preview: UndoPreview | null = null;
+  let reading = false;
+  if (top !== null && asked.error !== null) {
+    const text = undoRefusal(asked.error, top.label);
+    if (!own.some((refused) => refused.text === text)) {
+      refusals.push({ key: `preview:${top.at}:${text}`, text });
+    }
+  } else if (offered !== null) {
+    preview = asked.data !== undefined && asked.data.at === offered.at ? asked.data : null;
+    reading = preview === null;
+  }
+  const label = undoButton(state) ?? (refusals.length > 0 ? NOTHING_LEFT : null);
+  return { label, refusals, preview, reading };
 }
 
 /** What the Undo button says, or `null` when there is nothing to undo: no project open yet, no

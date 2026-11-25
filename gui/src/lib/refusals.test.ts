@@ -13,12 +13,17 @@ import {
   refusalOf,
   refusalOfOffer,
   refusalSentence,
-  refusalShown,
 } from "./refusals";
 
 /** What a panel says when its Apply is refused because a file changed under its preview. */
 const STALE =
   "A file changed on disk, so nothing was written. The page now shows the files as they are.";
+
+/** What a panel of several writes says beside its write `about`: `offerShown`'s refusal, from the
+ * refusal it holds of that write's Apply (`heldOf`) and why its plan was refused when asked for. */
+function said(held: Refused<string> | null, asked: string | null, about: string): string | null {
+  return offerShown(heldOf(held, about), { plan: null, refusal: asked, pending: false }).refusal;
+}
 
 test("the page's own sentence for an Apply refused because a file changed on disk", () => {
   // Said by every panel but the variable panel and the Findings tab, which say what they show in
@@ -59,16 +64,16 @@ test("an Apply refused is said in the panel's own sentence where a file changed 
 
 test("a refusal held of a write is shown beside it, over why its plan was refused", () => {
   const held: Refused<string> = { about: "rename", text: STALE };
-  expect(refusalShown(held, "'rpm' is the unit's own spelling", "rename")).toBe(STALE);
-  expect(refusalShown(held, null, "rename")).toBe(STALE);
+  expect(said(held, "'rpm' is the unit's own spelling", "rename")).toBe(STALE);
+  expect(said(held, null, "rename")).toBe(STALE);
 });
 
 test("a refusal held of another write is not shown beside this one, which shows its own plan's", () => {
   const held: Refused<string> = { about: "remove", text: "The change was refused: no" };
-  expect(refusalShown(held, "'rpm' is the unit's own spelling", "rename")).toBe(
+  expect(said(held, "'rpm' is the unit's own spelling", "rename")).toBe(
     "'rpm' is the unit's own spelling",
   );
-  expect(refusalShown(held, null, "rename")).toBeNull();
+  expect(said(held, null, "rename")).toBeNull();
 });
 
 test("a refusal of an offer is held while the offer is made, and goes with it", () => {
@@ -79,7 +84,7 @@ test("a refusal of an offer is held while the offer is made, and goes with it", 
 });
 
 test("nothing held and no plan refused, nothing is shown", () => {
-  expect(refusalShown(null, null, "rename")).toBeNull();
+  expect(said(null, null, "rename")).toBeNull();
 });
 
 test("a panel of several writes holds the sentence of the write it was refused for, and of no other", () => {
@@ -153,13 +158,13 @@ describe("a refusal held of a write, over each answer a new revision brings its 
   const plan8 = "'rpm' is the unit's own spelling";
 
   test("held, it is shown while the plan is asked again, and over the plan's own refusal once that comes", () => {
-    expect(refusalShown(held, null, "rename")).toBe(STALE);
-    expect(refusalShown(held, plan8, "rename")).toBe(STALE);
+    expect(said(held, null, "rename")).toBe(STALE);
+    expect(said(held, plan8, "rename")).toBe(STALE);
   });
 
   test("once the panel holds none, the plan's own answer is shown", () => {
-    expect(refusalShown(null, plan8, "rename")).toBe(plan8);
-    expect(refusalShown(null, null, "rename")).toBeNull();
+    expect(said(null, plan8, "rename")).toBe(plan8);
+    expect(said(null, null, "rename")).toBeNull();
   });
 });
 

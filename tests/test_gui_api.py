@@ -4511,6 +4511,57 @@ class TestUndoing:
         monkeypatch.setattr("ddd.gui.api.unchanged", unwritable)
         reply = get(api, "/api/undo")
         assert (reply.status, reply.body["error"]) == (409, "unwritable")
+        # Not stale: the edit stays, for the reader to ask again once the disk is mended.
+        assert get(api, "/api/state").body["undoable"] == {"at": 1, "label": "the unit of Speed"}
+
+    def test_a_preview_refused_because_a_file_changed_on_disk_takes_its_edit_off_the_stack(
+        self, api: Api, root: Path
+    ) -> None:
+        """The strip asks for the preview first: refused because a file the edit wrote was saved
+        from outside since, the edit can never be put back as that file stands, so it is taken
+        off the stack - the state's version moving with it - and the next preview is the one of
+        the edit beneath it."""
+        first = unit_edit(api, root, "Hz", "a.ddd.json", "the unit of Speed in A")
+        assert post(api, "/api/edit", first).status == 200
+        assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
+        b = root / "b.ddd.json"
+        b.write_bytes(b.read_bytes().replace(b'"Hz"', b'"rad"'))
+        said = get(api, "/api/state").body["version"]
+        reply = get(api, "/api/undo")
+        assert reply == Reply(
+            409, {"error": "stale", "message": "b.ddd.json changed on disk since it was written"}
+        )
+        state = get(api, "/api/state").body
+        assert state["undoable"] == {"at": 1, "label": "the unit of Speed in A"}
+        assert state["version"] > said
+        preview = get(api, "/api/undo")
+        assert (preview.status, preview.body["at"]) == (200, 1)
+        assert [Path(change["file"]).name for change in preview.body["changes"]] == ["a.ddd.json"]
+
+    def test_an_undo_refused_because_its_file_changed_on_disk_lets_the_edit_beneath_be_undone(
+        self, api: Api, root: Path
+    ) -> None:
+        """Two edits, then a save from outside of the file the second wrote: its undo is refused
+        ``stale``, that edit is taken off the stack, and the first is the one to undo - put back
+        as it always was, the save left as it stands."""
+        a = root / "a.ddd.json"
+        before = a.read_bytes()
+        first = unit_edit(api, root, "Hz", "a.ddd.json", "the unit of Speed in A")
+        assert post(api, "/api/edit", first).status == 200
+        assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
+        b = root / "b.ddd.json"
+        b.write_bytes(b.read_bytes().replace(b'"Hz"', b'"rad"'))
+        reply = post(api, "/api/undo", {"at": 2})
+        assert (reply.status, reply.body["error"]) == (409, "stale")
+        assert reply.body["message"].endswith("b.ddd.json changed on disk since it was written")
+        assert get(api, "/api/state").body["undoable"] == {
+            "at": 1,
+            "label": "the unit of Speed in A",
+        }
+        assert post(api, "/api/undo", {"at": 1}).status == 200
+        assert a.read_bytes() == before
+        assert b'"rad"' in b.read_bytes()
+        assert get(api, "/api/state").body["undoable"] is None
 
     def test_an_undo_puts_the_files_back_and_answers_its_own_number(
         self, api: Api, root: Path

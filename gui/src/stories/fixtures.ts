@@ -1520,6 +1520,23 @@ export const UNDO_ADOPTION: UndoPreview = {
   ],
 };
 
+/** The edit under the adoption on the stack: ValueA's unit settled in Controller's file, which the
+ * strip offers once the adoption has left the stack. */
+export const UNDO_UNIT: UndoPreview = {
+  revision: 7,
+  at: 2,
+  label: "the unit of ValueA",
+  changes: [
+    {
+      file: "C:/work/demo/components/controller.ddd.json",
+      gone: false,
+      hunks: [
+        { line: 12, before: ['          "unit": "%",'], after: ['          "unit": "rpm",'] },
+      ],
+    },
+  ],
+};
+
 /** Types modelled on examples/structures, as GET /api/types answers them - not transcribed from
  * it: SensorCal_t's `uses: 0` here (the real example names it once) gives the table's zero-count
  * blank-cell case a row to draw. */

@@ -4,17 +4,23 @@ import { Button } from "../ui/Button";
 import { Changes } from "./Changes";
 
 export interface UndoStripViewProps {
-  /** What the button says, from `undoButton`: "Undo the unit of ValueA". */
+  /** What the button says, from `undoShown`: "Undo the unit of ValueA", or "Nothing left to undo"
+   * while the strip still says why the last entry left the stack. */
   label: string;
   open: boolean;
   onOpen: (open: boolean) => void;
-  /** The preview once it has come; `null` while it is asked for, and when it was refused. */
+  /** Every refusal the strip says, in the order they came (`undoShown`): of an entry the server
+   * took off the stack, said beside the one under it, and of the entry on top. */
+  refusals: readonly { key: string; text: string }[];
+  /** The entry offered to put back, once its preview has come; `null` while it is asked for, where
+   * it was refused, and where nothing is left to undo. */
   preview: UndoPreview | null;
+  /** Whether the strip says it is reading the files: the preview of the entry on top is asked for
+   * and has not come. */
+  reading: boolean;
   changesShown: boolean;
   onChangesShown: (shown: boolean) => void;
   onUndo: () => void;
-  /** Why nothing can be put back, or why putting it back was refused; `null` when neither. */
-  refusal: string | null;
   /** Undoing, or the server stopped. */
   busy: boolean;
 }
@@ -27,7 +33,7 @@ export interface UndoStripViewProps {
  * name while the strip takes the line below it - which is what `.undo-open` asks that row for.
  */
 export function UndoStripView(props: UndoStripViewProps) {
-  const { label, open, preview, refusal, changesShown, busy } = props;
+  const { label, open, preview, refusals, reading, changesShown, busy } = props;
   return (
     <>
       <Button
@@ -44,15 +50,18 @@ export function UndoStripView(props: UndoStripViewProps) {
       </Button>
       {open && (
         <section className="undo-open" aria-label="Undo">
-          {/* A refusal is the whole of the strip: an undo is all-or-nothing, and offering to
-              put back the files that have not changed would be offering half of it. */}
-          {refusal !== null ? (
-            <p className="undo-refusal" role="status">
-              {refusal}
-            </p>
-          ) : preview === null ? (
-            <p className="quiet">Reading the files…</p>
-          ) : (
+          {/* What was refused comes first, and whatever the stack's top offers under it: an entry
+              taken off is said beside the one under it, which the strip offers whole. An undo is
+              all-or-nothing, so a refusal of the entry on top offers none of its files. */}
+          {refusals.length > 0 && (
+            <div className="undo-refusal" role="status">
+              {refusals.map(({ key, text }) => (
+                <p key={key}>{text}</p>
+              ))}
+            </div>
+          )}
+          {reading && <p className="quiet">Reading the files…</p>}
+          {preview !== null && (
             <>
               <p className="consequence">{undoConsequence(preview.changes)}</p>
               {changesShown && <Changes changes={shownUndo(preview.changes)} />}

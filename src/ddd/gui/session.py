@@ -805,9 +805,11 @@ class Session:
         Only the top of the stack: an ``at`` that is not it is refused as stale, which is what
         keeps a second window from putting back an edit this one never saw - asking for no
         analysis, since the stack moved and no file did (:class:`_NotOnTopError`). A refusal of
-        the put back - a file changed since, or one that could not be written - leaves the stack
-        as it is, so the reader may put that file back and ask again, and is answered as an
-        edit's is (:meth:`_refused`).
+        the put back is answered as an edit's is (:meth:`_refused`), and what it leaves of the
+        stack is :meth:`_taken_off`'s: refused because a file the edit would write changed on
+        disk since, the edit is taken off and the one under it comes within reach; refused
+        because a file could not be written, it stays, for the reader to mend that file and ask
+        again.
         """
         try:
             return self._undone(at)
@@ -817,15 +819,53 @@ class Session:
             self._refused(refused)
             raise
 
+    def preview_refused(self, at: int, refused: EditError) -> None:
+        """What a refused preview of the undo of the edit numbered ``at`` does: ``GET /api/undo``
+        reads that edit's files as they stand before anything is asked to be put back, and its
+        refusal is the undo's own. Where that edit is still on top, the stack is left as a
+        refusal of its put back leaves it (:meth:`_taken_off`); where another came there since -
+        an edit, or an undo from another window - the refusal is not of the top, and the stack is
+        left as it is. Either way it is answered as a write's refusal is: ``stale`` asks for the
+        analysis that reads the disk (:meth:`_refused`). Called without the lock.
+
+        The page asks for the preview before it offers any Put back, so this is the refusal a
+        reader meets first: an edit whose file was saved from outside since is refused here, and
+        taking it off only on a refused put back would leave it on top for good."""
+        with self._lock:
+            top = self._stack[-1] if self._stack else None
+            if top is not None and top.at == at:
+                self._taken_off(top, refused)
+        self._refused(refused)
+
+    def _taken_off(self, top: Undoable, refused: EditError) -> None:
+        """Take ``top``, the edit on top of the stack, off it where its put back was ``refused``
+        as ``stale``: a file it would write changed on disk since - saved from outside, or left
+        put back by an undo of it the disk refused half way (:func:`ddd.editing.restore`) - so
+        the disk has moved past that edit, which can never be put back as the file stands. The
+        edits under it come within reach, where it held them out of reach for as long as the
+        session ran; the page says why it went, in the strip that asked. Any other refusal leaves
+        it on top: one ``unwritable`` the reader may mend, the file made writable again, and ask
+        again. What it costs: an edit the reader could have put back once they had put that file
+        back by hand, byte for byte, is gone. Holding the lock; the version moves with the
+        stack."""
+        if refused.code == STALE:
+            self._stack.pop()
+            self._version += 1
+            self._changed.notify_all()
+
     def _undone(self, at: int) -> int:
         with self._lock:
             self._required()
             top = self._stack[-1] if self._stack else None
             if top is None or top.at != at:
                 raise _NotOnTopError(STALE, f"edit {at} is not the one to undo any more")
-            restore(top.files)
+            try:
+                restore(top.files)
+            except EditError as refused:
+                self._taken_off(top, refused)
+                raise
             # Popped only once the files are back: a refused restore leaves the entry where it
-            # was.
+            # was, but where the refusal takes it off (`_taken_off`).
             self._stack.pop()
             self._edits += 1
             self._written.append((self._edits, frozenset(file.path for file in top.files)))

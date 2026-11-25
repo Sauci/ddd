@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import {
@@ -101,7 +101,7 @@ test("an adopted vocabulary is taken away again, file and include", async ({ pag
   );
 });
 
-test("an undo of an edit whose file was changed by hand is refused, and keeps its place", async ({
+test("an undo of an edit whose file was changed by hand is refused, and the edit leaves the stack once the strip says so", async ({
   page,
   gui,
 }) => {
@@ -117,16 +117,95 @@ test("an undo of an edit whose file was changed by hand is refused, and keeps it
   const undo = page.getByRole("button", { name: "Undo the unit of ValueA" });
   await expect(undo).toBeVisible();
 
-  // Saved from outside, the file the edit wrote is somebody else's now.
+  // Saved from outside, the file the edit wrote is somebody else's now: the edit can never be
+  // put back as that file stands, and the server takes it off the stack, which the strip says.
   driftIn(gui.directory, CONTROLLER, "ValueA", "kPa");
   await undo.click();
-  await expect(strip(page).getByText(/changed on disk/)).toBeVisible();
+  await expect(strip(page).getByRole("status")).toHaveText(
+    "controller.ddd.json changed on disk since it was written, so the unit of ValueA can no " +
+      "longer be undone. Nothing was put back; the page shows the files as they are.",
+  );
   await expect(strip(page).getByRole("button", { name: /^Put back/ })).toHaveCount(0);
 
-  // Nothing was written, and the entry keeps its place: the reader may put the file back and
-  // ask again.
+  // Nothing was written, and nothing is left to undo: the control says so for as long as the
+  // strip says why, and closing the strip takes both away.
   expect(readFileSync(join(gui.directory, CONTROLLER)).toString()).toContain('"kPa"');
+  const nothing = page.getByRole("button", { name: "Nothing left to undo" });
+  await expect(nothing).toHaveAttribute("aria-expanded", "true");
+  await nothing.click();
+  await expect(strip(page)).toHaveCount(0);
+  await expect(nothing).toHaveCount(0);
+  await expect(undo).toHaveCount(0);
+});
+
+test("an edit whose file was saved from outside leaves the stack, and the strip offers the one before it without being closed", async ({
+  page,
+  gui,
+}) => {
+  // The first edit: ValueA's unit settled from Controller's panel, controller.ddd.json alone.
+  await settledAndAnalysed(page, gui);
+  // The second, of other files: the vocabulary adopted from the Units tab.
+  await page.getByRole("button", { name: "DemoDevice" }).click();
+  await page.getByRole("link", { name: "Units" }).click();
+  const banner = page.getByRole("status").filter({ hasText: "This project has no units file" });
+  await banner.getByRole("button", { name: /^Adopt \d+ units$/ }).click();
+  const undo = page.getByRole("button", { name: "Undo the vocabulary adopted" });
   await expect(undo).toBeVisible();
+  await expect(page.locator(".updating-status")).toHaveText(/^Wrote 2 files for the vocabulary/);
+
+  // Saved from outside, a file the second edit wrote is somebody else's now.
+  const description = join(gui.directory, "demo.ddd.json");
+  writeFileSync(description, `${readFileSync(description, "utf8")}\n`);
+  await undo.click();
+  await expect(strip(page).getByRole("status")).toHaveText(
+    "demo.ddd.json changed on disk since it was written, so the vocabulary adopted can no " +
+      "longer be undone. Nothing was put back; the page shows the files as they are.",
+  );
+  // The edit before it is the one to undo now, offered whole in the strip still open, under the
+  // sentence that says why the other went.
+  await expect(page.getByRole("button", { name: "Undo the unit of ValueA" })).toBeVisible();
+  await expect(strip(page).getByText("Puts back 1 file: controller.ddd.json")).toBeVisible();
+  await strip(page).getByRole("button", { name: "Put back 1 file" }).click();
+
+  // Put back as an undo of it always was; the vocabulary, taken off and not undone, stays.
+  await expect.poll(() => unitOfValueA(gui)).toBe("rpm");
+  expect(existsSync(join(gui.directory, UNITS))).toBe(true);
+  await expect(page.getByRole("button", { name: /^Undo / })).toHaveCount(0);
+});
+
+test("two edits of one file saved from outside both leave the stack, each said in the strip", async ({
+  page,
+  gui,
+}) => {
+  // Both write Controller's file: its unit of ValueA settled, then its limits from the same panel.
+  await settledAndAnalysed(page, gui);
+  const panel = page.getByRole("complementary", { name: "ValueA" });
+  await panel.getByRole("row", { name: /^limits/ }).click();
+  await panel.getByLabel("Max").fill("50");
+  await panel.getByRole("button", { name: /^Apply to/ }).click();
+  const undo = page.getByRole("button", { name: "Undo the limits of ValueA" });
+  await expect(undo).toBeVisible();
+
+  // The one save refuses both: the second edit's undo, and then the first's, which would put the
+  // file back to what it held before the second.
+  driftIn(gui.directory, CONTROLLER, "ValueA", "kPa");
+  await undo.click();
+  const said = strip(page).getByRole("status");
+  await expect(
+    said.getByText(
+      "controller.ddd.json changed on disk since it was written, so the limits of ValueA can no " +
+        "longer be undone. Nothing was put back; the page shows the files as they are.",
+    ),
+  ).toBeVisible();
+  await expect(
+    said.getByText(
+      "controller.ddd.json changed on disk since it was written, so the unit of ValueA can no " +
+        "longer be undone. Nothing was put back; the page shows the files as they are.",
+    ),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Nothing left to undo" })).toBeVisible();
+  await expect(strip(page).getByRole("button", { name: /^Put back/ })).toHaveCount(0);
+  expect(unitOfValueA(gui)).toBe("kPa");
 });
 
 test("the control stands beside a component's name too", async ({ page, gui }) => {

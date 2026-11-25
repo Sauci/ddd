@@ -1,23 +1,28 @@
 import { describe, expect, it, test } from "vitest";
 import { ApiError, ServerUnreachable } from "../api/client";
-import type { Finding, PlanReply, UndoneChange } from "../api/types";
+import type { Finding, PlanReply, State, UndoneChange, UndoPreview } from "../api/types";
 import {
   askedAgainAfterUndo,
   constantLabel,
   declareLabel,
   filesLabel,
   fixLabel,
+  holding,
   pasteLabel,
+  previewRefused,
   rasterLabel,
   removeLabel,
   sectionLabel,
   settleLabel,
   shownUndo,
   typeLabel,
+  type UndoShown,
   undoAction,
   undoButton,
   undoConsequence,
   undoRefusal,
+  undoRefused,
+  undoShown,
   unitLabel,
   valueLabel,
   valuesLabel,
@@ -274,23 +279,25 @@ describe("the undo control", () => {
   });
 
   it("says an undo refused because a file changed on disk in the server's sentence, and what it means", () => {
-    // The server's own sentence names the file that changed.
+    // The server's own sentence names the file that changed; the strip's names the edit, which
+    // the server has taken off the stack, so that the button names another one by then.
     const stale = new ApiError(
       409,
       "stale",
       "controller.ddd.json changed on disk since it was read",
     );
-    expect(undoRefusal(stale)).toBe(
-      "controller.ddd.json changed on disk since it was read. Nothing was put back; the page " +
-        "shows the files as they are.",
+    expect(undoRefusal(stale, "the unit of ValueA")).toBe(
+      "controller.ddd.json changed on disk since it was read, so the unit of ValueA can no " +
+        "longer be undone. Nothing was put back; the page shows the files as they are.",
     );
   });
 
   it("says any other refusal of an undo in the server's words", () => {
-    expect(undoRefusal(new ApiError(409, "unwritable", "controller.ddd.json is read-only"))).toBe(
+    const unwritable = new ApiError(409, "unwritable", "controller.ddd.json is read-only");
+    expect(undoRefusal(unwritable, "the unit of ValueA")).toBe(
       "The undo was refused: controller.ddd.json is read-only",
     );
-    expect(undoRefusal(new ServerUnreachable(new Error("refused")))).toBe(
+    expect(undoRefusal(new ServerUnreachable(new Error("refused")), "the unit of ValueA")).toBe(
       "The undo was refused: ddd gui is not answering",
     );
   });
@@ -317,6 +324,152 @@ describe("the undo control", () => {
       { file: CHANGED.file, hunks: CHANGED.hunks, note: null },
       { file: CREATED.file, hunks: CREATED.hunks, note: "removed" },
     ]);
+  });
+});
+
+describe("a refused undo, and the entries under it (16:M23)", () => {
+  const STALE = new ApiError(
+    409,
+    "stale",
+    "controller.ddd.json changed on disk since it was written",
+  );
+  const UNWRITABLE = new ApiError(
+    409,
+    "unwritable",
+    "controller.ddd.json is read-only, so nothing was put back",
+  );
+  const FAILED = new ApiError(500, "internal", "ddd gui failed on this request");
+  const LIMITS = { at: 2, label: "the limits of ValueA" };
+  const UNIT = { at: 1, label: "the unit of ValueA" };
+  const stateOf = (undoable: { at: number; label: string } | null): State => ({
+    ...STATE,
+    undoable,
+  });
+  const previewOf = ({ at, label }: { at: number; label: string }): UndoPreview => ({
+    revision: 4,
+    at,
+    label,
+    changes: [CHANGED],
+  });
+  const asked = (data: UndoPreview | undefined, error: Error | null = null) => ({ data, error });
+  const said = (shown: UndoShown) => shown.refusals.map((refusal) => refusal.text);
+  const LIMITS_GONE =
+    "controller.ddd.json changed on disk since it was written, so the limits of ValueA can no " +
+    "longer be undone. Nothing was put back; the page shows the files as they are.";
+  const UNIT_GONE =
+    "controller.ddd.json changed on disk since it was written, so the unit of ValueA can no " +
+    "longer be undone. Nothing was put back; the page shows the files as they are.";
+
+  it("holds a refusal taking its entry off the stack apart from one leaving it there", () => {
+    expect(undoRefused(STALE, LIMITS)).toEqual({ at: 2, text: LIMITS_GONE, leaves: true });
+    expect(undoRefused(UNWRITABLE, LIMITS)).toEqual({
+      at: 2,
+      text: "The undo was refused: controller.ddd.json is read-only, so nothing was put back",
+      leaves: false,
+    });
+  });
+
+  it("holds a preview's refusal only where the server takes the entry off the stack with it", () => {
+    expect(previewRefused(STALE, LIMITS)).toEqual({ at: 2, text: LIMITS_GONE, leaves: true });
+    expect(previewRefused(UNWRITABLE, LIMITS)).toBeNull();
+    expect(previewRefused(new ServerUnreachable(new Error("refused")), LIMITS)).toBeNull();
+  });
+
+  it("holds each refusal once, in the order they came", () => {
+    const limits = undoRefused(STALE, LIMITS);
+    const unit = undoRefused(STALE, UNIT);
+    const held = holding([], limits);
+    expect(held).toEqual([limits]);
+    // The same preview refused again in the same words is held already: the same list, which
+    // draws nothing anew.
+    expect(holding(held, undoRefused(STALE, LIMITS))).toBe(held);
+    expect(holding(held, unit)).toEqual([limits, unit]);
+  });
+
+  it("says why an entry was taken off beside the one under it, which it offers to put back", () => {
+    const shown = undoShown([undoRefused(STALE, LIMITS)], stateOf(UNIT), asked(previewOf(UNIT)));
+    expect(said(shown)).toEqual([LIMITS_GONE]);
+    expect(shown.label).toBe("Undo the unit of ValueA");
+    expect(shown.preview).toEqual(previewOf(UNIT));
+    expect(shown.reading).toBe(false);
+  });
+
+  it("reads the files of the entry under it while its preview is asked for", () => {
+    const shown = undoShown([undoRefused(STALE, LIMITS)], stateOf(UNIT), asked(undefined));
+    expect(said(shown)).toEqual([LIMITS_GONE]);
+    expect(shown.preview).toBeNull();
+    expect(shown.reading).toBe(true);
+  });
+
+  it("offers nothing of an entry its refusal takes off, while the state still names it", () => {
+    const shown = undoShown(
+      [undoRefused(STALE, LIMITS)],
+      stateOf(LIMITS),
+      asked(previewOf(LIMITS)),
+    );
+    expect(said(shown)).toEqual([LIMITS_GONE]);
+    expect(shown.label).toBe("Undo the limits of ValueA");
+    expect(shown.preview).toBeNull();
+    expect(shown.reading).toBe(false);
+  });
+
+  it("says why with nothing left to undo, and its button says that nothing is", () => {
+    const shown = undoShown([undoRefused(STALE, LIMITS)], stateOf(null), asked(undefined));
+    expect(said(shown)).toEqual([LIMITS_GONE]);
+    expect(shown.label).toBe("Nothing left to undo");
+    expect(shown.preview).toBeNull();
+    expect(shown.reading).toBe(false);
+    // With nothing said either, there is no control.
+    expect(undoShown([], stateOf(null), asked(undefined)).label).toBeNull();
+    expect(undoShown([], null, asked(undefined)).label).toBeNull();
+  });
+
+  it("says every entry taken off while the strip is open, in the order they went", () => {
+    // The two edits wrote one file, and the save that took the first off took the second too.
+    const held = [undoRefused(STALE, LIMITS), undoRefused(STALE, UNIT)];
+    expect(said(undoShown(held, stateOf(null), asked(undefined)))).toEqual([
+      LIMITS_GONE,
+      UNIT_GONE,
+    ]);
+  });
+
+  it("leaves unsaid a refusal of an entry a newer one covers, and offers the newer one whole", () => {
+    // An edit made while the strip is open: the entry refused may come back to the top.
+    const shown = undoShown(
+      [undoRefused(UNWRITABLE, UNIT)],
+      stateOf(LIMITS),
+      asked(previewOf(LIMITS)),
+    );
+    expect(said(shown)).toEqual([]);
+    expect(shown.preview).toEqual(previewOf(LIMITS));
+  });
+
+  it("says a preview's own refusal in its place, and offers nothing to put back", () => {
+    // Asked again and refused, the preview before it is no longer what the undo would do.
+    const shown = undoShown([], stateOf(LIMITS), asked(previewOf(LIMITS), FAILED));
+    expect(said(shown)).toEqual(["The undo was refused: ddd gui failed on this request"]);
+    expect(shown.preview).toBeNull();
+    expect(shown.reading).toBe(false);
+  });
+
+  it("says a preview's refusal once, whether the strip holds it yet or not", () => {
+    const refused = previewRefused(STALE, LIMITS);
+    expect(refused).not.toBeNull();
+    const held = refused === null ? [] : [refused];
+    expect(said(undoShown([], stateOf(LIMITS), asked(undefined, STALE)))).toEqual([LIMITS_GONE]);
+    expect(said(undoShown(held, stateOf(LIMITS), asked(undefined, STALE)))).toEqual([LIMITS_GONE]);
+  });
+
+  it("keys each sentence by the entry it is of", () => {
+    // Two edits of one label, refused in one sentence, are two sentences of two entries.
+    const again = { at: 3, label: "the limits of ValueA" };
+    const shown = undoShown(
+      [undoRefused(STALE, LIMITS), undoRefused(STALE, again)],
+      stateOf(UNIT),
+      asked(undefined, UNWRITABLE),
+    );
+    const keys = shown.refusals.map((refusal) => refusal.key);
+    expect(new Set(keys).size).toBe(3);
   });
 });
 

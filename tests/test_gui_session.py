@@ -123,11 +123,33 @@ def shared(tmp_path: Path) -> Path:
 
 
 def unit_of_b(path: Path, unit: str) -> FileChange:
-    target = path.parent / "b.ddd.json"
+    return unit_of(path.parent / "b.ddd.json", unit)
+
+
+def unit_of(target: Path, unit: str) -> FileChange:
+    """The change setting the unit of the one declaration ``target`` states, from its bytes as
+    they stand."""
     pointer = "component.interface[0].definition.unit"
     return FileChange(
         target, fingerprint(target.read_bytes()), (Operation("set", pointer, f'"{unit}"'),)
     )
+
+
+def refusing_renames(after: dict[Path, int]) -> Callable[[Path, Any], Path]:
+    """``Path.replace`` refusing a target, as a full disk would, once it has been asked for it
+    ``after[target]`` times: 1 refuses the first rename onto it, 2 lets the first by - the put
+    back of a file an undo writes - and refuses the second, its write forward again."""
+    real = Path.replace
+    seen: dict[Path, int] = {}
+
+    def renaming(self: Path, target: Any) -> Path:
+        target = Path(target)
+        seen[target] = seen.get(target, 0) + 1
+        if seen[target] >= after.get(target, seen[target] + 1):
+            raise OSError("disk full")
+        return real(self, target)
+
+    return renaming
 
 
 def mismatches(session: Session) -> int:
@@ -3209,7 +3231,8 @@ class TestReadingAndEditing:
     ) -> None:
         """The undo of the edit on top, refused because its file was saved since, is a write
         refused ``stale``: it asks for the analysis that reads what is on disk, as an edit's
-        refusal does, whether or not the poll could see the save."""
+        refusal does, whether or not the poll could see the save - and takes that edit off the
+        stack (:class:`TestUndoing`)."""
         session = Session(shared.parent)
         session.open(shared)
         at, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of Torque")
@@ -3220,7 +3243,7 @@ class TestReadingAndEditing:
             session.undo(at)
         assert refused.value.code == STALE
         assert session.current().number > first
-        assert session.undoable is not None and session.undoable.at == at
+        assert session.undoable is None
 
     def test_an_edit_needs_an_open_project(self, shared: Path) -> None:
         with pytest.raises(NoProjectError):
@@ -3954,17 +3977,133 @@ class TestUndoing:
             session.undo(1)
         assert refused.value.code == STALE
 
-    def test_a_refused_undo_leaves_the_stack_as_it_was(self, shared: Path) -> None:
+    def test_an_undo_refused_because_its_file_changed_on_disk_takes_its_edit_off_the_stack(
+        self, shared: Path
+    ) -> None:
+        """A file the edit wrote, saved from outside since: the disk has moved past that edit,
+        which can never be put back as the file stands, so its undo is refused ``stale``, the
+        save is left as it was, and the edit is taken off the stack."""
         session = Session(shared.parent)
         session.open(shared)
         b = shared.parent / "b.ddd.json"
         session.edit([unit_of_b(shared, "Hz")], "the unit of Torque")
         b.write_text('{"component": {"name": "B"}}', encoding="utf-8")
+        said = session.snapshot().version
         with pytest.raises(EditError) as refused:
             session.undo(1)
         assert refused.value.code == STALE
-        assert session.undoable is not None
+        assert session.undoable is None
+        assert session.snapshot().version > said
         assert b.read_text(encoding="utf-8") == '{"component": {"name": "B"}}'
+
+    def test_an_undo_refused_because_its_file_changed_on_disk_brings_the_edit_beneath_in_reach(
+        self, shared: Path
+    ) -> None:
+        """Two edits, then a save from outside of the file the second wrote: the second's undo is
+        refused ``stale`` and that edit taken off the stack, and the first, which wrote another
+        file, is the one to undo - put back as an undo of it always was."""
+        session = Session(shared.parent)
+        session.open(shared)
+        a = shared.parent / "a.ddd.json"
+        b = shared.parent / "b.ddd.json"
+        before = a.read_bytes()
+        first, _ = session.edit([unit_of(a, "Hz")], "the unit of Speed")
+        second, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of Torque")
+        b.write_bytes(b.read_bytes().replace(b'"Hz"', b'"rad"'))
+        with pytest.raises(EditError) as refused:
+            session.undo(second)
+        assert refused.value.code == STALE
+        top = session.undoable
+        assert top is not None and (top.at, top.label) == (first, "the unit of Speed")
+        session.undo(first)
+        assert a.read_bytes() == before
+        assert b'"rad"' in b.read_bytes()
+        assert session.undoable is None
+
+    def test_an_undo_refused_unwritable_keeps_its_edit_on_the_stack(self, shared: Path) -> None:
+        """A file the undo cannot write - kept read-only - is refused before anything is put
+        back, and the edit stays where it was: the reader may make the file writable and ask
+        again, and the undo then puts it back."""
+        session = Session(shared.parent)
+        session.open(shared)
+        b = shared.parent / "b.ddd.json"
+        before = b.read_bytes()
+        at, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of Torque")
+        written = b.read_bytes()
+        b.chmod(0o444)
+        try:
+            with pytest.raises(EditError) as refused:
+                session.undo(at)
+        finally:
+            b.chmod(0o644)
+        assert refused.value.code == UNWRITABLE
+        top = session.undoable
+        assert top is not None and top.at == at
+        assert b.read_bytes() == written
+        session.undo(at)
+        assert b.read_bytes() == before
+
+    def test_an_undo_left_half_written_forward_is_taken_off_once_asked_again(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An undo that put one file back, then could neither put back the next nor write the
+        first forward again, is refused ``unwritable``, and its edit stays on the stack to be
+        asked again. Asked again, that first file is not as the edit left it, so the undo is
+        refused ``stale`` and the edit taken off: the one beneath it comes within reach."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json", "c.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": component("B", declare("input", "Speed", unit="rpm")),
+                "c.ddd.json": component("C", declare("input", "Speed", unit="rpm")),
+            },
+        )
+        a, b, c = (tmp_path.resolve() / f"{name}.ddd.json" for name in "abc")
+        before = c.read_bytes()
+        session = Session(tmp_path)
+        session.open(tmp_path / "p.ddd.json")
+        first, _ = session.edit([unit_of(c, "Hz")], "the unit of Speed in C")
+        second, _ = session.edit([unit_of(a, "Hz"), unit_of(b, "Hz")], "the unit of Speed")
+        # a is put back, b refuses, and a's write forward again refuses as well.
+        monkeypatch.setattr(Path, "replace", refusing_renames({b: 1, a: 2}))
+        with pytest.raises(EditError) as half:
+            session.undo(second)
+        assert half.value.code == UNWRITABLE
+        assert str(half.value).endswith(f"these could not be written forward again: {a}")
+        top = session.undoable
+        assert top is not None and top.at == second
+        monkeypatch.undo()
+        with pytest.raises(EditError) as refused:
+            session.undo(second)
+        assert refused.value.code == STALE
+        top = session.undoable
+        assert top is not None and top.at == first
+        session.undo(first)
+        assert c.read_bytes() == before
+
+    def test_a_preview_refused_stale_takes_its_edit_off_where_it_is_still_on_top(
+        self, shared: Path
+    ) -> None:
+        """What ``GET /api/undo`` tells the session of a preview it refused: ``stale``, a file the
+        edit would put back changed on disk since, takes that edit off the stack as its own undo
+        would, where it is still the one on top, and asks for the analysis that reads the disk;
+        any other refusal, or one of an edit no longer on top, leaves the stack as it is."""
+        session = Session(shared.parent)
+        session.open(shared)
+        first, _ = session.edit([unit_of(shared.parent / "a.ddd.json", "Hz")], "the unit of Speed")
+        second, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of Torque")
+        stale = EditError(STALE, "b.ddd.json changed on disk since it was written")
+        session.preview_refused(first, stale)
+        session.preview_refused(second, EditError(UNWRITABLE, "disk full"))
+        top = session.undoable
+        assert top is not None and top.at == second
+        revision, said = session.current().number, session.snapshot().version
+        session.preview_refused(second, stale)
+        top = session.undoable
+        assert top is not None and top.at == first
+        assert session.snapshot().version > said
+        assert session.current().number > revision
 
     def test_an_undo_takes_away_the_file_an_adoption_created(self, shared: Path) -> None:
         session = Session(shared.parent)

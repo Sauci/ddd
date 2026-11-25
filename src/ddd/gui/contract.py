@@ -405,8 +405,9 @@ class State(_Frozen):
     the first. No analysis applies their severities."""
 
     undoable: UndoableEdit | None
-    """The last edit the interface made and has not put back, or ``None`` when it has made
-    none: what makes the Undo control appear without a request of its own."""
+    """The last edit the interface made that is still on the undo stack - neither put back, nor
+    taken off it because a file it would put back changed on disk since - or ``None`` where none
+    is: what makes the Undo control appear without a request of its own."""
 
     analysing: bool
     """Whether an analysis is asked for or running: the findings may be about to change."""

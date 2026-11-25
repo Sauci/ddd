@@ -51,30 +51,9 @@ export function refusalOf(error: Error): string {
   return refusalSentence(error, STALE);
 }
 
-/**
- * The one refusal a panel of several writes shows beside its write `about`: the refusal it holds
- * of that write's Apply (`Refused`, `heldOf`), else why the write's plan was refused when asked
- * for, in the server's own words - `asked`, read straight off `planShown`'s own `refusal`
- * (`lib/typing.ts`) - else none. A panel of one write shows the sentence it holds, else its
- * plan's, the same way. What a panel offers beside it is `offerShown`'s; the Undo strip, whose
- * refusal is the whole of it, reads this alone.
- *
- * `asked` is the answer of the revision on screen, the plan being asked for again at every one, so
- * a revision landing moves it - none while the new plan is asked for, then that plan's own answer -
- * and never the refusal held, which only the reader's next choice takes away. A refusal held of
- * another of the panel's writes is not shown beside this one, nor does it take this one's Apply
- * away.
- */
-export function refusalShown<A>(
-  held: Refused<A> | null,
-  asked: string | null,
-  about: A,
-): string | null {
-  return heldOf(held, about) ?? asked;
-}
-
 /** The sentence a panel of several writes holds of the Apply of `about`, `null` where what it
- * holds, if anything, is of another of its writes. */
+ * holds, if anything, is of another of its writes: a refusal held of another of the panel's
+ * writes is not shown beside this one, nor does it take this one's Apply away (`offerShown`). */
 export function heldOf<A>(held: Refused<A> | null, about: A): string | null {
   return held !== null && held.about === about ? held.text : null;
 }

@@ -799,7 +799,9 @@ class Api:
 
     def _undo(self, query: NoQuery, body: None) -> Reply:
         """What putting the last edit back would give each file, read from the disk as it
-        stands."""
+        stands. Its refusal is the undo's own (:meth:`Session.preview_refused`): ``stale``, a
+        file the edit wrote having changed on disk since, takes that edit off the stack, and the
+        preview asked next is the one of the edit under it."""
         revision = self._opened()
         top = self.session.undoable
         if top is None:
@@ -807,6 +809,7 @@ class Api:
         try:
             changes = _undone_changes(top)
         except EditError as refused:
+            self.session.preview_refused(top.at, refused)
             return _edit_refusal(refused)
         return Reply(
             200,

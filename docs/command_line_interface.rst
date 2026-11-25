@@ -522,8 +522,10 @@ The commands
        nothing of it to undo. A change applied here can be undone while the server
        runs, from a button beside the project's name naming what it would put back:
        the files are shown first, the lines on request, and a file that changed on
-       disk since is named and left alone. The list of what can be undone lives in
-       the running server and ends with it.
+       disk since is named and left alone: that change can no longer be put back, so it
+       leaves the list, and the one before it is offered in its place. A change whose
+       file cannot be written stays, to be put back once it can be. The list of what can
+       be undone lives in the running server and ends with it.
        The Compare tab's baseline is a dumped dictionary, or a project or component
        description, at a path under the directory ``ddd gui`` was started in, refused, and
        told why, when it is outside that directory, unreadable, not valid json, a

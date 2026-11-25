@@ -203,11 +203,12 @@ export function AnAppliedValueHeld() {
           label="Undo element 3 of CurveA"
           open={false}
           onOpen={() => {}}
+          refusals={[]}
           preview={null}
+          reading={false}
           changesShown={false}
           onChangesShown={() => {}}
           onUndo={() => {}}
-          refusal={null}
           busy={false}
         />
       }

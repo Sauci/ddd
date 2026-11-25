@@ -338,6 +338,17 @@ test("an edit a newer one covered, back on top once another window undoes the ne
     await other.goto(gui.address);
     const theirs = other.getByRole("button", { name: "Undo the unit of ValueA" });
     await expect(theirs).toBeVisible();
+    // Whether the second window ever draws that refusal, if only for a frame: covered, it goes
+    // unsaid, and back on top it no longer holds.
+    await other.evaluate(() => {
+      const seen = window as unknown as { untrue: boolean };
+      seen.untrue = false;
+      new MutationObserver(() => {
+        if (document.body.textContent?.includes("is not the one to undo any more")) {
+          seen.untrue = true;
+        }
+      }).observe(document.body, { childList: true, subtree: true, characterData: true });
+    });
     const release = await held(other, "/api/undo");
     const refused = other.waitForResponse(
       (response) => new URL(response.url()).pathname === "/api/undo" && response.status() === 409,
@@ -367,6 +378,9 @@ test("an edit a newer one covered, back on top once another window undoes the ne
     await expect(strip(other).getByText("Puts back 1 file: controller.ddd.json")).toBeVisible();
     await expect(strip(other).getByRole("button", { name: "Put back 1 file" })).toBeVisible();
     await expect(strip(other).getByRole("status")).toHaveCount(0);
+    expect(await other.evaluate(() => (window as unknown as { untrue: boolean }).untrue)).toBe(
+      false,
+    );
   } finally {
     await other.close();
   }

@@ -4120,6 +4120,25 @@ class TestUndoing:
         session.undo(at)
         assert b.read_bytes() == before
 
+    def test_an_undo_of_two_files_is_taken_off_where_the_second_changed_on_disk(
+        self, shared: Path
+    ) -> None:
+        """An edit of two files, the second saved from outside since: the first still holds what
+        the edit left, and the edit is taken off all the same - one file past it is enough for the
+        disk to have moved past the edit, wherever it stands among them."""
+        session = Session(shared.parent)
+        session.open(shared)
+        a = shared.parent / "a.ddd.json"
+        b = shared.parent / "b.ddd.json"
+        at, _ = session.edit([unit_of(a, "Hz"), unit_of(b, "Hz")], "the unit of Speed")
+        written = a.read_bytes()
+        b.write_bytes(b.read_bytes().replace(b'"Hz"', b'"rad"'))
+        with pytest.raises(EditError) as refused:
+            session.undo(at)
+        assert refused.value.code == STALE
+        assert session.undoable is None
+        assert a.read_bytes() == written
+
     def test_an_undo_refused_because_a_file_it_wrote_is_gone_takes_its_edit_off(
         self, shared: Path
     ) -> None:

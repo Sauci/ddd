@@ -1260,6 +1260,11 @@ REFUSED = [
     ("/api/compare", {}, "compare takes ?baseline="),
     ("/api/compare", {"baseline": ""}, "compare takes ?baseline="),
     ("/api/compare", {"baseline": "base\ud800.json"}, "compare takes ?baseline= as a file's path"),
+    ("/api/undo", {}, "undo takes ?at="),
+    ("/api/undo", {"at": ""}, "undo takes ?at="),
+    ("/api/undo", {"at": "0"}, "undo takes ?at= as the number of an edit, from 1"),
+    ("/api/undo", {"at": "the top"}, "undo takes ?at= as the number of an edit, from 1"),
+    ("/api/undo", {"at": "1", "x": "1"}, "undo takes no ?x="),
     *[
         (f"/api/{route}", {"x": "1"}, f"{route} takes no ?x=")
         for route in (
@@ -1272,7 +1277,6 @@ REFUSED = [
             "types",
             "shared",
             "files",
-            "undo",
         )
     ],
     *PLANS_REFUSED,

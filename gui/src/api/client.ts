@@ -45,6 +45,7 @@ import type {
   TypeReply,
   TypesReply,
   UndoPreview,
+  UndoQuery,
   UndoReply,
   UnitPlanQuery,
   UnitQuery,
@@ -468,8 +469,10 @@ export const postEdit = async (
   return reply;
 };
 
-export const getUndo = (fetchImpl: Fetch = fetch) =>
-  request<UndoPreview>("/api/undo", {}, fetchImpl);
+/** The preview of an undo of the edit numbered `at`, the one the state names on top: refused
+ * `stale` where another window has moved the stack past it, and nothing taken off then. */
+export const getUndo = (at: number, fetchImpl: Fetch = fetch) =>
+  request<UndoPreview>(`/api/undo${queryOf<UndoQuery>({ at })}`, {}, fetchImpl);
 
 /** An undo of the edit numbered `at`, answered once the files are back: its number is noted into
  * `edits` as an edit's is, with the edit it put back and, where told, what that was

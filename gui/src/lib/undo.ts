@@ -354,8 +354,8 @@ function plural(count: number): string {
  *   stands, and asked again before then it could lead to what the undo put back while its words
  *   still name what the analysis read; its own analysis answers both at once.
  * - **The strip's own preview**: the undo closes the strip, and the entry it previews next is the
- *   one the next state names, under a key of its own - asked again, the entry put back answers
- *   that nothing is left to undo, or another one.
+ *   one the next state names, under a key of its own - asked again, the preview of the entry put
+ *   back is refused as no longer on top.
  * - **No file's**: the session, and the projects found.
  */
 const LEFT_ALONE: ReadonlySet<unknown> = new Set([

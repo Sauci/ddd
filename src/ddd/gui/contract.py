@@ -1902,6 +1902,7 @@ _ENDPOINTS: tuple[tuple[type[BaseModel], Literal["validation", "serialization"]]
     (queries.StateQuery, "validation"),
     (queries.FindingsQuery, "validation"),
     (queries.FileQuery, "validation"),
+    (queries.UndoQuery, "validation"),
     (queries.VariableQuery, "validation"),
     (queries.NamesQuery, "validation"),
     (queries.SettleQuery, "validation"),

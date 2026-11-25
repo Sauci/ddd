@@ -1568,7 +1568,8 @@ because only the screen knows that the edit was "the rename of 'rpm' to 'RPM'".
 ``GET /api/state`` carries ``Session.undoable``, the top of the stack, so the control
 appears without a request of its own, ``GET /api/undo`` previews it - the lines each file
 would get back, and no operations, since an undo is bytes the server is holding rather than
-an edit the page composes - and ``POST /api/undo`` calls ``Session.undo`` with the entry's
-own number, refusing one that is no longer the top so that two windows cannot put back each
-other's changes. The stack lives in the running server and nothing of it is written into the
-project.
+an edit the page composes - and ``POST /api/undo`` calls ``Session.undo``. Both name the entry by
+its own number, ``?at=`` and ``at``, and both refuse one that is no longer the top
+(``Session.to_undo``), so that two windows cannot put back each other's changes, nor take one off
+the stack for the other. The stack lives in the running server and nothing of it is written into
+the project.

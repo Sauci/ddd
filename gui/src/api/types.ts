@@ -80,6 +80,7 @@ export type {
   TypeUse,
   UndoneChange,
   UndoPreview,
+  UndoQuery,
   UndoReply,
   UnitEntry,
   UnitPlace,

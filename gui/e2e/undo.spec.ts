@@ -210,6 +210,49 @@ test("two edits of one file saved from outside both leave the stack, each said i
   expect(unitOfValueA(gui)).toBe("kPa");
 });
 
+test("a window behind the server names the edit it asked to preview, once another window took it off", async ({
+  page,
+  gui,
+}) => {
+  // Two edits of Controller's file in this window: its unit of ValueA settled, then its limits.
+  await settledAndAnalysed(page, gui);
+  const panel = page.getByRole("complementary", { name: "ValueA" });
+  await panel.getByRole("row", { name: /^limits/ }).click();
+  await panel.getByLabel("Max").fill("50");
+  await panel.getByRole("button", { name: /^Apply to/ }).click();
+  const ours = page.getByRole("button", { name: "Undo the limits of ValueA" });
+  await expect(ours).toBeVisible();
+
+  // A second window on the same server, its strip open on the limits, every preview it asks for
+  // held: whatever it asks is answered only once this window has emptied the stack.
+  const other = await page.context().newPage();
+  try {
+    await other.goto(gui.address);
+    const theirs = other.getByRole("button", { name: "Undo the limits of ValueA" });
+    await expect(theirs).toBeVisible();
+    const release = await held(other, "/api/undo", { every: true });
+    try {
+      await theirs.click();
+      driftIn(gui.directory, CONTROLLER, "ValueA", "kPa");
+      await ours.click();
+      await expect(page.getByRole("button", { name: "Nothing left to undo" })).toBeVisible();
+      await expect(strip(page).getByRole("status").locator("p")).toHaveCount(2);
+    } finally {
+      release();
+    }
+    // Answered now, the other window's preview is refused as of the edit it named, which it says
+    // can no longer be undone, where a preview of whatever was on top answered that nothing was
+    // left and it said nothing at all.
+    await expect(other.getByRole("button", { name: "Nothing left to undo" })).toBeVisible();
+    await expect(strip(other).getByRole("status")).toContainText(
+      "edit 2 is not the one to undo any more, so the limits of ValueA can no longer be undone. " +
+        "Nothing was put back; the page shows the files as they are.",
+    );
+  } finally {
+    await other.close();
+  }
+});
+
 test("the control stands beside a component's name too", async ({ page, gui }) => {
   drift(gui.directory);
   await page.goto(gui.address);

@@ -281,7 +281,7 @@ describe("requests to the server", () => {
       fetchImpl,
       new OwnEdits(),
     );
-    await getUndo(fetchImpl);
+    await getUndo(2, fetchImpl);
     await postUndo(3, fetchImpl, new OwnEdits());
     await getValues("CurveA", fetchImpl);
     await getValuePlan({ name: "CurveA", at: "[2]", raw: 750 }, fetchImpl);
@@ -402,7 +402,7 @@ describe("requests to the server", () => {
             '"label":"the unit of ValueA"}',
         },
       ],
-      ["/api/undo", { credentials: "omit" }],
+      ["/api/undo?at=2", { credentials: "omit" }],
       [
         "/api/undo",
         {

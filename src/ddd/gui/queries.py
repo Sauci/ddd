@@ -456,6 +456,18 @@ class FileQuery(QueryModel):
     """The description file to read, a file of the open project."""
 
 
+class UndoQuery(QueryModel):
+    """What ``GET /api/undo`` takes: the edit the page offers to put back, as its state names it
+    (``UndoableEdit.at``), so that what the preview answers, and what its refusal does to the
+    stack, is of that edit - and not of whichever another window has left on top."""
+
+    missing: ClassVar[str] = "undo takes ?at="
+
+    at: Annotated[int, whole("undo takes ?at= as the number of an edit, from 1", least=1)]
+    """Refused as ``stale`` where it is no longer the one on top, as ``POST /api/undo`` refuses
+    it."""
+
+
 class VariableQuery(QueryModel):
     """What ``GET /api/variable`` takes."""
 

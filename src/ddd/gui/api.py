@@ -122,6 +122,7 @@ from ddd.gui.queries import (
     StateQuery,
     TypePlanQuery,
     TypeQuery,
+    UndoQuery,
     UnitPlanQuery,
     UnitQuery,
     ValuePlanQuery,
@@ -797,15 +798,18 @@ class Api:
             ),
         )
 
-    def _undo(self, query: NoQuery, body: None) -> Reply:
-        """What putting the last edit back would give each file, read from the disk as it
-        stands. Its refusal is the undo's own (:meth:`Session.preview_refused`): ``stale``, a
-        file the edit wrote having changed on disk since, takes that edit off the stack, and the
-        preview asked next is the one of the edit under it."""
+    def _undo(self, query: UndoQuery, body: None) -> Reply:
+        """What putting the edit ``?at=`` names back would give each file, read from the disk as
+        it stands: refused ``stale`` where that edit is no longer the one on top, as its undo is
+        (:meth:`Session.to_undo`), and nothing taken off then. Its refusal is the undo's own
+        (:meth:`Session.preview_refused`): a file the edit wrote gone, or changed on disk since,
+        takes that edit off the stack, and the preview asked next is the one of the edit under
+        it. Named by the page, the edit a refusal is of is the one the page holds it as."""
         revision = self._opened()
-        top = self.session.undoable
-        if top is None:
-            return _error(404, "not-found", "no edit of this session is left to undo")
+        try:
+            top = self.session.to_undo(query.at)
+        except EditError as refused:
+            return _edit_refusal(refused)
         try:
             changes = _undone_changes(top)
         except EditError as refused:
@@ -2009,7 +2013,7 @@ ROUTES: Final[tuple[Route, ...]] = (
         Api._edit,
         Policy(writes=True, runs_plugins=True),
     ),
-    Route("/api/undo", "GET", NoQuery, None, Api._undo),
+    Route("/api/undo", "GET", UndoQuery, None, Api._undo),
     Route(
         "/api/undo",
         "POST",

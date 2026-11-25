@@ -612,7 +612,7 @@ describe("what an undo asks again", () => {
 
   it("leaves the strip's own preview, and the session and the projects found", () => {
     // The undo closes the strip, and the entry it previews next is the one the next state
-    // names, under a key of its own: asked again, the entry just put back answers 404.
+    // names, under a key of its own: asked again, the entry just put back is not on top.
     const left = [["undo", 3, 7], ["session"], ["projects"]];
     expect(left.filter((key) => askedAgainAfterUndo(key))).toEqual([]);
   });

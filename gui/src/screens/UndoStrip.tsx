@@ -57,7 +57,7 @@ export function UndoStrip({ state, stopped }: Props) {
       !open || undoable === null
         ? skipToken
         : () =>
-            getUndo().catch((error: unknown) => {
+            getUndo(undoable.at).catch((error: unknown) => {
               // Held as the answer comes, of the entry this query was asked for, where the server
               // took that entry off the stack with it: the state naming the one under it can reach
               // the page before this answer does, which moves the strip to that entry's query, and

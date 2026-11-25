@@ -4476,15 +4476,69 @@ class TestUndoing:
         assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
         assert get(api, "/api/state").body["undoable"] == {"at": 1, "label": "the unit of Speed"}
 
-    def test_nothing_to_undo_is_not_found(self, api: Api) -> None:
-        reply = get(api, "/api/undo")
-        assert (reply.status, reply.body["error"]) == (404, "not-found")
+    def test_a_preview_with_nothing_to_undo_is_refused_as_its_undo_is(self, api: Api) -> None:
+        reply = get(api, "/api/undo", at="1")
+        assert reply == Reply(
+            409, {"error": "stale", "message": "edit 1 is not the one to undo any more"}
+        )
+
+    def test_a_preview_is_of_the_edit_it_names_and_refused_where_that_is_not_on_top(
+        self, api: Api, root: Path
+    ) -> None:
+        """The strip asks for the preview of the edit its state names, which another window may
+        have moved past: one not on top is refused ``stale``, as its undo would be, and the stack
+        is left as it is - a preview takes off no edit but the one it names."""
+        first = unit_edit(api, root, "Hz", "a.ddd.json", "the unit of Speed in A")
+        assert post(api, "/api/edit", first).status == 200
+        assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
+        preview = get(api, "/api/undo", at="2")
+        assert (preview.status, preview.body["at"]) == (200, 2)
+        reply = get(api, "/api/undo", at="1")
+        assert reply == Reply(
+            409, {"error": "stale", "message": "edit 1 is not the one to undo any more"}
+        )
+        assert get(api, "/api/state").body["undoable"] == {"at": 2, "label": "the unit of Speed"}
+
+    def test_two_windows_previews_each_take_off_the_edit_they_name_and_no_other(
+        self, api: Api, root: Path
+    ) -> None:
+        """Two edits of one file, then a save from outside. A window whose state still names the
+        first, with the second on top, takes nothing off. The preview of the second takes it off;
+        the same preview from a window not yet told is refused as not on top, and takes nothing
+        off either - the first, beneath, waits for a preview naming it, which takes it off in
+        turn: each refusal is of the edit asked for, and each edit goes with one."""
+        first = unit_edit(api, root, "Hz", label="the unit of Speed")
+        assert post(api, "/api/edit", first).status == 200
+        second = unit_edit(api, root, "rad", label="the unit of Speed again")
+        assert post(api, "/api/edit", second).status == 200
+        b = root / "b.ddd.json"
+        b.write_bytes(b.read_bytes().replace(b'"rad"', b'"rpm"'))
+        changed = Reply(
+            409, {"error": "stale", "message": "b.ddd.json changed on disk since it was written"}
+        )
+        assert get(api, "/api/undo", at="1") == Reply(
+            409, {"error": "stale", "message": "edit 1 is not the one to undo any more"}
+        )
+        assert get(api, "/api/state").body["undoable"]["at"] == 2
+        assert get(api, "/api/undo", at="2") == changed
+        assert get(api, "/api/undo", at="2") == Reply(
+            409, {"error": "stale", "message": "edit 2 is not the one to undo any more"}
+        )
+        assert get(api, "/api/state").body["undoable"] == {"at": 1, "label": "the unit of Speed"}
+        assert get(api, "/api/undo", at="1") == changed
+        assert get(api, "/api/state").body["undoable"] is None
+
+    def test_a_preview_takes_the_number_of_the_edit_it_previews(self, api: Api, root: Path) -> None:
+        assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
+        for query in ({}, {"at": ""}, {"at": "0"}, {"at": "one"}):
+            reply = get(api, "/api/undo", **query)
+            assert (reply.status, reply.body["error"]) == (400, "bad-request")
 
     def test_the_preview_carries_the_lines_each_file_would_get_back(
         self, api: Api, root: Path
     ) -> None:
         assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
-        body = get(api, "/api/undo").body
+        body = get(api, "/api/undo", at="1").body
         assert (body["at"], body["label"]) == (1, "the unit of Speed")
         assert body["revision"] == get(api, "/api/state").body["revision"]
         change = body["changes"][0]
@@ -4497,7 +4551,7 @@ class TestUndoing:
         assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
         b = root / "b.ddd.json"
         b.write_text('{"component": {"name": "B", "interface": []}}', encoding="utf-8")
-        reply = get(api, "/api/undo")
+        reply = get(api, "/api/undo", at="1")
         assert (reply.status, reply.body["error"]) == (409, "stale")
         assert reply.body["message"] == "b.ddd.json changed on disk since it was written"
 
@@ -4510,7 +4564,7 @@ class TestUndoing:
             raise EditError(UNWRITABLE, "disk full")
 
         monkeypatch.setattr("ddd.gui.api.unchanged", unwritable)
-        reply = get(api, "/api/undo")
+        reply = get(api, "/api/undo", at="1")
         assert (reply.status, reply.body["error"]) == (409, "unwritable")
         # Not stale: the edit stays, for the reader to ask again once the disk is mended.
         assert get(api, "/api/state").body["undoable"] == {"at": 1, "label": "the unit of Speed"}
@@ -4528,14 +4582,14 @@ class TestUndoing:
         b = root / "b.ddd.json"
         b.write_bytes(b.read_bytes().replace(b'"Hz"', b'"rad"'))
         said = get(api, "/api/state").body["version"]
-        reply = get(api, "/api/undo")
+        reply = get(api, "/api/undo", at="2")
         assert reply == Reply(
             409, {"error": "stale", "message": "b.ddd.json changed on disk since it was written"}
         )
         state = get(api, "/api/state").body
         assert state["undoable"] == {"at": 1, "label": "the unit of Speed in A"}
         assert state["version"] > said
-        preview = get(api, "/api/undo")
+        preview = get(api, "/api/undo", at="1")
         assert (preview.status, preview.body["at"]) == (200, 1)
         assert [Path(change["file"]).name for change in preview.body["changes"]] == ["a.ddd.json"]
 
@@ -4550,7 +4604,7 @@ class TestUndoing:
         before = b.read_bytes()
         assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
         with read_refused(b, monkeypatch):
-            reply = get(api, "/api/undo")
+            reply = get(api, "/api/undo", at="1")
         assert reply == Reply(
             409, {"error": "stale", "message": "b.ddd.json can no longer be read"}
         )
@@ -4637,7 +4691,7 @@ class TestUndoing:
 
     def test_undoing_needs_an_open_project(self, root: Path) -> None:
         bare = Api(Session(root))
-        assert get(bare, "/api/undo").status == 409
+        assert get(bare, "/api/undo", at="1").status == 409
         assert post(bare, "/api/undo", {"at": 1}).status == 409
 
     def test_both_methods_of_one_path_are_served(self, api: Api) -> None:
@@ -4806,7 +4860,7 @@ class TestBeforeTheFirstAnalysis:
             ("GET", "/api/findings", {"offset": "0", "limit": "100", "severity": "error"}),
             ("GET", "/api/graph", {}),
             ("POST", "/api/edit", {}),
-            ("GET", "/api/undo", {}),
+            ("GET", "/api/undo", {"at": "1"}),
             ("POST", "/api/undo", {}),
             ("GET", "/api/variable", {"name": "Speed"}),
             ("GET", "/api/names", {"text": "Speed"}),
@@ -6742,7 +6796,7 @@ class TestTheDemo:
         before = contents(root)
         preview = get(api, "/api/unit-plan", action="adopt").body
         assert applied(api, preview, "the vocabulary adopted").status == 200
-        undo = get(api, "/api/undo").body
+        undo = get(api, "/api/undo", at=str(get(api, "/api/state").body["undoable"]["at"])).body
         assert undo["label"] == "the vocabulary adopted"
         changes = {Path(c["file"]).name: c for c in undo["changes"]}
         assert changes["units.ddd.json"]["gone"] is True

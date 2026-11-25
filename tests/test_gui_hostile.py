@@ -202,6 +202,7 @@ def _well_formed(
         "/api/state": {},
         "/api/findings": {},
         "/api/file": {"path": demo_json},
+        "/api/undo": {"at": "1"},
         "/api/variable": {"name": "ValueA"},
         "/api/names": {"text": "Value"},
         "/api/unit": {"name": "rpm"},

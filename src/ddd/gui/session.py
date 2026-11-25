@@ -875,12 +875,26 @@ class Session:
             self._version += 1
             self._changed.notify_all()
 
+    def to_undo(self, at: int) -> Undoable:
+        """The edit numbered ``at``, where it is the one on top of the stack: what an undo of it
+        puts back, and what its preview reads (``GET /api/undo``). Refused ``stale`` otherwise,
+        as :meth:`undo` refuses it, the stack left as it is - another window has undone it, or
+        made an edit since, or the disk moved past it (:class:`_NotOnTopError`)."""
+        with self._lock:
+            self._required()
+            return self._on_top(at)
+
+    def _on_top(self, at: int) -> Undoable:
+        """The edit numbered ``at``, on top of the stack, refusing any other; holding the lock."""
+        top = self._stack[-1] if self._stack else None
+        if top is None or top.at != at:
+            raise _NotOnTopError(STALE, f"edit {at} is not the one to undo any more")
+        return top
+
     def _undone(self, at: int) -> int:
         with self._lock:
             self._required()
-            top = self._stack[-1] if self._stack else None
-            if top is None or top.at != at:
-                raise _NotOnTopError(STALE, f"edit {at} is not the one to undo any more")
+            top = self._on_top(at)
             try:
                 restore(top.files)
             except EditError as refused:

@@ -125,17 +125,19 @@ test("an undo of an edit whose file was changed by hand is refused, and the edit
   // put back as that file stands, and the server takes it off the stack, which the strip says.
   driftIn(gui.directory, CONTROLLER, "ValueA", "kPa");
   await undo.click();
+  // Nothing is left to undo once the state says so, and the control says that for as long as the
+  // strip says why - asked only then, the sentence is the one the strip holds, not the preview's
+  // own refusal drawn a moment before the state moved.
+  const nothing = page.getByRole("button", { name: "Nothing left to undo" });
+  await expect(nothing).toHaveAttribute("aria-expanded", "true");
   await expect(strip(page).getByRole("status")).toHaveText(
     "controller.ddd.json changed on disk since it was written, so the unit of ValueA can no " +
       "longer be undone. Nothing was put back; the page shows the files as they are.",
   );
   await expect(strip(page).getByRole("button", { name: /^Put back/ })).toHaveCount(0);
 
-  // Nothing was written, and nothing is left to undo: the control says so for as long as the
-  // strip says why, and closing the strip takes both away.
+  // Nothing was written, and closing the strip takes the sentence and the control away.
   expect(readFileSync(join(gui.directory, CONTROLLER)).toString()).toContain('"kPa"');
-  const nothing = page.getByRole("button", { name: "Nothing left to undo" });
-  await expect(nothing).toHaveAttribute("aria-expanded", "true");
   await nothing.click();
   await expect(strip(page)).toHaveCount(0);
   await expect(nothing).toHaveCount(0);
@@ -161,14 +163,15 @@ test("an edit whose file was saved from outside leaves the stack, and the strip 
   const description = join(gui.directory, "demo.ddd.json");
   writeFileSync(description, `${readFileSync(description, "utf8")}\n`);
   await undo.click();
+  // The edit before it is the one to undo now, offered whole in the strip still open, under the
+  // sentence that says why the other went - asked once the state names the next, so that it is
+  // the sentence the strip holds, not the preview's own refusal drawn a moment before.
+  await expect(page.getByRole("button", { name: "Undo the unit of ValueA" })).toBeVisible();
+  await expect(strip(page).getByText("Puts back 1 file: controller.ddd.json")).toBeVisible();
   await expect(strip(page).getByRole("status")).toHaveText(
     "demo.ddd.json changed on disk since it was written, so the vocabulary adopted can no " +
       "longer be undone. Nothing was put back; the page shows the files as they are.",
   );
-  // The edit before it is the one to undo now, offered whole in the strip still open, under the
-  // sentence that says why the other went.
-  await expect(page.getByRole("button", { name: "Undo the unit of ValueA" })).toBeVisible();
-  await expect(strip(page).getByText("Puts back 1 file: controller.ddd.json")).toBeVisible();
   await strip(page).getByRole("button", { name: "Put back 1 file" }).click();
 
   // Put back as an undo of it always was; the vocabulary, taken off and not undone, stays.
@@ -194,20 +197,15 @@ test("two edits of one file saved from outside both leave the stack, each said i
   // file back to what it held before the second.
   driftIn(gui.directory, CONTROLLER, "ValueA", "kPa");
   await undo.click();
-  const said = strip(page).getByRole("status");
-  await expect(
-    said.getByText(
-      "controller.ddd.json changed on disk since it was written, so the limits of ValueA can no " +
-        "longer be undone. Nothing was put back; the page shows the files as they are.",
-    ),
-  ).toBeVisible();
-  await expect(
-    said.getByText(
-      "controller.ddd.json changed on disk since it was written, so the unit of ValueA can no " +
-        "longer be undone. Nothing was put back; the page shows the files as they are.",
-    ),
-  ).toBeVisible();
+  // Once nothing is left, the strip says both, in the order they went: asked only then, neither
+  // is a preview's own refusal drawn a moment before the state moved.
   await expect(page.getByRole("button", { name: "Nothing left to undo" })).toBeVisible();
+  await expect(strip(page).getByRole("status").locator("p")).toHaveText([
+    "controller.ddd.json changed on disk since it was written, so the limits of ValueA can no " +
+      "longer be undone. Nothing was put back; the page shows the files as they are.",
+    "controller.ddd.json changed on disk since it was written, so the unit of ValueA can no " +
+      "longer be undone. Nothing was put back; the page shows the files as they are.",
+  ]);
   await expect(strip(page).getByRole("button", { name: /^Put back/ })).toHaveCount(0);
   expect(unitOfValueA(gui)).toBe("kPa");
 });

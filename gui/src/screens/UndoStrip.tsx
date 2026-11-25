@@ -1,5 +1,5 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { getUndo, postUndo } from "../api/client";
 import type { State } from "../api/types";
 import { UndoStripView } from "../components/UndoStripView";
@@ -51,17 +51,21 @@ export function UndoStrip({ state, stopped }: Props) {
   const revision = state?.revision;
   const preview = useQuery({
     queryKey: ["undo", undoable?.at, revision],
-    queryFn: !open || undoable === null ? skipToken : () => getUndo(),
+    queryFn:
+      !open || undoable === null
+        ? skipToken
+        : () =>
+            getUndo().catch((error: unknown) => {
+              // Held as the answer comes, of the entry this query was asked for, where the server
+              // took that entry off the stack with it: the state naming the one under it can reach
+              // the page before this answer does, which moves the strip to that entry's query, and
+              // a refusal held only once the strip saw it refused was then never seen at all.
+              const kept = error instanceof Error ? previewRefused(error, undoable) : null;
+              if (kept !== null) setHeld((before) => holding(before, kept));
+              throw error;
+            }),
     retry: false,
   });
-  // A new refusal of the preview, of the entry the query was asked for: held where the server took
-  // that entry off the stack with it, so that the strip says it on once the state names the next.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: run for a new refusal alone; the entry is the one its query is keyed by, read as it stands.
-  useEffect(() => {
-    if (preview.error === null || undoable === null) return;
-    const kept = previewRefused(preview.error, undoable);
-    if (kept !== null) setHeld((before) => holding(before, kept));
-  }, [preview.error]);
   const undo = useMutation({
     // The entry the reader pressed for, which the refusal, if any, is of, and what its preview says
     // it puts back, for the heading to say once it has (16:I13).

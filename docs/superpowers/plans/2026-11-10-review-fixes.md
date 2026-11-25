@@ -2154,8 +2154,8 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   neither, so until branch 11 a failed analysis reads as analysing still. Branch 11's task 7, one
   banner naming what did not load. *(Done by branch 11, task 7: one banner under the masthead of
   every page of the open project says why the last analysis failed, and that `ddd gui` tries
-  again, and each build record this DDD cannot use, with its reason; a first analysis that failed
-  no longer reads as one under way.)*
+  again, and each build record this DDD cannot use, with its reason; a project whose first
+  analysis failed is no longer drawn as one still being analysed.)*
 - **An entry whose pattern names several files, and the description read after the analysis**
   (task 9, `14:M9`): the error of such an entry stays with the description, so `ddd gui` lists
   the description as the file that did not load, where the language server counts neither as
@@ -2236,8 +2236,8 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   unsent, a body past `EDIT_BODY`; but where the server turns an Apply's body of 1 to 8 MiB away,
   `401` or `403`, for its token or its origin, ahead of reading it, the drain behind the refusal
   still reads 1 MiB of it at most, and on Windows the reset after can lose the answer, the page
-  then taking the server for one not answering. No check in `request` can foresee those
-  refusals. The maintainer's: `gui/server.py` is on no later branch's list for behaviour, branch
+  then taking the server for one not answering. Nothing `request` can look at beforehand tells it
+  which Apply the server will turn away. The maintainer's: `gui/server.py` is on no later branch's list for behaviour, branch
   14 moving code and keeping what it does.
 - **Three panels and the plan before a stale refusal** (task 10b; R365): the values grid, the
   declare panel and the Shared files add form ask for their plan anew when the next revision has
@@ -2353,6 +2353,28 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   the start page lists, untested; and the doc of a narrow journey that has a table size its box in a
   wheel's frames, where it does so in the focus's own step. Branch 16 lists `tests/*` and
   `gui/e2e/*`; Vitest's tests are under `gui/src`, which branch 14 moves.
+- **The declare form's new line and its empty field** (task 5; the whole-branch review): no story
+  draws the line the form gained, or the form with a required field left empty, so that the
+  references show neither. The maintainer's: no later branch lists `gui/src` for behaviour, branch
+  14 moving it and keeping what it does.
+- **The strip while the files are read again** (task 11b): while `Read the files again` is asked
+  for, nothing in the strip says that it is reading, where the button is disabled alone. The
+  maintainer's, as above.
+- **The strip and the heading's status** (the final wave): with the Undo strip open on a
+  component's page or the values grid, the heading's status line has no room and is not seen,
+  though it is still announced, as on the project's page already, which its story records. The
+  maintainer's, as above.
+- **A refusal's name for a file** (the final wave; `_by_name`, `src/ddd/gui/api.py`): where one
+  file's path holds another's whole, the name a refusal gives the file is garbled, which takes a
+  folder repeating the project's own path. The maintainer's: branch 14 moves `src/ddd/gui` and
+  keeps what it does.
+- **A cut answer to an undo's preview** (the final wave; `refusedRead`, `gui/src/lib/kept.ts`): a
+  `2xx` answer that does not parse as a refusal reads as one there, where `askedAgain`
+  (`gui/src/api/client.ts`) reads it as a failure, so a preview whose answer was cut is worded as
+  refused and offered `Read the files again`. The maintainer's, as above.
+- **A journey's precondition** (the final wave; `gui/e2e/canvas.spec.ts`, near line 722): it reads
+  the label's box once, with no poll, after a drag, so that it can fail. Branch 16's
+  (`gui/e2e/*`).
 - **Comments and code the branch has outgrown** (tasks 2 to 11): `GoToView`'s `onGo` doc,
   `app/useRoute.ts`'s on a filter's text, two comments of `TypePanel.tsx`, `ValuesPlotView.tsx`'s
   on how readings are keyed, `opensAt` left `null` unsaid, and `refusalOf`'s list of callers
@@ -4023,16 +4045,16 @@ Every departure from a task's text, with its reason, numbered `R1`, `R2`, and so
   R319's list, the preview being where the strip first learns that its entry is dead; and that
   the preview moves the stack, and the version with it, on the token alone was accepted (ruling
   B11-60), which the final wave wrote on the security page (R373).
-- **R368.** `GET /api/undo` previews and takes off the edit its `?at=` names, refusing another as
-  no longer on top, so that each window previews and takes off its own entry, and a late `stale`
+- **R368.** `GET /api/undo` answers for the edit its `?at=` names, previewing it and taking it
+  off, and refuses another as no longer on top, so that each window previews and takes off its own entry, and a late `stale`
   answer is held only while the strip is open (ruling B11-61).
 - **R369.** 11a's message before its review and 11b's dispatch told their implementers to ablate
   in place, against the plan's rule; both trees were found clean, and the dispatches after carry
   the rule (ruling B11-62, the controller's own error).
 - **R370.** R22's entry is a refusal's, a `409`: a preview failing with a `5xx` is asked again at
   the next revision, or once the strip is closed, as the page's other failed reads are (ruling
-  B11-63); and a preview refused `409` for an entry the server keeps is offered again without
-  closing the strip, `Read the files again` (ruling B11-64).
+  B11-63); and where the server still keeps the entry, a preview it refused `409` is offered anew,
+  `Read the files again`, the strip staying open (ruling B11-64).
 - **R371.** A scalar's one cell takes a pasted value as any cell does, decision 15.2 naming no
   exception; and an empty paste emptied the field, as emptying it by typing would (ruling
   B11-65), which the final wave turned (R375).

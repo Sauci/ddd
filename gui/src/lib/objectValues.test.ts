@@ -18,6 +18,7 @@ import {
   heldReadings,
   limitsLine,
   noGridNote,
+  nothingPasted,
   oneCell,
   pasted,
   pastedValue,
@@ -1717,9 +1718,15 @@ describe("pastedValue", () => {
     expect(pastedValue("abc")).toBe("abc");
   });
 
-  test("an empty one is a cell nothing is typed into", () => {
-    expect(pastedValue("")).toBe("");
+  test("one with no text - nothing, or an image alone - is no value, and leaves the cell as it was", () => {
+    // A text field keeps its text where nothing, or an image alone, is pasted into it, its
+    // `text/plain` empty then: the cell keeps what was typed there, where it was emptied.
+    expect(pastedValue("")).toBeNull();
+  });
+
+  test("one empty cell, its line break alone, is a cell nothing is typed into", () => {
     expect(pastedValue("\n")).toBe("");
+    expect(pastedValue("\r\n")).toBe("");
   });
 
   test("anything more is a block, which replaces every value", () => {
@@ -1728,6 +1735,19 @@ describe("pastedValue", () => {
     expect(pastedValue("14\t")).toBeNull();
     // A second line break is a second row, empty.
     expect(pastedValue("14\n\n")).toBeNull();
+  });
+});
+
+describe("nothingPasted", () => {
+  test("a paste with no text pastes nothing, which the grid reads no table of", () => {
+    expect(nothingPasted("")).toBe(true);
+  });
+
+  test("any text is pasted: a line break, a space, a value or a table", () => {
+    expect(nothingPasted("\n")).toBe(false);
+    expect(nothingPasted(" ")).toBe(false);
+    expect(nothingPasted("14")).toBe(false);
+    expect(nothingPasted("1\t2\n3\t4")).toBe(false);
   });
 });
 

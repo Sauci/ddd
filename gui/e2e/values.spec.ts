@@ -1639,6 +1639,30 @@ test("one value pasted into a cell sets that cell, held with the cells typed bef
     .toEqual([1300, 1400, 1500, 750, 700, 650]);
 });
 
+// A paste of no text - an empty one, or an image alone, whose text is empty - leaves the cell it is
+// pasted into as it was, as a text field keeps its own (decision 15.2): the page takes
+// nothing of it, and the grid reads no table of it, where the cell's field was emptied.
+test("a paste with no text leaves the cell pasted into as it was, and the cells typed beside it", async ({
+  page,
+  gui,
+}) => {
+  await openValues(page, gui.address, "CurveA");
+  const grid = page.getByRole("grid", { name: "Values of CurveA" });
+  const cell = (element: number) => grid.getByRole("textbox", { name: `element ${element}` });
+  await typed(cell(1), "13");
+  await typed(cell(2), "14");
+  const sentence = page
+    .getByRole("region", { name: "Set the cells" })
+    .getByText("Sets 2 elements of CurveA: element 1 to 13 ms; element 2 to 14 ms");
+  await expect(sentence).toBeVisible();
+  await expect(cell(2)).toBeFocused();
+  expect(await pasteWhereFocused(page, "")).toBe(false);
+  await expect(cell(2)).toHaveValue("14");
+  await expect(cell(1)).toHaveValue("13");
+  await expect(sentence).toBeVisible();
+  await expect(page.getByText(/^expected 1 row of 6/)).toHaveCount(0);
+});
+
 // One value is a cell's only where a cell has the focus: anything more pasted into a cell, and
 // one value pasted with the focus on no cell, is a table, which replaces every value in place of
 // the cells typed before it.

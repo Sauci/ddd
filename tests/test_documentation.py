@@ -1052,7 +1052,8 @@ class TestTheCommandPage:
     def test_one_value_pasted_into_a_cell_is_said_to_set_it(self) -> None:
         """What ``objectValues.ts``'s ``pastedValue`` and the grid's cells do with one value pasted
         (decision 15.2), said where the grid is described: it sets the cell it is pasted into as a
-        cell typed, a scalar's one cell included, and anything more is a table."""
+        cell typed, a scalar's one cell included, anything more is a table, and a paste of no text
+        at all changes nothing (``nothingPasted``)."""
         text = flattened(self.COMMAND_PAGE)
         assert "nothing is drawn of one point, nor pasted into it" not in text
         assert "nothing is drawn of one point, nor a table pasted into it" in text
@@ -1060,6 +1061,10 @@ class TestTheCommandPage:
             "One value pasted into a cell - a single cell of text, a trailing line break aside - "
             "is no table: it sets that cell as if typed into it, held with the cells typed before "
             "it; anything more, pasted into a cell or anywhere else in the grid, is a table"
+        ) in text
+        assert (
+            "A paste of no text at all - nothing, or an image alone - changes nothing: the cell it "
+            "is pasted into keeps what was typed there, as any text field keeps its text."
         ) in text
 
     def test_the_readme_lists_the_same_schema_kinds(self) -> None:

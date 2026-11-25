@@ -2228,9 +2228,10 @@ A build of DDD from its sources, and a release of it:
   written.  One value pasted into a focused cell, a single cell of text with a trailing line break
   aside, was read as a table, and refused unless it was the object's whole shape; it now sets that
   cell as if typed there, with the reading of white space, of a comma that could be either and of
-  text that is no number that a typed cell has, and joins the cells typed before it in one plan, and
-  an empty paste empties the field.  A scalar's one cell takes a value so too.  Anything more,
-  pasted into a cell or elsewhere in the grid, is a table as before.  Nothing to migrate.
+  text that is no number that a typed cell has, and joins the cells typed before it in one plan; a
+  paste of no text, an empty one or an image alone, changes nothing, the cell it is pasted into
+  keeping what was typed there.  A scalar's one cell takes a value so too.  Anything more, pasted
+  into a cell or elsewhere in the grid, is a table as before.  Nothing to migrate.
 
 * **A file that cannot be written is refused before anything is, on every system, and what is
   written is synced.**  On Windows a read-only file was staged, refused at the rename after

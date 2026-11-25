@@ -544,16 +544,25 @@ export function pasted(
   return { rows: read, header, refusal: null, ambiguous: null };
 }
 
+/** Whether a paste holds no text at all - nothing, or an image alone, its `text/plain` empty - and
+ * so changes nothing, as no text field takes it: the cell it is pasted into keeps what was typed
+ * there, and the grid reads no table of it (decision 15.2). */
+export function nothingPasted(text: string): boolean {
+  return text === "";
+}
+
 /**
  * The one value a paste's text holds, where it holds one: a single cell, a trailing line break
  * aside - what a spreadsheet puts on the clipboard for one cell copied - or `null` for anything
- * more, a block, which replaces every value (`pasted`). One value pasted into a cell sets that
- * cell as if it were typed there, held with the cells typed before it (decision 15.2): read as a
- * table, it was refused as one of the wrong shape, and the cells typed went with it. The text is
- * the cell's as it was pasted, which the cell reads as it reads one typed - an empty one too,
- * which is a cell nothing is typed into.
+ * more, a block, which replaces every value (`pasted`), and for a paste of no text at all
+ * (`nothingPasted`), which the browser drops nothing of into the cell. One value pasted into a cell
+ * sets that cell as if it were typed there, held with the cells typed before it (decision 15.2):
+ * read as a table, it was refused as one of the wrong shape, and the cells typed went with it. The
+ * text is the cell's as it was pasted, which the cell reads as it reads one typed - a spreadsheet's
+ * empty cell too, its line break alone, which is a cell nothing is typed into.
  */
 export function pastedValue(text: string): string | null {
+  if (nothingPasted(text)) return null;
   const cells = celled(text).flat();
   return cells.length === 1 ? cells.join("") : null;
 }

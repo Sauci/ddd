@@ -27,6 +27,7 @@ import {
   cornerLabel,
   limitsLine,
   noGridNote,
+  nothingPasted,
   oneCell,
   pastedValue,
   pasteHint,
@@ -365,18 +366,23 @@ export function ValuesGridView(props: ValuesGridViewProps) {
         // which no table is pasted into (`pastes`). A grid with
         // an apply in flight takes nothing either: every input and Apply are disabled while
         // `busy`, so a cell cannot be typed into, and a paste taken here would be cleared
-        // without a word by that apply's own `onSuccess` the moment it landed.
+        // without a word by that apply's own `onSuccess` the moment it landed. Nor does a paste of
+        // no text at all, nothing or an image alone, which changes nothing - the cell it was
+        // pasted into keeping what was typed there - as no text field takes it (`nothingPasted`).
         //
         // The `busy` half is the one arm of this component nothing pins: a journey would have to
         // paste inside the window an apply is in flight, which it cannot open on purpose, and a
         // test that waited for it would be the race this suite refuses to write. It is left here
         // unguarded by any test on purpose, and said so rather than left to be discovered.
-        if (readOnly !== null || noGrid !== null || !pastes(reply) || busy) return;
+        const text = event.clipboardData.getData("text/plain");
+        if (nothingPasted(text) || readOnly !== null || noGrid !== null || !pastes(reply) || busy) {
+          return;
+        }
         // A cell is a text field: without this the browser also drops the whole block into
         // whichever one has focus. One value pasted into a cell never reaches here: the cell's
         // field takes it (`CellField`).
         event.preventDefault();
-        props.onPaste(event.clipboardData.getData("text/plain"));
+        props.onPaste(text);
       }}
     >
       <div className="heading">

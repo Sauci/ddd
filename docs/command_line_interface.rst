@@ -416,7 +416,9 @@ The commands
        whose header names a different axis is caught by that preview, not by the paste itself.
        One value pasted into a cell - a single cell of text, a trailing line break aside - is
        no table: it sets that cell as if typed into it, held with the cells typed before it;
-       anything more, pasted into a cell or anywhere else in the grid, is a table. A table past
+       anything more, pasted into a cell or anywhere else in the grid, is a table. A paste of
+       no text at all - nothing, or an image alone - changes nothing: the cell it is pasted
+       into keeps what was typed there, as any text field keeps its text. A table past
        about 10,000 counts is not one ``ddd gui`` takes: one whose counts outgrow the address a
        request carries - past about 8,000 counts of five digits each - is refused as it is
        pasted, before anything is asked of the server, in a sentence naming the object and

@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import {
   drift,
+  dump,
   emptyComponent,
   gainLink,
   held,
@@ -100,6 +101,59 @@ for (const width of [375, 320]) {
     values.searchParams.set("view", "values");
     await page.goto(values.href);
     await expect(heading("MapA")).toBeVisible();
+    expect(await sideways(page)).toBe(0);
+  });
+
+  // The Shared files tab's panels, whose tables of what uses an entry scroll in a box of their own
+  // as a type's do (`PanelTable`), and the Files tab with a row's panel.
+  test(`no shared entry's panel and no Files row's panel scrolls sideways in a window ${width}px wide`, async ({
+    page,
+    vocabularyGui,
+  }) => {
+    await page.setViewportSize({ width, height: 812 });
+    await page.goto(vocabularyGui.address);
+    await page.getByRole("link", { name: "Shared files", exact: true }).click();
+    const entries: Record<string, number> = {};
+    for (const [entry, table] of [
+      ["TREND_SAMPLES", "Used by"],
+      ["10ms", "Used by"],
+      [".fast_ram", "Used by"],
+    ] as const) {
+      await page.getByRole("row", { name: entry, exact: true }).click();
+      const panel = page.getByRole("complementary", { name: entry });
+      await expect(panel.getByRole("heading", { name: table })).toBeVisible();
+      await expect(panel.getByRole("table")).toBeVisible();
+      entries[entry] = await sideways(page);
+    }
+    expect(entries).toEqual({ TREND_SAMPLES: 0, "10ms": 0, ".fast_ram": 0 });
+
+    await page.getByRole("link", { name: "Files", exact: true }).click();
+    await page
+      .getByRole("grid", { name: "Files" })
+      .getByRole("row", { name: "pump.ddd.json", exact: true })
+      .click();
+    await expect(page.getByRole("complementary", { name: "pump.ddd.json" })).toBeVisible();
+    expect(await sideways(page)).toBe(0);
+  });
+
+  // A Compare verdict and its table of renamed objects, which scrolls in a box of its own too: an
+  // object renamed to a name of 86 characters, which no break shortens outside a panel, is wider
+  // than the window.
+  test(`a comparison with renamed objects does not scroll sideways in a window ${width}px wide`, async ({
+    page,
+    copiedGui,
+  }) => {
+    const renamed = "V".repeat(86);
+    const gui = await copiedGui("demo", (directory) => {
+      dump(directory, "demo.ddd.json", "baseline.json");
+      renameValueA(directory, renamed);
+    });
+    await page.setViewportSize({ width, height: 812 });
+    await page.goto(gui.address);
+    await page.getByRole("link", { name: "Compare" }).click();
+    await page.getByRole("textbox", { name: "Baseline" }).fill("baseline.json");
+    await page.getByRole("button", { name: "Compare" }).click();
+    await expect(page.getByRole("table").getByRole("cell", { name: renamed })).toBeAttached();
     expect(await sideways(page)).toBe(0);
   });
 }

@@ -64,12 +64,20 @@ export function UndoStrip({ state, stopped }: Props) {
   }, [open]);
   const undoable = state?.undoable ?? null;
   const revision = state?.revision;
-  // The answer on its way to the preview of an entry, if one is: a revision landing meanwhile keys
-  // the preview anew, and that entry was then asked a second time - the server, having taken it
-  // off with the first answer, refused the second as no longer on top, and the strip said twice
-  // that it can no longer be undone (16:M23). Asked again while one is on its way, the entry's
-  // preview is that answer.
+  // The answer the strip keeps to an entry's preview (`answerOf`, `settledAnswering`): the one on
+  // its way, and once it has come, a `stale` refusal of it the strip holds, until the reader's next
+  // choice. A revision landing keys the preview anew, and asked of the server then, the same entry
+  // was asked a second time - the server, having taken it off with the first answer, refused the
+  // second as no longer on top, and the strip said twice that it can no longer be undone (16:M23).
+  // Decided at the ask, not at the drawing: an ask between the answer coming and its refusal being
+  // drawn gets that refusal, and sends nothing.
   const answering = useRef<Answering<Promise<UndoPreview>> | null>(null);
+  // The reader's next choice in the strip - Put back, closing it, reading the files again - lets go
+  // of every refusal it says, and of the answers kept with them.
+  const letGo = () => {
+    setHeld([]);
+    answering.current = null;
+  };
   // No preview of the entry on top while the strip holds a `stale` refusal of it (`previewAsked`).
   const asks = undoable !== null && previewAsked(held, undoable);
   const preview = useQuery({
@@ -80,18 +88,22 @@ export function UndoStrip({ state, stopped }: Props) {
         : () => {
             const known = answerOf(answering.current, undoable);
             if (known !== null) return known;
+            let kept = false;
             const answer = getUndo(undoable.at).catch((error: unknown) => {
               // Held as the answer comes, of the entry this query was asked for, where the server
               // took that entry off the stack with it: the state naming the one under it can reach
               // the page before this answer does, which moves the strip to that entry's query, and
               // a refusal held only once the strip saw it refused was then never seen at all.
-              const kept = error instanceof Error ? previewRefused(error, undoable) : null;
-              if (kept !== null && opened.current) setHeld((before) => holding(before, kept));
+              const refused = error instanceof Error ? previewRefused(error, undoable) : null;
+              if (refused !== null && opened.current) {
+                kept = true;
+                setHeld((before) => holding(before, refused));
+              }
               throw error;
             });
             answering.current = { at: undoable.at, answer };
             const settled = () => {
-              answering.current = settledAnswering(answering.current, answer);
+              answering.current = settledAnswering(answering.current, answer, kept);
             };
             answer.then(settled, settled);
             return answer;
@@ -103,7 +115,7 @@ export function UndoStrip({ state, stopped }: Props) {
     // it puts back, for the heading to say once it has (16:I13).
     mutationFn: ({ at, putBack }: { at: number; label: string; putBack: Write | undefined }) =>
       postUndo(at, fetch, ownEdits, putBack),
-    onMutate: () => setHeld([]),
+    onMutate: letGo,
     onSuccess: () => {
       setOpen(false);
       setChangesShown(false);
@@ -125,7 +137,7 @@ export function UndoStrip({ state, stopped }: Props) {
         // Closing the strip is the reader's choice that lets every refusal it says go.
         if (!next) {
           setChangesShown(false);
-          setHeld([]);
+          letGo();
         }
       }}
       refusals={shown.refusals}
@@ -141,7 +153,7 @@ export function UndoStrip({ state, stopped }: Props) {
               // A choice of the reader's in the strip, as Put back is: what it says goes with it.
               // A preview held back for a refusal the strip held is asked as that refusal goes;
               // one asked and refused is asked again here.
-              setHeld([]);
+              letGo();
               if (asks) void preview.refetch();
             }
           : null

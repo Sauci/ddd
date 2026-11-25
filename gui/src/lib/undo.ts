@@ -257,13 +257,18 @@ export function answerOf<T>(answering: Answering<T> | null, entry: { at: number 
   return answering !== null && answering.at === entry.at ? answering.answer : null;
 }
 
-/** What the strip keeps once `answer` has come: nothing, where the answer kept was that one; an
- * answer asked since, of another entry, is kept as it is. */
+/** What the strip keeps once `answer` has come: the very answer, where the strip holds the `stale`
+ * refusal it came with (`held`), until the reader's next choice forgets it with what the strip
+ * holds - decided at the ask, so that an ask in the frame before the refusal is drawn gets it and
+ * sends nothing (16:M23); else nothing, where the answer kept was that one - an answer come, or a
+ * refusal not held, the next revision asking the server again. An answer asked since, of another
+ * entry, is kept as it is. */
 export function settledAnswering<T>(
   answering: Answering<T> | null,
   answer: T,
+  held: boolean,
 ): Answering<T> | null {
-  return answering !== null && answering.answer === answer ? null : answering;
+  return answering !== null && answering.answer === answer && !held ? null : answering;
 }
 
 /**

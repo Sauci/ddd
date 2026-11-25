@@ -638,10 +638,27 @@ describe("a refused undo, and the entries under it (16:M23)", () => {
   it("forgets an answer once it has come, and keeps one asked since", () => {
     const first = Promise.resolve("the first");
     const second = Promise.resolve("the second");
-    expect(settledAnswering({ at: 2, answer: first }, first)).toBeNull();
+    expect(settledAnswering({ at: 2, answer: first }, first, false)).toBeNull();
     // An answer that comes after another was asked leaves the other kept.
-    expect(settledAnswering({ at: 1, answer: second }, first)).toEqual({ at: 1, answer: second });
-    expect(settledAnswering(null, first)).toBeNull();
+    expect(settledAnswering({ at: 1, answer: second }, first, false)).toEqual({
+      at: 1,
+      answer: second,
+    });
+    expect(settledAnswering(null, first, false)).toBeNull();
+  });
+
+  it("keeps an answer whose stale refusal it holds as the edit's answer, decided at the ask", () => {
+    // CI's race, left open one frame: the answer taking edit 2 off came after a revision was drawn
+    // and before that drawing's effects asked edit 2 again. The refusal held, its answer stays the
+    // edit's - an ask then gets that very refusal and sends nothing - until the reader's next
+    // choice forgets it with what the strip holds.
+    const refused = Promise.reject(new Error("demo.ddd.json changed on disk since it was written"));
+    refused.catch(() => undefined);
+    const kept = settledAnswering({ at: 2, answer: refused }, refused, true);
+    expect(answerOf(kept, LIMITS)).toBe(refused);
+    // Not held - an answer that came, or a refusal the strip did not hold - it is forgotten, and
+    // the next revision asks the server again.
+    expect(settledAnswering({ at: 2, answer: refused }, refused, false)).toBeNull();
   });
 
   it("asks no preview of an edit while it holds a stale refusal of it, and offers to read again", () => {

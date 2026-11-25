@@ -16,7 +16,7 @@ const NAMES = fileNames(
  * from the pages that have arrived - the box opened there. */
 function atTheTop(total: number, pages: ReadonlyMap<number, FindingsReply>) {
   const span = spanOf(0, BOX_HEIGHT, total);
-  return { rows: windowRows(span, pages, NAMES), ...spacersOf(span, total), opensAt: 0 };
+  return { rows: windowRows(span, pages, NAMES), ...spacersOf(span, total), total, opensAt: 0 };
 }
 
 /** Nothing moves when a story's box is scrolled: each story is a picture of one window. */

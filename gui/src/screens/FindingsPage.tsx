@@ -319,6 +319,7 @@ export function FindingsPage({ state, text, onText, place, onPlace, stopped, onO
             rows={rows}
             {...spacersOf(drawn.span, drawn.total ?? 0)}
             opensAt={opensAt(drawn, top)}
+            total={drawn.total ?? 0}
             selected={finding?.key}
             onSelect={select}
             onScroll={onScroll}

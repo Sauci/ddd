@@ -21,6 +21,7 @@ import {
   scrolledTop,
   spacersOf,
   spanOf,
+  walkTarget,
   windowLine,
   windowRows,
 } from "./findingsWindow";
@@ -552,5 +553,29 @@ describe("what stands for the rows not drawn", () => {
 
   test("nothing, at the top of a table drawn whole", () => {
     expect(spacersOf({ first: 0, last: 5 }, 5)).toEqual({ above: 0, below: 0 });
+  });
+});
+
+describe("a key that walks the listing goes by its rows, not the rows drawn", () => {
+  test("Home and End go to the listing's first and last row", () => {
+    expect(walkTarget("Home", 600, 25000, BOX_HEIGHT)).toBe(0);
+    expect(walkTarget("End", 3, 25000, BOX_HEIGHT)).toBe(24999);
+  });
+
+  test("PageDown and PageUp go a box's rows, less the header's, and stop at the listing's ends", () => {
+    const page = BOX_HEIGHT / ROW_HEIGHT - 1;
+    expect(walkTarget("PageDown", 100, 25000, BOX_HEIGHT)).toBe(100 + page);
+    expect(walkTarget("PageUp", 100, 25000, BOX_HEIGHT)).toBe(100 - page);
+    expect(walkTarget("PageUp", 3, 25000, BOX_HEIGHT)).toBe(0);
+    expect(walkTarget("PageDown", 24995, 25000, BOX_HEIGHT)).toBe(24999);
+  });
+
+  test("a page is a row at the least, and starts at the first row where none holds the focus", () => {
+    expect(walkTarget("PageDown", 5, 25000, 0)).toBe(6);
+    expect(walkTarget("PageDown", null, 25000, BOX_HEIGHT)).toBe(BOX_HEIGHT / ROW_HEIGHT - 1);
+  });
+
+  test("a listing with no row has none to walk to", () => {
+    expect(walkTarget("End", null, 0, BOX_HEIGHT)).toBeNull();
   });
 });

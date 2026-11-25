@@ -402,6 +402,43 @@ test("the keyboard walks past the rows drawn", async ({ page, generatedGui }) =>
 });
 
 /**
+ * Home, End and PageDown walk the listing, not the rows drawn: a row focused, End goes to the
+ * listing's last finding, 25,000 rows on, where React Aria's own stopped at the last row drawn;
+ * Home comes back to the first; and PageDown from the first goes a box's rows down.
+ */
+test("Home, End and PageDown walk the Findings listing past the rows drawn", async ({
+  page,
+  generatedGui,
+}) => {
+  await page.goto(generatedGui.address);
+  await page.getByRole("link", { name: "Findings" }).click();
+  const first = page.locator('[data-index="0"]');
+  await expect(first.locator(".chip")).toBeVisible();
+  await first.click();
+
+  await page.keyboard.press("End");
+  const last = page.locator('[data-index="24999"]');
+  await expect(last).toBeFocused();
+  await expect.poll(() => withinFindingsWindow(page, last)).toBe(true);
+
+  await page.keyboard.press("Home");
+  await expect(first).toBeFocused();
+
+  await page.keyboard.press("PageDown");
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        Number(document.activeElement?.closest("[data-index]")?.getAttribute("data-index")),
+      ),
+    )
+    .toBeGreaterThan(5);
+  const down = await page.evaluate(() =>
+    Number(document.activeElement?.closest("[data-index]")?.getAttribute("data-index")),
+  );
+  expect(down).toBeLessThan(20);
+});
+
+/**
  * Compare's table of a verdict filing two thousand findings (16:M1): drawn through `LongTable`, as
  * every long table but the Findings one is, it holds the rows in view, not the 2,000 the reply
  * carries - every one of which was in the document before - and scrolled to its end it draws the

@@ -135,6 +135,28 @@ export function keeps(index: number, scrollTop: number, height: number): boolean
   return span.first <= index && index < span.last;
 }
 
+/** The keys that walk a table by more than a row. */
+export type WalkKey = "Home" | "End" | "PageUp" | "PageDown";
+
+/** Where a key that walks the listing goes, a place among all its `total` rows: the first or the
+ * last, or a box's rows - less the header's - up or down from the row the focus is on, `from`, and
+ * stopping at the ends. React Aria's own go by the rows its collection holds, which are the rows
+ * drawn (the window), so that End stopped at the last of them, wherever the box stood; `null`
+ * where the listing has no row. */
+export function walkTarget(
+  key: WalkKey,
+  from: number | null,
+  total: number,
+  height: number,
+): number | null {
+  if (total <= 0) return null;
+  const page = Math.max(1, Math.floor(Math.max(0, height) / ROW_HEIGHT) - 1);
+  const at = from ?? 0;
+  const target =
+    key === "Home" ? 0 : key === "End" ? total - 1 : key === "PageUp" ? at - page : at + page;
+  return Math.min(total - 1, Math.max(0, target));
+}
+
 /** The scroll that brings the row at `index` back into the box, the first in view under the
  * header kept at the box's top: every row before it - so that the window draws it (`keeps`), and a
  * panel closing gives the focus back to its row where a scroll had taken the window past it

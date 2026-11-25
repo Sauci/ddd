@@ -241,7 +241,6 @@ export function ComponentPage({
       <div>
         <div className="heading">
           <PageHeading>{name}</PageHeading>
-          <UndoStrip state={state} stopped={stopped} />
           <Button
             variant="secondary"
             isDisabled={stopped}
@@ -259,6 +258,9 @@ export function ComponentPage({
               {wayBack.text}
             </Button>
           )}
+          {/* After the controls it would move, joining the row once an edit is written: drawn
+              before them, it moved them by its width, under a press aimed at one (16:M23). */}
+          <UndoStrip state={state} stopped={stopped} />
           {/* Last in the row, so that none of the controls before it ever moves. */}
           <UpdatingStatus updating={updating} written={written} />
         </div>

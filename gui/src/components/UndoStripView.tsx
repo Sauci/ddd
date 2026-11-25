@@ -31,11 +31,12 @@ export interface UndoStripViewProps {
 }
 
 /**
- * The Undo control beside the project's name and the strip it opens (spec 5.1 and 5.2): a
- * picture of its props.
+ * The Undo control in a page's heading and the strip it opens (spec 5.1 and 5.2): a picture of
+ * its props.
  *
- * A fragment rather than a wrapper, so that the button sits in the heading's own row beside the
- * name while the strip takes the line below it - which is what `.undo-open` asks that row for.
+ * A fragment rather than a wrapper, so that the button sits in the heading's own row - after the
+ * controls there, before the row's status - while the strip takes the line below it, which is what
+ * `.undo-open` asks that row for.
  */
 export function UndoStripView(props: UndoStripViewProps) {
   const { label, open, preview, refusals, reading, asking, changesShown, busy } = props;

@@ -209,7 +209,7 @@ export const ATablePastedWithItsHeader = () => (
 
 // Part 17's own: ACellMidChange's 7.5 ms applied, its edit written and answered, its analysis not
 // landed yet. The server still answers the values from before it, and the grid holds what it wrote
-// (`holdOf`, `valuesShown`) - the undo offered beside the name, the findings said to be updating
+// (`holdOf`, `valuesShown`) - the undo offered after the way back, the findings said to be updating
 // where they are listed.
 export function AnAppliedValueHeld() {
   const [physical, setPhysical] = useState(true);

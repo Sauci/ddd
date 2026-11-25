@@ -11,6 +11,7 @@ import {
   openValues,
   paste,
   pasteWhereFocused,
+  placed,
   SENSOR_HUB,
   SERVER_FAILED,
   scrolledIntoView,
@@ -2250,6 +2251,26 @@ test("a values address naming a file the project does not include still draws th
   await expect(page.getByRole("alert")).toHaveText(
     `${retired} is not a description file of the open project`,
   );
+});
+
+/** The Undo control joins a values grid's heading after the way back to the component, just before
+ * the row's status, as the project's own heading has it (16:M23): drawn before it, it moved "Back to
+ * Controller" by its width as the Apply's edit reached the state, and a press made on Back then
+ * opened the strip - the journey below met it about once in thirty runs. */
+test("the way back keeps its place in a values grid's heading as the Undo control joins it", async ({
+  page,
+  gui,
+}) => {
+  await openValues(page, gui.address, "CurveA");
+  const back = page.getByRole("button", { name: "Back to Controller", exact: true });
+  const cell = page.getByRole("textbox", { name: "element 3" });
+  await expect(cell).toHaveValue("8");
+  await expect(back).toBeVisible();
+  const before = await placed(back);
+  await typed(cell, "7.5");
+  await page.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect(page.getByRole("button", { name: "Undo element 3 of CurveA" })).toBeVisible();
+  expect(await placed(back)).toEqual(before);
 });
 
 test("a scalar naming a scalar type reads scalar, and its value is typed, written and read back", async ({

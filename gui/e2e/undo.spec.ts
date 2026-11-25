@@ -9,6 +9,7 @@ import {
   failing,
   held,
   openPanel,
+  placed,
   renameValueA,
   SERVER_FAILED,
   UNITS,
@@ -516,4 +517,26 @@ test("an Undo button of a long label appearing moves neither Add a declaration n
   await panel.getByRole("button", { name: /^Close/ }).click();
   expect((await add.boundingBox())?.y).toBe(addBefore?.y);
   expect((await table.boundingBox())?.y).toBe(tableBefore?.y);
+});
+
+/**
+ * The Undo control joins a heading's row after the controls in it, just before the row's status,
+ * as the project's own heading has it (16:M23): drawn before Add a declaration and the way back to
+ * the tab the page was reached from, it moved both by its width as an Apply's edit reached the
+ * state, and a press made on either then opened the strip.
+ */
+test("Add a declaration and the way back keep their place in a component's heading as the Undo control joins it", async ({
+  page,
+  gui,
+}) => {
+  const panel = await openPanel(page, gui.address, "ValueA");
+  const add = page.getByRole("button", { name: "Add a declaration" });
+  const back = page.getByRole("button", { name: "Back to Graph", exact: true });
+  await expect(panel.getByRole("combobox", { name: "Unit of ValueA" })).toBeVisible();
+  await expect(back).toBeVisible();
+  const before = [await placed(add), await placed(back)];
+  await chooseUnit(page, "rpm");
+  await panel.getByRole("button", { name: "Apply to 2 files" }).click();
+  await expect(page.getByRole("button", { name: "Undo the unit of ValueA" })).toBeVisible();
+  expect([await placed(add), await placed(back)]).toEqual(before);
 });

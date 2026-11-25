@@ -21,8 +21,8 @@ interface Props {
 }
 
 /**
- * The Undo control beside the project's name: the last edit this session wrote, previewed
- * before any of it is put back.
+ * The Undo control in a page's heading, after the controls beside the page's name: the last edit
+ * this session wrote, previewed before any of it is put back.
  *
  * The preview is asked for only once the strip is open, and keyed by the entry and the
  * revision, so that a file changing on disk - or another window undoing first - is noticed

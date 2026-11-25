@@ -109,6 +109,18 @@ export async function chooseUnit(page: Page, unit: string): Promise<void> {
   await page.getByRole("option", { name: unit, exact: true }).first().click();
 }
 
+/** Where `control` is drawn on the page, whatever the window is scrolled to: its box in the page's
+ * own coordinates, which a control moved by another joining its row does not keep. */
+export function placed(
+  control: Locator,
+): Promise<{ x: number; y: number; width: number; height: number }> {
+  return control.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const { width, height } = box;
+    return { x: box.x + window.scrollX, y: box.y + window.scrollY, width, height };
+  });
+}
+
 /** Opens a variable's panel from its component's table, the way a reader reaches it: the unit
  * cell, which opens the panel on the unit's row with its field focused. */
 export async function openPanel(

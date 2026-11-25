@@ -381,10 +381,12 @@ export function ValuesGridView(props: ValuesGridViewProps) {
     >
       <div className="heading">
         <PageHeading>{reply.name}</PageHeading>
-        {undoStrip}
         <Button variant="link" onPress={props.onBack}>
           Back to {backTo}
         </Button>
+        {/* After the way back, which it would shift as it joins the row once an edit is written,
+            and before the status, kept at the row's end for the same reason (16:M23). */}
+        {undoStrip}
         <UpdatingStatus updating={props.updating === true} written={props.written ?? null} />
       </div>
       {banner}

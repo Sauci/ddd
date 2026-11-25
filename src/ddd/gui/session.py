@@ -369,6 +369,26 @@ class Undoable:
     """Every file it wrote, as :func:`ddd.editing.restore` takes them."""
 
 
+def _moved_past(edit: Undoable) -> bool:
+    """Whether the disk has moved past ``edit``, so that it can never be put back as its files
+    stand: one of them is gone, or holds bytes other than the ones the edit left - saved from
+    outside, or put back by an undo of it the disk refused half way. A file that cannot be read for
+    any other reason - a permission, a handle another program holds without sharing it for
+    reading, a fault of the disk - says nothing of what it holds, and moves nothing: the engine
+    refuses it ``stale`` as well ("can no longer be read", :func:`ddd.editing.unchanged`), and the
+    reader may mend it and ask again."""
+    for file in edit.files:
+        try:
+            data = file.path.read_bytes()
+        except FileNotFoundError:
+            return True
+        except OSError:
+            continue
+        if fingerprint(data) != file.fingerprint:
+            return True
+    return False
+
+
 @dataclass(frozen=True, slots=True)
 class FileContent:
     """A description file as the page reads it: parsed, or the reason it cannot be."""
@@ -806,10 +826,10 @@ class Session:
         keeps a second window from putting back an edit this one never saw - asking for no
         analysis, since the stack moved and no file did (:class:`_NotOnTopError`). A refusal of
         the put back is answered as an edit's is (:meth:`_refused`), and what it leaves of the
-        stack is :meth:`_taken_off`'s: refused because a file the edit would write changed on
-        disk since, the edit is taken off and the one under it comes within reach; refused
-        because a file could not be written, it stays, for the reader to mend that file and ask
-        again.
+        stack is :meth:`_taken_off`'s: refused because a file the edit would write is gone, or
+        changed on disk since, the edit is taken off and the one under it comes within reach;
+        refused because a file could not be read or written, it stays, for the reader to mend
+        that file and ask again.
         """
         try:
             return self._undone(at)
@@ -841,16 +861,16 @@ class Session:
 
     def _taken_off(self, top: Undoable, refused: EditError) -> None:
         """Take ``top``, the edit on top of the stack, off it where its put back was ``refused``
-        as ``stale``: a file it would write changed on disk since - saved from outside, or left
-        put back by an undo of it the disk refused half way (:func:`ddd.editing.restore`) - so
-        the disk has moved past that edit, which can never be put back as the file stands. The
-        edits under it come within reach, where it held them out of reach for as long as the
-        session ran; the page says why it went, in the strip that asked. Any other refusal leaves
-        it on top: one ``unwritable`` the reader may mend, the file made writable again, and ask
-        again. What it costs: an edit the reader could have put back once they had put that file
-        back by hand, byte for byte, is gone. Holding the lock; the version moves with the
-        stack."""
-        if refused.code == STALE:
+        as ``stale`` and the disk has moved past it (:func:`_moved_past`): a file it would write
+        is gone, or holds other bytes than it left, so that the edit can never be put back as the
+        file stands. The edits under it come within reach, where it held them out of reach for
+        as long as the session ran; the page says why it went, in the strip that asked. Any other
+        refusal leaves it on top, as one ``stale`` does for a file that only could not be read:
+        the reader may mend the file, make it readable or writable again, and ask again. What it
+        costs: an edit the reader could have put back once they had put that file back by hand,
+        byte for byte, is gone. Holding the lock, which every file of the edit is read under; the
+        version moves with the stack."""
+        if refused.code == STALE and _moved_past(top):
             self._stack.pop()
             self._version += 1
             self._changed.notify_all()

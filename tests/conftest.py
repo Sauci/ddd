@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import contextlib
 import io
 import json
 import os
 import re
+import stat
 import threading
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Any, Final
 
@@ -281,6 +283,33 @@ def looped(first: Path, second: Path) -> None:
     directory_link(first, second)
     second.rmdir()
     directory_link(second, first)
+
+
+@contextlib.contextmanager
+def read_refused(path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """``path`` refused to every read while the block runs, its bytes left as they are: its mode
+    taken away on POSIX, which stops a read by anyone but root; on Windows, where a mode does not
+    stop a read, ``Path.read_bytes`` refusing it as the system refuses a file another program holds
+    open without sharing it for reading."""
+    if os.name == "nt":
+        target = path.resolve()
+        real = Path.read_bytes
+
+        def refusing(self: Path) -> bytes:
+            if self.resolve() == target:
+                raise PermissionError(13, "Permission denied", str(self))
+            return real(self)
+
+        with monkeypatch.context() as patched:
+            patched.setattr(Path, "read_bytes", refusing)
+            yield
+    else:
+        mode = stat.S_IMODE(path.stat().st_mode)
+        path.chmod(0)
+        try:
+            yield
+        finally:
+            path.chmod(mode)
 
 
 def run_analysis(

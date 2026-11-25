@@ -30,14 +30,16 @@ interface Props {
  * entry the reader pressed for until their next choice in the strip - Put back pressed again, or
  * the strip closed - as the panels hold theirs, and a revision landing - the one a refusal of the
  * entry on top asks for, within milliseconds (refusing one no longer on top asks for none) - never
- * takes it away (`Refused`, lib/refusals.ts). So is a refusal of the preview because a file the
- * entry would put back changed on disk since. What the strip offers beside them is `undoShown`'s:
- * - the server takes an entry off the stack with a refusal of either because a file changed on
- *   disk (16:M23), and the strip says why it went beside the entry under it, which it offers
- *   whole without being closed - or, with none left, says so until it is closed;
- * - a refusal that leaves the entry on top - a file that could not be written - is said beside
- *   that entry, offered again to be pressed once the reader has mended the file, the strip never
- *   closed between (R22).
+ * takes it away (`Refused`, lib/refusals.ts). So is a refusal of the preview `stale`: a file the
+ * entry would put back gone, changed on disk, or unreadable. What the strip offers beside them is
+ * `undoShown`'s:
+ * - the server takes an entry off the stack with a refusal of either where the disk moved past
+ *   it, a file gone or changed (16:M23), and once the state says so the strip says why it went
+ *   beside the entry under it, which it offers whole without being closed - or, with none left,
+ *   says so until it is closed;
+ * - a refusal that leaves the entry on top - a file that could not be read or written - is said
+ *   beside that entry as it stands, offered again to be pressed once the reader has mended the
+ *   file, the strip never closed between (R22).
  *
  * An undo answered, every query `askedAgainAfterUndo` names is asked for again at once: the files
  * are back before the revision says so.

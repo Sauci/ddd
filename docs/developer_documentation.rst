@@ -1556,13 +1556,15 @@ those back through the same staging and sync, taking away again a file the edit 
 when one file of several cannot be written, writing the ones already put back forward to what
 the edit had left them. ``ddd.editing.unchanged`` is what says an edit may still be put back: a
 file whose bytes are no longer the ones it left is somebody else's now, and the whole undo
-is refused as ``stale`` rather than half of it applied. The disk has moved past that edit,
-so ``Session.undo`` takes it off the stack with the refusal - as ``Session.preview_refused``
-does where the preview meets it first - and the edits under it come within reach; one refused
-``unwritable`` stays, for the file to be made writable and the undo asked again. The session
-keeps one stack of ``Undoable`` entries per open project, numbered as it pushes and capped at
-``MAX_UNDO`` - fifty - entries, each labelled by the screen that applied it; ``POST /api/edit``
-takes that label, because only the screen knows that the edit was "the rename of 'rpm' to 'RPM'".
+is refused as ``stale`` rather than half of it applied, as it is for a file that cannot be read.
+Where a file the edit wrote is gone, or holds other bytes, the disk has moved past that edit, so
+``Session.undo`` takes it off the stack with the refusal - as ``Session.preview_refused`` does
+where the preview meets it first - and the edits under it come within reach. One whose files
+only could not be read, or written - a permission, a handle held without sharing, a full disk -
+stays, for the file to be mended and the undo asked again. The session keeps one stack of
+``Undoable`` entries per open project, numbered as it pushes and capped at ``MAX_UNDO`` - fifty -
+entries, each labelled by the screen that applied it; ``POST /api/edit`` takes that label,
+because only the screen knows that the edit was "the rename of 'rpm' to 'RPM'".
 ``GET /api/state`` carries ``Session.undoable``, the top of the stack, so the control
 appears without a request of its own, ``GET /api/undo`` previews it - the lines each file
 would get back, and no operations, since an undo is bytes the server is holding rather than

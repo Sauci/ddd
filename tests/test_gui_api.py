@@ -42,6 +42,7 @@ from conftest import (
     messages,
     offered_beside,
     project,
+    read_refused,
     registered_beside,
     scalar_type,
     stopped,
@@ -4537,6 +4538,25 @@ class TestUndoing:
         preview = get(api, "/api/undo")
         assert (preview.status, preview.body["at"]) == (200, 1)
         assert [Path(change["file"]).name for change in preview.body["changes"]] == ["a.ddd.json"]
+
+    def test_a_preview_refused_for_a_file_that_cannot_be_read_keeps_its_edit(
+        self, api: Api, root: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A file the edit wrote that cannot be read while the strip asks for the preview: refused
+        ``stale``, as the engine refuses a file it cannot read, and the edit kept, the disk not
+        having moved past it - once the file reads again, as the edit left it, its undo goes
+        through."""
+        b = root / "b.ddd.json"
+        before = b.read_bytes()
+        assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
+        with read_refused(b, monkeypatch):
+            reply = get(api, "/api/undo")
+        assert reply == Reply(
+            409, {"error": "stale", "message": "b.ddd.json can no longer be read"}
+        )
+        assert get(api, "/api/state").body["undoable"] == {"at": 1, "label": "the unit of Speed"}
+        assert post(api, "/api/undo", {"at": 1}).status == 200
+        assert b.read_bytes() == before
 
     def test_an_undo_refused_because_its_file_changed_on_disk_lets_the_edit_beneath_be_undone(
         self, api: Api, root: Path

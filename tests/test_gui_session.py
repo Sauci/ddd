@@ -33,6 +33,7 @@ from conftest import (
     membership,
     offered_beside,
     project,
+    read_refused,
     stopped,
     write_tree,
 )
@@ -47,6 +48,7 @@ from ddd.editing import (
     FileChange,
     Operation,
     fingerprint,
+    unchanged,
 )
 from ddd.gui import queries
 from ddd.gui import session as module
@@ -4043,6 +4045,71 @@ class TestUndoing:
         session.undo(at)
         assert b.read_bytes() == before
 
+    def test_a_preview_refused_for_a_file_that_cannot_be_read_keeps_its_edit(
+        self, shared: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A file the edit wrote that cannot be read while its preview is asked - a permission, a
+        handle another program holds without sharing it for reading - says nothing of what it
+        holds: the disk has not moved past the edit, which stays on the stack, as one refused
+        ``unwritable`` does. Readable again, and as the edit left it, its undo puts it back."""
+        session = Session(shared.parent)
+        session.open(shared)
+        b = shared.parent / "b.ddd.json"
+        before = b.read_bytes()
+        at, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of Torque")
+        written = b.read_bytes()
+        top = session.undoable
+        assert top is not None
+        with read_refused(b, monkeypatch), pytest.raises(EditError) as refused:
+            unchanged(top.files[0])
+        assert (refused.value.code, str(refused.value).endswith("can no longer be read")) == (
+            STALE,
+            True,
+        )
+        with read_refused(b, monkeypatch):
+            session.preview_refused(at, refused.value)
+        top = session.undoable
+        assert top is not None and top.at == at
+        assert b.read_bytes() == written
+        session.undo(at)
+        assert b.read_bytes() == before
+
+    def test_an_undo_refused_for_a_file_that_cannot_be_read_keeps_its_edit(
+        self, shared: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The same refusal met by the put back itself: refused ``stale``, nothing written, and the
+        edit kept, since the file's bytes are the ones it left - pressed again once the file reads,
+        the undo goes through."""
+        session = Session(shared.parent)
+        session.open(shared)
+        b = shared.parent / "b.ddd.json"
+        before = b.read_bytes()
+        at, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of Torque")
+        written = b.read_bytes()
+        with read_refused(b, monkeypatch), pytest.raises(EditError) as refused:
+            session.undo(at)
+        assert refused.value.code == STALE
+        assert str(refused.value).endswith("can no longer be read")
+        top = session.undoable
+        assert top is not None and top.at == at
+        assert b.read_bytes() == written
+        session.undo(at)
+        assert b.read_bytes() == before
+
+    def test_an_undo_refused_because_a_file_it_wrote_is_gone_takes_its_edit_off(
+        self, shared: Path
+    ) -> None:
+        """A file the edit wrote, taken away from outside since: gone, it can be put back no more
+        than one saved over, and the edit is taken off the stack."""
+        session = Session(shared.parent)
+        session.open(shared)
+        at, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of Torque")
+        (shared.parent / "b.ddd.json").unlink()
+        with pytest.raises(EditError) as refused:
+            session.undo(at)
+        assert refused.value.code == STALE
+        assert session.undoable is None
+
     def test_an_undo_left_half_written_forward_is_taken_off_once_asked_again(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -4094,6 +4161,8 @@ class TestUndoing:
         session.open(shared)
         first, _ = session.edit([unit_of(shared.parent / "a.ddd.json", "Hz")], "the unit of Speed")
         second, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of Torque")
+        b = shared.parent / "b.ddd.json"
+        b.write_bytes(b.read_bytes().replace(b'"Hz"', b'"rad"'))
         stale = EditError(STALE, "b.ddd.json changed on disk since it was written")
         revision, said = session.current().number, session.snapshot().version
         session.preview_refused(first, stale)

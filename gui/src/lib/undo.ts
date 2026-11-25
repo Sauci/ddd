@@ -171,17 +171,6 @@ export function shownUndo(changes: readonly UndoneChange[]): ShownChange[] {
   return changes.map(({ file, gone, hunks }) => ({ file, hunks, note: gone ? "removed" : null }));
 }
 
-/** What the Undo strip says when the preview or the undo of the edit `label` names was refused:
- * where a file changed on disk (`isStale`), the server's own sentence, which names the file, that
- * the edit can no longer be undone - the server takes it off the stack, so that the button names
- * the one under it by then - and what that means for the reader; else the server's own reason. */
-export function undoRefusal(error: Error, label: string): string {
-  return isStale(error)
-    ? `${error.message}, so ${label} can no longer be undone. Nothing was put back; the page ` +
-        "shows the files as they are."
-    : `The undo was refused: ${error.message}`;
-}
-
 /** An entry of the undo stack as the state names it (`State.undoable`). */
 interface Entry {
   at: number;
@@ -189,35 +178,42 @@ interface Entry {
 }
 
 /**
- * What the Undo strip holds of a refusal of one entry, held until the reader's next choice in the
- * strip - Put back pressed again, or the strip closed - as a panel holds its own (`Refused`,
- * lib/refusals.ts).
+ * What the Undo strip holds of a refusal of one entry's undo, its preview's or its Put back's,
+ * until the reader's next choice in the strip - Put back pressed again, or the strip closed - as a
+ * panel holds its own (`Refused`, lib/refusals.ts): what it says is worded as the stack stands
+ * when it is said (`undoRefusal`).
  *
- * `leaves` says whether the server took the entry off the stack with it: refused `stale`, a file
- * the entry would put back having changed on disk since, the disk has moved past that edit, which
- * can never be put back as the file stands, and the entries under it come within reach
- * (`ddd.gui.session.Session.undo`); or the entry was no longer the one on top. Any other refusal
- * leaves the entry where it was.
+ * `stale` is the server's code for a file the entry would put back gone, changed on disk, or that
+ * could not be read - or for the entry no longer the one on top. The server takes the entry off
+ * the stack where the disk moved past it (`ddd.gui.session.Session.undo`), and keeps it where a
+ * file only could not be read: the page reads which from the state, as the stack moves.
  */
 export interface UndoRefused {
   /** The entry the refusal is of (`UndoableEdit.at`). */
   at: number;
-  /** What the strip says of it (`undoRefusal`). */
-  text: string;
-  leaves: boolean;
+  /** What the page calls that entry. */
+  label: string;
+  /** The server's own sentence. */
+  message: string;
+  stale: boolean;
 }
 
 /** The refusal the strip holds once the Put back of `entry` was refused, whatever its code. */
 export function undoRefused(error: Error, entry: Entry): UndoRefused {
-  return { at: entry.at, text: undoRefusal(error, entry.label), leaves: isStale(error) };
+  return { at: entry.at, label: entry.label, message: error.message, stale: isStale(error) };
 }
 
-/** What the strip holds once the preview of `entry` was refused: the refusal, where the server took
- * the entry off the stack with it (`stale`), so that the strip says why the entry went beside the
- * one under it once the state names that one; none for any other, which the strip says in the
- * preview's place for as long as the preview stands refused (`undoShown`). */
+/** What the strip holds once the preview of `entry` was refused: the refusal, where it is `stale`,
+ * which the server may have taken the entry off the stack with, so that the strip says why the
+ * entry went beside the one under it once the state names that one; none for any other, which the
+ * strip says in the preview's place for as long as the preview stands refused (`undoShown`). */
 export function previewRefused(error: Error, entry: Entry): UndoRefused | null {
   return isStale(error) ? undoRefused(error, entry) : null;
+}
+
+/** Whether two refusals are one: of one entry, in one code and in the same words. */
+function same(one: UndoRefused, other: UndoRefused): boolean {
+  return one.at === other.at && one.stale === other.stale && one.message === other.message;
 }
 
 /** `held` with `refused` after the others, and the very same list where it holds that refusal
@@ -226,8 +222,22 @@ export function holding(
   held: readonly UndoRefused[],
   refused: UndoRefused,
 ): readonly UndoRefused[] {
-  const already = held.some(({ at, text }) => at === refused.at && text === refused.text);
-  return already ? held : [...held, refused];
+  return held.some((each) => same(each, refused)) ? held : [...held, refused];
+}
+
+/**
+ * What the Undo strip says of `refused`, as the stack stands:
+ * - refused `stale`, the server's own sentence, which names the file or the edit, and what it
+ *   means for the reader: once the entry has left the stack (`gone`) - the server takes it off
+ *   where the disk moved past it - that it can no longer be undone, the button naming another by
+ *   then; while it is still there, as it stands, never as one no longer to be undone (a file that
+ *   only could not be read keeps its entry);
+ * - any other, the server's own reason.
+ */
+export function undoRefusal(refused: UndoRefused, gone: boolean): string {
+  if (!refused.stale) return `The undo was refused: ${refused.message}`;
+  const meaning = gone ? `, so ${refused.label} can no longer be undone` : "";
+  return `${refused.message}${meaning}. Nothing was put back; the page shows the files as they are.`;
 }
 
 /** What the Undo button says once nothing is left to undo while the strip still says why an entry
@@ -253,23 +263,24 @@ export interface UndoShown {
  * What the Undo strip says and offers (16:M23): the refusals it holds (`held`), the state's entry
  * on top, and that entry's preview as its query has it (`asked`).
  *
- * - **An entry taken off the stack** - refused `stale`, its preview or its Put back - is said for
- *   as long as the strip holds its refusal, beside whatever the stack's top then offers: the entry
- *   under it, offered whole, its preview and its Put back, with no need to close the strip. Each
- *   entry taken off while the strip is open is said, in the order they went: the save that
- *   refused one often refuses the next, an edit before it having written the same file. While the
- *   state still names it on top, the strip offers nothing of it.
+ * - **An entry that has left the stack** - the server took it off, its preview or its Put back
+ *   refused because the disk moved past it - is said, as no longer to be undone, for as long as
+ *   the strip holds its refusal, beside whatever the stack's top then offers: the entry under it,
+ *   offered whole, its preview and its Put back, with no need to close the strip. Each entry taken
+ *   off while the strip is open is said, in the order they went: the save that refused one often
+ *   refuses the next, an edit before it having written the same file. An entry left the stack is
+ *   one above the state's top, numbers only ever growing, or any where the stack is empty.
  * - **A refusal held of an entry a newer one covers** - an edit a panel makes while the strip is
  *   open - goes unsaid, the newer one offered whole (branch 2, D0): the entry refused may come
  *   back to the top, and is offered whole then.
  * - **The preview's own refusal** is said in its place, and nothing is offered to put back: asked
  *   again and refused, the preview before it is no longer what the undo would do. One refused
  *   `stale` is the strip's to hold as its entry's (`previewRefused`), and is said once.
- * - **Beside a refusal held of the Put back of the entry on top** that leaves it there - a file
- *   that could not be written, the server failing on the request - the strip offers that entry
+ * - **Beside a refusal held of the entry on top**, said as it stands, the strip offers that entry
  *   again, whole, as the revision on screen previews it, and so its Put back (R22): the reader may
- *   mend the file and press again, with no need to close the strip, as a panel offers its plan
- *   beside a refusal held of its Apply (`offerShown`, lib/refusals.ts).
+ *   mend the file - make it readable or writable - and press again, with no need to close the
+ *   strip, as a panel offers its plan beside a refusal held of its Apply (`offerShown`,
+ *   lib/refusals.ts). One the server took off is offered so until the state says it went.
  */
 export function undoShown(
   held: readonly UndoRefused[],
@@ -278,22 +289,20 @@ export function undoShown(
 ): UndoShown {
   const top = state?.undoable ?? null;
   const standing = held.filter((refused) => top === null || refused.at >= top.at);
-  const own = standing.filter((refused) => refused.at === top?.at);
-  const refusals = standing.map(({ at, text }) => ({ key: `${at}:${text}`, text }));
-  const offered = top === null || own.some((refused) => refused.leaves) ? null : top;
-  let preview: UndoPreview | null = null;
-  let reading = false;
-  if (top !== null && asked.error !== null) {
-    const text = undoRefusal(asked.error, top.label);
-    if (!own.some((refused) => refused.text === text)) {
-      refusals.push({ key: `preview:${top.at}:${text}`, text });
-    }
-  } else if (offered !== null) {
-    preview = asked.data !== undefined && asked.data.at === offered.at ? asked.data : null;
-    reading = preview === null;
-  }
+  const own = top === null || asked.error === null ? null : undoRefused(asked.error, top);
+  const said =
+    own === null || standing.some((refused) => same(refused, own)) ? standing : [...standing, own];
+  const refusals = said.map((refused) => ({
+    key: `${refused.at}:${refused.stale}:${refused.message}`,
+    text: undoRefusal(refused, top === null || refused.at > top.at),
+  }));
+  const offered =
+    top !== null && asked.error === null && asked.data !== undefined && asked.data.at === top.at
+      ? asked.data
+      : null;
+  const reading = top !== null && asked.error === null && offered === null;
   const label = undoButton(state) ?? (refusals.length > 0 ? NOTHING_LEFT : null);
-  return { label, refusals, preview, reading };
+  return { label, refusals, preview: offered, reading };
 }
 
 /** What the Undo button says, or `null` when there is nothing to undo: no project open yet, no

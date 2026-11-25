@@ -106,9 +106,10 @@ export function UndoStrip({ state, stopped }: Props) {
         }
       }}
       refusals={shown.refusals}
-      // The preview answers the top of the stack, which may no longer be this entry: another
-      // window can apply an edit between this page's last state and this answer. Until the
-      // preview names the entry the button does, it counts as not yet arrived (`undoShown`).
+      // The preview is asked of the entry the button names (`?at=`), and the server refuses it as
+      // that entry being no longer on top where another edit, or another window's undo, came
+      // there after this page's last state. An answer is offered only where it names the entry
+      // the button does (`undoShown`).
       preview={shown.preview}
       reading={shown.reading}
       onAskAgain={

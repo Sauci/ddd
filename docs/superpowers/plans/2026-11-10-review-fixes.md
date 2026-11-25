@@ -2360,9 +2360,9 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
 - **The strip while the files are read again** (task 11b): while `Read the files again` is asked
   for, nothing in the strip says that it is reading, where the button is disabled alone. The
   maintainer's, as above.
-- **The strip and the heading's status** (the final wave): with the Undo strip open on a
-  component's page or the values grid, the heading's status line has no room and is not seen,
-  though it is still announced, as on the project's page already, which its story records. The
+- **The strip and the heading's status** (the final wave): on a component's page and in the values
+  grid, an open Undo strip leaves the status line of the heading no room, so that it is not
+  seen, though it is still announced, as on the project's page already, which its story records. The
   maintainer's, as above.
 - **A refusal's name for a file** (the final wave; `_by_name`, `src/ddd/gui/api.py`): where one
   file's path holds another's whole, the name a refusal gives the file is garbled, which takes a

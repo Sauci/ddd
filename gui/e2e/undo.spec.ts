@@ -252,6 +252,36 @@ test("a revision landing while an edit's preview is on its way asks it no second
   expect(asked).toBe(1);
 });
 
+test("an edit's preview on its way while the strip is closed and opened again, a revision between, is asked once", async ({
+  page,
+  gui,
+}) => {
+  await settledAndAnalysed(page, gui);
+  // Every preview the page asks, counted as it leaves.
+  let asked = 0;
+  page.on("request", (request) => {
+    if (request.method() === "GET" && new URL(request.url()).pathname === "/api/undo") asked += 1;
+  });
+  const undo = page.getByRole("button", { name: "Undo the unit of ValueA" });
+  // The first preview held on its way while the reader closes the strip, a revision lands, and the
+  // reader opens it again: the strip asks the same edit under a new key, and gets that answer.
+  const release = await held(page, "/api/undo");
+  try {
+    await undo.click();
+    await expect(strip(page).getByText("Reading the files…", { exact: true })).toBeVisible();
+    await undo.click();
+    await expect(strip(page)).toHaveCount(0);
+    await revisionLanded(page, gui);
+    await undo.click();
+    await expect(strip(page)).toBeVisible();
+  } finally {
+    release();
+  }
+  // The one answer, let through, offers the edit whole; no second request left for it.
+  await expect(strip(page).getByText("Puts back 1 file: controller.ddd.json")).toBeVisible();
+  expect(asked).toBe(1);
+});
+
 test("two edits of one file saved from outside both leave the stack, each said in the strip", async ({
   page,
   gui,

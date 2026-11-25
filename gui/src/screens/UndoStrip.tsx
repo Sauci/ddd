@@ -10,6 +10,7 @@ import {
   askedAgainAfterUndo,
   heldUnder,
   holding,
+  onItsWay,
   previewAsked,
   previewRefused,
   settledAnswering,
@@ -68,18 +69,20 @@ export function UndoStrip({ state, stopped }: Props) {
   const undoable = state?.undoable ?? null;
   const revision = state?.revision;
   // The answer the strip keeps to an entry's preview (`answerOf`, `settledAnswering`): the one on
-  // its way, and once it has come, a `stale` refusal of it the strip holds, until the reader's next
-  // choice. A revision landing keys the preview anew, and asked of the server then, the same entry
-  // was asked a second time - the server, having taken it off with the first answer, refused the
-  // second as no longer on top, and the strip said twice that it can no longer be undone (16:M23).
-  // Decided at the ask, not at the drawing: an ask between the answer coming and its refusal being
-  // drawn gets that refusal, and sends nothing.
+  // its way, whatever the strip does meanwhile, and once it has come, a `stale` refusal of it the
+  // strip holds, until the reader's next choice. A revision landing keys the preview anew, and
+  // asked of the server then, the same entry was asked a second time - the server, having taken it
+  // off with the first answer, refused the second as no longer on top, and the strip said twice
+  // that it can no longer be undone (16:M23). Decided at the ask, not at the drawing: an ask
+  // between the answer coming and its refusal being drawn gets that refusal, and sends nothing.
   const answering = useRef<Answering<Promise<UndoPreview>> | null>(null);
   // The reader's next choice in the strip - Put back, closing it, reading the files again - lets go
-  // of every refusal it says, and of the answers kept with them.
+  // of every refusal it says, and of the answer kept with one; an answer still on its way stays its
+  // entry's (`onItsWay`), so that no second request for that entry leaves while one is out,
+  // whatever the strip did meanwhile.
   const letGo = () => {
     setHeld([]);
-    answering.current = null;
+    answering.current = onItsWay(answering.current);
   };
   // What the strip holds as the state names its top (`heldUnder`): an entry a newer one covers may
   // come back to the top - another window undoing the newer edit, or the server taking it off -
@@ -114,7 +117,7 @@ export function UndoStrip({ state, stopped }: Props) {
               }
               throw error;
             });
-            answering.current = { at: undoable.at, answer };
+            answering.current = { at: undoable.at, answer, come: false };
             const settled = () => {
               answering.current = settledAnswering(answering.current, answer, kept);
             };

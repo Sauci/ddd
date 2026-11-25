@@ -10,6 +10,7 @@ import {
   fixLabel,
   heldUnder,
   holding,
+  onItsWay,
   pasteLabel,
   previewAsked,
   previewRefused,
@@ -641,7 +642,7 @@ describe("a refused undo, and the entries under it (16:M23)", () => {
   it("gives an ask of an edit's preview the answer kept for that edit alone", () => {
     // One answer on its way to edit 2: a revision landing meanwhile asks edit 2 again, and gets it.
     const answer = Promise.resolve("edit 2's answer");
-    const kept = { at: 2, answer };
+    const kept = { at: 2, answer, come: false };
     expect(answerOf(kept, LIMITS)).toBe(answer);
     // Another edit's answer is none of this one's, and none kept is none.
     expect(answerOf(kept, UNIT)).toBeNull();
@@ -651,12 +652,11 @@ describe("a refused undo, and the entries under it (16:M23)", () => {
   it("forgets an answer once it has come, and keeps one asked since", () => {
     const first = Promise.resolve("the first");
     const second = Promise.resolve("the second");
-    expect(settledAnswering({ at: 2, answer: first }, first, false)).toBeNull();
+    expect(settledAnswering({ at: 2, answer: first, come: false }, first, false)).toBeNull();
     // An answer that comes after another was asked leaves the other kept.
-    expect(settledAnswering({ at: 1, answer: second }, first, false)).toEqual({
-      at: 1,
-      answer: second,
-    });
+    const since = { at: 1, answer: second, come: false };
+    expect(settledAnswering(since, first, false)).toBe(since);
+    expect(settledAnswering(since, first, true)).toBe(since);
     expect(settledAnswering(null, first, false)).toBeNull();
   });
 
@@ -667,11 +667,24 @@ describe("a refused undo, and the entries under it (16:M23)", () => {
     // choice forgets it with what the strip holds.
     const refused = Promise.reject(new Error("demo.ddd.json changed on disk since it was written"));
     refused.catch(() => undefined);
-    const kept = settledAnswering({ at: 2, answer: refused }, refused, true);
+    const kept = settledAnswering({ at: 2, answer: refused, come: false }, refused, true);
     expect(answerOf(kept, LIMITS)).toBe(refused);
     // Not held - an answer that came, or a refusal the strip did not hold - it is forgotten, and
     // the next revision asks the server again.
-    expect(settledAnswering({ at: 2, answer: refused }, refused, false)).toBeNull();
+    expect(settledAnswering({ at: 2, answer: refused, come: false }, refused, false)).toBeNull();
+  });
+
+  it("keeps through the reader's choice an answer still on its way, and forgets one that has come", () => {
+    // Closed while edit 2's preview is on its way, a revision landing, and opened again: the strip
+    // asks edit 2 under a new key, and gets the answer still out rather than ask a second time.
+    const answer = Promise.resolve("edit 2's answer");
+    const out = { at: 2, answer, come: false };
+    expect(onItsWay(out)).toBe(out);
+    // Come, and kept for the refusal the strip holds of it, it goes with that refusal.
+    const come = settledAnswering(out, answer, true);
+    expect(come).toEqual({ ...out, come: true });
+    expect(onItsWay(come)).toBeNull();
+    expect(onItsWay(null)).toBeNull();
   });
 
   it("asks no preview of an edit while it holds a stale refusal of it, and offers to read again", () => {

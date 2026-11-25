@@ -281,6 +281,9 @@ export function heldUnder(held: readonly UndoRefused[], top: Entry | null): read
 export interface Answering<T> {
   at: number;
   answer: T;
+  /** Whether the answer has come: kept then only as a held refusal's (`settledAnswering`), which
+   * the reader's next choice lets go, where one on its way stays (`onItsWay`). */
+  come: boolean;
 }
 
 /** The answer an ask of `entry`'s preview gets without asking the server: the one the strip keeps
@@ -291,18 +294,28 @@ export function answerOf<T>(answering: Answering<T> | null, entry: { at: number 
   return answering !== null && answering.at === entry.at ? answering.answer : null;
 }
 
-/** What the strip keeps once `answer` has come: the very answer, where the strip holds the `stale`
- * refusal it came with (`held`), until the reader's next choice forgets it with what the strip
- * holds - decided at the ask, so that an ask in the frame before the refusal is drawn gets it and
- * sends nothing (16:M23); else nothing, where the answer kept was that one - an answer come, or a
- * refusal not held, the next revision asking the server again. An answer asked since, of another
- * entry, is kept as it is. */
+/** What the strip keeps once `answer` has come: the very answer, `come`, where the strip holds the
+ * `stale` refusal it came with (`held`), until the reader's next choice forgets it with what the
+ * strip holds - decided at the ask, so that an ask in the frame before the refusal is drawn gets
+ * it and sends nothing (16:M23); else nothing, where the answer kept was that one - an answer
+ * come, or a refusal not held, the next revision asking the server again. An answer asked since,
+ * of another entry, is kept as it is. */
 export function settledAnswering<T>(
   answering: Answering<T> | null,
   answer: T,
   held: boolean,
 ): Answering<T> | null {
-  return answering !== null && answering.answer === answer && !held ? null : answering;
+  if (answering === null || answering.answer !== answer) return answering;
+  return held ? { ...answering, come: true } : null;
+}
+
+/** What the strip keeps of an answer through the reader's next choice in the strip: one still on
+ * its way, which an ask of its entry gets, so that no second request for that entry leaves while
+ * one is out, whatever the strip did meanwhile - closed, a revision landing, and opened again
+ * (16:M23); nothing of one that has come, a held refusal's, which the choice lets go with what the
+ * strip holds. */
+export function onItsWay<T>(answering: Answering<T> | null): Answering<T> | null {
+  return answering !== null && !answering.come ? answering : null;
 }
 
 /**

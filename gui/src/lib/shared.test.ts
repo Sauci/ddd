@@ -660,6 +660,15 @@ describe("an optional key emptied takes the key away", () => {
     });
   });
 
+  test("text of spaces alone is as empty as none", () => {
+    expect(rasterSet("10ms", "cycle", "  ")).toEqual({ action: "set", name: "10ms", key: "cycle" });
+    expect(constantDescription("LIMIT", " ")).toEqual({
+      action: "set",
+      name: "LIMIT",
+      key: "description",
+    });
+  });
+
   test("a key that is not optional keeps what it was", () => {
     expect(sectionSet(".calib", "access", "")).toEqual({
       action: "set",

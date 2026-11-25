@@ -253,6 +253,37 @@ test("a window behind the server names the edit it asked to preview, once anothe
   }
 });
 
+test("a preview refused after the strip was closed leaves nothing standing beside the name", async ({
+  page,
+  gui,
+}) => {
+  await settledAndAnalysed(page, gui);
+  const undo = page.getByRole("button", { name: "Undo the unit of ValueA" });
+  // The strip opened and closed again while its preview is held: the reader chose before the
+  // answer came.
+  const release = await held(page, "/api/undo");
+  try {
+    await undo.click();
+    await expect(strip(page).getByText("Reading the files…", { exact: true })).toBeVisible();
+    await undo.click();
+    await expect(strip(page)).toHaveCount(0);
+  } catch (error) {
+    release();
+    throw error;
+  }
+  // Saved from outside meanwhile, so that the preview, let through now, is refused and the edit
+  // taken off the stack.
+  driftIn(gui.directory, CONTROLLER, "ValueA", "kPa");
+  const refused = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === "/api/undo" && response.status() === 409,
+  );
+  release();
+  await refused;
+  // The control goes with the edit, and no word of it is left standing with the strip closed.
+  await expect(undo).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Nothing left to undo" })).toHaveCount(0);
+});
+
 test("the control stands beside a component's name too", async ({ page, gui }) => {
   drift(gui.directory);
   await page.goto(gui.address);

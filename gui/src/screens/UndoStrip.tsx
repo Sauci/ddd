@@ -1,5 +1,5 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getUndo, postUndo } from "../api/client";
 import type { State } from "../api/types";
 import { UndoStripView } from "../components/UndoStripView";
@@ -49,6 +49,13 @@ export function UndoStrip({ state, stopped }: Props) {
   const [open, setOpen] = useState(false);
   const [changesShown, setChangesShown] = useState(false);
   const [held, setHeld] = useState<readonly UndoRefused[]>([]);
+  // Whether the strip is open as a preview's answer comes, which may be after the reader closed
+  // it: closing it is their choice, and a refusal coming after is not held, so that no word of
+  // it - nor "Nothing left to undo" - stands beside the name with the strip closed.
+  const opened = useRef(open);
+  useEffect(() => {
+    opened.current = open;
+  }, [open]);
   const undoable = state?.undoable ?? null;
   const revision = state?.revision;
   const preview = useQuery({
@@ -63,7 +70,7 @@ export function UndoStrip({ state, stopped }: Props) {
               // the page before this answer does, which moves the strip to that entry's query, and
               // a refusal held only once the strip saw it refused was then never seen at all.
               const kept = error instanceof Error ? previewRefused(error, undoable) : null;
-              if (kept !== null) setHeld((before) => holding(before, kept));
+              if (kept !== null && opened.current) setHeld((before) => holding(before, kept));
               throw error;
             }),
     retry: false,

@@ -121,7 +121,9 @@ export type Ask = Omit<RequestInit, "headers" | "body"> & {
 };
 
 /** Whether a request whose fetch was rejected is sent once more (spec 2026-10-08 §6): a GET,
- * which asks and changes nothing, whose fetch got no answer at all. Never an abort, which the
+ * which writes no file and opens no project, whose fetch got no answer at all - an undo's preview
+ * among them, which may have taken the edit it previews off the undo stack, one no undo could put
+ * back, and is refused as of an edit no longer on top when sent again. Never an abort, which the
  * page asked for itself, and never another method, whose effect may have happened before the
  * connection failed. An HTTP answer, a refusal included, never comes here: `fetch` resolves it. */
 export function sentAgain(method: string | undefined, error: unknown): boolean {

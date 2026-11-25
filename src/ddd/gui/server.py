@@ -18,7 +18,11 @@ this one trusts nothing it did not hand out itself:
   of this address is refused however it asks, ``GET /open`` excepted, which is routed before
   this check ever runs. An older browser sends neither header on a plain request, so this
   does not catch it there;
-* a request that changes anything has to come from this server's own origin, as json;
+* every ``POST`` - one that writes a file of the open project or opens a project, and the
+  sign-in - has to come from this server's own origin, as json. An undo's preview,
+  ``GET /api/undo``, writes nothing and needs the token alone, but takes the edit it previews off
+  the undo stack where a file of that edit is gone or holds other bytes than it left: an edit no
+  undo could put back;
 * no page of it can be framed, and no script runs but one served from this origin, or one the
   page itself holds inline, which :func:`page_policy` allows by its hash alone (a server that
   used the same port earlier could have served this origin; see ``docs/gui_security.rst``);

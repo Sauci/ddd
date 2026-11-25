@@ -222,6 +222,19 @@ def test_the_page_says_a_cookie_rode_the_two_navigations_a_browser_begins_itself
     )
 
 
+def test_the_page_says_which_requests_need_the_origin_and_what_an_undo_s_preview_changes() -> None:
+    """What holds since an undo's preview takes off the stack an edit its refusal says the disk
+    moved past (16:M23): a write or an open needs this server's own origin as json, and the
+    preview, a ``GET``, the token alone."""
+    assert (
+        "and one that writes a file of the open project, or opens a project, needs this server's "
+        "own ``Origin`` and a json body besides. ``GET /api/undo``, an undo's preview, writes "
+        "nothing and needs the token alone, but takes the edit it previews off the undo stack "
+        "where a file of that edit is gone or holds other bytes than it left: an edit no undo "
+        "could put back."
+    ) in _prose()
+
+
 def test_the_page_says_to_open_ddd_gui_from_its_own_address_alone() -> None:
     assert (
         "Open ``ddd gui``'s pages from the address it prints, or from the page itself, rather "

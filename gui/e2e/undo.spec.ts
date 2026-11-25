@@ -84,12 +84,16 @@ test("an adopted vocabulary is taken away again, file and include", async ({ pag
 
   const undo = page.getByRole("button", { name: "Undo the vocabulary adopted" });
   await undo.click();
+  // The file it takes away is counted apart from the one it puts back, as the heading says them
+  // once the undo is answered (16:I13).
   await expect(
-    strip(page).getByText("Puts back 2 files: demo.ddd.json, units.ddd.json"),
+    strip(page).getByText("Puts back 1 file: demo.ddd.json, and removes 1 file: units.ddd.json", {
+      exact: true,
+    }),
   ).toBeVisible();
   await strip(page).getByRole("button", { name: "Show changes" }).click();
   await expect(strip(page).getByText("units.ddd.json, removed")).toBeVisible();
-  await strip(page).getByRole("button", { name: "Put back 2 files" }).click();
+  await strip(page).getByRole("button", { name: "Put back 1 file and remove 1 file" }).click();
 
   await expect.poll(() => existsSync(adopted)).toBe(false);
   expect(readFileSync(join(gui.directory, "demo.ddd.json")).equals(described)).toBe(true);

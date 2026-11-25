@@ -303,16 +303,32 @@ export function undoButton(state: State | null): string | null {
   return undoable === null ? null : `Undo ${undoable.label}`;
 }
 
-/** What an undo would put back, in one sentence naming the files, as part 1's consequence line
- * names the files a change is applied to. */
+/** What an undo would do, in one sentence naming the files, as part 1's consequence line names the
+ * files a change is applied to: those it puts back, and apart from them those it takes away, which
+ * its preview names gone - "Puts back 1 file: demo.ddd.json, and removes 1 file: units.ddd.json",
+ * as the heading's line says them once the undo is answered (`writtenSentence`, 16:I13). Each file
+ * is told apart among every file the undo writes (`changedNames`). */
 export function undoConsequence(changes: readonly UndoneChange[]): string {
-  const files = changedNames(changes);
-  return `Puts back ${plural(files.length)}: ${files.join(", ")}`;
+  const names = changedNames(changes);
+  const back = changes.flatMap((change, at) => (change.gone ? [] : [`${names[at]}`]));
+  const gone = changes.flatMap((change, at) => (change.gone ? [`${names[at]}`] : []));
+  const said = [
+    ...(back.length > 0 || gone.length === 0
+      ? [`puts back ${plural(back.length)}: ${back.join(", ")}`]
+      : []),
+    ...(gone.length === 0 ? [] : [`removes ${plural(gone.length)}: ${gone.join(", ")}`]),
+  ].join(", and ");
+  return `${said.charAt(0).toUpperCase()}${said.slice(1)}`;
 }
 
-/** What the button that writes says. */
+/** What the button that writes says, counting the files it takes away apart from those it puts
+ * back, as the line above it does: "Put back 1 file and remove 1 file". */
 export function undoAction(changes: readonly UndoneChange[]): string {
-  return `Put back ${plural(changes.length)}`;
+  const gone = changes.filter((change) => change.gone).length;
+  const back = changes.length - gone;
+  if (gone === 0) return `Put back ${plural(back)}`;
+  if (back === 0) return `Remove ${plural(gone)}`;
+  return `Put back ${plural(back)} and remove ${plural(gone)}`;
 }
 
 function plural(count: number): string {

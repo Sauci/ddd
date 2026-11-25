@@ -303,19 +303,38 @@ describe("the undo control", () => {
   });
 
   it("says which files it puts back, and how many", () => {
+    const sensor = { ...CHANGED, file: "C:/work/demo/components/sensor_hub.ddd.json" };
     expect(undoConsequence([CHANGED])).toBe("Puts back 1 file: controller.ddd.json");
-    expect(undoConsequence([CHANGED, CREATED])).toBe(
-      "Puts back 2 files: controller.ddd.json, units.ddd.json",
+    expect(undoConsequence([CHANGED, sensor])).toBe(
+      "Puts back 2 files: controller.ddd.json, sensor_hub.ddd.json",
     );
     expect(undoAction([CHANGED])).toBe("Put back 1 file");
-    expect(undoAction([CHANGED, CREATED])).toBe("Put back 2 files");
+    expect(undoAction([CHANGED, sensor])).toBe("Put back 2 files");
+  });
+
+  it("counts a file it takes away apart from those it puts back, as the heading's line does (16:I13)", () => {
+    // The adopted vocabulary's undo: the description put back, the units file taken away - the
+    // strip's own word for it under Show changes, and the heading's once the undo is answered.
+    const sensor = { ...CHANGED, file: "C:/work/demo/components/sensor_hub.ddd.json" };
+    expect(undoConsequence([CHANGED, CREATED])).toBe(
+      "Puts back 1 file: controller.ddd.json, and removes 1 file: units.ddd.json",
+    );
+    expect(undoConsequence([CHANGED, sensor, CREATED])).toBe(
+      "Puts back 2 files: controller.ddd.json, sensor_hub.ddd.json, and removes 1 file: " +
+        "units.ddd.json",
+    );
+    expect(undoAction([CHANGED, CREATED])).toBe("Put back 1 file and remove 1 file");
+    expect(undoAction([CHANGED, sensor, CREATED])).toBe("Put back 2 files and remove 1 file");
+    // An undo taking files away and putting none back says that alone.
+    expect(undoConsequence([CREATED])).toBe("Removes 1 file: units.ddd.json");
+    expect(undoAction([CREATED])).toBe("Remove 1 file");
   });
 
   it("tells two files of one name apart by their paths, among every file it puts back", () => {
     const left = { ...CHANGED, file: "C:/work/demo/left/gauge.ddd.json" };
     const right = { ...CREATED, file: "C:/work/demo/right/gauge.ddd.json" };
     expect(undoConsequence([left, right])).toBe(
-      "Puts back 2 files: left/gauge.ddd.json, right/gauge.ddd.json",
+      "Puts back 1 file: left/gauge.ddd.json, and removes 1 file: right/gauge.ddd.json",
     );
   });
 

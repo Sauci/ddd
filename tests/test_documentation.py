@@ -11608,8 +11608,9 @@ class TestTwoFilesOfOneNameAreToldApartOnThePage:
             "from another file of that name - and says how many rows it leaves of how many."
         ) in said
         assert (
-            "A text that is a whole name the File column draws leaves the findings of that file "
-            "alone, where part of a name is found wherever it stands."
+            "A text that is a whole name the File column draws leaves that file's findings, and of "
+            "every other file only those whose check or words hold it, where part of a name is "
+            "found wherever it stands."
         ) in said
         assert (
             "The Findings tab's File column, a plan's consequence and the lines a change prints "

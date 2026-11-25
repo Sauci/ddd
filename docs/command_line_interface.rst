@@ -855,12 +855,13 @@ The commands
        a finding, asked of the server, by its check, its words or its file's name as the File
        column draws it - by its own name, and by as much of its path as tells it apart from
        another file of that name - and says how many rows it leaves of how many. A text that is
-       a whole name the File column draws leaves the findings of that file alone, where part of
-       a name is found wherever it stands. The Findings tab's File column, a plan's consequence
-       and the lines a change prints name two files of one name in different folders by as much
-       of their paths as tells them apart. The masthead goes to a variable by a part of its
-       name, listing at most fifty of the names holding it, and opens its panel on the page of
-       the component producing it, or of the first declaring it where none does.
+       a whole name the File column draws leaves that file's findings, and of every other file
+       only those whose check or words hold it, where part of a name is found wherever it
+       stands. The Findings tab's File column, a plan's consequence and the lines a change
+       prints name two files of one name in different folders by as much of their paths as
+       tells them apart. The masthead goes to a variable by a part of its name, listing at most
+       fifty of the names holding it, and opens its panel on the page of the component
+       producing it, or of the first declaring it where none does.
        A build record this DDD cannot use - written by a newer DDD, or naming a check this one
        has not got - applies its severities to no analysis: the start page lists it with its
        reason, as the language server logs one, the state the page reads carries it beside the

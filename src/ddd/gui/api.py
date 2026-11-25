@@ -53,6 +53,7 @@ from ddd.editing import (
     EditError,
     FileChange,
     Operation,
+    Written,
     unchanged,
 )
 from ddd.file_plans import (
@@ -826,11 +827,19 @@ class Api:
 
     def _apply_undo(self, query: NoQuery, body: contract.UndoRequest) -> Reply:
         """Put that edit back, and answer the number the undo took, once the files are back -
-        before its analysis."""
+        before its analysis. Its refusal names a file as the preview's does (:func:`_by_name`):
+        where a file that cannot be read refuses the put back, and then the preview asked again
+        after it, the two are one refusal in one sentence, which the page says once. The files it
+        names so are those of the edit on top as the undo is asked: where the stack has moved
+        since, the undo is refused as of an edit no longer on top, a sentence naming no file."""
+        files: tuple[Written, ...] = ()
+        top = self.session.undoable
+        if top is not None and top.at == body.at:
+            files = top.files
         try:
             number = self.session.undo(body.at)
         except EditError as refused:
-            return _edit_refusal(refused)
+            return _edit_refusal(_by_name(refused, files))
         return Reply(200, written(contract.UndoReply(edit=number)))
 
     def _variable(self, query: VariableQuery, body: None) -> Reply:
@@ -2899,6 +2908,21 @@ def _planned_changes(
     ]
 
 
+def _by_name(refused: EditError, files: Sequence[Written]) -> EditError:
+    """``refused`` naming each of ``files`` by its own name where it names that file by its path,
+    as the engine refuses with: the page shows an undo's refusal as it stands, and every other
+    sentence it shows names a file by its own name (16:M15). A ``stale`` refusal alone - a file
+    gone, changed on disk, or that can no longer be read - which an undo's preview and its put back
+    both answer, so that the one refusal reads alike from either; any other is the engine's own
+    sentence, as it stands."""
+    if refused.code != STALE:
+        return refused
+    message = str(refused)
+    for file in files:
+        message = message.replace(str(file.path), file.path.name, 1)
+    return EditError(refused.code, message)
+
+
 def _undone_changes(entry: Undoable) -> list[dict[str, Any]]:
     """The files an undo puts back and the lines each would get, read from the disk as it
     stands.
@@ -2912,11 +2936,7 @@ def _undone_changes(entry: Undoable) -> list[dict[str, Any]]:
         try:
             current = unchanged(file).decode("utf-8-sig")
         except EditError as refused:
-            # The page shows this sentence as it stands, and every other sentence it shows names a
-            # file by its own name rather than by the path the engine refuses with.
-            raise EditError(
-                refused.code, str(refused).replace(str(file.path), file.path.name, 1)
-            ) from None
+            raise _by_name(refused, (file,)) from None
         previous = "" if file.before is None else file.before.decode("utf-8-sig")
         changes.append(
             {

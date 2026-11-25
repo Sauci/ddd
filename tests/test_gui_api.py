@@ -4612,6 +4612,24 @@ class TestUndoing:
         assert post(api, "/api/undo", {"at": 1}).status == 200
         assert b.read_bytes() == before
 
+    def test_an_unreadable_file_names_itself_alike_in_the_put_back_and_the_preview_it_refuses(
+        self, api: Api, root: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A Put back refused because a file it would put back cannot be read, and the preview the
+        strip asks again at the analysis that refusal asks for, name the file alike, by its own
+        name, as the page names a file (16:M15): the two are one refusal, which the strip says
+        once."""
+        b = root / "b.ddd.json"
+        assert post(api, "/api/edit", unit_edit(api, root, "Hz")).status == 200
+        with read_refused(b, monkeypatch):
+            put_back = post(api, "/api/undo", {"at": 1})
+            preview = get(api, "/api/undo", at="1")
+        assert put_back == Reply(
+            409, {"error": "stale", "message": "b.ddd.json can no longer be read"}
+        )
+        assert preview == put_back
+        assert get(api, "/api/state").body["undoable"] == {"at": 1, "label": "the unit of Speed"}
+
     def test_an_undo_refused_because_its_file_changed_on_disk_lets_the_edit_beneath_be_undone(
         self, api: Api, root: Path
     ) -> None:
@@ -4627,7 +4645,7 @@ class TestUndoing:
         b.write_bytes(b.read_bytes().replace(b'"Hz"', b'"rad"'))
         reply = post(api, "/api/undo", {"at": 2})
         assert (reply.status, reply.body["error"]) == (409, "stale")
-        assert reply.body["message"].endswith("b.ddd.json changed on disk since it was written")
+        assert reply.body["message"] == "b.ddd.json changed on disk since it was written"
         assert get(api, "/api/state").body["undoable"] == {
             "at": 1,
             "label": "the unit of Speed in A",

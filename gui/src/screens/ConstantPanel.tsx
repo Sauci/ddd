@@ -129,10 +129,7 @@ export function ConstantPanel({
       valueRead === null || "refusal" in valueRead
         ? null
         : { action: "set", name, key: "value", raw: valueRead.raw },
-    describe:
-      draftDescription === null
-        ? null
-        : constantDescription(name, draftDescription),
+    describe: draftDescription === null ? null : constantDescription(name, draftDescription),
     rename: to === null ? null : { action: "rename", name, to },
     // Asked for only while nothing names the constant: a shape still naming it always refuses
     // (design §4.5), and a control that would refuse the instant it was pressed is a lying button

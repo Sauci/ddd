@@ -10,6 +10,7 @@ import {
   namingAScalarType,
   openValues,
   paste,
+  pasteWhereFocused,
   SENSOR_HUB,
   SERVER_FAILED,
   scrolledIntoView,
@@ -1189,9 +1190,13 @@ test("a curve's grid has its shape's columns, and a cell the file does not state
     await expect(cell).toHaveClass("hollow");
   }
   await expect(
-    page.getByText("Paste 1 row of 6 values from a spreadsheet to replace them all.", {
-      exact: true,
-    }),
+    page.getByText(
+      "Paste 1 row of 6 values from a spreadsheet to replace them all, or one value into a " +
+        "cell to set it.",
+      {
+        exact: true,
+      },
+    ),
   ).toBeVisible();
 
   // Typed into, a hollow cell plans what `set_cell` writes: the whole init, the cells it lacked 0.
@@ -1597,6 +1602,71 @@ test("two rows of four pasted into a curve of three say that their first row and
     .toEqual([60, 70, 80]);
 });
 
+// Decision 15.2: one value pasted where a cell has the focus - with the line break a spreadsheet
+// puts after a single cell copied - sets that cell as though typed there, and joins the cells
+// typed before it in one plan. Read as a table, it was refused as one of the wrong shape, and the
+// cells typed went with it. The cell has the focus by a click, then by an arrow.
+test("one value pasted into a cell sets that cell, held with the cells typed before it", async ({
+  page,
+  gui,
+}) => {
+  await openValues(page, gui.address, "CurveA");
+  const grid = page.getByRole("grid", { name: "Values of CurveA" });
+  const cell = (element: number) => grid.getByRole("textbox", { name: `element ${element}` });
+  await typed(cell(1), "13");
+  await cell(2).click();
+  await expect(cell(2)).toBeFocused();
+  // Taken by the page, which puts the value in the field itself: the browser drops nothing in.
+  expect(await pasteWhereFocused(page, "14\n")).toBe(true);
+  await expect(cell(2)).toHaveValue("14");
+  await expect(cell(1)).toHaveValue("13");
+
+  await cell(2).press("ArrowRight");
+  await expect(cell(3)).toBeFocused();
+  expect(await pasteWhereFocused(page, "15\r\n")).toBe(true);
+  await expectRow(grid, ["13", "14", "15", "7.5", "7", "6.5"]);
+  await expect(
+    page
+      .getByRole("region", { name: "Set the cells" })
+      .getByText(
+        "Sets 3 elements of CurveA: element 1 to 13 ms; element 2 to 14 ms; element 3 to 15 ms",
+      ),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect
+    .poll(() => definitionOf(gui.directory, CONTROLLER, "CurveA").init)
+    .toEqual([1300, 1400, 1500, 750, 700, 650]);
+});
+
+// One value is a cell's only where a cell has the focus: anything more pasted into a cell, and
+// one value pasted with the focus on no cell, is a table, which replaces every value in place of
+// the cells typed before it.
+test("a table pasted into a cell replaces every value, and one value pasted beside the cells is a table", async ({
+  page,
+  gui,
+}) => {
+  await openValues(page, gui.address, "CurveA");
+  const grid = page.getByRole("grid", { name: "Values of CurveA" });
+  await typed(grid.getByRole("textbox", { name: "element 1" }), "13");
+  await grid.getByRole("textbox", { name: "element 3" }).click();
+  expect(await pasteWhereFocused(page, "12.5\t9.5\t8.5\t8\t7.5\t7\n")).toBe(true);
+  await expect(
+    page
+      .getByRole("region", { name: "Replace the values" })
+      .getByText("Replaces every value of CurveA. Changes 1 file: controller.ddd.json", {
+        exact: true,
+      }),
+  ).toBeVisible();
+  await expectRow(grid, ["12", "9", "8", "7.5", "7", "6.5"]);
+
+  await page.getByRole("button", { name: "Raw" }).focus();
+  expect(await pasteWhereFocused(page, "1400")).toBe(true);
+  await expect(
+    page.getByText("expected 1 row of 6, or 2 rows of 7 with a header; got 1 row of 1"),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+});
+
 test("a block of the wrong shape is refused and nothing is written", async ({ page, gui }) => {
   const before = readFileSync(join(gui.directory, CONTROLLER));
   await openValues(page, gui.address, "CurveA");
@@ -1951,6 +2021,19 @@ test("a scalar's value is typed key by key, written at its own init, and put bac
   await expect.poll(() => readFileSync(join(gui.directory, CONTROLLER)).equals(before)).toBe(true);
 });
 
+// Decision 15.2 in a grid of one cell: the value pasted into it is the cell's text, as typed,
+// where the browser dropped it in beside the text the field held.
+test("one value pasted into a scalar's cell sets it", async ({ page, gui }) => {
+  await openValues(page, gui.address, "ParameterA");
+  const cell = page.getByRole("textbox", { name: "the value" });
+  await cell.click();
+  expect(await pasteWhereFocused(page, "1000\r\n")).toBe(true);
+  await expect(cell).toHaveValue("1000");
+  await expect(page.getByText("Sets the value of ParameterA to 1000 Hz")).toBeVisible();
+  await page.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect.poll(() => definitionOf(gui.directory, CONTROLLER, "ParameterA").init).toBe(4000);
+});
+
 test("a scalar stating no init gains one, which the preview shows", async ({ page, gui }) => {
   expect(definitionOf(gui.directory, SENSOR_HUB, "ValueC")).not.toHaveProperty("init");
   await openValues(page, gui.address, "ValueC", "SensorHub");
@@ -2024,9 +2107,13 @@ test("a grid that states nothing is drawn hollow with no picture, says so, and t
   await expect(picture).toHaveCount(0);
   // One producer, so the grid is writable and a paste is offered.
   await expect(
-    page.getByText("Paste 1 row of 4 values from a spreadsheet to replace them all.", {
-      exact: true,
-    }),
+    page.getByText(
+      "Paste 1 row of 4 values from a spreadsheet to replace them all, or one value into a " +
+        "cell to set it.",
+      {
+        exact: true,
+      },
+    ),
   ).toBeVisible();
 
   await typed(grid.getByRole("textbox", { name: "element 2, not stated", exact: true }), "1");

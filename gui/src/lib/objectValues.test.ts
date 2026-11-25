@@ -20,6 +20,7 @@ import {
   noGridNote,
   oneCell,
   pasted,
+  pastedValue,
   pasteHint,
   pasteSentence,
   pastes,
@@ -1702,16 +1703,46 @@ describe("pasted", () => {
   });
 });
 
+describe("pastedValue", () => {
+  test("one cell pasted is the one value it holds, a trailing line break aside (decision 15.2)", () => {
+    // What a spreadsheet puts on the clipboard for one cell copied: its text and a line break,
+    // which Windows writes as two characters.
+    expect(pastedValue("14")).toBe("14");
+    expect(pastedValue("14\n")).toBe("14");
+    expect(pastedValue("14\r\n")).toBe("14");
+  });
+
+  test("its text is kept as pasted, for the cell to read as it reads one typed", () => {
+    expect(pastedValue(" 7,5 ")).toBe(" 7,5 ");
+    expect(pastedValue("abc")).toBe("abc");
+  });
+
+  test("an empty one is a cell nothing is typed into", () => {
+    expect(pastedValue("")).toBe("");
+    expect(pastedValue("\n")).toBe("");
+  });
+
+  test("anything more is a block, which replaces every value", () => {
+    expect(pastedValue("14\t15")).toBeNull();
+    expect(pastedValue("14\n15")).toBeNull();
+    expect(pastedValue("14\t")).toBeNull();
+    // A second line break is a second row, empty.
+    expect(pastedValue("14\n\n")).toBeNull();
+  });
+});
+
 describe("pasteHint", () => {
-  test("a curve asks for one row", () => {
+  test("a curve asks for one row, or one value into a cell", () => {
     expect(pasteHint(CURVE_A)).toBe(
-      "Paste 1 row of 6 values from a spreadsheet to replace them all.",
+      "Paste 1 row of 6 values from a spreadsheet to replace them all, or one value into a " +
+        "cell to set it.",
     );
   });
 
   test("a map asks for four", () => {
     expect(pasteHint(MAP_A)).toBe(
-      "Paste 4 rows of 6 values from a spreadsheet to replace them all.",
+      "Paste 4 rows of 6 values from a spreadsheet to replace them all, or one value into a " +
+        "cell to set it.",
     );
   });
 });

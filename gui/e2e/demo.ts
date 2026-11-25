@@ -259,6 +259,24 @@ export async function paste(
     }, text);
 }
 
+/** `text` pasted where the focus is, as Ctrl-V pastes it: the `paste` event `paste` dispatches,
+ * cancelable as the browser's own is, dispatched at the focused element - a grid cell's field,
+ * where one has the focus - and bubbling from there. Answers whether the page took it for its own,
+ * cancelling what the browser does with a paste into a field: drop the text in, at the caret. */
+export async function pasteWhereFocused(page: Page, text: string): Promise<boolean> {
+  return page.evaluate((block) => {
+    const data = new DataTransfer();
+    data.setData("text/plain", block);
+    const event = new ClipboardEvent("paste", {
+      clipboardData: data,
+      bubbles: true,
+      cancelable: true,
+    });
+    (document.activeElement ?? document.body).dispatchEvent(event);
+    return event.defaultPrevented;
+  }, text);
+}
+
 /** One variable's linear factor in one file of a copy drifted, saved from outside; answers the
  * file as it was before. */
 export function driftFactor(

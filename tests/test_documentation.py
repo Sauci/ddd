@@ -1049,6 +1049,19 @@ class TestTheCommandPage:
             "itself"
         ) in text
 
+    def test_one_value_pasted_into_a_cell_is_said_to_set_it(self) -> None:
+        """What ``objectValues.ts``'s ``pastedValue`` and the grid's cells do with one value pasted
+        (decision 15.2), said where the grid is described: it sets the cell it is pasted into as a
+        cell typed, a scalar's one cell included, and anything more is a table."""
+        text = flattened(self.COMMAND_PAGE)
+        assert "nothing is drawn of one point, nor pasted into it" not in text
+        assert "nothing is drawn of one point, nor a table pasted into it" in text
+        assert (
+            "One value pasted into a cell - a single cell of text, a trailing line break aside - "
+            "is no table: it sets that cell as if typed into it, held with the cells typed before "
+            "it; anything more, pasted into a cell or anywhere else in the grid, is a table"
+        ) in text
+
     def test_the_readme_lists_the_same_schema_kinds(self) -> None:
         listed = re.search(r"\| `ddd schema ([a-z|\\]+)`", README)
         assert listed is not None

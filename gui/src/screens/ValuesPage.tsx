@@ -60,7 +60,8 @@ interface Props {
  * at a time: `pastedRows` and `typed` are cleared by each other's own action - a table pasted
  * takes the place of every cell typed before it, and a cell typed after it takes the table's -
  * and `shownPlan`/`shownSentence`/`label` below choose between the two once, rather than at each
- * prop.
+ * prop. One value pasted into a cell is a cell typed (`pastedValue`, decision 15.2): its field
+ * hands it over through `onTyped`, never `onPaste`, and it joins the cells typed before it.
  *
  * What an Apply wrote shows at once (spec 6): `GET /api/values` answers what the last analysis
  * read, so while the grid stays open it holds the values its own Apply wrote - and, once the Undo

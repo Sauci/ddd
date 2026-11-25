@@ -544,11 +544,29 @@ export function pasted(
   return { rows: read, header, refusal: null, ambiguous: null };
 }
 
+/**
+ * The one value a paste's text holds, where it holds one: a single cell, a trailing line break
+ * aside - what a spreadsheet puts on the clipboard for one cell copied - or `null` for anything
+ * more, a block, which replaces every value (`pasted`). One value pasted into a cell sets that
+ * cell as if it were typed there, held with the cells typed before it (decision 15.2): read as a
+ * table, it was refused as one of the wrong shape, and the cells typed went with it. The text is
+ * the cell's as it was pasted, which the cell reads as it reads one typed - an empty one too,
+ * which is a cell nothing is typed into.
+ */
+export function pastedValue(text: string): string | null {
+  const cells = celled(text).flat();
+  return cells.length === 1 ? cells.join("") : null;
+}
+
 /** The line under the grid saying what shape a paste wants - the only way the feature is
- * discoverable, and the hint that stops the commonest refusal before it happens. */
+ * discoverable, and the hint that stops the commonest refusal before it happens - and that one
+ * value pasted into a cell sets that cell (`pastedValue`, decision 15.2). */
 export function pasteHint(reply: ValuesReply): string {
   const [rows, columns] = wanted(reply);
-  return `Paste ${table(rows, columns)} values from a spreadsheet to replace them all.`;
+  return (
+    `Paste ${table(rows, columns)} values from a spreadsheet to replace them all, ` +
+    "or one value into a cell to set it."
+  );
 }
 
 /** One raw count in physical or in raw, as a cell, a column or a row header shows it - a

@@ -28,6 +28,7 @@ import {
   limitsLine,
   noGridNote,
   oneCell,
+  pastedValue,
   pasteHint,
   pastes,
   plotDrawn,
@@ -95,7 +96,8 @@ export interface ValuesGridViewProps {
   onChangesShown: (shown: boolean) => void;
   onApply: () => void;
   onBack: () => void;
-  /** The clipboard's text, from a paste anywhere in the grid. The component reads the event and
+  /** The clipboard's text, from a paste anywhere in the grid - but one value pasted into a cell,
+   * which sets that cell as typed (`onTyped`, `pastedValue`). The component reads the event and
    * hands over its text; what the text means is the screen's and `pasted`'s business. */
   onPaste: (text: string) => void;
   /** Whether the findings may be about to change (spec 6): the grid says so where it lists them,
@@ -147,7 +149,8 @@ interface CellFieldProps {
  * cell is the focused one (`gridCells`' `takesFocusedCell`) - unless Tab brought the focus
  * (`focusCameByTab`), where the table's own handling stands: Tab and Shift+Tab give the focus back
  * to the cell it remembers. A field a screen reader or voice control moves the focus to keeps it
- * (16:C1). */
+ * (16:C1). One value pasted into the field sets its cell as if typed there (`pastedValue`,
+ * decision 15.2), where anything more is the grid's table. */
 function CellField(props: CellFieldProps) {
   const { reply, row, column, physical, store } = props;
   const key = cellId(row, column);
@@ -172,6 +175,16 @@ function CellField(props: CellFieldProps) {
         props.onFocused(event.currentTarget);
       }}
       onChange={(event) => props.onTyped({ row, column, typed: event.target.value, physical })}
+      // One value is this cell's: the field takes it whole, as its text, and the grid's own
+      // handler around the table, which reads a paste as a table, never sees it. Cancelled, the
+      // browser drops nothing into the field. Anything more goes on to that handler.
+      onPaste={(event) => {
+        const value = pastedValue(event.clipboardData.getData("text/plain"));
+        if (value === null) return;
+        event.preventDefault();
+        event.stopPropagation();
+        props.onTyped({ row, column, typed: value, physical });
+      }}
       // Enter settles what was typed and nothing more: the preview is already below the grid,
       // and spec 5.3 is explicit that no cell writes on its own - only Apply writes. Taken here
       // all the same, so a habit of finishing a number with Enter reaches neither the table's own
@@ -360,7 +373,8 @@ export function ValuesGridView(props: ValuesGridViewProps) {
         // unguarded by any test on purpose, and said so rather than left to be discovered.
         if (readOnly !== null || noGrid !== null || !pastes(reply) || busy) return;
         // A cell is a text field: without this the browser also drops the whole block into
-        // whichever one has focus.
+        // whichever one has focus. One value pasted into a cell never reaches here: the cell's
+        // field takes it (`CellField`).
         event.preventDefault();
         props.onPaste(event.clipboardData.getData("text/plain"));
       }}

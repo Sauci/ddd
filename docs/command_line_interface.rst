@@ -377,8 +377,8 @@ The commands
        as a grid of one cell, its ``init``: the cell reads 3200 in raw and 800 in
        physical for ``ParameterA`` of ``examples/demo``, a value typed into it is one
        ``set`` at the declaration's own ``init`` - added, and shown as a line of the
-       preview, where the file states none - and nothing is drawn of one point, nor
-       pasted into it. A scalar a file initialises with text, or one produced in more
+       preview, where the file states none - and nothing is drawn of one point, nor a
+       table pasted into it. A scalar a file initialises with text, or one produced in more
        than one place, is refused as ever. A declaration naming a type is offered the grid
        where the project says the type is a scalar one - a scalar naming it reads ``scalar``, a
        value block naming it keeps its dimensions - and none where the type is a structure, an
@@ -414,7 +414,10 @@ The commands
        unread, and the preview's sentence says that the first row and column pasted are taken
        for a header and not written: a table of that size is read so whatever it holds, and one
        whose header names a different axis is caught by that preview, not by the paste itself.
-       A table past about 10,000 counts is not one ``ddd gui`` takes: one whose counts
+       One value pasted into a cell - a single cell of text, a trailing line break aside - is no
+       table: it sets that cell as if typed into it, held with the cells typed before it;
+       anything more, pasted into a cell or anywhere else in the grid, is a table. A table past
+       about 10,000 counts is not one ``ddd gui`` takes: one whose counts
        outgrow the address a request carries - past about 8,000 counts of five digits each - is
        refused as it is pasted, before anything is asked of the server, in a sentence naming the
        object and saying to set its values cell by cell, or in its file in an editor. Any other

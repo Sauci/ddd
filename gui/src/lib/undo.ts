@@ -9,6 +9,7 @@ import type {
 import type { Finding, PlanReply, State, UndoneChange, UndoPreview } from "../api/types";
 import type { Mode } from "./declarations";
 import { relativeToProject } from "./findings";
+import { refusedRead } from "./kept";
 import { elementLabel } from "./objectValues";
 import { isStale } from "./refusals";
 import { changedNames, type ShownChange } from "./units";
@@ -260,6 +261,10 @@ export interface UndoShown {
   /** Whether the strip says it is reading the files: the preview of the entry on top is asked for,
    * has not come, and nothing refused of it is said. */
   reading: boolean;
+  /** Whether the strip offers to read the files again: the preview of the entry on top was
+   * refused - the server's answer, not a failure - and the server keeps that entry, as it keeps
+   * one whose file could not be read (R22). */
+  askAgain: boolean;
 }
 
 /**
@@ -284,6 +289,12 @@ export interface UndoShown {
  *   mend the file - make it readable or writable - and press again, with no need to close the
  *   strip, as a panel offers its plan beside a refusal held of its Apply (`offerShown`,
  *   lib/refusals.ts). One the server took off is offered so until the state says it went.
+ * - **Beside the preview's own refusal** of the entry on top - a refusal (`refusedRead`), the
+ *   server keeping the entry, as it keeps one whose file could not be read - the strip offers to
+ *   read the files again (R22): mended, the file is previewed there, and the entry offered whole
+ *   once it is, never a Put back of files the strip has not read. A preview that failed - the
+ *   server failing, or not answering - is asked again as the page's other failed reads are: at the
+ *   next revision, or once the strip is closed and opened.
  */
 export function undoShown(
   held: readonly UndoRefused[],
@@ -308,8 +319,9 @@ export function undoShown(
       ? asked.data
       : null;
   const reading = top !== null && asked.error === null && offered === null;
+  const askAgain = top !== null && refusedRead(asked.error);
   const label = undoButton(state) ?? (refusals.length > 0 ? NOTHING_LEFT : null);
-  return { label, refusals, preview: offered, reading };
+  return { label, refusals, preview: offered, reading, askAgain };
 }
 
 /** What the Undo button says, or `null` when there is nothing to undo: no project open yet, no

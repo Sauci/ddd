@@ -18,6 +18,11 @@ export interface UndoStripViewProps {
   /** Whether the strip says it is reading the files: the preview of the entry on top is asked for
    * and has not come. */
   reading: boolean;
+  /** Reads the files again, offered beside a refusal of the preview the server keeps the entry
+   * through (`undoShown`, R22); `null` where nothing is to be read again. */
+  onAskAgain: (() => void) | null;
+  /** Whether the files are being read again. */
+  asking: boolean;
   changesShown: boolean;
   onChangesShown: (shown: boolean) => void;
   onUndo: () => void;
@@ -33,7 +38,7 @@ export interface UndoStripViewProps {
  * name while the strip takes the line below it - which is what `.undo-open` asks that row for.
  */
 export function UndoStripView(props: UndoStripViewProps) {
-  const { label, open, preview, refusals, reading, changesShown, busy } = props;
+  const { label, open, preview, refusals, reading, asking, changesShown, busy } = props;
   return (
     <>
       <Button
@@ -59,6 +64,13 @@ export function UndoStripView(props: UndoStripViewProps) {
               {refusals.map(({ key, text }) => (
                 <p key={key}>{text}</p>
               ))}
+            </div>
+          )}
+          {props.onAskAgain !== null && (
+            <div className="panel-actions">
+              <Button variant="secondary" isDisabled={busy || asking} onPress={props.onAskAgain}>
+                Read the files again
+              </Button>
             </div>
           )}
           {reading && <p className="quiet">Reading the files…</p>}

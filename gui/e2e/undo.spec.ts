@@ -284,6 +284,49 @@ test("a preview refused after the strip was closed leaves nothing standing besid
   await expect(page.getByRole("button", { name: "Nothing left to undo" })).toHaveCount(0);
 });
 
+test("a preview refused for a file that cannot be read is read again from the strip, which then offers the edit", async ({
+  page,
+  gui,
+}) => {
+  await settledAndAnalysed(page, gui);
+  // The server refuses the preview of a file it cannot read, and keeps the edit (R22). The route
+  // answers this one preview as it does, word for word: a mode does not stop a read on Windows,
+  // and a journey runs there too. Every later request goes to the server.
+  let refused = 0;
+  await page.route(
+    (url) => url.pathname === "/api/undo",
+    async (route) => {
+      if (route.request().method() !== "GET" || refused > 0) {
+        await route.fallback();
+        return;
+      }
+      refused += 1;
+      await route.fulfill({
+        status: 409,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: "stale",
+          message: "controller.ddd.json can no longer be read",
+        }),
+      });
+    },
+  );
+  await page.getByRole("button", { name: "Undo the unit of ValueA" }).click();
+  await expect(strip(page).getByRole("status")).toHaveText(
+    "controller.ddd.json can no longer be read. Nothing was put back; the page shows the files " +
+      "as they are.",
+  );
+  await expect(strip(page).getByRole("button", { name: /^Put back/ })).toHaveCount(0);
+
+  // The file mended, the strip reads it again, never closed, and offers the edit whole.
+  await strip(page).getByRole("button", { name: "Read the files again" }).click();
+  await expect(strip(page).getByText("Puts back 1 file: controller.ddd.json")).toBeVisible();
+  await expect(strip(page).getByRole("status")).toHaveCount(0);
+  await strip(page).getByRole("button", { name: "Put back 1 file" }).click();
+  await expect.poll(() => unitOfValueA(gui)).toBe("rpm");
+  expect(refused).toBe(1);
+});
+
 test("the control stands beside a component's name too", async ({ page, gui }) => {
   drift(gui.directory);
   await page.goto(gui.address);

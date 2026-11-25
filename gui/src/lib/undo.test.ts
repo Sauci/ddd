@@ -592,6 +592,41 @@ describe("a refused undo, and the entries under it (16:M23)", () => {
     );
   });
 
+  it("offers to read the files again beside a refusal of the preview of the entry on top", () => {
+    // R22: a file that could not be read keeps the entry on the stack; the reader may mend it and
+    // ask again from the strip, which reads the files again rather than offer a Put back of files
+    // it has not read.
+    const unread = undoShown([], stateOf(LIMITS), asked(undefined, UNREAD));
+    expect(said(unread)).toEqual([
+      "controller.ddd.json can no longer be read. Nothing was put back; the page shows the " +
+        "files as they are.",
+    ]);
+    expect(unread.preview).toBeNull();
+    expect(unread.askAgain).toBe(true);
+    // Held too, it is offered the same.
+    expect(
+      undoShown([undoRefused(UNREAD, LIMITS)], stateOf(LIMITS), asked(undefined, UNREAD)),
+    ).toMatchObject({ askAgain: true, preview: null });
+    // A failure, not a refusal, stays as the page's other failed reads do: asked again at the
+    // next revision, or once the strip is closed.
+    expect(undoShown([], stateOf(LIMITS), asked(undefined, FAILED)).askAgain).toBe(false);
+    expect(
+      undoShown([], stateOf(LIMITS), asked(undefined, new ServerUnreachable(new Error("x"))))
+        .askAgain,
+    ).toBe(false);
+    // Nothing refused of the preview, nothing to ask again: a preview offered, or being read, or a
+    // refusal held of the Put back beside the preview it offers again.
+    expect(undoShown([], stateOf(LIMITS), asked(previewOf(LIMITS))).askAgain).toBe(false);
+    expect(undoShown([], stateOf(LIMITS), asked(undefined)).askAgain).toBe(false);
+    expect(
+      undoShown([undoRefused(UNWRITABLE, LIMITS)], stateOf(LIMITS), asked(previewOf(LIMITS)))
+        .askAgain,
+    ).toBe(false);
+    expect(undoShown([undoRefused(STALE, LIMITS)], stateOf(null), asked(undefined)).askAgain).toBe(
+      false,
+    );
+  });
+
   it("offers the entry again beside a refusal of its Put back that leaves it on the stack", () => {
     // R22: a file that could not be written - the reader may make it writable and press again,
     // with no need to close the strip, the preview the revision on screen answers offered whole.

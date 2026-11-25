@@ -111,6 +111,16 @@ export function UndoStrip({ state, stopped }: Props) {
       // preview names the entry the button does, it counts as not yet arrived (`undoShown`).
       preview={shown.preview}
       reading={shown.reading}
+      onAskAgain={
+        shown.askAgain
+          ? () => {
+              // A choice of the reader's in the strip, as Put back is: what it says goes with it.
+              setHeld([]);
+              void preview.refetch();
+            }
+          : null
+      }
+      asking={preview.isFetching}
       changesShown={changesShown}
       onChangesShown={setChangesShown}
       onUndo={() => {

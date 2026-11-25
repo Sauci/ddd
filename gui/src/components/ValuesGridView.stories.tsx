@@ -206,6 +206,8 @@ export function AnAppliedValueHeld() {
           refusals={[]}
           preview={null}
           reading={false}
+          onAskAgain={null}
+          asking={false}
           changesShown={false}
           onChangesShown={() => {}}
           onUndo={() => {}}

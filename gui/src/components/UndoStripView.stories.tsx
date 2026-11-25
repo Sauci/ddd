@@ -25,6 +25,11 @@ const FAILED =
 const READ_ONLY =
   "The undo was refused: C:/work/demo/demo.ddd.json is read-only, so nothing was put back";
 
+// What the strip says of a preview refused because a file cannot be read, the server keeping the
+// edit (R22).
+const UNREAD =
+  "demo.ddd.json can no longer be read. Nothing was put back; the page shows the files as they are.";
+
 // The project's views, as App.tsx names them, the first one open.
 const VIEWS = ["Graph", "Table", "Units", "Types", "Shared files", "Files", "Findings", "Compare"];
 
@@ -39,6 +44,7 @@ function Heading({
   refusals = [],
   offered = refusals.length === 0,
   reading = false,
+  askAgain = false,
   updating = false,
   written = null,
 }: {
@@ -52,6 +58,8 @@ function Heading({
   offered?: boolean;
   /** Still `GET /api/undo`'s answer waited for: no preview, and no refusal either. */
   reading?: boolean;
+  /** Whether the strip offers to read the files again. */
+  askAgain?: boolean;
   /** The findings may be about to change: an edit waits for its analysis, or one runs. */
   updating?: boolean;
   /** What the heading says the page last wrote. */
@@ -70,6 +78,8 @@ function Heading({
           refusals={refusals.map((text) => ({ key: text, text }))}
           preview={reading || !offered ? null : entry}
           reading={reading}
+          onAskAgain={askAgain ? () => undefined : null}
+          asking={false}
           changesShown={changesShown}
           onChangesShown={setChangesShown}
           onUndo={() => undefined}
@@ -104,6 +114,10 @@ export const Refused = () => <Heading opened refusals={[FAILED]} />;
 /** The Put back refused because a file could not be written: the edit stays on the stack, and the
  * strip offers it again under the sentence, to be pressed once the file is writable (R22). */
 export const OfferedAgain = () => <Heading opened refusals={[READ_ONLY]} offered />;
+
+/** The preview refused because a file cannot be read: the server keeps the edit, and the strip
+ * offers to read the files again, to be pressed once the file is mended (R22). */
+export const ReadAgain = () => <Heading opened refusals={[UNREAD]} askAgain />;
 
 /** The adoption on top refused because a file it would put back was saved from outside: the
  * server took it off the stack, and the strip, still open, says why beside the edit under it,

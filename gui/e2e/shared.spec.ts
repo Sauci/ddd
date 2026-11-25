@@ -226,6 +226,30 @@ test("a raster's event, cycle and description are each saved from its panel, and
   await expect(event.getByRole("button", { name: "Save" })).toHaveCount(0);
 });
 
+test("a raster's cycle emptied is saved from its panel as a raster with no cycle", async ({
+  page,
+  vocabularyGui,
+}) => {
+  const directory = vocabularyGui.directory;
+  const before = entryOf(directory, "rasters", "100ms");
+  expect(before).toHaveProperty("cycle", "100ms");
+  const panel = await openEntry(page, vocabularyGui, "100ms");
+  const cycle = panel.getByRole("region", { name: "Cycle" });
+  const cycleField = cycle.getByRole("textbox", { name: "Cycle" });
+  await expect(cycleField).toHaveValue("100ms");
+  await cycleField.fill("");
+  // The plan is offered, not a refusal of the empty text.
+  await expect(cycle.getByText("Changes 1 file: rasters.ddd.json")).toBeVisible();
+  await expect(cycle.getByRole("status")).toHaveCount(0);
+  await cycle.getByRole("button", { name: "Save" }).click();
+  await expect
+    .poll(() => entryOf(directory, "rasters", "100ms"))
+    .toEqual(
+      Object.fromEntries(Object.entries(before as object).filter(([key]) => key !== "cycle")),
+    );
+  await expect(cycle.getByText("Changes 1 file")).toHaveCount(0);
+});
+
 /** Records, from now on and at every frame the page paints, the name of every panel drawn beside
  * the table, each once, in the order they first came: what a reader sees at each paint, which a
  * wait on any one moment can step over - a panel swapped for another and back within a few

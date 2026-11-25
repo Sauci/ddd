@@ -114,6 +114,20 @@ export const TakenOff = () => <Heading opened entry={UNDO_UNIT} refusals={[TAKEN
  * as the strip says why. */
 export const NothingLeft = () => <Heading opened entry={null} refusals={[TAKEN_OFF]} />;
 
+/** Two edits of one file, and a save from outside that took both off the stack: the strip says
+ * each, in the order they went, and nothing is left to undo. */
+export const BothTakenOff = () => (
+  <Heading
+    opened
+    entry={null}
+    refusals={["the limits of ValueA", "the unit of ValueA"].map(
+      (label) =>
+        `controller.ddd.json changed on disk since it was written, so ${label} can no longer be ` +
+        "undone. Nothing was put back; the page shows the files as they are.",
+    )}
+  />
+);
+
 /** The last edit written and its analysis not landed yet: the heading says so beside the control,
  * in what room its row has left. */
 export const Updating = () => <Heading updating />;

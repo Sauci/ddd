@@ -4087,23 +4087,26 @@ class TestUndoing:
     ) -> None:
         """What ``GET /api/undo`` tells the session of a preview it refused: ``stale``, a file the
         edit would put back changed on disk since, takes that edit off the stack as its own undo
-        would, where it is still the one on top, and asks for the analysis that reads the disk;
-        any other refusal, or one of an edit no longer on top, leaves the stack as it is."""
+        would, where it is still the one on top, and the version moves with the stack; any other
+        refusal, or one of an edit no longer on top, leaves the stack as it is. None asks for an
+        analysis: a preview writes nothing, and runs no plugin."""
         session = Session(shared.parent)
         session.open(shared)
         first, _ = session.edit([unit_of(shared.parent / "a.ddd.json", "Hz")], "the unit of Speed")
         second, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of Torque")
         stale = EditError(STALE, "b.ddd.json changed on disk since it was written")
+        revision, said = session.current().number, session.snapshot().version
         session.preview_refused(first, stale)
         session.preview_refused(second, EditError(UNWRITABLE, "disk full"))
         top = session.undoable
         assert top is not None and top.at == second
-        revision, said = session.current().number, session.snapshot().version
+        assert session.snapshot().version == said
         session.preview_refused(second, stale)
         top = session.undoable
         assert top is not None and top.at == first
         assert session.snapshot().version > said
-        assert session.current().number > revision
+        assert session.current().number == revision
+        assert not session.snapshot().analysing
 
     def test_an_undo_takes_away_the_file_an_adoption_created(self, shared: Path) -> None:
         session = Session(shared.parent)

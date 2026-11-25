@@ -825,8 +825,11 @@ class Session:
         refusal is the undo's own. Where that edit is still on top, the stack is left as a
         refusal of its put back leaves it (:meth:`_taken_off`); where another came there since -
         an edit, or an undo from another window - the refusal is not of the top, and the stack is
-        left as it is. Either way it is answered as a write's refusal is: ``stale`` asks for the
-        analysis that reads the disk (:meth:`_refused`). Called without the lock.
+        left as it is.
+
+        It asks for no analysis, where a put back refused ``stale`` asks for one
+        (:meth:`_refused`): nothing was written, the poll sees the save as it sees any, and the
+        preview runs no plugin, as no read of the api but a comparison and a files plan does.
 
         The page asks for the preview before it offers any Put back, so this is the refusal a
         reader meets first: an edit whose file was saved from outside since is refused here, and
@@ -835,7 +838,6 @@ class Session:
             top = self._stack[-1] if self._stack else None
             if top is not None and top.at == at:
                 self._taken_off(top, refused)
-        self._refused(refused)
 
     def _taken_off(self, top: Undoable, refused: EditError) -> None:
         """Take ``top``, the edit on top of the stack, off it where its put back was ``refused``

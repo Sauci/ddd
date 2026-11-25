@@ -38,11 +38,14 @@ What it defends against
 
 * **Any other local process or user that reaches the port without the token.** Past the
   check above, every request to the API still needs the token as ``Authorization: Bearer``,
-  which no cookie carries any more, and one that changes anything needs this server's own
-  ``Origin`` and a json body besides. The token is minted fresh each run and compared in
-  constant time; it is never placed on a command line, where any local user could read
-  it - the browser ``ddd gui`` opens for the reader is launched on a one-time code
-  instead, good for sixty seconds or one use, whichever comes first.
+  which no cookie carries any more, and one that writes a file of the open project, or opens a
+  project, needs this server's own ``Origin`` and a json body besides. ``GET /api/undo``, an
+  undo's preview, writes nothing and needs the token alone, but takes the edit it previews off
+  the undo stack where a file of that edit is gone or holds other bytes than it left: an edit no
+  undo could put back. The token is minted fresh each run and compared in constant time; it is
+  never placed on a command line, where any local user could read it - the browser ``ddd gui``
+  opens for the reader is launched on a one-time code instead, good for sixty seconds or one
+  use, whichever comes first.
 
 * **Malformed input, from anyone, including the reader's own browser.** No malformed
   input - in a route's query, in a request's body, or in a page's own path - is answered
@@ -383,6 +386,12 @@ pages need none either; every route below needs the token as a header.
      - 
    * - ``GET``
      - ``/api/variable``
+     - 
+     - 
+     - 
+     - 
+   * - ``GET``
+     - ``/api/names``
      - 
      - 
      - 

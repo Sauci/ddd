@@ -1576,17 +1576,23 @@ those back through the same staging and sync, taking away again a file the edit 
 when one file of several cannot be written, writing the ones already put back forward to what
 the edit had left them. <code class="docutils literal notranslate"><span class="pre">ddd.editing.unchanged</span></code> is what says an edit may still be put back: a
 file whose bytes are no longer the ones it left is somebody else’s now, and the whole undo
-is refused as <code class="docutils literal notranslate"><span class="pre">stale</span></code> rather than half of it applied. The session keeps one stack of
-<code class="docutils literal notranslate"><span class="pre">Undoable</span></code> entries per open project, numbered as it pushes and capped at <code class="docutils literal notranslate"><span class="pre">MAX_UNDO</span></code> -
-fifty - entries, each labelled by the screen that applied it; <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/edit</span></code> takes that
-label, because only the screen knows that the edit was “the rename of ‘rpm’ to ‘RPM’”.
+is refused as <code class="docutils literal notranslate"><span class="pre">stale</span></code> rather than half of it applied, as it is for a file that cannot be read.
+Where a file the edit wrote is gone, or holds other bytes, the disk has moved past that edit, so
+<code class="docutils literal notranslate"><span class="pre">Session.undo</span></code> takes it off the stack with the refusal - as <code class="docutils literal notranslate"><span class="pre">Session.preview_refused</span></code> does
+where the preview meets it first - and the edits under it come within reach. One whose files
+only could not be read, or written - a permission, a handle held without sharing, a full disk -
+stays, for the file to be mended and the undo asked again. The session keeps one stack of
+<code class="docutils literal notranslate"><span class="pre">Undoable</span></code> entries per open project, numbered as it pushes and capped at <code class="docutils literal notranslate"><span class="pre">MAX_UNDO</span></code> - fifty -
+entries, each labelled by the screen that applied it; <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/edit</span></code> takes that label,
+because only the screen knows that the edit was “the rename of ‘rpm’ to ‘RPM’”.
 <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/state</span></code> carries <code class="docutils literal notranslate"><span class="pre">Session.undoable</span></code>, the top of the stack, so the control
 appears without a request of its own, <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/undo</span></code> previews it - the lines each file
 would get back, and no operations, since an undo is bytes the server is holding rather than
-an edit the page composes - and <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/undo</span></code> calls <code class="docutils literal notranslate"><span class="pre">Session.undo</span></code> with the entry’s
-own number, refusing one that is no longer the top so that two windows cannot put back each
-other’s changes. The stack lives in the running server and nothing of it is written into the
-project.</p>
+an edit the page composes - and <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/undo</span></code> calls <code class="docutils literal notranslate"><span class="pre">Session.undo</span></code>. Both name the entry by
+its own number, <code class="docutils literal notranslate"><span class="pre">?at=</span></code> and <code class="docutils literal notranslate"><span class="pre">at</span></code>, and both refuse one that is no longer the top
+(<code class="docutils literal notranslate"><span class="pre">Session.to_undo</span></code>), so that two windows cannot put back each other’s changes, nor take one off
+the stack for the other. The stack lives in the running server and nothing of it is written into
+the project.</p>
 </section>
 </section>
 

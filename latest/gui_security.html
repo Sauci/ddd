@@ -142,11 +142,14 @@ another origin never reaches. A server that used the <em>same</em> port before i
 case, under <em>What it does not defend against</em>: the browser counts it as this very origin.</p></li>
 <li><p><strong>Any other local process or user that reaches the port without the token.</strong> Past the
 check above, every request to the API still needs the token as <code class="docutils literal notranslate"><span class="pre">Authorization:</span> <span class="pre">Bearer</span></code>,
-which no cookie carries any more, and one that changes anything needs this server’s own
-<code class="docutils literal notranslate"><span class="pre">Origin</span></code> and a json body besides. The token is minted fresh each run and compared in
-constant time; it is never placed on a command line, where any local user could read
-it - the browser <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> opens for the reader is launched on a one-time code
-instead, good for sixty seconds or one use, whichever comes first.</p></li>
+which no cookie carries any more, and one that writes a file of the open project, or opens a
+project, needs this server’s own <code class="docutils literal notranslate"><span class="pre">Origin</span></code> and a json body besides. <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/undo</span></code>, an
+undo’s preview, writes nothing and needs the token alone, but takes the edit it previews off
+the undo stack where a file of that edit is gone or holds other bytes than it left: an edit no
+undo could put back. The token is minted fresh each run and compared in constant time; it is
+never placed on a command line, where any local user could read it - the browser <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code>
+opens for the reader is launched on a one-time code instead, good for sixty seconds or one
+use, whichever comes first.</p></li>
 <li><p><strong>Malformed input, from anyone, including the reader’s own browser.</strong> No malformed
 input - in a route’s query, in a request’s body, or in a page’s own path - is answered
 <code class="docutils literal notranslate"><span class="pre">500</span></code>, and no request this server reads in full is left hanging: each is answered with
@@ -497,174 +500,181 @@ pages need none either; every route below needs the token as a header.</p>
 <td></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">/api/names</span></code></p></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">/api/units</span></code></p></td>
 <td></td>
 <td></td>
 <td></td>
 <td></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">/api/settle</span></code></p></td>
 <td></td>
 <td></td>
 <td></td>
 <td></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">/api/fix</span></code></p></td>
 <td></td>
 <td></td>
 <td></td>
 <td></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">/api/unit</span></code></p></td>
 <td></td>
 <td></td>
 <td></td>
 <td></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">/api/unit-plan</span></code></p></td>
 <td></td>
 <td></td>
 <td></td>
 <td></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">/api/types</span></code></p></td>
 <td></td>
 <td></td>
 <td></td>
 <td></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">/api/type</span></code></p></td>
 <td></td>
 <td></td>
 <td></td>
 <td></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">/api/type-plan</span></code></p></td>
 <td></td>
 <td></td>
 <td></td>
 <td></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">/api/shared</span></code></p></td>
 <td></td>
 <td></td>
 <td></td>
 <td></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">/api/constant</span></code></p></td>
 <td></td>
 <td></td>
 <td></td>
 <td></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">/api/constant-plan</span></code></p></td>
 <td></td>
 <td></td>
 <td></td>
 <td></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">/api/section</span></code></p></td>
 <td></td>
 <td></td>
 <td></td>
 <td></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">/api/section-plan</span></code></p></td>
 <td></td>
 <td></td>
 <td></td>
 <td></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">/api/raster</span></code></p></td>
 <td></td>
 <td></td>
 <td></td>
 <td></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">/api/raster-plan</span></code></p></td>
 <td></td>
 <td></td>
 <td></td>
 <td></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">/api/files</span></code></p></td>
 <td></td>
 <td></td>
 <td></td>
 <td></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">/api/files-plan</span></code></p></td>
 <td></td>
 <td></td>
 <td><p>yes</p></td>
 <td></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">/api/declarable</span></code></p></td>
 <td></td>
 <td></td>
 <td></td>
 <td></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">/api/declaration-plan</span></code></p></td>
 <td></td>
 <td></td>
 <td></td>
 <td></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">/api/description-plan</span></code></p></td>
 <td></td>
 <td></td>
 <td></td>
 <td></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">/api/values</span></code></p></td>
 <td></td>
 <td></td>
 <td></td>
 <td></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">/api/value-plan</span></code></p></td>
 <td></td>
 <td></td>
 <td></td>
 <td></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">/api/cells-plan</span></code></p></td>
 <td></td>
 <td></td>
 <td></td>
 <td></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">/api/values-plan</span></code></p></td>
 <td></td>
 <td></td>
 <td></td>
 <td></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">GET</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">/api/compare</span></code></p></td>
 <td></td>
 <td></td>

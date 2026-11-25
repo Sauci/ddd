@@ -31,11 +31,16 @@ interface Props {
  * the strip closed - as the panels hold theirs, and a revision landing - the one a refusal of the
  * entry on top asks for, within milliseconds (refusing one no longer on top asks for none) - never
  * takes it away (`Refused`, lib/refusals.ts). So is a refusal of the preview because a file the
- * entry would put back changed on disk since: the server takes that entry off the stack with
- * either (16:M23), and the strip says why it went beside the entry under it, which it offers
- * whole without being closed - or, with none left, says so until it is closed (`undoShown`). An
- * undo answered, every query `askedAgainAfterUndo` names is asked for again at once: the files are
- * back before the revision says so.
+ * entry would put back changed on disk since. What the strip offers beside them is `undoShown`'s:
+ * - the server takes an entry off the stack with a refusal of either because a file changed on
+ *   disk (16:M23), and the strip says why it went beside the entry under it, which it offers
+ *   whole without being closed - or, with none left, says so until it is closed;
+ * - a refusal that leaves the entry on top - a file that could not be written - is said beside
+ *   that entry, offered again to be pressed once the reader has mended the file, the strip never
+ *   closed between (R22).
+ *
+ * An undo answered, every query `askedAgainAfterUndo` names is asked for again at once: the files
+ * are back before the revision says so.
  */
 export function UndoStrip({ state, stopped }: Props) {
   const queries = useQueryClient();

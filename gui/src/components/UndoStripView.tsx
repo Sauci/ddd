@@ -50,9 +50,10 @@ export function UndoStripView(props: UndoStripViewProps) {
       </Button>
       {open && (
         <section className="undo-open" aria-label="Undo">
-          {/* What was refused comes first, and whatever the stack's top offers under it: an entry
-              taken off is said beside the one under it, which the strip offers whole. An undo is
-              all-or-nothing, so a refusal of the entry on top offers none of its files. */}
+          {/* What was refused comes first, and whatever the stack's top offers under it, always
+              whole: an entry taken off is said beside the one under it, and a refusal that left
+              the entry on top beside that entry, to be pressed again. An undo is all-or-nothing,
+              so a preview refused offers none of its files. */}
           {refusals.length > 0 && (
             <div className="undo-refusal" role="status">
               {refusals.map(({ key, text }) => (

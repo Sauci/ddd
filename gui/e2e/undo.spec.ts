@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import {
@@ -272,7 +272,7 @@ test("the strip says it is reading the files an undo would put back, until it ha
   await expect(strip(page).getByText("Reading the files…", { exact: true })).toHaveCount(0);
 });
 
-test("an undo the server fails on is refused in the strip in its words, is still offered, and is sent once", async ({
+test("an undo the server fails on is refused in the strip in its words, and offered again there, each press sent once", async ({
   page,
   gui,
 }) => {
@@ -283,19 +283,51 @@ test("an undo the server fails on is refused in the strip in its words, is still
   const putBack = strip(page).getByRole("button", { name: "Put back 1 file" });
   // Only now, with the preview read: the one request it meets is the press's `POST`. The preview
   // is asked again at a new revision only, and none is coming.
-  const failed = await failing(page, "/api/undo", "http");
+  const failed = await failing(page, "/api/undo", "http", 1);
   await putBack.click();
-  // The refusal is the whole of the strip (an undo is all or nothing): the preview is gone.
+  // The refusal is said, and the entry, still on the stack, is offered again under it, whole: the
+  // reader presses again with no need to close the strip (R22).
   await expect(strip(page).getByRole("status")).toHaveText(
     `The undo was refused: ${SERVER_FAILED}`,
   );
-  await expect(putBack).toHaveCount(0);
+  await expect(strip(page).getByText("Puts back 1 file: controller.ddd.json")).toBeVisible();
+  await expect(putBack).toBeEnabled();
   // A guard against a write by another path: the POST is answered by `failing`, not the server.
   expect(unitOfValueA(gui)).toBe("%");
-  // The entry is still there to try again.
-  await expect(undo).toBeEnabled();
-  // A `POST` is never sent again (`sentAgain`, client.ts).
+  // A `POST` is never sent again of itself (`sentAgain`, client.ts): a press sends each one.
   expect(failed()).toBe(1);
+  await putBack.click();
+  await expect.poll(() => unitOfValueA(gui)).toBe("rpm");
+  await expect(undo).toHaveCount(0);
+  expect(failed()).toBe(1);
+});
+
+test("an undo refused because a file is read-only is offered again in the strip, and goes through once the file is writable", async ({
+  page,
+  gui,
+}) => {
+  await settledAndAnalysed(page, gui);
+  const controller = join(gui.directory, CONTROLLER);
+  await page.getByRole("button", { name: "Undo the unit of ValueA" }).click();
+  const putBack = strip(page).getByRole("button", { name: "Put back 1 file" });
+  await expect(putBack).toBeVisible();
+  chmodSync(controller, 0o444);
+  try {
+    await putBack.click();
+    await expect(strip(page).getByRole("status")).toHaveText(
+      /^The undo was refused: .*controller\.ddd\.json is read-only, so nothing was put back$/,
+    );
+    // Nothing was written, and the edit stays on the stack, offered again under the sentence.
+    expect(unitOfValueA(gui)).toBe("%");
+    await expect(strip(page).getByText("Puts back 1 file: controller.ddd.json")).toBeVisible();
+    await expect(putBack).toBeEnabled();
+  } finally {
+    chmodSync(controller, 0o644);
+  }
+  // The file made writable again, the same press goes through, the strip never closed between.
+  await putBack.click();
+  await expect.poll(() => unitOfValueA(gui)).toBe("rpm");
+  await expect(strip(page)).toHaveCount(0);
 });
 
 test("an undo refused keeps its sentence for its own entry, and an edit made with the strip open is offered to undo", async ({

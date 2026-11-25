@@ -265,8 +265,11 @@ export interface UndoShown {
  * - **The preview's own refusal** is said in its place, and nothing is offered to put back: asked
  *   again and refused, the preview before it is no longer what the undo would do. One refused
  *   `stale` is the strip's to hold as its entry's (`previewRefused`), and is said once.
- * - **Beside a refusal held of the Put back of the entry on top** that leaves it there, nothing is
- *   offered: the refusal is the whole of what the strip says of that entry.
+ * - **Beside a refusal held of the Put back of the entry on top** that leaves it there - a file
+ *   that could not be written, the server failing on the request - the strip offers that entry
+ *   again, whole, as the revision on screen previews it, and so its Put back (R22): the reader may
+ *   mend the file and press again, with no need to close the strip, as a panel offers its plan
+ *   beside a refusal held of its Apply (`offerShown`, lib/refusals.ts).
  */
 export function undoShown(
   held: readonly UndoRefused[],
@@ -277,7 +280,7 @@ export function undoShown(
   const standing = held.filter((refused) => top === null || refused.at >= top.at);
   const own = standing.filter((refused) => refused.at === top?.at);
   const refusals = standing.map(({ at, text }) => ({ key: `${at}:${text}`, text }));
-  const offered = top === null || own.length > 0 ? null : top;
+  const offered = top === null || own.some((refused) => refused.leaves) ? null : top;
   let preview: UndoPreview | null = null;
   let reading = false;
   if (top !== null && asked.error !== null) {

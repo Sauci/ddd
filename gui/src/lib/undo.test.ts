@@ -471,6 +471,20 @@ describe("a refused undo, and the entries under it (16:M23)", () => {
     const keys = shown.refusals.map((refusal) => refusal.key);
     expect(new Set(keys).size).toBe(3);
   });
+
+  it("offers the entry again beside a refusal of its Put back that leaves it on the stack", () => {
+    // R22: a file that could not be written - the reader may make it writable and press again,
+    // with no need to close the strip, the preview the revision on screen answers offered whole.
+    const refused = undoRefused(UNWRITABLE, LIMITS);
+    const shown = undoShown([refused], stateOf(LIMITS), asked(previewOf(LIMITS)));
+    expect(said(shown)).toEqual([refused.text]);
+    expect(shown.preview).toEqual(previewOf(LIMITS));
+    expect(shown.reading).toBe(false);
+    // Asked again, the preview is read before it is offered.
+    const reading = undoShown([refused], stateOf(LIMITS), asked(undefined));
+    expect(said(reading)).toEqual([refused.text]);
+    expect(reading.reading).toBe(true);
+  });
 });
 
 describe("what an undo asks again", () => {

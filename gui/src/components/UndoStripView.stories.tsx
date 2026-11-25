@@ -20,6 +20,11 @@ const TAKEN_OFF =
 const FAILED =
   "The undo was refused: ddd gui failed on this request; the terminal it runs in shows why";
 
+// What the strip says of a Put back refused because a file is kept read-only, in the server's own
+// words, which name the file by its full path.
+const READ_ONLY =
+  "The undo was refused: C:/work/demo/demo.ddd.json is read-only, so nothing was put back";
+
 // The project's views, as App.tsx names them, the first one open.
 const VIEWS = ["Graph", "Table", "Units", "Types", "Shared files", "Files", "Findings", "Compare"];
 
@@ -95,6 +100,10 @@ export const ChangesShown = () => <Heading opened shown />;
 
 /** The preview refused, in the server's words: said in its place, with nothing to put back. */
 export const Refused = () => <Heading opened refusals={[FAILED]} />;
+
+/** The Put back refused because a file could not be written: the edit stays on the stack, and the
+ * strip offers it again under the sentence, to be pressed once the file is writable (R22). */
+export const OfferedAgain = () => <Heading opened refusals={[READ_ONLY]} offered />;
 
 /** The adoption on top refused because a file it would put back was saved from outside: the
  * server took it off the stack, and the strip, still open, says why beside the edit under it,

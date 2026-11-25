@@ -1429,7 +1429,11 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   refusal in place of its preview and Put back, so an undo refused is asked again only once the
   reader has closed and opened the strip, where a revision landing let a stale refusal go before
   this branch. The refusal is of the entry pressed for, and another coming to the top while the
-  strip is open is offered whole (branch 2, D0). Branch 11 lists `screens/*`.
+  strip is open is offered whole (branch 2, D0). Branch 11 lists `screens/*`. *(Done by branch
+  11, task 11: the strip offers again, never closed, the entry a refusal leaves on top - its Put
+  back where the put back was refused, `Read the files again` where the preview was - and says
+  why an entry the server took off the stack went, beside the one under it, which it offers
+  whole.)*
 - **A create racing another writer's create** (task 2, `13:I1`; R23): a file an edit creates is
   renamed into place, replacing one another writer created between the edit's last look and the
   rename, and a save landing in that instant is written over too, as the documents now say.
@@ -1445,7 +1449,10 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
 - **An undo left half written forward keeps its entry** (task 2, `16:M23`): after an `unwritable`
   undo that put a file back but could not write the others forward again, the entry stays on the
   stack, so a later undo of it is refused `stale` and the edits beneath it are out of reach until
-  the server restarts. Branch 11, task 11 owns it.
+  the server restarts. Branch 11, task 11 owns it. *(Done by branch 11, task 11: such an entry
+  keeps its place as any `unwritable` one does, and its next undo, finding the file it put back
+  not as the edit left it, is refused `stale` and takes it off the stack, so that the edits under
+  it come within reach.)*
 - **What a refused write says** (tasks 2 and 5): a refused one-file edit, and a stage or a sync
   refused in a batch, say the files already written were put back, or written forward again,
   where none was touched; a file that cannot be read at the last look is told it changed on disk,
@@ -1521,6 +1528,9 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
 - **The would-not-load sentence** (task 8): it reads "with that dimensions", and a removal's names
   a value it does not write; the panel keys each sentence by its words, so two alike, from two
   files of one name, share a key. No branch owns `variables.py`; branch 11 lists `components/*`.
+  *(Done by branch 11, task 9, for the keys: the panel keys each sentence by its words and by
+  which of equal words it is, so that two alike are two (`sentenceKeys`). Its words are the
+  server's, and stay the maintainer's.)*
 - **The editor's preferred fix** (task 8): for a consumer's mismatch the editor now prefers "Apply
   this datatype to 1 other declaration", the first fix left once the others are withheld. Branch 9
   lists `lsp/*.py`.
@@ -1595,7 +1605,9 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
 - **A refusal's sentence on the variable panel** (D0): a row the panel picks by itself can still
   hide the sentence when a revision lands, as it could before branch 1. Branch 1's re-review left
   it, its keying being older than that branch, when D0 took the other residuals. Branch 11 lists
-  `screens/*`.
+  `screens/*`. *(Done by branch 11, task 10: a settle's refusal makes the key it was of the
+  panel's choice where the panel had opened that row itself (`pickedOnRefusal`), so that the row
+  and its sentence stay open when the analysis the refusal asks for lands.)*
 
 **Branch 3:**
 - **A field focused without a click** (task 3, `16:C1`): a field a screen reader or voice control
@@ -1603,7 +1615,9 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   the table is one stop for Tab and keeps the cell last focused, as it did before the task. The
   journeys click a cell before they type into it, so none goes that way; the readers who meet it
   are the ones decision 16.3 is for. Branch 11 lists `components/*`, its task 8 being that
-  decision's.
+  decision's. *(Done by branch 11, task 8: a grid's field keeps the focus a screen reader or
+  voice control gives it, taking its cell for the table's focused one unless Tab brought the
+  focus (`takesFocusedCell`).)*
 - **`1e400` and `1e-400` in the json-text fields** (task 7, R51): a constant's Value, a size, a
   dimension, a section's alignment and a raster's event send `1e400` as typed, and the server
   refuses it in DDD's own words; `1e-400` typed into a constant's Value is written in those
@@ -1614,7 +1628,9 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   the tab asks each of its plans again for it and draws no Apply until the plan comes, so a press
   made in that moment is lost, with no request and no sentence. The tab's journeys of a stale
   refusal press again only once a row's kind, read off the revision the page holds, says that
-  revision has come. Branch 11 lists `screens/*`.
+  revision has come. Branch 11 lists `screens/*`. *(Done by branch 11, task 10: the tab keeps the
+  plan of the request asked across a revision, offers its Apply meanwhile, and posts that plan
+  when pressed, applied where its files are as it read them, refused as stale otherwise.)*
 - **FLT_MAX read out of an image** (R55): `ddd tool from-elf` writes a `float32`'s `init` in the
   fewest digits that read it back, so FLT_MAX is written 3.4028235e+38, a double past FLT_MAX's
   own, which `ddd check` refuses as `init-invalid` - the spelling the page planned until this
@@ -1622,6 +1638,9 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
 - **The refusal of an Apply chosen in two more screens** (decision 3.5): the Units and Types
   tabs' `refusalOf` choose a refused Apply's sentence inline, as the four sites that now call
   `refusalSentence` did, and the Files tab borrows the Units tab's. Branch 11 lists `screens/*`.
+  *(Done by branch 11, task 10: one `refusalOf`, in `lib/refusals.ts` and through
+  `refusalSentence`, chooses a refused Apply's sentence for every screen, the two tabs' copies
+  gone, and `undoRefusal`, in `lib/undo.ts`, the undo's.)*
 
 **Branch 4:**
 - **The bound of a line table's header** (task 6a, `11:I6`; R67): the four Important findings of
@@ -1684,7 +1703,10 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
 - **What a settle preview says** (task 6, `1:I2`; R81): the preview of a settle, which the page
   draws in its own words, says nothing of the readers' code, where the quick fix's title, which
   the server writes, does; and the stories still show the fix by its old title, with the
-  references drawn from them. Branch 11 lists `screens/*` and `components/*`.
+  references drawn from them. Branch 11 lists `screens/*` and `components/*`. *(Done by branch
+  11, task 9: the preview's sentence says, as the fix's title does, that the code of the readers
+  is not touched (`settleConsequence`), and the stories carry the title the server writes, their
+  references moved with them.)*
 - **The editor's quick-fix titles** (task 6; R81): the language server's quick fixes for a
   `definition-mismatch` carry no sentence on the readers' code; branch 9 lists
   `src/ddd/lsp/*.py`.
@@ -1719,7 +1741,9 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   project's own errors and its reply says how many, `own_errors`, but the page draws neither the
   count nor a reason, so a project whose every error is its own is told it cannot replace the
   baseline above a comparison that has nothing to report. Branch 11 lists `components/*` and the
-  `compare` library; whether 0.12.0 waits for it is the maintainer's.
+  `compare` library; whether 0.12.0 waits for it is the maintainer's. *(Done by branch 11, task
+  9: under the verdict the tab says how many errors the project has of its own, and that the
+  Findings tab lists them (`ownErrorsLine`).)*
 - **What the tests do not run yet** (tasks 1, 3, 4, 6 and 9): three `$ ddd` blocks of the
   comparing page, the 1.3.0 comparison and the two runs of v1.3, the first of which prints an
   absolute path a test has to put in place; a single variable whose structure ends in a nested
@@ -1787,7 +1811,9 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   change still judged whole, in the order an edit lists them.)*
 - **The Files tab's `plugins` refusal on the screenshots** (task 1; R112): the tab can now show a
   plan's `plugins` refusal, which no reference screenshot shows. Branch 11 lists
-  `gui/screenshots/references/`, or the pull request says so in a sentence.
+  `gui/screenshots/references/`, or the pull request says so in a sentence. *(Done by branch 11,
+  task 9: a story draws the Files tab's Add form refused for a description naming plugins, its
+  reference new.)*
 - **The directories a record is read under** (task 2, `12:I4`; R114): the builds that feed an open
   project read a record under the start directory alone, and the record of how it is generated
   under the project's own directory too, so a project whose build records name it by a network
@@ -1804,7 +1830,9 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
 - **The signed-out view after a launch code presented again** (task 4, `12:I3`; R125): the page,
   signed out, tells the reader to open the address `ddd gui` printed, this run's, where the
   terminal's line then says to start `ddd gui` again and open the address it prints then.
-  Branch 11 lists `components/*`.
+  Branch 11 lists `components/*`. *(Done by branch 11, task 9: the view, and the page the server
+  serves a browser that is not signed in, say to open the address `ddd gui` printed or, where it
+  was opened already, to stop `ddd gui`, start it again and open the address it prints then.)*
 - **The all-clear where the launched browser held the token already** (task 4, `12:I3`; R125):
   the page's sign-in leaves a token it already holds in place when the code it was launched with
   is refused, so that no page can sign the reader out of every tab, as `signInFrom`'s docstring
@@ -1918,7 +1946,11 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   shapes alone, and a declaration whose dimension spells the constant, and whose condition spells
   it too, appears twice in the Used by table; the count, the uses `GET /api/constant` answers and
   the refusal to remove are right. Branch 11 lists `gui/src/components/*`, where the panel and the
-  table live; the comment is branch 14's task 10's, branch 11 not listing `shared`.
+  table live; the comment is branch 14's task 10's, branch 11 not listing `shared`. *(Done by
+  branch 11, task 9, in part: the Used by table lists each declaration or member naming the
+  constant once, a condition's use and a shape's in one row, and the panel counts places, not
+  shapes (`lib/constantUses.ts`); the comment of `gui/src/lib/shared.ts` stays branch 14's task
+  10's.)*
 - **What the editor reads of a condition beyond a rename** (task 7, `10:I10`): the conditions a
   constant's rename rewrites are missing from the references found from that constant; a rename
   onto a name the build defines as a macro, which a condition spells, is not refused, as before the
@@ -2105,17 +2137,25 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   server as not answering. The most a generated project's rename posts, 4,725,352 bytes, is a
   little over half the limit. The way out is for `request` to refuse, unsent, a body larger than
   `EDIT_BODY`, as it refuses an address past the request line's limit. The maintainer's: no later
-  branch lists `gui/src/api/client.ts` for behaviour.
+  branch lists `gui/src/api/client.ts` for behaviour. *(Done by branch 11, task 10, in part:
+  `request` refuses, unsent, a body past `EDIT_BODY`, naming the edit by its label and the
+  limit; the drain behind a refusal the server makes of a smaller Apply before reading it stays
+  as it was, as branch 11's entry says.)*
 - **Decision 3.6's figure** (task 7, `3:I8`; R300): its sentence says a table past about 10,000
   counts is not one `ddd gui` takes, where the address already refuses one past about 8,000 counts
   of five digits each, as the gui row says, and a float map of long decimals sooner. The
   decision's wording is the maintainer's to change.
 - **Where the Compare panel draws a finding's place** (task 8, `16:I8`): below its related line,
-  where it can read as that related place's own. Branch 11 lists `components/*`.
+  where it can read as that related place's own. Branch 11 lists `components/*`. *(Done by branch
+  11, task 9: the panel draws a finding's own place under its message, above its related lines,
+  in the Compare and the Findings tabs alike.)*
 - **The page drawing `failed` and `refused`** (task 9, `14:M7`, `14:M11`; R256): the state says
   why the last analysis failed and which build records this DDD cannot use, and the page draws
   neither, so until branch 11 a failed analysis reads as analysing still. Branch 11's task 7, one
-  banner naming what did not load.
+  banner naming what did not load. *(Done by branch 11, task 7: one banner under the masthead of
+  every page of the open project says why the last analysis failed, and that `ddd gui` tries
+  again, and each build record this DDD cannot use, with its reason; a first analysis that failed
+  no longer reads as one under way.)*
 - **An entry whose pattern names several files, and the description read after the analysis**
   (task 9, `14:M9`): the error of such an entry stays with the description, so `ddd gui` lists
   the description as the file that did not load, where the language server counts neither as
@@ -2177,12 +2217,167 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   a plan's spans and hunks alone: a create racing another's, what a refused write says, a folder
   a stage cannot be made in, a settled value refused `unreadable` - where the other plans answer
   `stale`, and since task 6 `analysing` for the page's own waiting edit - and the would-not-load
-  sentence, whose keys on the panel stay branch 11's. Branch 3's `1e-400` is refused at the query
+  sentence, whose keys on the panel stay branch 11's *(done by branch 11, task 9, as branch 1's
+  entry says)*. Branch 3's `1e-400` is refused at the query
   since branch 6, `1e400` in a block staying branch 13's task 7's; branch 7's repaired schema
   letting plugins run stays the maintainer's call under decision M7; branch 8's terminal line on a
   launch code presented again is left as it is, no finding asking it; and branch 9's fix taking
   another image's answer, and a unit added, are the maintainer's, branch 10's change to the
   settlement not reaching them.
+
+**Branch 11:**
+- **An undo's preview on the token alone** (task 11b, `16:M23`; R367, R373): `GET /api/undo` takes
+  the edit it previews off the undo stack where a file of that edit is gone or holds other bytes
+  than it left, and needs the token alone, where a write of a file of the open project, or an
+  open, needs this server's own origin as json; the security page and the server's docstring say
+  so. Taking the edit off by a `POST` of its own instead would rework the undo's protocol. The
+  maintainer's: no later branch lists `gui/*.py` for behaviour.
+- **An edit past its limit, in part** (task 10a, branch 10's entry; R339): `request` refuses,
+  unsent, a body past `EDIT_BODY`; but where the server turns an Apply's body of 1 to 8 MiB away,
+  `401` or `403`, for its token or its origin, ahead of reading it, the drain behind the refusal
+  still reads 1 MiB of it at most, and on Windows the reset after can lose the answer, the page
+  then taking the server for one not answering. No check in `request` can foresee those
+  refusals. The maintainer's: `gui/server.py` is on no later branch's list for behaviour, branch
+  14 moving code and keeping what it does.
+- **Three panels and the plan before a stale refusal** (task 10b; R365): the values grid, the
+  declare panel and the Shared files add form ask for their plan anew when the next revision has
+  landed, and not before, so that until then they offer the plan made ahead of the refusal, a
+  press of it refused once more, while their stale sentence says that the page now shows the
+  files as they are, for as long as an analysis takes - seconds, in a large project. And as a new
+  revision's plan is asked for, each panel withdraws its Apply, the Files tab apart, whose case
+  R58 was. The maintainer's: `useOffers` and `refusalOf` are moved by branch 14's task 8, which
+  keeps what they do.
+- **Typeahead in the Findings window** (task 11a, `16:M23` in part; R366): it matches the rows the
+  page holds, the listing's pages it fetched; finding across the whole listing takes a search of
+  the server's, which no later branch lists, so the maintainer's. The filter finds by text across
+  it.
+- **P19b-24's question** (task 10b; R339): whether Remove is drawn, on a variable's panel, under
+  the sentence of a refusal it holds, as every other offer draws its Apply; branch 1's entry on a
+  removal refused as stale stays open with it. The maintainer's.
+- **Changes drawn in no story** (task 10a; R364): `Already open` on the start page, and a tab with
+  nothing in it while `ddd gui` is stopped. Branch 15's task 2, whose screenshots the Docker run
+  takes, can show them; a view of the start page, for a story to draw, would need the screen split
+  from its queries, which no later branch's list takes on for behaviour, so otherwise the
+  maintainer's.
+- **Decision 17.3 and the probe `p15-I5`** (task 3; R323): the journey ported from the probe loads
+  a unit that holds one half of a surrogate pair, which decision 17.3 refuses at the parser. The
+  task that lands 17.3 - branch 12's task 9 (`17:M3`) or branch 13's task 7 (`6:M5`), whichever
+  does - turns it into a journey of the file refused; neither lists `gui/e2e/*`, which branch 16
+  lists, so that task needs a ruling to change it.
+- **What a change of page leaves past the bound** (task 8b, `16:M9`; R357): a component's page
+  loaded anew whose file is read later than the bound loses its show; on the Graph a panel loaded
+  anew whose answer comes late sits at 430 of 600 px; and any panel later than the bound stays
+  where it falls. The maintainer's; branch 16 lists `gui/e2e/*`, for a journey.
+- **Field borders at 1.32:1** (task 8a, `16:I12`): decision 16.3 claims no level of WCAG, and
+  whether a field's border should meet one is the maintainer's.
+- **The page's own budget for a key** (tasks 6a and 6b, `16:I7`, `16:I14`): the 100 ms a key at the
+  Name list's cap, and a filter's, are measured in no page, the bench typing into neither, and its
+  timing of a filter reads the frames of Ctrl+A as typing. No later branch lists `gui/bench`, so
+  the maintainer's.
+- **React Aria's protected members** (task 8b): `FocusedRowLayout` (`ui/Table.tsx`) reaches into
+  members of `TableLayout` that React Aria 1.21.1 keeps protected, which holds while `package.json`
+  pins the library exactly, and is to be checked again at each upgrade. The maintainer's.
+- **The box of a panel's table** (task 8b, `16:M9`; the final wave): `PanelTable` boxes a table so
+  that it scrolls sideways in a narrow window, but a panel breaks a word anywhere it must since
+  9e (`16:M18`), so no panel's table outgrows the window, box or not: removing the box from the
+  type, constant, raster or section panel fails no journey of the narrow loop, which draws each at
+  375 and 320 px, where removing Compare's, outside a panel, fails it. Whether a panel's table
+  keeps its words whole and scrolls in its box, or breaks them as it does now, is the maintainer's;
+  branch 16 lists `gui/e2e/*`, for the journey that would pin the choice.
+- **The undo's other refusals of a file** (the final wave; R374): a put back refused for a file
+  kept read-only, or by a disk that failed, names the file by its whole path, the engine's
+  sentence as it stands, where the preview's refusals and the stale ones of the put back name it
+  by its own name, as the page names a file. The maintainer's: no later branch lists `gui/api.py`
+  for behaviour.
+- **The page as tasks 3 to 7 leave it** (tasks 3 to 7): a variable's keys say ", from <type>" of a
+  type with an address alone, every type but one of a hostile name having one; `navigate` keeps the
+  address bar as it was for a route that has no address, a guard decision 17.3 may make moot;
+  `arrivedAfter` takes two routes with no address for one; the declare form says `Still needs
+  datatype or typename.` next to the server's own refusal of the storage, one thing twice, and words
+  its sentence for a local scope oddly; the Name list's footnote is told to no screen reader; the
+  Graph's line and the footnote group their counts where a plan's sentence does not; an empty
+  search's line may count `1,166 modules`, should `16:M10`'s title bind it; the go-to lists, for 250
+  ms and a round trip, the answer to the text before under the text typed after it, draws its empty
+  list's sentence as an option, which a screen reader reads out as a choice, and keeps the filter of
+  the component shown, which may hide the row gone to; `unloadedNames` is worked out at each render
+  of the page; and the start page's reason for a description that does not parse ends in the
+  loader's `(char N)`. No later branch lists `gui/src/screens/*`, `components/*` or the libraries
+  for behaviour, branch 12 taking a sentence of `StartPage.tsx` and of `CompareView.tsx` alone, so
+  the maintainer's.
+- **Where the focus goes, as task 8 leaves it** (task 8b, `16:I13`, `16:M9`): a key pressed right
+  as a panel is drawn again from its read lands on the panel's heading; a page whose read fails
+  has no heading, so that the focus stays on the body after a change of page to it, and after a
+  wheel turned while a component's page reads; the opener's path scrolls a panel that came late
+  into view even once an assistive technology has moved the focus; a filter widened puts rows back
+  above the focused row and scrolls nothing into view until the next key; and in a long table the
+  mark of a selected row hides most of the red inset of an error row so selected. The
+  maintainer's, as above.
+- **Compare, the panels and the Graph, as task 9 leaves them** (tasks 9a to 9e): the verdict kept
+  is keyed by the revision and nothing else, so that a baseline edited on disk is kept stale till
+  Compare is pressed again; the field's focus given back waits without a limit; `ownErrorsLine`
+  has no guard for errors of its own over a count of none, a case no test met; the client and the
+  server both strip a baseline's quotes; a type's kept draft says nothing while a key row is
+  open; nothing is drawn under the tabs while stopped with no canvas; an arrow's tooltip overlaps
+  its label by about 1.5 px; "Back to" a tab is a button, not a link; the place the Findings tab
+  keeps is one listing's; `placesNaming` merges two declarations of one name in one file into one
+  row, such a file being in error already; a fix's label cut at 120 points can lose its closing
+  quote; whether a name is matched exactly is decided by the text typed; the gap between a panel
+  and the masthead's rule is mended on a component's page and nowhere else; an animated Fit, then
+  a resize while it moves, skips a refit; and in three of the values grid's stories the strip of
+  a change, or the message of a refused cell, hides the plot's lowest reading. The maintainer's,
+  as above.
+- **The panels, the Findings window and the undo, as tasks 10 to 12 leave them** (tasks 10b to
+  12): `pickedOnRefusal` goes on treating a row the panel opened itself as chosen by the reader
+  once a retry succeeds; a plan the Files tab kept, refused stale, can be pressed a second time,
+  and refused a second time, before its plan is asked for anew; `selectionAfter` may give the
+  panel of a finding that was fixed to another finding of its file in the same words, R333's
+  cost; the Findings window swallows a walking key while no total is known, and its observer idles
+  until the grid goes where a page never comes; the strip tells files of one name apart among all
+  of an undo's writes and the heading within each group, the heading cutting its list of names
+  short where the strip lists them all; held stale sentences are worded at each render, one more
+  said than needed once a later save takes their entry off; and the cell field's guard of a paste
+  stands in two places. The maintainer's, as above.
+- **Tests branch 11 leaves** (tasks 1 to 12): the calls of `offerShown` by the values grid, the
+  declare panel and the Shared files add form are held by Vitest alone, and the grid's pasting
+  branch by no journey; whether `Read the files again` is disabled while the files are read; the
+  Findings box's exclusion of modified keys, and its wait for a row's page; B11-41 through a
+  finding's link; a tooltip's flip below its arrow; the go-to's being disabled once the server
+  stops; the outline journey's check of a panel's Open link, which nothing can fail; the rule that
+  left a field inside a pressable row out of the row's own press, dropped, no row holding a field
+  today; the Undo label held on one line at a narrow width; the boundary journeys pinning V8's own
+  `TypeError` words after the page's; a stray ask of the session that could take a one-shot route;
+  task 1's journey parsing the controller's json inline, where one helper of `demo.ts` could serve
+  three specs; task 4's journey standing among the spec's helpers; task 5's journey filling the
+  choosers where decision 23.2 types them key by key; the mouse journey pressing the Unit row alone;
+  the footed list's CSS held by a story's reference alone; a dangling link to a description, which
+  the start page lists, untested; and the doc of a narrow journey that has a table size its box in a
+  wheel's frames, where it does so in the focus's own step. Branch 16 lists `tests/*` and
+  `gui/e2e/*`; Vitest's tests are under `gui/src`, which branch 14 moves.
+- **Comments and code the branch has outgrown** (tasks 2 to 11): `GoToView`'s `onGo` doc,
+  `app/useRoute.ts`'s on a filter's text, two comments of `TypePanel.tsx`, `ValuesPlotView.tsx`'s
+  on how readings are keyed, `opensAt` left `null` unsaid, and `refusalOf`'s list of callers
+  without the Shared files add form; `toneOf`'s doc, `ui.css`'s tenth line and a comment of
+  `SharedTableView.tsx` past the wrap; `baseName` taken from `lib/units` where a helper of no one
+  library's would read better; `Part` and `Lead`, sentence types of any page, in
+  `lib/unloaded.ts`; `ui/Panel.tsx` and `ui/PageHeading.tsx` importing the app's focus module;
+  `_names` repeating `_nothing_loaded`'s rule; `constantDescription` trimming where `emptied()`
+  would; `putBack`, typed `Write | undefined`, always a `Write`; `LEFT_ALONE` (`lib/undo.ts`)
+  without `names`, and a findings key `undo.test.ts` still lists; and the start page's
+  `onMutate` context, which nothing reads. Branch 14 moves code across `src/ddd/` and `gui/src/`,
+  keeping behaviour, and its task 10 takes the docstrings the code has outgrown.
+- **The pages and a docstring** (tasks 6a and 10b): the reference page names neither the Name
+  list's cap, the Graph's line nor `Planning…`; and the developer page and the server's docstring
+  both name `missing-id` as the one fix `ddd.finding_fixes` plans that has nowhere else to go.
+  Branch 15 lists `docs/*.rst`, and branch 14's task 10 the docstring.
+- **The gates' notices** (tasks 10a and 11b): Biome's, Vite's and Vitest's, from before the branch,
+  beside branch 10's entry on them. The maintainer's.
+- **The progress log's rows** (D0; R372, R377): branch 10's row says that #96 is open into master,
+  merged since, on 2026-11-22, as `ea3840af`; it opens more loosely than rows 7 to 9; and it
+  names `c011143b`, branch 9's merge, where a skim may take it for branch 10's. That row, and
+  branch 11's, are branch 12's D0's.
+- **What the pull request names** (R376): the middle commits that leave a gate red, as R376 lists
+  them; and 25140365's subject, which calls the two pages it mends loosely, no commit being
+  amended. The controller's, with the pull request.
 
 ## Rulings taken
 
@@ -3609,6 +3804,278 @@ Every departure from a task's text, with its reason, numbered `R1`, `R2`, and so
 - **R315.** The final wave writes branch 10's rulings from R229, its *Left open* entries, and a
   mark on each entry of an earlier branch it closed, as those were marked before; the progress
   log's row for branch 10 is branch 11's D0's, which knows the pull request's number.
+
+**Branch 11:**
+- **R316.** Branch 11 runs a D0, then tasks 1 to 12 in order, 6, 7, 8, 10 and 11 in two parts each
+  and 9 in five (R325, R327, R328, R330, R334, R335), then its changelog as the last D (R4), then
+  the whole-branch review and one final wave, the order of branches 2 to 10 (R153; ruling B11-1).
+  Every order its tasks need between them is their numbering's already.
+- **R317.** D0's merge cell says that branch 10's pull request is open into master, which holds
+  branch 9 through #95's merge, rather than stacked on it, and D0's brief is mended so (ruling
+  B11-2, and the controller's ruling on the D0 brief): "stacked" is the word of a row whose pull
+  request went into its branch's base.
+- **R318.** Each task brings the rule it changes to every home, and takes the test file of each
+  module it changes and each library its judgements and sentences go into (decision 3.5), beyond
+  the Files list, by R100's rule as R155 and R231 applied it (ruling B11-3): task 3
+  `lib/route.ts`; task 6 `lib/units.ts`; task 8 a library of titles and of the status line,
+  beside `lib/findings.ts`; task 9 `lib/units.ts`, `lib/undo.ts`, `lib/valuePlot.ts` and
+  `lib/files.ts`; task 10 `lib/undo.ts`, `lib/refusals.ts`, `api/client.ts` and `lib/start.ts`;
+  task 11 `lib/shared.ts`; task 12 `lib/objectValues.ts` and `lib/typedCells.ts`; and every task
+  the sentences of the reference page's gui row it makes untrue, with their pins. Branch 15
+  rewrites the pages anyway.
+- **R319.** Four parts take the server's half, with its tests, beyond the list, `gui/*.py` being
+  branch 10's and no later branch's for behaviour (ruling B11-4): 6b a text filter of `GET
+  /api/findings` and a capped query of the index's names; 7b `find_projects`, `Api._projects`
+  and `contract.Found`, listing each description the walk could not read, with its reason; 9a
+  `gui/compare.py`'s refusals and the quotes `_baseline` strips; 11b `Session.undo`. A part that
+  changes a model regenerates the page's schemas, never committing them: the page cannot list,
+  filter, word or undo what the server does not give it.
+- **R320.** A task that changes `gui/src` runs the page's gates and, after the build, the
+  journeys; each probe is ported into its screen's spec under the suite's own names; and the
+  references are R262's and R302's - a moved one taken from CI's `gui-screenshots` job at the
+  pushed head, grouped where neighbouring tasks both move stories, committed by the next
+  implementer in a commit of its own, and each middle commit red on that job named in the pull
+  request (ruling B11-5). The cost: a reference committed a run after its change.
+- **R321.** The three findings fixed at the branch's base are closed by the commits that fixed
+  them, and their tasks change nothing for them: 9b's `16:M5` by 343e77fc, task 10's `15:M2` by
+  0dcee3b6 and 7b1ad179, under R22, and its `15:M3` by those two and 01535260 (ruling B11-6). The
+  trade `15:M2` leaves is R22's, under *Left open*, branch 1.
+- **R322.** "The page takes its name from the state" is read as the page naming the project the
+  state it follows is of: the session's name while the session's path is the state's project,
+  and the description's file name otherwise, until `["session"]`, asked again, answers; the
+  canvas files its positions by that project; and the heading, the masthead and the title say it
+  (ruling B11-7, and the controller's ruling on task 2's state). `State` carries a path and no
+  name, and a name would be a change of the contract no finding asks for.
+- **R323.** Task 3 makes one boundary under the masthead and ports `p15-I5` as written (ruling
+  B11-8): the boundary keeps `stopped`, the banners and the address, says what failed, offers a
+  reload only while the server answers and lets go when the route changes, its fallback a view
+  with a story of its own; `lib/route.ts` draws no link for a name no address can carry, a lone
+  surrogate's; and the boundary's own journey throws through a reply answered by `page.route`.
+  Decision 17.3 later refuses the probe's fixture (*Left open*, branch 11).
+- **R324.** "Names what it still needs" is one line, drawn where the form makes no definition yet:
+  each key the kind requires that nothing states, Datatype-or-Typename as the one choice it is,
+  and each field holding text not taken yet; a required key's field reads empty, and `volatile`
+  is not defaulted, a default writing a key the reader never chose; and the sentence follows the
+  scope chosen, reads or produces (ruling B11-9).
+- **R325.** Task 6 runs as 6a, `16:I7`, `16:M1`, `16:M10` and `16:M17` on the page alone, and 6b,
+  `16:I14` with the server's half: the tables whose rows the page holds filter there, the
+  Findings tab by a text filter the server applies, and the masthead's go-to asks a capped query
+  of the index's names and opens the declaring component's page with the variable's panel open
+  (ruling B11-10). The Findings tab's rows are the server's pages, and no route answered names.
+- **R326.** "Narrowed and windowed" is read as the finding's change: the Name list narrowed as the
+  unit picker narrows and drawn to a cap, saying how many more match; Compare's table windowed; a
+  filtered table saying how many of how many it shows; and a plan naming a few files and counting
+  the rest, `Planning…` standing while a plan is asked in every panel that draws a consequence
+  (ruling B11-11). A list React Aria draws whole costs a second a key past 10,000 options.
+- **R327.** Task 7 runs as 7a - one banner under the masthead of every page of the open project,
+  naming each file that did not load, why the last analysis failed and each build record this DDD
+  cannot use, a first analysis that failed no longer read as one under way - and 7b, the start
+  page listing the descriptions the walk could not read, with the server's half; its brief gains
+  `16:I10`'s section and verification, branch 10's entry on `failed` and `refused`, R256, B10-28
+  and Review focus 3 (ruling B11-12). Branch 10 handed the drawing of both fields to this task,
+  and the task's second bullet is another finding's change.
+- **R328.** Task 8 runs as 8a, what is drawn - the arrows' stroke, the focus ring, a selected row's
+  mark that forced colours keep, one `toneOf` and a word in the rows, reduced motion - and 8b,
+  where the focus goes and what is said - the heading after a change of page, the place it left on
+  Close, the panel's once Apply has written, a title for each page, a line saying what was
+  written, narrow widths, and branch 3's `16:C1` (ruling B11-13). 8a moves most of the references
+  and holds no behaviour.
+- **R329.** On Close the focus goes back to the control the panel was opened from, as `p16-I13`
+  asserts - a cell's button, a row's own button, or the row (ruling B11-14); each page's title is
+  a library's sentence naming the project as R322 has it; and a count of infos says "info", as
+  `ddd check` does.
+- **R330.** Task 9 runs as five parts by its own groups (ruling B11-15): 9a Compare, its baseline
+  held above the tab, its refusals in the tool's words, branch 6's `own_errors` and branch 10's
+  place; 9b the panels, `16:M4` and `16:M6`; 9c the Graph, `16:M8`, `16:M11` and `16:M12`; 9d
+  moving around, `16:M16`, `16:M20` with branch 7's `plugins` refusal in a story, and `16:M21`;
+  and 9e names and words, `16:M15`, `16:M18`, `16:M22` and four *Left open* entries of words.
+- **R331.** Decision 15.4 is read as its question asked it: the long poll, and the session at
+  load, are asked again after a delay where the server fails, a `5xx`, where a body does not
+  parse, and where no answer comes, and a `4xx` still ends the follow (ruling B11-16). The
+  finding's trigger is a `503` saying to ask again in a moment.
+- **R332.** Opening the open project goes to it on the page, with no `POST /api/open`: the start
+  page judges it open by the session as task 2 leaves it, and `Session.open` is unchanged (ruling
+  B11-17). The session asks a failed analysis again at its next poll, every path a raising
+  analysis read being stamped unknown, so nothing else need offer a retry (ruling B11-32, which
+  corrected B11-17's premise that only a reopening did).
+- **R333.** `15:M12` is made on the page: a finding whose key the next reply no longer holds keeps
+  its panel on one reported with the same file, severity, check and words (`selectionAfter`), the
+  key staying the server's (ruling B11-18). Of two findings of one sentence in one file, the panel
+  follows the first.
+- **R334.** Task 10 runs as 10a, `15:M1` and `15:M11`, the follow and the open project, and 10b,
+  `15:M12`, `15:M14` and `15:M15` with four *Left open* entries of panels and refusals (ruling
+  B11-19).
+- **R335.** Task 11 runs as 11a, `3:M8` and the Findings window's keys, and 11b, the undo (ruling
+  B11-20): an entry whose put back is refused because the disk moved past a file it would write
+  is taken off the stack once the strip has said so, branch 1's entry left half written forward
+  with it; one refused `unwritable` stays, for the reader to mend the file and ask again; and the
+  strip offers the next undo without being closed. `stale` is final for such an entry, where
+  `unwritable` may mend.
+- **R336.** An emptied field takes away every optional key the Shared files tab edits - a raster's
+  cycle and description, a section's and a constant's description - and not the cycle alone
+  (ruling B11-21): the finding's change is general, and one rule is the one a test can hold.
+- **R337.** Task 12's brief carries pass 15's open questions 1 and 2 whole, which decisions 15.1
+  and 15.2 answer (ruling B11-22): a task naming no finding has its question as its
+  specification.
+- **R338.** "A single value pasted into a focused cell" is a paste of one cell, a trailing line
+  break aside, into the grid's focused cell: it sets that cell as if typed, joining the cells
+  typed in one plan (decision 16.2); anything larger is the block's paste; and the block's
+  sentence says when its first row and column were taken for a header and not written (ruling
+  B11-23). `lib/objectValues.ts` and the reference page's two paste sentences change with it.
+- **R339.** Each *Left open* entry naming branch 11 or a file of its list goes into the task or
+  part that rewrites its code, or nowhere, with its reason, as B9-37 and B10-30 placed theirs
+  (ruling B11-24). Whether Remove is drawn, on a variable's panel, under the sentence of a
+  refusal it holds stays P19b-24's question, the maintainer's, and 10a takes branch 10's entry
+  on an edit past its limit, `request` refusing, unsent, a body past `EDIT_BODY` (the
+  controller's ruling on B11-24's two choices).
+- **R340.** Task 1's journey that timed out once is a timing flake of a loaded machine, the change
+  asking the server whatever the browser says of the network, and CI's journeys on the push are
+  the check (the controller's ruling on task 1).
+- **R341.** Task 3's guard for a name no address carries asks `/\p{Cs}/u`, a lone surrogate, where
+  the notes named `isWellFormed`, which a browser the build targets lacks, and the TypeScript lib
+  goes back to ES2022 (the controller's ruling on task 3's guard): a guard meant to keep a page
+  drawing must not itself throw. A panel's sentence for a name it cannot link, and `tabHref`,
+  stand beyond the notes, since saying that nothing is at a place a name holds would be untrue
+  (the controller's ruling on task 3's reason sentence).
+- **R342.** Task 3's fallback story's reference comes with tasks 4 to 6's from CI's run at 6a's
+  head, by R320's grouping, 71db08e3 to that commit being red on the screenshots job, for the
+  pull request (the controller's ruling on task 3's reference).
+- **R343.** Task 5 lands `16:I6` and `16:M7` in one commit, the two sharing one function and its
+  tests, and Vitest pins `16:M7` where the demo offers no case (the controller's ruling on task
+  5).
+- **R344.** 6b's nine concerns went to its review as observations, none saying that `16:I14`'s
+  change was missing, each a corner a reviewer could weigh; the Findings filter matching a file's
+  own name and not its folders went to task 9's notes, beside `16:M15` (ruling B11-25).
+- **R345.** 6b's moved and new references come from CI's run at 6b's head, committed alone by
+  7a's implementer; 7a's and 7b's from the run at 7b's head, committed by 8a's before its own
+  work; 8a's at its own head (ruling B11-26); 8b's from the run at 8b's head, committed by 9a's
+  implementer; and 9a to 9e's grouped at 9e's head (ruling B11-27). Grouping parts whose stories
+  differ would only lengthen a red range.
+- **R346.** While a file of the project did not load, the go-to's empty list says that no
+  variable of a file that loaded matches, naming the files as the banner names them, read off
+  `state.files`, with no field added to the names' reply (ruling B11-28).
+- **R347.** Task 9e takes `gui/queries.py`'s `_holds` beside `16:M15`'s File column, so that the
+  Findings filter matches a file as the column draws it, R319 extended by that one function
+  (ruling B11-30): a reader types what the column shows.
+- **R348.** The bidi scan of a range holding images scans the messages, the added lines and every
+  text file, and counts and leaves out the files git marks binary (ruling B11-31): the scanner
+  reads each file as text, and CI's images hold none a reader sees.
+- **R349.** 7a was pushed while its review ran, as branch 10 pushed its 6a, so that CI's Windows
+  legs read the banner's journeys early, any fix landing on top (the controller's ruling on
+  pushing 7a).
+- **R350.** The banner says what holds of a failed analysis: that `ddd gui` tries again about
+  every second until one succeeds, no retry being promised once it has stopped, the reference
+  page's sentence and its pin with it (ruling B11-33). B11-17's wording rested on the premise
+  R332 corrected.
+- **R351.** Past four files that did not load, the banner names three and leads the count of the
+  rest to the Files tab, which lists each file with its state (ruling B11-34): `16:M17`'s rule, a
+  few named and the rest counted, and not a wall of names.
+- **R352.** `lib/findings.ts` named the files that did not load pairwise, two seconds a render at
+  3,334 such files: 9e takes it, beside `16:M15`'s names told apart (ruling B11-35).
+- **R353.** 8a's implementer ran every journey once at its head, and the page's checks at each of
+  its four commits, before its review (the controller's ruling on 8a's gates): no commit leaves
+  a gate red, and one that does is named in the pull request.
+- **R354.** A severity word cut short in the Findings table's Check column, met at 8a's
+  references, goes to 8b as a commit of its own naming `16:M14`: the word never cut, for the
+  longest check name, at every width 8b handles (ruling B11-39).
+- **R355.** 8b's review weighs the virtualizer's move of the focus and 8a's outline in long tables
+  as named risks, for its fix round to take, and Compare's Enter goes to 9a, which holds
+  Compare's state above the tab (ruling B11-40).
+- **R356.** A change of page that opens a panel - the masthead's go-to, a finding's link, an
+  address naming a selection - gives the focus to the panel's heading, the panel scrolled to show
+  itself, and one that opens none gives it to the page's heading (ruling B11-41); the go-to used
+  on the page it opens on is such a change, and a page loaded anew at an address naming a
+  selection scrolls its panel into view and moves no focus (ruling B11-44).
+- **R357.** What a change of page leaves waiting ends once the panel has read, or after a short
+  time (ruling B11-45), for the show as for the focus, a page loaded anew counting from its first
+  drawing of what it shows (ruling B11-47); a wheel or a touch ends it as a key or a pointer does,
+  the focus and the view going together (ruling B11-46); and the panel's heading is focused and
+  shown in one step, a wheel before it ending both (ruling B11-48). A panel later than the bound
+  stays where it falls, for the pull request to name.
+- **R358.** start.spec.ts's journeys that pressed Projects on a page still settling were mended in
+  the journey, by 9a's implementer, waiting for the second page's own heading, in a commit naming
+  `15:I3` (ruling B11-43). The product's race, the go-to joining the masthead under a press, was
+  the final wave's (R374).
+- **R359.** The Ladle wrapper gets no `wide`, and the values grid's stories keep the 1,100 px they
+  photograph (ruling B11-50): the page's width is the route's, which the journeys hold.
+- **R360.** 9e's three layout items stay `16:M22`'s and its task's: each is reproduced first,
+  fixed where it reproduces, with a journey measuring it, and said with the measure where it does
+  not (ruling B11-51).
+- **R361.** `server.py`'s own signed-out page says what `SignedOutView` says of a launch code
+  presented again, with its test, R319 extended by that sentence (ruling B11-52): a sentence that
+  changes reaches all of its homes.
+- **R362.** The canvas refits on a resize only while its view is still the fitted one, a view the
+  reader panned or zoomed being left as it is when a panel opens or closes or the window resizes
+  (ruling B11-54).
+- **R363.** A journey holds a word whole by a measure no font moves - on one line, its text's box
+  within its control's - and never by a pixel width (ruling B11-55).
+- **R364.** No story is added for the start page's `Already open` or for the empty tab while
+  stopped, and the pull request names both among the changes drawn in no story (ruling B11-57):
+  the start page is a screen with queries of its own, and a view of it takes a split outside 10a.
+- **R365.** 10b's direction holds: drawing the Apply under a refusal a panel holds is what branch
+  1's entry names, and `lib/units.ts` changes beyond R318's list, the rule leaving an arm of it
+  dead (ruling B11-58).
+- **R366.** Typeahead in the Findings window stays on the rows drawn, the page holding only the
+  pages of the listing it fetched, and the filter finds by text across it; a raster's emptied
+  cycle gets a journey before the review, red first; and the report names each new sentence's
+  ablation (ruling B11-59).
+- **R367.** 11b's server half reaches `Api._undo` and a new `Session.preview_refused`, beyond
+  R319's list, the preview being where the strip first learns that its entry is dead; and that
+  the preview moves the stack, and the version with it, on the token alone was accepted (ruling
+  B11-60), which the final wave wrote on the security page (R373).
+- **R368.** `GET /api/undo` previews and takes off the edit its `?at=` names, refusing another as
+  no longer on top, so that each window previews and takes off its own entry, and a late `stale`
+  answer is held only while the strip is open (ruling B11-61).
+- **R369.** 11a's message before its review and 11b's dispatch told their implementers to ablate
+  in place, against the plan's rule; both trees were found clean, and the dispatches after carry
+  the rule (ruling B11-62, the controller's own error).
+- **R370.** R22's entry is a refusal's, a `409`: a preview failing with a `5xx` is asked again at
+  the next revision, or once the strip is closed, as the page's other failed reads are (ruling
+  B11-63); and a preview refused `409` for an entry the server keeps is offered again without
+  closing the strip, `Read the files again` (ruling B11-64).
+- **R371.** A scalar's one cell takes a pasted value as any cell does, decision 15.2 naming no
+  exception; and an empty paste emptied the field, as emptying it by typing would (ruling
+  B11-65), which the final wave turned (R375).
+- **R372.** Branch 11's pull request targets master, which holds branch 10 through #96's merge on
+  2026-11-22 (`ea3840af`), so that it shows branch 11's commits alone (the controller's ruling on
+  the pull request's base).
+- **R373.** The final wave keeps `GET /api/undo`'s take-off, and the security page, the server's
+  docstring and the page's client say what holds - a write of a file of the open project, or an
+  open, needs this server's own origin as json, and the preview the token alone - with a pin (the
+  controller's ruling on the final wave's Important): the risk is nil, the token being a header
+  no other origin can send without a preflight this server never grants; the take-off belongs
+  where the strip learns its entry is dead (R367); and a `POST` of its own would rework the
+  undo's protocol in a wave no second review follows. The pull request names the exception.
+- **R374.** The final wave takes the whole-branch review's Minors 2 to 8 and the last D's entry on
+  reopening the open project (the controller's ruling on the Minors): the go-to drawn from the
+  session's answer, and the Undo control after the controls of its row, each pinned by a journey
+  that measures the control a press aims at; the reference page's whole-name sentence; a failed
+  preview said in a sentence of its own; a file that cannot be read named alike by the put back
+  and the preview it refuses; the strip's comment on what its preview is asked of; the
+  changelog's entries on keyboard use and on reopening; and the narrow loop drawing the Shared
+  files, Files and Compare tabs. The review's list of red middle commits is the pull request's
+  (R376).
+- **R375.** A paste that holds no text, an empty one or an image alone, leaves the cell as it was,
+  as a text field keeps its own (the controller's ruling turning B11-65's empty paste):
+  `pastedValue` answers none for it, and, so that the cells typed are kept too, the grid's own
+  paste reads no table of it. B11-65's scalar half stands.
+- **R376.** As R314 kept branch 10's, branch 11's middle commits that leave a gate red, or hold a
+  defect a later commit mends, stay as they are, and the pull request names each (the
+  controller's ruling on the red middle commits): on the screenshots job, 71db08e3 until tasks 3
+  to 6a had their references, 90ef49d8 to 6ad33cac (6b, its references at 33a6acf6), 68fc68d7 to
+  8c07ec49 (7a and 7b, at b5dd1e7a), 7cf2110d to f918ab49 (8a, at 54565d8a), 8b's first moved
+  story to 9701e41f (at 0f9a3eda), 9a's moves to 41393fea, and 10b to 12's to ca7d3312;
+  56965bb3, 907a33fa and eb4d73d4 on `ruff check` until b44464f2; b723579e on
+  the typecheck until 7cf2110d, 912fd1f5 on the page's lint until 919cc7d1, and b97e22ff on
+  Biome's format check until 1dae8188; 0c17bc3c to 0789298f on the coverage gate until
+  128bb0c7; journeys that can fail at 231ab415, mended at cbee8a74, at 157da1c9, on key speed,
+  mended at 4eb01400, and in start.spec.ts at 8bb66e43 to 9701e41f, mended at 242fb0b7; and
+  bb2474da and 2b9a8e89, where an undo's refused preview could start an analysis, mended by
+  cf0fbea7, with bb2474da to ca97db89, a journey failing two runs in three, mended by 915017b4.
+- **R377.** The final wave writes branch 11's rulings from R316, its *Left open* entries, and a mark
+  on each entry of an earlier branch it closed, as R315 had branch 10's written; the progress
+  log's rows, branch 10's merge on 2026-11-22 and branch 11's pull request, are branch 12's D0's
+  (the controller's ruling on the plan's records, and on the pull request's base).
 
 ## Progress log
 

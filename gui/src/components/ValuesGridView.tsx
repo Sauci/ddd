@@ -81,6 +81,10 @@ export interface ValuesGridViewProps {
    * which is what the block is refused for (`Pasted.ambiguous`); `null` otherwise, and while no
    * block is pasted. */
   pasteAmbiguous?: string | null;
+  /** Whether the block pasted had its first row and column taken for a header, which is not
+   * written (`Pasted.header`): the sentence over its preview says so (decision 15.1). `false`
+   * while no block is pasted. */
+  pasteHeader: boolean;
   /** The reader's answer to what such a comma means, typed or pasted: one press. */
   onComma?: (meaning: CommaMeaning) => void;
   changesShown: boolean;
@@ -308,7 +312,7 @@ export function ValuesGridView(props: ValuesGridViewProps) {
   // `plan` is still null.
   const offered = typed.length === 0 ? null : typedOffer(typed, reply);
   const refused = offered?.refusal ?? refusal;
-  const sentence = offerSentence(reply, offered, physical);
+  const sentence = offerSentence(reply, offered, physical, props.pasteHeader);
   // The text whose comma could be a decimal point or a thousands separator, typed or pasted: the
   // offer asks which it is, with one press (`commaChoices`).
   const asked = commaAsked(offered, props.pasteAmbiguous ?? null);

@@ -427,10 +427,13 @@ export function noGridNote(reply: ValuesReply): string | null {
 /** A pasted block, read against the object the grid is showing. Exactly one of `rows` and
  * `refusal` is set, so a reader narrows on `refusal === null` and needs no fallback for the
  * other; `ambiguous` is the value whose comma could be a decimal point or a thousands separator,
- * where that is what is refused - the choice of what it means is offered for it. */
+ * where that is what is refused - the choice of what it means is offered for it. `header` says
+ * whether the block's first row and column were taken for a header, and are not written, which
+ * the sentence over its preview says (`pasteSentence`, decision 15.1): never of a refused block,
+ * which writes nothing. */
 export type Pasted =
-  | { rows: number[][]; refusal: null; ambiguous: null }
-  | { rows: null; refusal: string; ambiguous: string | null };
+  | { rows: number[][]; header: boolean; refusal: null; ambiguous: null }
+  | { rows: null; header: false; refusal: string; ambiguous: string | null };
 
 /** The block as a spreadsheet writes it: rows by newline, cells by tab, a trailing newline
  * dropped because every spreadsheet adds one. */
@@ -475,7 +478,9 @@ function listed(numbers: number[]): string {
  * says - `1,200` is twelve hundred from a spreadsheet that groups thousands and one and a fifth
  * from one that writes decimals with a comma, and read either way, without asking, it stored a
  * calibration nobody typed. A header row and column, pasted along with the values, are dropped
- * unread: their readings are no part of what is written.
+ * unread: their readings are no part of what is written. Nothing but the block's size tells a
+ * header from values - a block of the size a header makes is read so whatever it holds - so the
+ * answer says whether it was (`header`), for the sentence over the preview to say.
  */
 export function pasted(
   text: string,
@@ -488,6 +493,7 @@ export function pasted(
   if (widths.size > 1) {
     return {
       rows: null,
+      header: false,
       refusal: `this is not a table: its rows are ${listed([...widths])} values long`,
       ambiguous: null,
     };
@@ -501,6 +507,7 @@ export function pasted(
   if (!header && (cells.length !== rows || width !== columns)) {
     return {
       rows: null,
+      header: false,
       refusal:
         `expected ${table(rows, columns)}, or ${table(rows + 1, columns + 1)} with a header; ` +
         `got ${table(cells.length, width)}`,
@@ -509,7 +516,9 @@ export function pasted(
   }
   const values = header ? cells.slice(1).map((row) => row.slice(1)) : cells;
   const block = pastedComma(values.flat());
-  if ("refusal" in block) return { rows: null, refusal: block.refusal, ambiguous: null };
+  if ("refusal" in block) {
+    return { rows: null, header: false, refusal: block.refusal, ambiguous: null };
+  }
   const meaning = block.meaning ?? chosen;
   const read: number[][] = [];
   for (const row of values) {
@@ -521,13 +530,18 @@ export function pasted(
         ambiguous: false,
       };
       if ("refusal" in value) {
-        return { rows: null, refusal: value.refusal, ambiguous: value.ambiguous ? cell : null };
+        return {
+          rows: null,
+          header: false,
+          refusal: value.refusal,
+          ambiguous: value.ambiguous ? cell : null,
+        };
       }
       counts.push(value.raw);
     }
     read.push(counts);
   }
-  return { rows: read, refusal: null, ambiguous: null };
+  return { rows: read, header, refusal: null, ambiguous: null };
 }
 
 /** The line under the grid saying what shape a paste wants - the only way the feature is
@@ -681,7 +695,12 @@ export function physicalReading(raw: number, reply: ValuesReply): string {
 
 /** The sentence above a pasted table's preview, as `cellSentence` is a cell's: what is about to
  * happen, so that a reader who pasted physical values and sees raw counts in the hunks is told
- * the two are one change and not two. */
-export function pasteSentence(reply: ValuesReply): string {
-  return `Replaces every value of ${reply.name}`;
+ * the two are one change and not two - and, where the table's first row and column were taken for
+ * a header (`header`, `Pasted.header`), that they are not written (decision 15.1): a block of the
+ * size a header makes is read so whatever it holds, and a reader who meant something else learns
+ * it here, before opening Show changes. */
+export function pasteSentence(reply: ValuesReply, header: boolean): string {
+  const replaces = `Replaces every value of ${reply.name}`;
+  if (!header) return replaces;
+  return `${replaces}; the first row and column pasted are taken for a header and not written`;
 }

@@ -2261,6 +2261,34 @@ export const CURVE_CELLS_PLAN: PlanReply = {
   ],
 };
 
+/** CurveA's six values replaced by a table pasted with its header row and column, 12.5, 9.5, 8.5,
+ * 8, 7.5 and 7 ms (ATablePastedWithItsHeader): one `set` of the whole `init`, one line, which a
+ * served copy of examples/demo answers `GET /api/values-plan?name=CurveA&raw=1250,950,850,800,750,
+ * 700` with. */
+export const CURVE_TABLE_PLAN: PlanReply = {
+  revision: 1,
+  changes: [
+    {
+      file: CONTROLLER,
+      fingerprint: "8878185dd8feae77366338050e33c9ec28f63d97ce6e722b242366993d7ddfe5",
+      operations: [
+        {
+          op: "set",
+          pointer: "component.interface[12].definition.init",
+          raw: "[1250, 950, 850, 800, 750, 700]",
+        },
+      ],
+      hunks: [
+        {
+          line: 205,
+          before: ['          "init": [1200, 900, 800, 750, 700, 650],'],
+          after: ['          "init": [1250, 950, 850, 800, 750, 700],'],
+        },
+      ],
+    },
+  ],
+};
+
 /** ParameterA: the controller's own calibration parameter, no dimensions, `init: 3200` and a
  * factor of 0.25 - 3200 raw counts, 800 Hz. A scalar is a grid of one cell, and a served copy of
  * examples/demo answers this reply for it (AScalarAsOneCell's own). */

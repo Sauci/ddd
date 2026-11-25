@@ -162,14 +162,16 @@ export function changesSentence(
 
 /** The sentence above the preview, whichever offer owns it: what the typed cells set
  * (`changesSentence`), or, where no cell is typed into - `offer` null - a pasted table's
- * (`pasteSentence`). `null` while the typed cells set nothing or one of them is refused: no plan
- * is asked for them then. */
+ * (`pasteSentence`), which says whether its first row and column were taken for a header
+ * (`header`, `Pasted.header`). `null` while the typed cells set nothing or one of them is refused:
+ * no plan is asked for them then. */
 export function offerSentence(
   reply: ValuesReply,
   offer: TypedOffer | null,
   physical: boolean,
+  header: boolean,
 ): string | null {
-  if (offer === null) return pasteSentence(reply);
+  if (offer === null) return pasteSentence(reply, header);
   if (offer.changes === null || offer.changes.length === 0) return null;
   return changesSentence(reply, offer.changes, physical);
 }

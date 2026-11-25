@@ -6,6 +6,7 @@ import { holdOf } from "../lib/valuesHold";
 import {
   CURVE_CELL_PLAN,
   CURVE_CELLS_PLAN,
+  CURVE_TABLE_PLAN,
   PARAMETER_CELL_PLAN,
   VALUE_C_INIT_PLAN,
   VALUES_AXIS,
@@ -34,6 +35,8 @@ interface Props {
   typed?: TypedCell[];
   plan?: PlanReply | null;
   refusal?: string | null;
+  /** Whether a table pasted had its first row and column taken for a header. */
+  pasteHeader?: boolean;
   changesShown?: boolean;
   busy?: boolean;
   banner?: ReactNode;
@@ -48,6 +51,7 @@ function View({
   typed: initialTyped = [],
   plan = null,
   refusal = null,
+  pasteHeader = false,
   changesShown: initialChangesShown = false,
   busy = false,
   banner,
@@ -66,6 +70,7 @@ function View({
       onTyped={(cell) => setTyped((held) => withTyped(held, cell))}
       plan={plan}
       refusal={refusal}
+      pasteHeader={pasteHeader}
       changesShown={changesShown}
       onChangesShown={setChangesShown}
       busy={busy}
@@ -187,6 +192,21 @@ export const ThreeCellsTypedAsOneChange = () => (
   />
 );
 
+// Decision 15.1: a table pasted into CurveA's grid with its header row and column, as it is copied
+// off the drawn grid - AxisA's readings across the top, `CurveA (ms)` down the side - and its
+// values 12.5 to 7 ms: the sentence over the preview says the first row and column pasted are
+// taken for a header and not written.
+export const ATablePastedWithItsHeader = () => (
+  <View
+    reply={VALUES_CURVE}
+    backTo="Controller"
+    physical
+    plan={CURVE_TABLE_PLAN}
+    pasteHeader
+    changesShown
+  />
+);
+
 // Part 17's own: ACellMidChange's 7.5 ms applied, its edit written and answered, its analysis not
 // landed yet. The server still answers the values from before it, and the grid holds what it wrote
 // (`holdOf`, `valuesShown`) - the undo offered beside the name, the findings said to be updating
@@ -218,6 +238,7 @@ export function AnAppliedValueHeld() {
       typed={[]}
       plan={null}
       refusal={null}
+      pasteHeader={false}
       changesShown={false}
       busy={false}
       onPhysical={setPhysical}
@@ -285,6 +306,7 @@ export function ATableWaitingForAPaste() {
       typed={[]}
       plan={null}
       refusal={null}
+      pasteHeader={false}
       changesShown={false}
       busy={false}
       onPhysical={setPhysical}

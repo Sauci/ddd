@@ -1033,6 +1033,22 @@ class TestTheCommandPage:
             "place"
         ) in text
 
+    def test_a_header_pasted_is_said_to_be_taken_for_one_and_not_written(self) -> None:
+        """What ``objectValues.ts``'s ``pasted`` and ``pasteSentence`` do with a table of the size a
+        header makes (decision 15.1), said where the grid is described: its first row and column
+        are left out unread, and the preview's sentence says so."""
+        text = flattened(self.COMMAND_PAGE)
+        assert "caught only by that preview" not in text
+        assert (
+            "Its header is discarded unread, and the preview's sentence says that the first row "
+            "and column pasted are taken for a header and not written: a table of that size is "
+            "read so whatever it holds"
+        ) in text
+        assert (
+            "one whose header names a different axis is caught by that preview, not by the paste "
+            "itself"
+        ) in text
+
     def test_the_readme_lists_the_same_schema_kinds(self) -> None:
         listed = re.search(r"\| `ddd schema ([a-z|\\]+)`", README)
         assert listed is not None

@@ -411,8 +411,10 @@ The commands
        once - the object's own shape, or exactly one row and one column larger for the header
        pasted along with it - previewed and undone the same way, in place of any cells typed
        before it, as a cell typed after it takes the table's place. Its header is discarded
-       unread, so one naming a different axis is caught only by that preview, not by the paste
-       itself. A table past about 10,000 counts is not one ``ddd gui`` takes: one whose counts
+       unread, and the preview's sentence says that the first row and column pasted are taken
+       for a header and not written: a table of that size is read so whatever it holds, and one
+       whose header names a different axis is caught by that preview, not by the paste itself.
+       A table past about 10,000 counts is not one ``ddd gui`` takes: one whose counts
        outgrow the address a request carries - past about 8,000 counts of five digits each - is
        refused as it is pasted, before anything is asked of the server, in a sentence naming the
        object and saying to set its values cell by cell, or in its file in an editor. Any other

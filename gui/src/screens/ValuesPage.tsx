@@ -7,7 +7,7 @@ import { useDebounced } from "../app/useDebounced";
 import { useKept } from "../app/useKept";
 import { useWritten } from "../app/useWritten";
 import { ValuesGridView } from "../components/ValuesGridView";
-import { drawable, pasted, type TypedCell } from "../lib/objectValues";
+import { drawable, type Pasted, pasted, type TypedCell } from "../lib/objectValues";
 import { planEdit } from "../lib/projectUnits";
 import { offerShown, refusalOf } from "../lib/refusals";
 import { planOffered, typedOffer, typedPlan, withComma, withTyped } from "../lib/typedCells";
@@ -127,6 +127,18 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   // it was refused for: the reader's answer to what the comma means reads the block again.
   const [pastedText, setPastedText] = useState<{ text: string; physical: boolean } | null>(null);
   const [pasteAmbiguous, setPasteAmbiguous] = useState<string | null>(null);
+  // Whether the block pasted had its first row and column taken for a header, which the sentence
+  // over its preview says (`Pasted.header`, decision 15.1). Read only while a pasted block owns the
+  // offer, and set by every block read (`keepPasted`), so nothing else clears it.
+  const [pasteHeader, setPasteHeader] = useState(false);
+  // What a block pasted, or read again with the meaning of its comma, answers (`pasted`), kept in
+  // one place: its counts or its refusal, the value whose comma it asks about, and its header.
+  const keepPasted = (block: Pasted) => {
+    setPastedRows(block.rows);
+    setPasteRefusal(block.refusal);
+    setPasteAmbiguous(block.ambiguous);
+    setPasteHeader(block.header);
+  };
 
   // What the cells typed into set, read against the values shown (`typedOffer`): `null` while
   // `shown` has not arrived yet, or one of the cells is refused - `ValuesGridView` finds that same
@@ -326,25 +338,20 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
       }}
       onBack={onBack}
       pasteAmbiguous={pasteAmbiguous}
+      pasteHeader={pasteHeader}
       // What a comma that could be either means, as the reader says with one press: the block
       // pasted is read again with it, or each typed cell holding such a comma takes it.
       onComma={(meaning) => {
         if (pastedText !== null) {
-          const block = pasted(pastedText.text, reply, pastedText.physical, meaning);
-          setPastedRows(block.rows);
-          setPasteRefusal(block.refusal);
-          setPasteAmbiguous(block.ambiguous);
+          keepPasted(pasted(pastedText.text, reply, pastedText.physical, meaning));
         } else {
           setTyped((held) => withComma(held, reply, meaning));
         }
         setFailed(null);
       }}
       onPaste={(text) => {
-        const block = pasted(text, reply, physical);
         setPastedText({ text, physical });
-        setPastedRows(block.rows);
-        setPasteRefusal(block.refusal);
-        setPasteAmbiguous(block.ambiguous);
+        keepPasted(pasted(text, reply, physical));
         setFailed(null);
         setTyped([]);
       }}

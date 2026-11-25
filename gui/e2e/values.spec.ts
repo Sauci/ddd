@@ -149,12 +149,40 @@ function wideNumbers(directory: string): void {
   });
 }
 
-/** A declaration's definition as `wideNumbers` changes it: only the keys it writes. */
+/** A declaration's definition as `wideNumbers` and `curveOfThree` change it: only the keys they
+ * write. */
 interface Definition {
   datatype?: string;
   dimensions?: number[];
   conversion?: { factor: number };
+  size?: number;
   init?: unknown;
+}
+
+/** CurveA made a curve of three: AxisA given three breakpoints, 0, 3200 and 6400, where Controller
+ * produces it and where UserInterface reads it, and the values of CurveA and of MapA, which is laid
+ * against AxisA too, cut to three a row. Each file rewritten whole, as `bigMapA` rewrites its own. */
+function curveOfThree(directory: string): void {
+  const rewrite = (file: string, change: (definition: (name: string) => Definition) => void) => {
+    const path = join(directory, file);
+    const data = JSON.parse(readFileSync(path, "utf8"));
+    change(
+      (name) =>
+        data.component.interface.find(
+          (declaration: { definition: { name: string } }) => declaration.definition.name === name,
+        ).definition,
+    );
+    writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+  };
+  rewrite(CONTROLLER, (definition) => {
+    definition("AxisA").size = 3;
+    definition("AxisA").init = [0, 3200, 6400];
+    definition("CurveA").init = [1200, 900, 800];
+    definition("MapA").init = (definition("MapA").init as number[][]).map((row) => row.slice(0, 3));
+  });
+  rewrite(USER_INTERFACE, (definition) => {
+    definition("AxisA").size = 3;
+  });
 }
 
 /** SensorHub's ValueD made a float64 block of three written `[1.0, 2.5, 3.0]`: numbers spelled as
@@ -1499,8 +1527,12 @@ test("a pasted curve replaces every value in one edit", async ({ page, gui }) =>
   await openValues(page, gui.address, "CurveA");
 
   await paste(page, "12.004\t9.5\t8.5\t8\t7.5\t7");
-  await expect(page.getByText("Replaces every value of CurveA")).toBeVisible();
-  await expect(page.getByText("Changes 1 file: controller.ddd.json")).toBeVisible();
+  // The object's own shape: the sentence takes nothing for a header.
+  await expect(
+    page.getByText("Replaces every value of CurveA. Changes 1 file: controller.ddd.json", {
+      exact: true,
+    }),
+  ).toBeVisible();
 
   await page.getByRole("button", { name: "Apply to 1 file" }).click();
   await expect
@@ -1518,12 +1550,51 @@ test("a pasted map takes its header row and column", async ({ page, gui }) => {
   await page.getByRole("button", { name: "Raw" }).click();
 
   await paste(page, MAP_A_PASTE);
+  await expect(
+    page
+      .getByRole("region", { name: "Replace the values" })
+      .getByText(
+        "Replaces every value of MapA; the first row and column pasted are taken for a header " +
+          "and not written. Changes 1 file: controller.ddd.json",
+        { exact: true },
+      ),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Apply to 1 file" }).click();
 
   await expect
     .poll(() => definitionOf(gui.directory, CONTROLLER, "MapA").init[0])
     .toEqual([1, 2, 3, 4, 5, 6]);
   expect(definitionOf(gui.directory, CONTROLLER, "MapA").init[3]).toEqual([19, 20, 21, 22, 23, 24]);
+});
+
+// Decision 15.1: a table with a row and a column more than the object's own shape is taken to have
+// a header, whatever it holds, and its first row and column are left out - and the sentence over
+// the preview says so, for a reader who meant something else to learn it before opening Show
+// changes.
+test("two rows of four pasted into a curve of three say that their first row and column are not written", async ({
+  page,
+  copiedGui,
+}) => {
+  const gui = await copiedGui("demo", curveOfThree);
+  await openValues(page, gui.address, "CurveA");
+  await page.getByRole("button", { name: "Raw" }).click();
+  const grid = page.getByRole("grid", { name: "Values of CurveA" });
+  await expectRow(grid, ["1200", "900", "800"]);
+
+  await paste(page, "10\t20\t30\t40\n50\t60\t70\t80");
+  const offer = page.getByRole("region", { name: "Replace the values" });
+  await expect(
+    offer.getByText(
+      "Replaces every value of CurveA; the first row and column pasted are taken for a header " +
+        "and not written. Changes 1 file: controller.ddd.json",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(offer.getByRole("button", { name: "Show changes" })).toBeVisible();
+  await page.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect
+    .poll(() => definitionOf(gui.directory, CONTROLLER, "CurveA").init)
+    .toEqual([60, 70, 80]);
 });
 
 test("a block of the wrong shape is refused and nothing is written", async ({ page, gui }) => {

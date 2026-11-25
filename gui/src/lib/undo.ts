@@ -180,9 +180,10 @@ interface Entry {
 
 /**
  * What the Undo strip holds of a refusal of one entry's undo, its preview's or its Put back's,
- * until the reader's next choice in the strip - Put back pressed again, or the strip closed - as a
- * panel holds its own (`Refused`, lib/refusals.ts): what it says is worded as the stack stands
- * when it is said (`undoRefusal`).
+ * until the reader's next choice in the strip - Put back pressed again, the files read again, or
+ * the strip closed - as a panel holds its own (`Refused`, lib/refusals.ts): what it says is worded
+ * as the stack stands when it is said (`undoRefusal`). A `stale` one of an entry a newer one
+ * covered goes as well, once that entry is back on top (`heldUnder`).
  *
  * `stale` is the server's code for a file the entry would put back gone, changed on disk, or that
  * could not be read - or for the entry no longer the one on top. The server takes the entry off
@@ -241,12 +242,13 @@ export function holding(
   return already ? held : [...held, refused];
 }
 
-/** Whether the strip asks for the preview of `entry`: not while it holds a `stale` refusal of it.
- * The server took the entry off with that refusal, or keeps it where a file could not be read; the
- * state says which as it comes. Asked again before then, the preview could only be refused again,
- * or as no longer on top - and a revision landing while the strip waits for the state keys the
- * preview anew, which asked the same entry twice (16:M23). The reader asks for it again from the
- * strip (`UndoShown.askAgain`), which lets the refusal go. */
+/** Whether the strip asks for the preview of `entry`: not while it holds a `stale` refusal of it -
+ * until the reader's next choice in the strip lets the refusal go, asking for the preview again
+ * among them (`UndoShown.askAgain`), or the entry comes back to the top from under a newer one
+ * (`heldUnder`). The server took the entry off with that refusal, and asked again it refuses it as
+ * no longer on top; or it keeps the entry where a file could not be read, which the reader asks to
+ * read again once they have mended it. A revision landing keys the preview anew, and asked then,
+ * the same entry was asked twice - its going said twice (16:M23). */
 export function previewAsked(held: readonly UndoRefused[], entry: { at: number }): boolean {
   return !held.some((refused) => refused.stale && refused.at === entry.at);
 }
@@ -383,10 +385,13 @@ export interface UndoShown {
  *   that failed - the server failing on it, or not answering - was refused by nobody, and is said
  *   so, in a sentence of its own (`previewFailed`).
  * - **Beside a refusal held of the entry on top**, said as it stands, the strip offers that entry
- *   again, whole, as the revision on screen previews it, and so its Put back (R22): the reader may
- *   mend the file - make it readable or writable - and press again, with no need to close the
- *   strip, as a panel offers its plan beside a refusal held of its Apply (`offerShown`,
- *   lib/refusals.ts). One the server took off is offered so until the state says it went.
+ *   again, whole, and so its Put back (R22): the reader may mend the file - make it readable or
+ *   writable - and press again, with no need to close the strip, as a panel offers its plan beside
+ *   a refusal held of its Apply (`offerShown`, lib/refusals.ts). Beside one that is not `stale` - a
+ *   file that could not be written - as the revision on screen previews it, asked anew as each
+ *   lands; beside a `stale` one as the strip read it before the refusal, which no revision asks
+ *   again (`previewAsked`): once one lands, the strip offers to read the files again in its place.
+ *   One the server took off is offered so until the state says it went.
  * - **Beside the preview's own refusal** of the entry on top - a refusal (`refusedRead`), the
  *   server keeping the entry, as it keeps one whose file could not be read - the strip offers to
  *   read the files again (R22): mended, the file is previewed there, and the entry offered whole

@@ -676,8 +676,8 @@ describe("a refused undo, and the entries under it (16:M23)", () => {
   });
 
   it("asks no preview of an edit while it holds a stale refusal of it, and offers to read again", () => {
-    // Asked again, it could only be refused again, or as no longer on top where the refusal took
-    // it off; a file that could not be read is read again when the reader asks (R22).
+    // Asked again, it is refused as no longer on top where the refusal took it off; a file that
+    // could not be read is read again when the reader asks, once they have mended it (R22).
     const held = [undoRefused(STALE, LIMITS)];
     expect(previewAsked(held, LIMITS)).toBe(false);
     expect(previewAsked(held, UNIT)).toBe(true);

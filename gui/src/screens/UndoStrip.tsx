@@ -30,24 +30,26 @@ interface Props {
  * The Undo control in a page's heading, after the controls beside the page's name: the last edit
  * this session wrote, previewed before any of it is put back.
  *
- * The preview is asked for only once the strip is open, and keyed by the entry and the
- * revision, so that a file changing on disk - or another window undoing first - is noticed
- * without a request of its own: once at a time for an entry, and not while the strip holds a
- * `stale` refusal of it (`previewAsked`), which the reader may ask again from the strip. A refusal
- * of the Put back, whatever its code, is held for the
- * entry the reader pressed for until their next choice in the strip - Put back pressed again, or
- * the strip closed - as the panels hold theirs, and a revision landing - the one a refusal of the
- * entry on top asks for, within milliseconds (refusing one no longer on top asks for none) - never
- * takes it away (`Refused`, lib/refusals.ts). So is a refusal of the preview `stale`: a file the
- * entry would put back gone, changed on disk, or unreadable. What the strip offers beside them is
- * `undoShown`'s:
+ * The preview is asked for only once the strip is open, and keyed by the entry and the revision,
+ * so that a file changing on disk - or another window undoing first - is noticed without a request
+ * of its own: once at a time for an entry, and not while the strip holds a `stale` refusal of it
+ * (`previewAsked`), which the reader may ask again from the strip. A refusal of the Put back,
+ * whatever its code, is held for the entry the reader pressed for until their next choice in the
+ * strip - Put back pressed again, the files read again, or the strip closed - as the panels hold
+ * theirs, and a revision landing - the one a refusal of the entry on top asks for, within
+ * milliseconds (refusing one no longer on top asks for none) - never takes it away (`Refused`,
+ * lib/refusals.ts), but for a `stale` one of an entry back on top from under a newer one
+ * (`heldUnder`). So is a refusal of the preview `stale`: a file the entry would put back gone,
+ * changed on disk, or unreadable. What the strip offers beside them is `undoShown`'s:
  * - the server takes an entry off the stack with a refusal of either where the disk moved past
  *   it, a file gone or changed (16:M23), and once the state says so the strip says why it went
  *   beside the entry under it, which it offers whole without being closed - or, with none left,
  *   says so until it is closed;
  * - a refusal that leaves the entry on top - a file that could not be read or written - is said
- *   beside that entry as it stands, offered again to be pressed once the reader has mended the
- *   file, the strip never closed between (R22).
+ *   beside that entry as it stands, the strip never closed between (R22): a file that could not
+ *   be written, the entry is offered again to be pressed once the reader has mended it; one that
+ *   could not be read, the files are read again once the reader asks, which lets the sentence go,
+ *   and the entry is offered whole once they are.
  *
  * An undo answered, every query `askedAgainAfterUndo` names is asked for again at once: the files
  * are back before the revision says so.

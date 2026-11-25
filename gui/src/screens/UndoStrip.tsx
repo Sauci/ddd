@@ -5,10 +5,13 @@ import type { State, UndoPreview } from "../api/types";
 import { UndoStripView } from "../components/UndoStripView";
 import { putBackOf, type Write } from "../lib/announcing";
 import {
+  type Answering,
+  answerOf,
   askedAgainAfterUndo,
   holding,
   previewAsked,
   previewRefused,
+  settledAnswering,
   type UndoRefused,
   undoRefused,
   undoShown,
@@ -66,7 +69,7 @@ export function UndoStrip({ state, stopped }: Props) {
   // off with the first answer, refused the second as no longer on top, and the strip said twice
   // that it can no longer be undone (16:M23). Asked again while one is on its way, the entry's
   // preview is that answer.
-  const answering = useRef<{ at: number; answer: Promise<UndoPreview> } | null>(null);
+  const answering = useRef<Answering<Promise<UndoPreview>> | null>(null);
   // No preview of the entry on top while the strip holds a `stale` refusal of it (`previewAsked`).
   const asks = undoable !== null && previewAsked(held, undoable);
   const preview = useQuery({
@@ -75,8 +78,8 @@ export function UndoStrip({ state, stopped }: Props) {
       !open || undoable === null || !asks
         ? skipToken
         : () => {
-            const pending = answering.current;
-            if (pending !== null && pending.at === undoable.at) return pending.answer;
+            const known = answerOf(answering.current, undoable);
+            if (known !== null) return known;
             const answer = getUndo(undoable.at).catch((error: unknown) => {
               // Held as the answer comes, of the entry this query was asked for, where the server
               // took that entry off the stack with it: the state naming the one under it can reach
@@ -88,7 +91,7 @@ export function UndoStrip({ state, stopped }: Props) {
             });
             answering.current = { at: undoable.at, answer };
             const settled = () => {
-              if (answering.current?.answer === answer) answering.current = null;
+              answering.current = settledAnswering(answering.current, answer);
             };
             answer.then(settled, settled);
             return answer;

@@ -242,6 +242,30 @@ export function previewAsked(held: readonly UndoRefused[], entry: { at: number }
   return !held.some((refused) => refused.stale && refused.at === entry.at);
 }
 
+/** An answer the strip keeps to the preview of the entry numbered `at`: what an ask of that
+ * entry's preview gets without asking the server (`answerOf`). */
+export interface Answering<T> {
+  at: number;
+  answer: T;
+}
+
+/** The answer an ask of `entry`'s preview gets without asking the server: the one the strip keeps
+ * for that entry, else `null`. A revision landing while an answer is on its way keys the preview
+ * anew, and asked of the server again then, the same entry was asked twice (16:M23); another
+ * entry's answer is none of this one's. */
+export function answerOf<T>(answering: Answering<T> | null, entry: { at: number }): T | null {
+  return answering !== null && answering.at === entry.at ? answering.answer : null;
+}
+
+/** What the strip keeps once `answer` has come: nothing, where the answer kept was that one; an
+ * answer asked since, of another entry, is kept as it is. */
+export function settledAnswering<T>(
+  answering: Answering<T> | null,
+  answer: T,
+): Answering<T> | null {
+  return answering !== null && answering.answer === answer ? null : answering;
+}
+
 /**
  * What the Undo strip says of `refused`, as the stack stands:
  * - refused `stale`, the server's own sentence, which names the file or the edit, and what it

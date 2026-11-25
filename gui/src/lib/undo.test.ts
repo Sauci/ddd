@@ -2,6 +2,7 @@ import { describe, expect, it, test } from "vitest";
 import { ApiError, ServerUnreachable } from "../api/client";
 import type { Finding, PlanReply, State, UndoneChange, UndoPreview } from "../api/types";
 import {
+  answerOf,
   askedAgainAfterUndo,
   constantLabel,
   declareLabel,
@@ -14,6 +15,7 @@ import {
   rasterLabel,
   removeLabel,
   sectionLabel,
+  settledAnswering,
   settleLabel,
   shownUndo,
   typeLabel,
@@ -621,6 +623,25 @@ describe("a refused undo, and the entries under it (16:M23)", () => {
     // One that is not stale is held beside it, and so is a stale one of another edit.
     expect(holding(held, undoRefused(UNWRITABLE, LIMITS))).toHaveLength(2);
     expect(holding(held, undoRefused(STALE, UNIT))).toHaveLength(2);
+  });
+
+  it("gives an ask of an edit's preview the answer kept for that edit alone", () => {
+    // One answer on its way to edit 2: a revision landing meanwhile asks edit 2 again, and gets it.
+    const answer = Promise.resolve("edit 2's answer");
+    const kept = { at: 2, answer };
+    expect(answerOf(kept, LIMITS)).toBe(answer);
+    // Another edit's answer is none of this one's, and none kept is none.
+    expect(answerOf(kept, UNIT)).toBeNull();
+    expect(answerOf(null, LIMITS)).toBeNull();
+  });
+
+  it("forgets an answer once it has come, and keeps one asked since", () => {
+    const first = Promise.resolve("the first");
+    const second = Promise.resolve("the second");
+    expect(settledAnswering({ at: 2, answer: first }, first)).toBeNull();
+    // An answer that comes after another was asked leaves the other kept.
+    expect(settledAnswering({ at: 1, answer: second }, first)).toEqual({ at: 1, answer: second });
+    expect(settledAnswering(null, first)).toBeNull();
   });
 
   it("asks no preview of an edit while it holds a stale refusal of it, and offers to read again", () => {

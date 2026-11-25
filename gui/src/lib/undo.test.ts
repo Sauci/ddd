@@ -519,10 +519,25 @@ describe("a refused undo, and the entries under it (16:M23)", () => {
 
   it("says a preview's own refusal in its place, and offers nothing to put back", () => {
     // Asked again and refused, the preview before it is no longer what the undo would do.
-    const shown = undoShown([], stateOf(LIMITS), asked(previewOf(LIMITS), FAILED));
-    expect(said(shown)).toEqual(["The undo was refused: ddd gui failed on this request"]);
+    const full = new ApiError(409, "unwritable", "disk full");
+    const shown = undoShown([], stateOf(LIMITS), asked(previewOf(LIMITS), full));
+    expect(said(shown)).toEqual(["The undo was refused: disk full"]);
     expect(shown.preview).toBeNull();
     expect(shown.reading).toBe(false);
+  });
+
+  it("says a preview that failed failed, in a sentence of its own, where nothing was refused", () => {
+    // The server failing on it, or not answering: no undo was asked, and none refused. Nothing is
+    // offered either: asked again and failed, the preview before it is no longer what the undo
+    // would do.
+    const failed = undoShown([], stateOf(LIMITS), asked(previewOf(LIMITS), FAILED));
+    expect(said(failed)).toEqual(["Reading the files failed: ddd gui failed on this request."]);
+    expect(failed.preview).toBeNull();
+    expect(failed.reading).toBe(false);
+    const unanswered = new ServerUnreachable(new Error("refused"));
+    expect(said(undoShown([], stateOf(LIMITS), asked(undefined, unanswered)))).toEqual([
+      "Reading the files failed: ddd gui is not answering.",
+    ]);
   });
 
   it("says a preview's refusal once, whether the strip holds it yet or not", () => {

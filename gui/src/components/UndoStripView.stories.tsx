@@ -16,9 +16,10 @@ const TAKEN_OFF =
   "demo.ddd.json changed on disk since it was written, so the vocabulary adopted can no longer " +
   "be undone. Nothing was put back; the page shows the files as they are.";
 
-// What the strip says of a preview the server failed on, in the server's own words.
+// What the strip says of a preview the server failed on, in the server's own words: that reading
+// the files failed, no undo having been asked, and nothing refused.
 const FAILED =
-  "The undo was refused: ddd gui failed on this request; the terminal it runs in shows why";
+  "Reading the files failed: ddd gui failed on this request; the terminal it runs in shows why.";
 
 // What the strip says of a Put back refused because a file is kept read-only, in the server's own
 // words, which name the file by its full path.
@@ -108,8 +109,9 @@ export const Reading = () => <Heading opened reading />;
 
 export const ChangesShown = () => <Heading opened shown />;
 
-/** The preview refused, in the server's words: said in its place, with nothing to put back. */
-export const Refused = () => <Heading opened refusals={[FAILED]} />;
+/** The preview failed, the server failing on it: said in its place, in the server's words, with
+ * nothing to put back. */
+export const Failed = () => <Heading opened refusals={[FAILED]} />;
 
 /** The Put back refused because a file could not be written: the edit stays on the stack, and the
  * strip offers it again under the sentence, to be pressed once the file is writable (R22). */

@@ -10,7 +10,8 @@ export interface UndoStripViewProps {
   open: boolean;
   onOpen: (open: boolean) => void;
   /** Every refusal the strip says, in the order they came (`undoShown`): of an entry the server
-   * took off the stack, said beside the one under it, and of the entry on top. */
+   * took off the stack, said beside the one under it, and of the entry on top - and its preview's
+   * failure, said in a sentence of its own. */
   refusals: readonly { key: string; text: string }[];
   /** The entry offered to put back, once its preview has come; `null` while it is asked for, where
    * it was refused, and where nothing is left to undo. */

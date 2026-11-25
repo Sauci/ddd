@@ -244,6 +244,13 @@ export function undoRefusal(refused: UndoRefused, gone: boolean, after = false):
   return `${refused.message}${meaning}${nothing}; the page shows the files as they are.`;
 }
 
+/** What the Undo strip says in its preview's place where the preview failed - the server failing
+ * on it, or not answering - rather than refusing it (`refusedRead`): no undo was asked, and nothing
+ * was refused, so the strip says that reading the files failed, in the words of the failure. */
+export function previewFailed(message: string): string {
+  return `Reading the files failed: ${message}.`;
+}
+
 /** What the Undo button says once nothing is left to undo while the strip still says why an entry
  * left the stack: pressed, it closes the strip, and the control goes with it. */
 export const NOTHING_LEFT = "Nothing left to undo";
@@ -253,7 +260,8 @@ export interface UndoShown {
   /** What the button says: `Undo` and the entry on top (`undoButton`), `NOTHING_LEFT` with none
    * left while a refusal is said, and `null` where the control is not drawn at all. */
   label: string | null;
-  /** Every refusal the strip says, in the order they came, each keyed by the entry it is of. */
+  /** Every refusal the strip says, in the order they came, each keyed by the entry it is of - and a
+   * preview's failure, which is said among them in a sentence of its own (`previewFailed`). */
   refusals: readonly { key: string; text: string }[];
   /** The entry the strip offers to put back, once its preview has come: its line, its changes and
    * its Put back. `null` while none is. */
@@ -283,7 +291,9 @@ export interface UndoShown {
  *   back to the top, and is offered whole then.
  * - **The preview's own refusal** is said in its place, and nothing is offered to put back: asked
  *   again and refused, the preview before it is no longer what the undo would do. One refused
- *   `stale` is the strip's to hold as its entry's (`previewRefused`), and is said once.
+ *   `stale` is the strip's to hold as its entry's (`previewRefused`), and is said once. A preview
+ *   that failed - the server failing on it, or not answering - was refused by nobody, and is said
+ *   so, in a sentence of its own (`previewFailed`).
  * - **Beside a refusal held of the entry on top**, said as it stands, the strip offers that entry
  *   again, whole, as the revision on screen previews it, and so its Put back (R22): the reader may
  *   mend the file - make it readable or writable - and press again, with no need to close the
@@ -304,15 +314,19 @@ export function undoShown(
   const top = state?.undoable ?? null;
   const standing = held.filter((refused) => top === null || refused.at >= top.at);
   const own = top === null || asked.error === null ? null : undoRefused(asked.error, top);
+  const failed = own !== null && !refusedRead(asked.error);
   const said =
     own === null || standing.some((refused) => same(refused, own)) ? standing : [...standing, own];
   const refusals = said.map((refused, index) => ({
     key: `${refused.at}:${refused.stale}:${refused.message}`,
-    text: undoRefusal(
-      refused,
-      top === null || refused.at > top.at,
-      said.slice(0, index).some((before) => before.at === refused.at && !before.stale),
-    ),
+    text:
+      failed && refused === own
+        ? previewFailed(refused.message)
+        : undoRefusal(
+            refused,
+            top === null || refused.at > top.at,
+            said.slice(0, index).some((before) => before.at === refused.at && !before.stale),
+          ),
   }));
   const offered =
     top !== null && asked.error === null && asked.data !== undefined && asked.data.at === top.at

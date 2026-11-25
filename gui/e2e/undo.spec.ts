@@ -475,17 +475,18 @@ test("an undo refused keeps its sentence for its own entry, and an edit made wit
   await expect(refused).toHaveCount(0);
 });
 
-test("a preview the server fails on is refused in the strip, before any undo was asked", async ({
+test("a preview the server fails on is said to have failed in the strip, before any undo was asked", async ({
   page,
   gui,
 }) => {
   await settledAndAnalysed(page, gui);
   // Registered before the strip is opened, whose first ask is the preview's `GET`: failed, it
-  // leaves no "Put back" to press, so no `POST` follows.
+  // leaves no "Put back" to press, so no `POST` follows. Nothing was refused, and no undo asked:
+  // the strip says that reading the files failed.
   const failed = await failing(page, "/api/undo", "http");
   await page.getByRole("button", { name: "Undo the unit of ValueA" }).click();
   await expect(strip(page).getByRole("status")).toHaveText(
-    `The undo was refused: ${SERVER_FAILED}`,
+    `Reading the files failed: ${SERVER_FAILED}.`,
   );
   await expect(strip(page).getByRole("button", { name: /^Put back/ })).toHaveCount(0);
   expect(unitOfValueA(gui)).toBe("%");

@@ -56,6 +56,7 @@ from ddd.lsp.diagnostics import run_project
 from ddd.models import ComponentFile, ProjectFile
 from ddd.plugins import (
     CheckContext,
+    CompareContext,
     Plugin,
     PluginError,
     PluginInvalidError,
@@ -4013,3 +4014,83 @@ class TestTheBagHoldsAFindingToItsShape:
         bag, _ = analyse_standalone(tree / "project.ddd.json")
         assert "plugin-invalid" in checks(bag)
         assert "failed in its check hook: location must be" in messages(bag)
+
+
+class TestAHookReturnsNothing:
+    """A hook that returns what it meant to report ran no rule, and a rule that never ran reads
+    as one that passed. ``check`` and ``compare`` are held to the ``None`` their signature says."""
+
+    @staticmethod
+    def _run(plugin: Plugin, tree: Path) -> None:
+        from ddd.plugins import run_check_hooks
+
+        dictionary, bag = analysed(tree, declare("local", "X"))
+        run_check_hooks((plugin,), dictionary, lambda _: None, bag, lambda _: None)
+
+    def test_a_hook_returning_its_findings_is_refused(self, tree: Path) -> None:
+        def returning(context: CheckContext) -> list:
+            return [("plug/x", "forgotten")]
+
+        with pytest.raises(PluginError, match=r"returned a list from its check hook"):
+            self._run(Plugin(name="plug", check=returning), tree)
+
+    def test_a_generator_hook_is_refused(self, tree: Path) -> None:
+        def generating(context: CheckContext):
+            context.bag.add("plug/x", "never filed")
+            yield
+
+        with pytest.raises(PluginError, match=r"returned a generator from its check hook"):
+            self._run(Plugin(name="plug", check=generating), tree)
+
+    def test_an_async_hook_is_refused_and_leaves_nothing_unawaited(self, tree: Path) -> None:
+        import gc
+        import warnings
+
+        async def awaiting(context: CheckContext) -> None:
+            context.bag.add("plug/x", "never filed")
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            with pytest.raises(PluginError, match=r"returned a coroutine from its check hook"):
+                self._run(Plugin(name="plug", check=awaiting), tree)
+            gc.collect()
+        assert [str(warning.message) for warning in caught] == []
+
+    def test_a_compare_hook_is_held_to_it_too(self, tree: Path) -> None:
+        from ddd.plugins import run_compare_hooks
+
+        def returning(context: CompareContext) -> int:
+            return 1
+
+        dictionary, bag = analysed(tree, declare("local", "X"))
+        plugin = Plugin(name="plug", compare=returning)
+        with pytest.raises(PluginError, match=r"returned an int from its compare hook"):
+            run_compare_hooks(
+                (plugin,), dictionary, dictionary, lambda _: None, bag, lambda _: None, None
+            )
+
+    def test_a_hook_returning_none_is_the_control(self, tree: Path) -> None:
+        def quiet(context: CheckContext) -> None:
+            return None
+
+        self._run(Plugin(name="plug", check=quiet), tree)
+
+    def test_a_project_whose_hook_returns_its_findings_fails_with_words(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        source = TAG_PLUGIN.replace(
+            "def check(context: CheckContext) -> None:\n",
+            "def check(context: CheckContext) -> None:\n    return [context.bag]\n",
+        )
+        write_plugin(tree / "tools", source=source)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        assert main(["check", str(tree / "project.ddd.json")]) == EXIT_USAGE
+        err = capsys.readouterr().err
+        assert "plugin 'tag' returned a list from its check hook" in err
+        assert "context.bag.add" in err

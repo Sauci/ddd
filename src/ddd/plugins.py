@@ -24,6 +24,7 @@ import contextlib
 import hashlib
 import importlib
 import importlib.util
+import inspect
 import re
 import sys
 from collections.abc import Callable, Iterator, Mapping, Sequence
@@ -532,7 +533,7 @@ def run_check_hooks(
     for plugin in plugins:
         if plugin.check is not None:
             context = CheckContext(dictionary, settings(plugin), bag, locate)
-            _call(plugin, "check", plugin.check, context)
+            _returns_nothing(plugin, "check", _call(plugin, "check", plugin.check, context))
 
 
 def run_compare_hooks(
@@ -600,7 +601,7 @@ def run_compare_hooks(
     for plugin in plugins:
         if plugin.compare is not None:
             context = CompareContext(baseline, candidate, settings(plugin), bag, locate)
-            _call(plugin, "compare", plugin.compare, context)
+            _returns_nothing(plugin, "compare", _call(plugin, "compare", plugin.compare, context))
 
 
 def backend_of(plugin: Plugin, settings: BaseModel | None, generator: str) -> Backend:
@@ -683,6 +684,37 @@ class _GuardedBackend:
             )
             raise PluginError(msg)
         return result
+
+
+def _returns_nothing(plugin: Plugin, hook: str, returned: object) -> None:
+    """Refuse what a ``check`` or a ``compare`` hook returned, which is nothing: it reports through
+    the bag.
+
+    Python does not enforce a return type, and a hook that returns its findings, that is a
+    generator or that is ``async`` ran none of what it was written to run - calling one only makes
+    the list, the generator or the coroutine - so the rule it was meant to apply never did, and a
+    run that passes reads as one the rule passed. A coroutine is closed first, so that no
+    "never awaited" warning follows the failure that explains it.
+    """
+    if returned is None:
+        return
+    reason = "a hook reports with context.bag.add, and returns nothing"
+    if inspect.iscoroutine(returned):
+        returned.close()
+        what = "a coroutine"
+        reason = "a hook is called and never awaited, so declare it with def, not async def"
+    elif inspect.isgenerator(returned):
+        returned.close()
+        what = "a generator"
+        reason = "a hook is called and never iterated, so its body does not run: do not yield"
+    else:
+        what = _article(type(returned).__name__)
+    msg = f"plugin '{plugin.name}' returned {what} from its {hook} hook: {reason}"
+    raise PluginError(msg)
+
+
+def _article(name: str) -> str:
+    return f"{'an' if name[:1] in 'aeiouAEIOU' else 'a'} {name}"
 
 
 def _call[C, R](plugin: Plugin, hook: str, function: Callable[[C], R], context: C) -> R:

@@ -633,6 +633,24 @@ def _refused(what: str, wanted: str, given: object) -> str:
     return f"{what} must be {wanted}, not {type(given).__name__}"
 
 
+def _held_location(what: str, location: object) -> None:
+    """Refuse a ``location`` that is no :class:`Location` or ``None``, or whose fields hold what
+    they do not declare: ``Location("file.json")`` is one, and fails where a finding is reported,
+    not where it is filed."""
+    if location is None:
+        return
+    if not isinstance(location, Location):
+        raise TypeError(_refused(what, "a Location or None", location))
+    if not isinstance(location.path, Path):
+        raise TypeError(_refused(f"{what} path", "a Path", location.path))
+    if not isinstance(location.pointer, str):
+        raise TypeError(_refused(f"{what} pointer", "a str", location.pointer))
+    for name in ("line", "column"):
+        value = getattr(location, name)
+        if value is not None and not isinstance(value, int):
+            raise TypeError(_refused(f"{what} {name}", "an int or None", value))
+
+
 def _pairs(notes: Any) -> tuple[tuple[str, Location | None], ...]:
     """The notes of a finding as pairs of a ``str`` and a location or ``None``, each a tuple."""
     try:
@@ -646,8 +664,7 @@ def _pairs(notes: Any) -> tuple[tuple[str, Location | None], ...]:
         text, where = note
         if not isinstance(text, str):
             raise TypeError(_refused("note text", "a str", text))
-        if where is not None and not isinstance(where, Location):
-            raise TypeError(_refused("note location", "a Location or None", where))
+        _held_location("note location", where)
         pairs.append((text, where))
     return tuple(pairs)
 
@@ -719,8 +736,7 @@ class DiagnosticBag:
             raise TypeError(_refused("check", "a str", check))
         if not isinstance(message, str):
             raise TypeError(_refused("message", "a str", message))
-        if location is not None and not isinstance(location, Location):
-            raise TypeError(_refused("location", "a Location or None", location))
+        _held_location("location", location)
         if severity is not None and not isinstance(severity, Severity):
             raise TypeError(_refused("severity", "a Severity or None", severity))
         notes = _pairs(notes)

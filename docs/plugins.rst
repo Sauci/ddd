@@ -207,7 +207,9 @@ the shipped c templates write; templates of another shape spell that declaration
 and the rule is the same.
 
 A finding is held to its shape where the bag takes it: ``check`` and ``message`` are strings,
-``location`` is a ``Location`` or ``None`` (a ``Path`` is not one), ``severity`` is a
+``location`` is a ``Location`` or ``None`` (a ``Path`` is not one, nor is a ``Location`` whose
+``path`` is a string: its ``path`` is a ``Path``, its ``pointer`` a string, its ``line`` and
+``column`` integers or ``None``), ``severity`` is a
 ``Severity`` or ``None`` (the string ``"warning"`` is not one), and ``notes`` are pairs of a
 string and such a location. A call that gets one wrong raises a ``TypeError`` naming the
 argument, inside the hook, so that it is reported as the hook's failure below, rather than

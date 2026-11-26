@@ -3982,6 +3982,16 @@ class TestTheBagHoldsAFindingToItsShape:
             (("tag/x", "m", None, [(1, None)]), {}, "note"),
             (("tag/x", "m", None, [("see here", "file.json")]), {}, "note"),
             (("tag/x", "m", None, 3), {}, "notes"),
+            (("tag/x", "m", Location("file.json")), {}, "location path"),
+            (("tag/x", "m", Location(Path("f"), pointer=3)), {}, "location pointer"),
+            (("tag/x", "m", Location(Path("f"), line="1")), {}, "location line"),
+            (("tag/x", "m", Location(Path("f"), line=1, column="2")), {}, "location column"),
+            (("tag/x", "m", None, [("see", Location("file.json"))]), {}, "note location path"),
+            (
+                ("tag/x", "m", None, [("see", Location(Path("f"), pointer=3))]),
+                {},
+                "note location pointer",
+            ),
         ],
     )
     def test_a_bad_finding_is_refused_and_not_recorded(
@@ -4007,6 +4017,8 @@ class TestTheBagHoldsAFindingToItsShape:
             'context.bag.add("tag/x", "m", Path("file.json"))',
             'context.bag.add("tag/x", "m", severity="warning")',
             'context.bag.add("tag/x", "m", None, ["see here"])',
+            'context.bag.add("tag/x", "m", Location("file.json"))',
+            'context.bag.add("tag/x", "m", None, [("see", Location("file.json"))])',
         ],
     )
     def test_a_hook_that_files_one_is_a_usage_error_naming_the_plugin(
@@ -4015,6 +4027,9 @@ class TestTheBagHoldsAFindingToItsShape:
         source = TAG_PLUGIN.replace(
             "def check(context: CheckContext) -> None:\n",
             f"def check(context: CheckContext) -> None:\n    {slip}\n",
+        ).replace(
+            "from ddd.diagnostics import CheckInfo, Severity",
+            "from ddd.diagnostics import CheckInfo, Location, Severity",
         )
         write_plugin(tree / "tools", source=source)
         write_tree(
@@ -4031,10 +4046,20 @@ class TestTheBagHoldsAFindingToItsShape:
         assert "Traceback" not in captured.err
         assert "missing-id" in [entry["check"] for entry in json.loads(captured.out)["diagnostics"]]
 
-    def test_the_language_server_survives_it(self, tree: Path) -> None:
+    @pytest.mark.parametrize(
+        ("slip", "refused"),
+        [
+            ('context.bag.add("tag/x", "m", "f")', "location must be"),
+            ('context.bag.add("tag/x", "m", Location("f"))', "location path must be"),
+        ],
+    )
+    def test_the_language_server_survives_it(self, tree: Path, slip: str, refused: str) -> None:
         source = TAG_PLUGIN.replace(
             "def check(context: CheckContext) -> None:\n",
-            'def check(context: CheckContext) -> None:\n    context.bag.add("tag/x", "m", "f")\n',
+            f"def check(context: CheckContext) -> None:\n    {slip}\n",
+        ).replace(
+            "from ddd.diagnostics import CheckInfo, Severity",
+            "from ddd.diagnostics import CheckInfo, Location, Severity",
         )
         write_plugin(tree / "tools", source=source)
         write_tree(
@@ -4046,7 +4071,7 @@ class TestTheBagHoldsAFindingToItsShape:
         )
         bag, _ = analyse_standalone(tree / "project.ddd.json")
         assert "plugin-invalid" in checks(bag)
-        assert "failed in its check hook: location must be" in messages(bag)
+        assert f"failed in its check hook: {refused}" in messages(bag)
 
 
 class TestAHookReturnsNothing:

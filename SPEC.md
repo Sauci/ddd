@@ -1265,7 +1265,8 @@ returning, is a usage error naming the plugin and the hook; the language server,
 no usage error to give and does not stop, reports the same failure as a `plugin-invalid`
 finding at the project file ([section 7.2](#72-editor-integration)). The bag holds a finding
 to its shape where it is added - a `check` and a `message` that are strings, a location that
-is a `Location` or `None`, a severity that is a `Severity` or `None`, notes that are pairs of a
+is a `Location` or `None` whose `path` is a `Path`, whose `pointer` is a string and whose `line`
+and `column` are integers or `None`, a severity that is a `Severity` or `None`, notes that are pairs of a
 string and such a location - and refuses one that is none with a `TypeError`, which is raised
 inside the hook that filed it and so is that hook's failure, reported as above; the findings
 gathered before it are still reported. A `check` or `compare` hook returns nothing: one that

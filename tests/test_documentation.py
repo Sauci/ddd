@@ -12610,6 +12610,8 @@ class TestWhatAPluginHandsBackIsStated:
             "whatever it raises but the user's own interrupt",
             "a `.py` path the system refuses to resolve, one holding a NUL for instance",
             "The bag holds a finding to its shape where it is added",
+            "whose `path` is a `Path`, whose `pointer` is a string and whose `line` and `column` "
+            "are integers or `None`",
             "A `check` or `compare` hook returns nothing",
             "ends the run at 2 with one line, `ddd: unexpected` and the type of the",
             "that cannot be found, or by a path the system refuses to resolve",
@@ -12619,6 +12621,7 @@ class TestWhatAPluginHandsBackIsStated:
         ),
         "docs/plugins.rst": (
             "A finding is held to its shape where the bag takes it",
+            "nor is a ``Location`` whose ``path`` is a string",
             "A ``check`` or ``compare`` hook returns nothing",
             "a module-level ``__getattr__`` that raises",
             "is ``plugin-not-found``, as a path to nothing is",

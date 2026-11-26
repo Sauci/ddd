@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import codecs
 import errno
 import functools
@@ -39,6 +40,7 @@ from ddd.backends.base import STAGING_SUFFIX
 from ddd.build_info import BUILD_INFO_FORMAT
 from ddd.cli import (
     EXIT_FINDINGS,
+    EXIT_INTERRUPTED,
     EXIT_OK,
     EXIT_USAGE,
     _build_parser,
@@ -6103,11 +6105,15 @@ class TestToolFromElf:
         )
 
     def test_a_missing_module_of_ddd_is_not_blamed_on_pyelftools(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
+        """A defect of ddd's own, reported as the unexpected failure it is, by its type and
+        never as the advice to install a library that is installed."""
         monkeypatch.setitem(sys.modules, "ddd.elf", None)
-        with pytest.raises(ModuleNotFoundError):
-            main(["tool", "from-elf", str(X86), "Cal_Gain"])
+        assert main(["tool", "from-elf", str(X86), "Cal_Gain"]) == EXIT_USAGE
+        said = capsys.readouterr().err
+        assert said.startswith("ddd: unexpected ModuleNotFoundError: ")
+        assert "pip install" not in said
 
     def test_the_toolbox_without_a_tool_is_a_usage_error_listing_the_tools(
         self, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
@@ -6973,3 +6979,60 @@ class TestAnA2lWrittenWithNoAddressSource:
         assert head[1] == "ASAP2_VERSION 1 61", "the version is no longer on the second line"
         assert (head[2] == NO_ADDRESS_SOURCE) is said
         assert NO_ADDRESS_SOURCE not in head[3:]
+
+
+class TestTheLastResort:
+    """What no clause of ``main`` names ends the run at 2, in one line naming its type, rather
+    than in a traceback under the code 1 that reads as findings. A traceback is the business of
+    ``DDD_TRACEBACK`` alone, which a later change adds. Each clause before it keeps its own."""
+
+    @staticmethod
+    def _raising(monkeypatch: pytest.MonkeyPatch, error: BaseException) -> None:
+        def handler(args: argparse.Namespace) -> int:
+            raise error
+
+        monkeypatch.setattr("ddd.cli._command_schema", handler)
+
+    def test_an_unexpected_exception_is_one_line_and_a_usage_error(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        self._raising(monkeypatch, RuntimeError("boom"))
+        assert main(["schema", "component"]) == EXIT_USAGE
+        captured = capsys.readouterr()
+        assert captured.err == "ddd: unexpected RuntimeError: boom\n"
+        assert captured.out == ""
+
+    def test_the_type_is_named_when_the_message_is_empty(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        self._raising(monkeypatch, KeyError())
+        assert main(["schema", "component"]) == EXIT_USAGE
+        assert capsys.readouterr().err == "ddd: unexpected KeyError\n"
+
+    def test_an_interrupt_is_still_130(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        self._raising(monkeypatch, KeyboardInterrupt())
+        assert main(["schema", "component"]) == EXIT_INTERRUPTED
+        assert capsys.readouterr().err == "ddd: interrupted\n"
+
+    def test_a_closed_pipe_is_still_the_verdict_and_silent(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        self._raising(monkeypatch, BrokenPipeError(errno.EPIPE, "Broken pipe"))
+        assert main(["schema", "component"]) == EXIT_OK
+        assert capsys.readouterr().err == ""
+
+    @pytest.mark.parametrize("error", [OSError("no disk"), ValueError("no value")])
+    def test_an_os_error_and_a_value_error_keep_their_wording(
+        self, error: Exception, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        self._raising(monkeypatch, error)
+        assert main(["schema", "component"]) == EXIT_USAGE
+        assert capsys.readouterr().err == f"ddd: {error}\n"
+
+    def test_an_exit_is_not_swallowed(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._raising(monkeypatch, SystemExit(7))
+        with pytest.raises(SystemExit) as raised:
+            main(["schema", "component"])
+        assert raised.value.code == 7

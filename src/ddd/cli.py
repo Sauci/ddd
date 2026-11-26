@@ -276,6 +276,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         except (OSError, ValueError) as error:
             print(f"ddd: {error}", file=sys.stderr)
             return EXIT_USAGE
+        except Exception as error:
+            # Last, so that every clause above keeps what it names: the interrupt, the closed
+            # pipe, which is `OSError` and must end in its verdict rather than here, and the
+            # errors a command reports in words. What is left is one nobody expected: a defect
+            # of ddd or of what it ran, and not a finding of the project, which is what the
+            # exit code 1 of a traceback reads as. One line naming the type, so that a caller
+            # can tell it from a usage error, and no traceback.
+            detail = str(error)
+            print(
+                f"ddd: unexpected {type(error).__name__}" + (f": {detail}" if detail else ""),
+                file=sys.stderr,
+            )
+            return EXIT_USAGE
 
 
 def _plugin_artefact(arguments: Sequence[str]) -> str | None:

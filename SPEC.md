@@ -3253,9 +3253,9 @@ directories and offer to restart it: everything a reader sees is the tool's answ
 server asks the client itself for what it needs to hear of the files, so that an editor DDD
 ships nothing for is not at a disadvantage. It **shall** launch the server only in a workspace
 the reader has trusted, where the editor has such a notion: the server runs the plugins of
-every project it analyses, unless it was started with `--no-plugins`, which runs none
-([section 3.11](#311-plugins)): so opening a repository is running its python, and that is a
-decision the reader makes, not the extension.
+every project it analyses ([section 3.11](#311-plugins)), so opening a repository is running
+its python, and that is a decision the reader makes, not the extension. A server started with
+`--no-plugins` runs none of them.
 
 ### 7.3 Toolbox
 

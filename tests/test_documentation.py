@@ -12262,9 +12262,10 @@ class TestARunThatRunsNoPlugin:
                 "makes - a build's project, a description read to find out whether it includes an "
                 "opened file, the opened file itself - and publishes each entry naming one as "
                 "`plugin-skipped` ([section 3.11](#311-plugins)).",
-                "the server runs the plugins of every project it analyses, unless it was started "
-                "with `--no-plugins`, which runs none ([section 3.11](#311-plugins)): so opening a "
-                "repository is running its python,",
+                "the server runs the plugins of every project it analyses "
+                "([section 3.11](#311-plugins)), so opening a repository is running its python, "
+                "and that is a decision the reader makes, not the extension. A server started with "
+                "`--no-plugins` runs none of them.",
                 "which beside a project candidate is a usage error, because the project names its "
                 "own, and so is it beside `--no-plugins`, which runs none on either side;",
                 "The one exception is `plugin-skipped`, which a run given `--no-plugins` files for "
@@ -12327,12 +12328,19 @@ class TestARunThatRunsNoPlugin:
         ),
     }
 
+    STALE: ClassVar[dict[str, tuple[str, ...]]] = {
+        "SPEC.md": ("unless it was started with `--no-plugins`, which runs none",),
+    }
+    """What a page said of the switch before it said it as above."""
+
     @pytest.mark.parametrize("page", sorted(SAID))
     def test_the_page_says_what_a_run_given_no_plugins_does(self, page: str) -> None:
         text, phrases = self.SAID[page]
         said = flattened(text)
         for phrase in phrases:
             assert phrase in said, f"{page} no longer says: {phrase!r}"
+        for phrase in self.STALE.get(page, ()):
+            assert phrase not in said, f"{page} still says: {phrase!r}"
 
     def test_the_commands_that_take_it_are_those_the_pages_name(self) -> None:
         """Decision M7: ``ddd generate``, ``ddd artefacts`` and ``ddd gui`` run what the project

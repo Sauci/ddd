@@ -2585,8 +2585,8 @@ refused rather than reporting success. Every artefact also takes `--dictionary F
 relative to the working directory, which writes the resolved dictionary - the text `ddd dump`
 prints - in the same write as the artefacts, all of them or none; it counts as something to
 write, and a path an artefact of the run is written to is refused, as is one the run read - a
-description or a plugin, the image, the address map, the a2l module fragment or any file under
-the template directory - a dry run refusing it as a run does;
+description or a plugin, the image, the address map, the a2l module fragment or any template under
+the template directory, at any depth - a dry run refusing it as a run does;
 [section 5](#5-generated-artefacts)); listing the resolved data objects (`ddd list`, as a
 table whose rows are sorted by variable name, stating the physical reading of a stated
 initial value beside the raw one, or, in JSON, as an object carrying `project`,

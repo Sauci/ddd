@@ -2217,17 +2217,23 @@ def _files_the_run_read(
     """Every file ``generate`` read, which nothing it writes may be.
 
     The descriptions and the plugins - what the project is made of - and with them what the
-    artefacts are made from: the image, the address map, the a2l module fragment and every file
-    under the template directory, a helper and whatever else sits there included, since a
-    template reaches any of them by name. Resolved as the sources are, to be compared with a
-    path resolved the same way.
+    artefacts are made from: the image, the address map, the a2l module fragment and every
+    template under the template directory, at any depth, a helper included, since a template
+    reaches any of them by name. Nothing else there is read: a run that writes into its own
+    template directory finds its earlier output beside the templates, and writes it again.
+    Resolved as the sources are, to be compared with a path resolved the same way.
     """
+    from ddd.backends.c.backend import TEMPLATE_SUFFIX
     from ddd.loading import resolve_path
 
     reads = set(resolved.sources)
     reads.update(resolve_path(path) for path in (image, address_map, fragment) if path is not None)
     if template_dir is not None:
-        reads.update(resolve_path(path) for path in template_dir.rglob("*") if path.is_file())
+        reads.update(
+            resolve_path(path)
+            for path in template_dir.rglob(f"*{TEMPLATE_SUFFIX}")
+            if path.is_file()
+        )
     return frozenset(reads)
 
 

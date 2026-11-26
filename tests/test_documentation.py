@@ -12077,8 +12077,8 @@ class TestWhatTheRunReadIsNeverWrittenOver:
             (
                 "a path an artefact of the run is written to is refused, as is one the run read "
                 "- a description or a plugin, the image, the address map, the a2l module "
-                "fragment or any file under the template directory - a dry run refusing it as "
-                "a run does",
+                "fragment or any template under the template directory, at any depth - a dry run "
+                "refusing it as a run does",
                 "`ddd generate --dictionary` and an artefact of `ddd generate` each refuse one, "
                 "as `ddd build-info -o` refuses the description it names, and `ddd schema -o` "
                 "and `ddd build-info -o` refuse any path named `*.ddd.json`",
@@ -12089,9 +12089,9 @@ class TestWhatTheRunReadIsNeverWrittenOver:
             (
                 "``generate --dictionary`` and an artefact of ``generate`` each refuse one, "
                 "naming it, since nothing DDD writes is ever a file it read: a description or a "
-                "plugin, the image, the address map, the a2l module fragment, any file under "
-                "``-t``, on a dry run as well; ``build-info -o`` refuses the description it "
-                "names, and it and ``schema -o`` any path named ``*.ddd.json``",
+                "plugin, the image, the address map, the a2l module fragment, any template under "
+                "``-t`` at any depth, on a dry run as well; ``build-info -o`` refuses the "
+                "description it names, and it and ``schema -o`` any path named ``*.ddd.json``",
             ),
         ),
     }

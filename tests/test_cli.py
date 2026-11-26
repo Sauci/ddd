@@ -4141,13 +4141,11 @@ class TestAnArtefactThatIsAFileTheRunRead:
         arguments += ["--a2l-module-fragment", str(fragment), "--dictionary", str(fragment)]
         self.refused(arguments, fragment, capsys)
 
-    @pytest.mark.parametrize(
-        "name", ["a.c.jinja2", "_helper.jinja2", "notes.txt", "deeper/_helper.jinja2"]
-    )
-    def test_a_dictionary_over_a_file_of_the_template_directory_is_refused(
+    @pytest.mark.parametrize("name", ["a.c.jinja2", "_helper.jinja2", "deeper/_helper.jinja2"])
+    def test_a_dictionary_over_a_template_is_refused(
         self, name: str, tree: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """A template, a helper it includes, or whatever else sits in the directory."""
+        """A template, or a helper it includes, at any depth: a template is read by name."""
         root = self.made(tree)
         (tree / "tpl").mkdir()
         (tree / "tpl" / "a.c.jinja2").write_text("{# one #}\n", encoding="utf-8")
@@ -4183,6 +4181,34 @@ class TestAnArtefactThatIsAFileTheRunRead:
         arguments = ["generate", "c", str(root), "-o", str(tree), "-t", str(tree / "tpl")]
         arguments += ["--dry-run"] if dry_run else []
         self.refused(arguments, read, capsys, self.ARTEFACT_ADVICE)
+
+    @pytest.mark.parametrize("deeper", [False, True], ids=["beside", "below"])
+    def test_a_run_into_its_own_template_directory_writes_again(
+        self, deeper: bool, tree: Path
+    ) -> None:
+        """What a run wrote under ``-t`` is not a template: the identical run after it writes
+        as the first did, whether the output is the template directory or a directory in it."""
+        root = self.made(tree)
+        templates = tree / "tpl"
+        templates.mkdir()
+        (templates / "a.c.jinja2").write_text("{# one #}\n", encoding="utf-8")
+        output = templates / "gen" if deeper else templates
+        arguments = ["generate", "c", str(root), "-o", str(output), "-t", str(templates)]
+        assert main(arguments) == EXIT_OK
+        assert main(arguments) == EXIT_OK
+        assert (output / "a.c").exists()
+
+    def test_a_dictionary_over_a_file_of_the_template_directory_that_is_no_template_is_written(
+        self, tree: Path
+    ) -> None:
+        root = self.made(tree)
+        (tree / "tpl").mkdir()
+        (tree / "tpl" / "a.c.jinja2").write_text("{# one #}\n", encoding="utf-8")
+        target = tree / "tpl" / "notes.txt"
+        target.write_text("mine\n", encoding="utf-8")
+        arguments = ["generate", "c", str(root), "-o", str(tree / "gen"), "-t", str(tree / "tpl")]
+        assert main([*arguments, "--dictionary", str(target)]) == EXIT_OK
+        assert target.read_text(encoding="utf-8").startswith("{")
 
     def test_a_dictionary_over_a_file_the_run_did_not_read_is_written(self, tree: Path) -> None:
         """The control: the image of a run that writes no a2l is never read."""

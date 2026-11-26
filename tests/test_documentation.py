@@ -12597,3 +12597,38 @@ class TestWhatAClosedPipeEndsARunAt:
         for phrase in self.SAID[page]:
             assert phrase in said, f"{page} no longer says: {phrase!r}"
         assert self.STALE[page] not in said, f"{page} still says: {self.STALE[page]!r}"
+
+
+class TestWhatAPluginHandsBackIsStated:
+    """What the loader and the hooks refuse of what a plugin hands back is said where a plugin's
+    author reads it: the specification, the plugin page and, for the code the run ends at, the
+    command line page."""
+
+    STATED: ClassVar[dict[str, tuple[str, ...]]] = {
+        "SPEC.md": (
+            "a name ending in a newline matching none",
+            "whatever it raises but the user's own interrupt",
+            "a `.py` path the system refuses to resolve, one holding a NUL for instance",
+            "The bag holds a finding to its shape where it is added",
+            "A `check` or `compare` hook returns nothing",
+            "ends the run at 2 with one line, `ddd: unexpected` and the type of the",
+        ),
+        "docs/plugins.rst": (
+            "A finding is held to its shape where the bag takes it",
+            "A ``check`` or ``compare`` hook returns nothing",
+            "a module-level ``__getattr__`` that raises",
+            "is ``plugin-not-found``, as a path to nothing is",
+            "a name ending in a newline is refused",
+            "one line, ``ddd: unexpected`` and the type",
+        ),
+        "docs/command_line_interface.rst": (
+            "raised what no other clause names ends at ``2`` too, with one line, "
+            "``ddd: unexpected``",
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(STATED))
+    def test_the_page_says_it(self, page: str) -> None:
+        said = flattened(SPEC if page == "SPEC.md" else PAGES[page])
+        for phrase in self.STATED[page]:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"

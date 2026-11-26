@@ -1212,12 +1212,15 @@ one on the project, and contributing checks, comparison rules and an artefact of
   restarted, which `ddd gui` says meanwhile with `plugin-changed` on the file of a plugin
   named by its path. A module a plugin imports is not watched, and a plugin named as a
   module is not compared, so an edit of either takes the restart unsaid. A module
-  that cannot be found is `plugin-not-found`; one that raises or exits the interpreter
-  during import, exposes no `PLUGIN`, exposes a malformed one, or claims a name another
-  plugin already has is `plugin-invalid`. A plugin's `name` matches `[a-z][a-z0-9_]*` and
+  that cannot be found is `plugin-not-found`, and so is a `.py` path the system refuses to
+  resolve, one holding a NUL for instance; one that raises, or exits the interpreter, during
+  import, whatever it raises but the user's own interrupt, or whose `PLUGIN` cannot be read
+  because the module raises when asked for it, exposes no `PLUGIN`, exposes a malformed one, or
+  claims a name another plugin already has is `plugin-invalid`. A plugin's `name` matches
+  `[a-z][a-z0-9_]*` as a whole, a name ending in a newline matching none, and
   is none of `c`, `a2l` and `all`, which `ddd generate` already takes: the two built-in
   artefacts and `all`; each check identifier it registers is `<name>/<check>` with
-  `<check>` matching `[a-z][a-z0-9]*(-[a-z0-9]+)*`.
+  `<check>` matching `[a-z][a-z0-9]*(-[a-z0-9]+)*`, as a whole.
   Malformed means: no `PLUGIN`, a `PLUGIN` that is not a `Plugin`, a name outside the
   grammar or reserved, a check identifier outside its grammar, or a check registered twice.
   `plugin-not-found` and `plugin-invalid` have a fixed severity, because a project cannot be
@@ -1260,7 +1263,16 @@ is a usage error before anything is written. A hook reports through the bag exac
 built-in check does, and a hook that raises, or exits the interpreter rather than
 returning, is a usage error naming the plugin and the hook; the language server, which has
 no usage error to give and does not stop, reports the same failure as a `plugin-invalid`
-finding at the project file ([section 7.2](#72-editor-integration)). Every hook and every
+finding at the project file ([section 7.2](#72-editor-integration)). The bag holds a finding
+to its shape where it is added - a `check` and a `message` that are strings, a location that
+is a `Location` or `None`, a severity that is a `Severity` or `None`, notes that are pairs of a
+string and such a location - and refuses one that is none with a `TypeError`, which is raised
+inside the hook that filed it and so is that hook's failure, reported as above; the findings
+gathered before it are still reported. A `check` or `compare` hook returns nothing: one that
+returns anything, its findings, a generator, a coroutine of an `async` hook, ran none of what
+it was written to run, and is refused as a failure of the hook naming what it returned. The
+`name` and the `generate` of the backend a hook returns are read once, as plugin code: one that
+raises is a failure of the plugin's `backend` hook too. Every hook and every
 backend a hook returns runs with standard output bound to standard error, because standard
 output is a document wherever DDD writes one there - a `--format json` report, the
 dictionary `ddd dump` prints, the protocol wire of the language server - and a plugin is
@@ -1433,9 +1445,9 @@ Errors:
 - `duplicate-raster`: a measurement raster is declared more than once, within one file or
   across files ([section 3.10](#310-measurement-rasters)).
 - `plugin-not-found`: a project names a plugin ([section 3.11](#311-plugins)) that cannot be
-  found. Fixed severity, because a project cannot be interpreted without the plugins it names.
-- `plugin-invalid`: a plugin module raises or exits the interpreter on import, exposes no
-  `PLUGIN`, exposes one that is malformed, or claims a name another plugin already has, and, in
+  found, or by a path the system refuses to resolve. Fixed severity, because a project cannot be interpreted without the plugins it names.
+- `plugin-invalid`: a plugin module raises, whatever it raises but an interrupt, or exits the
+  interpreter on import, or raises when its `PLUGIN` is read, exposes no `PLUGIN`, exposes one that is malformed, or claims a name another plugin already has, and, in
   the language server, and beside the listing of `ddd sources` and `ddd artefacts`, a hook or a
   model of the plugin's own that raises or exits while a file is checked or while a project is
   read to find out whether it contains an open file, or while a block is validated
@@ -2743,7 +2755,9 @@ rather than behind them. The exit code distinguishes clean runs (0),
 findings (1), usage
 errors (2) and a run stopped by the user (130, the code a shell reports for a command killed
 by SIGINT: an interrupt ends the run with `ddd: interrupted` on stderr rather than with a
-traceback, and is not a finding). A closed pipe is not this run's error, and it changes no
+traceback, and is not a finding). A failure no command reports in words - an exception nothing
+above names - ends the run at 2 with one line, `ddd: unexpected` and the type of the
+exception, and no traceback, and never at 1, which means findings. A closed pipe is not this run's error, and it changes no
 verdict either: a reader of the tool's standard output that stops reading - `ddd schema
 component | head -1` - or is gone before the first line ends the run in silence at the code
 it would have ended at had the reader read on, so that a check of a project with errors

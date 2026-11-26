@@ -206,6 +206,19 @@ generated file can make. The example plugin's table includes ``ddd_globals.h``, 
 the shipped c templates write; templates of another shape spell that declaration differently,
 and the rule is the same.
 
+A finding is held to its shape where the bag takes it: ``check`` and ``message`` are strings,
+``location`` is a ``Location`` or ``None`` (a ``Path`` is not one), ``severity`` is a
+``Severity`` or ``None`` (the string ``"warning"`` is not one), and ``notes`` are pairs of a
+string and such a location. A call that gets one wrong raises a ``TypeError`` naming the
+argument, inside the hook, so that it is reported as the hook's failure below, rather than
+ending the run at the report with the findings lost.
+
+A ``check`` or ``compare`` hook returns nothing. One that hands its findings back, one that
+yields and one declared ``async`` run none of what they were written to run - calling any of
+them only makes the list, the generator or the coroutine - so that a rule that never applied
+would read as a rule that passed; each is refused, as a failure of the hook that names what it
+returned. Report with ``context.bag.add``, in a plain ``def``.
+
 A hook that raises is a defect of the plugin, not a finding about the project: the exception
 is reported as a usage error naming the plugin and the hook, with exit code 2, after the
 findings the run had already gathered. A hook, or a validator on a plugin's own model,
@@ -213,7 +226,15 @@ returns; one that calls ``sys.exit`` is reported the same way, naming the code i
 rather than ending the run with that code and printing nothing. The language server, which has
 no usage error to give, reports either of them as a ``plugin-invalid`` finding and keeps
 serving the workspace; and a module body that exits while it is imported is ``plugin-invalid``
-exactly as one that raises there.
+exactly as one that raises there, whatever it raises but ``KeyboardInterrupt``, which still
+interrupts: an ``asyncio.CancelledError`` or an exception class of the plugin's own that
+derives from ``BaseException``, and a module-level ``__getattr__`` that raises when ``PLUGIN``
+is asked for. A plugin named by a ``.py`` path the system refuses to resolve - one holding a
+NUL - is ``plugin-not-found``, as a path to nothing is. A plugin's name, and each check it
+registers, must match its grammar whole: a name ending in a newline is refused. The
+``name`` and the ``generate`` of the backend a ``backend`` hook returns are read once, as
+plugin code, and one that raises is a failure of that hook. What no part of this names ends
+``ddd`` at exit code ``2`` with one line, ``ddd: unexpected`` and the type, and never at ``1``.
 
 A hook, and the backend a ``backend`` hook returns, runs with ``sys.stdout`` bound to
 ``sys.stderr``, and so does everything else of the plugin's that DDD runs: the module while it

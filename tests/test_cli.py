@@ -4077,6 +4077,109 @@ class TestAnOutputThatIsASource:
         assert json.loads(target.read_text(encoding="utf-8"))["format"] == DICTIONARY_FORMAT
 
 
+class TestAnArtefactThatIsAFileTheRunRead:
+    """``--dictionary`` and the artefacts are held to the files the run read beside its sources.
+
+    An image, an address map, an a2l module fragment and every file of the template directory
+    are read as much as a description is, and a path typed for one of them - or a template
+    named for a description - replaced it with the dictionary or with a render, the run
+    reporting `wrote ...` and exiting 0; a dry run said it would. Each is refused naming the
+    file, before anything is written.
+    """
+
+    FILES: ClassVar[dict[str, Any]] = {
+        "project.ddd.json": project("P", "A.ddd.json"),
+        "A.ddd.json": component("A", declare("local", "X")),
+    }
+
+    def made(self, tree: Path) -> Path:
+        write_tree(tree, self.FILES)
+        return tree / "project.ddd.json"
+
+    def refused(self, arguments: list[str], read: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        before = read.read_bytes()
+        assert main(arguments) == EXIT_USAGE
+        assert f"would write over '{read.as_posix()}', which this run reads" in (
+            capsys.readouterr().err
+        )
+        assert read.read_bytes() == before
+
+    def test_a_dictionary_over_the_image_is_refused(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        root = self.made(tree)
+        image = tree / "fw.elf"
+        image.write_bytes(X86.read_bytes())
+        arguments = ["generate", "a2l", str(root), "-o", str(tree / "gen"), "--image", str(image)]
+        self.refused([*arguments, "--dictionary", str(image), "--force"], image, capsys)
+        assert not (tree / "gen").exists()
+
+    def test_a_dictionary_over_the_address_map_is_refused(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        root = self.made(tree)
+        addresses = tree / "m.json"
+        addresses.write_text('{"X": "0x20001000"}', encoding="utf-8")
+        arguments = ["generate", "a2l", str(root), "-o", str(tree / "gen")]
+        arguments += ["--address-map", str(addresses), "--dictionary", str(addresses)]
+        self.refused(arguments, addresses, capsys)
+
+    def test_a_dictionary_over_the_module_fragment_is_refused(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        root = self.made(tree)
+        fragment = tree / "module.a2l"
+        fragment.write_text(TestTheA2lModuleFragment.FRAGMENT, encoding="utf-8")
+        arguments = ["generate", "a2l", str(root), "-o", str(tree / "gen")]
+        arguments += ["--a2l-module-fragment", str(fragment), "--dictionary", str(fragment)]
+        self.refused(arguments, fragment, capsys)
+
+    @pytest.mark.parametrize("name", ["a.c.jinja2", "_helper.jinja2", "notes.txt"])
+    def test_a_dictionary_over_a_file_of_the_template_directory_is_refused(
+        self, name: str, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A template, a helper it includes, or whatever else sits in the directory."""
+        root = self.made(tree)
+        (tree / "tpl").mkdir()
+        (tree / "tpl" / "a.c.jinja2").write_text("{# one #}\n", encoding="utf-8")
+        read = tree / "tpl" / name
+        read.write_text(read.read_text(encoding="utf-8") if read.exists() else "x\n", "utf-8")
+        arguments = ["generate", "c", str(root), "-o", str(tree / "gen"), "-t", str(tree / "tpl")]
+        self.refused([*arguments, "--dictionary", str(read)], read, capsys)
+        assert not (tree / "gen").exists()
+
+    def test_the_a2l_over_the_address_map_it_read_is_refused(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        root = self.made(tree)
+        addresses = tree / "P.a2l"
+        addresses.write_text('{"X": "0x20001000"}', encoding="utf-8")
+        arguments = ["generate", "a2l", str(root), "-o", str(tree)]
+        self.refused([*arguments, "--address-map", str(addresses)], addresses, capsys)
+
+    @pytest.mark.parametrize("dry_run", [False, True], ids=["written", "dry-run"])
+    @pytest.mark.parametrize("name", ["project.ddd.json", "{component}.ddd.json"])
+    def test_a_template_naming_a_description_is_refused(
+        self, name: str, dry_run: bool, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The render of ``project.ddd.json.jinja2`` is the root, and that of
+        ``{component}.ddd.json.jinja2`` a component; a dry run must not say it would."""
+        root = self.made(tree)
+        (tree / "tpl").mkdir()
+        (tree / "tpl" / f"{name}.jinja2").write_text("{}\n", encoding="utf-8")
+        read = root if name == "project.ddd.json" else tree / "A.ddd.json"
+        arguments = ["generate", "c", str(root), "-o", str(tree), "-t", str(tree / "tpl")]
+        self.refused([*arguments, *(["--dry-run"] if dry_run else [])], read, capsys)
+
+    def test_a_dictionary_over_a_file_the_run_did_not_read_is_written(self, tree: Path) -> None:
+        """The control: the image of a run that writes no a2l is never read."""
+        root = self.made(tree)
+        target = tree / "fw.json"
+        arguments = ["generate", "a2l", str(root), "-o", str(tree / "gen")]
+        assert main([*arguments, "--dictionary", str(target)]) == EXIT_OK
+        assert target.exists()
+
+
 def test_assigning_ids_writes_one_per_producing_declaration(tree, capsys):
     write_tree(
         tree,

@@ -1479,9 +1479,25 @@ def _command_generate(args: argparse.Namespace) -> int:
         # of a `--without a2l`, the c of a post-link `generate a2l`, a plugin the project
         # stopped naming - keep theirs, because this run says nothing about them.
         produced = {backend.name for backend in backends}
+        # Weighed on a dry run as well, which would otherwise say it would write over a file
+        # the run read: the guard is on what the run names, not on what it goes on to do.
+        reads = _files_the_run_read(
+            resolved,
+            image_path,
+            args.address_map if wants_addresses else None,
+            fragment_path,
+            args.template_dir if args.render_c else None,
+        )
+        for file in files:
+            _refuse_a_source(
+                file.path,
+                f"the {file.artefact} artefact",
+                *reads,
+                advice="give -o a directory of its own",
+            )
         if args.dictionary is not None:
             _refuse_a_directory(args.dictionary, "--dictionary")
-            _refuse_a_source(args.dictionary, "--dictionary", *resolved.sources)
+            _refuse_a_source(args.dictionary, "--dictionary", *reads)
             files.append(_dictionary_file(dictionary, args.dictionary, files, args.output_dir))
             produced.add(DICTIONARY_ARTEFACT)
         try:
@@ -2185,7 +2201,33 @@ def _refuse_a_directory(path: Path, option: str) -> None:
         raise ValueError(msg)
 
 
-def _refuse_a_source(path: Path, option: str, *sources: Path) -> None:
+def _files_the_run_read(
+    resolved: Resolved,
+    image: Path | None,
+    address_map: Path | None,
+    fragment: Path | None,
+    template_dir: Path | None,
+) -> frozenset[Path]:
+    """Every file ``generate`` read, which nothing it writes may be.
+
+    The descriptions and the plugins - what the project is made of - and with them what the
+    artefacts are made from: the image, the address map, the a2l module fragment and every file
+    under the template directory, a helper and whatever else sits there included, since a
+    template reaches any of them by name. Resolved as the sources are, to be compared with a
+    path resolved the same way.
+    """
+    from ddd.loading import resolve_path
+
+    reads = set(resolved.sources)
+    reads.update(resolve_path(path) for path in (image, address_map, fragment) if path is not None)
+    if template_dir is not None:
+        reads.update(resolve_path(path) for path in template_dir.rglob("*") if path.is_file())
+    return frozenset(reads)
+
+
+def _refuse_a_source(
+    path: Path, option: str, *sources: Path, advice: str = "give it a file of its own"
+) -> None:
     """Refuse an output path that names a file this run read; a usage error naming it.
 
     ``-o``, ``--renames`` and ``--dictionary`` each name a file on the command line, and the
@@ -2201,10 +2243,7 @@ def _refuse_a_source(path: Path, option: str, *sources: Path) -> None:
     from ddd.loading import resolve_path
 
     if resolve_path(path) in set(sources):
-        msg = (
-            f"{option} would write over '{path.as_posix()}', which this run reads; "
-            f"give it a file of its own"
-        )
+        msg = f"{option} would write over '{path.as_posix()}', which this run reads; {advice}"
         raise ValueError(msg)
 
 

@@ -207,7 +207,12 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     check = subparsers.add_parser(
-        "check", help="verify the consistency of the interfaces of a project"
+        "check",
+        help="verify the consistency of the interfaces of a project",
+        description=(
+            "Verifies the consistency of the interfaces of a project. A project's plugins "
+            "run: every module the project names is imported, unless --no-plugins is given."
+        ),
     )
     _add_common_arguments(check)
     check.add_argument(

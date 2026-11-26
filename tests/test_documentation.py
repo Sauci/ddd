@@ -12436,3 +12436,40 @@ class TestARunThatRunsNoPlugin:
             f"{self.HELP}; a plugin named by a dotted module name is then left out of the "
             "listing, since locating its file imports the packages above it"
         )
+
+
+class TestWhereAReaderMeetsThatAProjectsPluginsRun:
+    """12:M6. Naming a plugin runs its module, and a reader meets that where the README
+    describes a plugin and its editor line, and where ``ddd check --help`` is read: with the
+    switch that keeps it from happening."""
+
+    README_SAID: ClassVar[tuple[str, ...]] = (
+        "Naming a plugin runs its module: every command over a project imports each plugin the "
+        "project names, as `ddd gui` and `ddd lsp` do, so a repository's plugins are its python "
+        "running on your machine. `--no-plugins` on `check`, `list`, `dump`, `sources`, "
+        "`compare` and `lsp` imports none of them and reports each as `plugin-skipped`.",
+        "Editors that launch a server themselves - Neovim, Helix, Emacs - need only that "
+        "command, which runs the plugins a project names: for a repository not yet trusted, "
+        "start it as `ddd lsp --no-plugins`.",
+    )
+
+    def test_the_readme_says_that_a_projects_plugins_run(self) -> None:
+        said = flattened(README)
+        for phrase in self.README_SAID:
+            assert phrase in said, f"the README no longer says: {phrase!r}"
+
+    def test_the_readme_no_longer_leaves_the_editor_line_at_the_command_alone(self) -> None:
+        assert "need only that command. VS Code" not in flattened(README)
+
+    def test_the_description_of_check_says_that_a_projects_plugins_run(self) -> None:
+        commands = next(
+            action
+            for action in _build_parser()._actions
+            if isinstance(action, argparse._SubParsersAction)
+        )
+        description = commands.choices["check"].description
+        assert description == (
+            "Verifies the consistency of the interfaces of a project. A project's plugins run: "
+            "every module the project names is imported, unless --no-plugins is given."
+        )
+

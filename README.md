@@ -152,7 +152,9 @@ project resolved, which is what `ddd lsp` brings into the editor:
 ddd lsp                      # speaks the Language Server Protocol on stdin and stdout
 ```
 
-Editors that launch a server themselves - Neovim, Helix, Emacs - need only that command.
+Editors that launch a server themselves - Neovim, Helix, Emacs - need only that command,
+which runs the plugins a project names: for a repository not yet trusted, start it as
+`ddd lsp --no-plugins`.
 VS Code cannot start one without an extension, so there is one in
 [editors/vscode](https://github.com/Sauci/ddd/tree/master/editors/vscode); it is a launcher and nothing more, which is why everything
 below works the same either way, in any editor that watches the files the server asks it to.
@@ -552,6 +554,11 @@ comparison rules and an artefact (`ddd generate layout`). DDD carries the block 
 dictionary and never interprets it. The api is documented at
 <https://sauci.github.io/ddd/latest/plugins.html>; [examples/plugins/ddd_layout.py](https://github.com/Sauci/ddd/blob/master/examples/plugins/ddd_layout.py)
 is a worked example and [examples/layout](https://github.com/Sauci/ddd/tree/master/examples/layout) a project that names it.
+
+Naming a plugin runs its module: every command over a project imports each plugin the
+project names, as `ddd gui` and `ddd lsp` do, so a repository's plugins are its python
+running on your machine.  `--no-plugins` on `check`, `list`, `dump`, `sources`, `compare`
+and `lsp` imports none of them and reports each as `plugin-skipped`.
 
 ## Consistency checks
 

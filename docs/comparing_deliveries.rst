@@ -864,17 +864,18 @@ Its errors are another matter. A baseline whose own components disagree has no d
 can be trusted, so every error it produces is carried over under the ``in the baseline:``
 prefix, at the severity its own analysis gave it, and the run fails on them: the comparison is
 made, the errors are reported beside it and the verdict is a refusal, whether the candidate is a
-dump or a description. Beside them is carried the ``plugin-skipped`` of a run given
-``--no-plugins``, prefixed alike but graded as the run grades its own findings, since that the
-baseline's plugin did not run is the run's doing.
+dump or a description.
 A candidate given as a description is analysed all the same, and all its
 findings and its renames are reported - a broken baseline withholds nothing of the candidate's,
 as ``ddd check --baseline`` never withheld it. A baseline that could not be read at all, as in the
 missing-file example above, is carried over in the same way, but has no dictionary to compare
 with: no verdict is printed and no renames file is written, while the candidate's own findings are
 still reported. A promotion of this run does not make one of them an error, and a ``-W`` that
-relaxes the check relaxes it. A baseline that is to be compared against has to be one that checks
-clean of errors on its own, under the project's own policy.
+relaxes the check relaxes it. The one exception is the ``plugin-skipped`` of a run given
+``--no-plugins``, carried and prefixed alike but graded as the run grades its own findings,
+since that the baseline's plugin did not run is the run's doing. A baseline that is to be
+compared against has to be one that checks clean of errors on its own, under the project's own
+policy.
 
 A dictionary dumped from a project that failed holds what the analysis left it: ``ddd dump`` exits
 1 on an input nobody produces and writes the file. Given as the candidate, an object that lost its

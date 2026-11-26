@@ -681,7 +681,7 @@ for the baseline - and graded, because the changes are not equally bad:
 | warning | `changed-condition` | the preprocessor condition changed; one added or replaced on an object a component reads, or on an output of a component read alone, is narrowed-condition instead |
 | warning | `changed-a2l` | the a2l entry changed |
 | warning | `project-mismatch` | the two sides name different projects, so the baseline may be the wrong file |
-| warning | `missing-plugin` | a compared dictionary records a plugin this run has not loaded, so that plugin's rules did not run |
+| warning | `missing-plugin` | a compared dictionary records a plugin this run has not loaded, so that plugin's comparison rules did not run; none is filed while the candidate's read skipped a plugin |
 | info | `added-object` | the candidate declares something new |
 | info | `added-constant` | the candidate declares a constant the baseline did not |
 | info | `narrowed-read-limits` | the limits of a measurement a component reads, or of an output measurement of a component read alone, got tighter: a reader still gets values inside the range it was written for |

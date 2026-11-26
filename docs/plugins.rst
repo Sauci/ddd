@@ -164,8 +164,10 @@ steps would take the value with it. The blocks are not offered as a channel betw
 project description names its own, and an archived dump has ``ddd compare --plugin``. A
 compared dictionary that records a plugin that is not among the candidate's is
 ``missing-plugin``, a warning saying that plugin's rules did not run, so that a comparison
-can never silently skip one; it is reported at the file that records the plugin. A plugin
-only the baseline names is one the run did load - for the baseline's own analysis - and
+can never silently skip one, save while the candidate's read skipped a plugin
+(``--no-plugins``), which may be that one; it is reported at the file that records the
+plugin. Unless ``--no-plugins`` skipped it, a plugin only the baseline names is one the run
+did load - for the baseline's own analysis - and
 whose comparison rules still did not run, which is why the warning says what is not in play
 rather than what was never loaded, and why a ``-W`` naming one of its checks is accepted.
 

@@ -334,7 +334,8 @@ CHECKS: Final[dict[str, CheckInfo]] = {
                comparison=True),
         _check("missing-plugin", Severity.WARNING,
                "a compared dictionary records a plugin this run has not loaded, so that "
-               "plugin's comparison rules did not run",
+               "plugin's comparison rules did not run; none is filed while the candidate's "
+               "read skipped a plugin",
                comparison=True),
         _check("added-object", Severity.INFO, "the candidate declares an object the baseline "
                "did not",

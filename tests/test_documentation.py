@@ -12309,9 +12309,9 @@ class TestARunThatRunsNoPlugin:
                 "entry naming one is reported as ``plugin-skipped``, a baseline's under the ``in "
                 "the baseline:`` prefix, and ``ddd compare`` refuses ``--plugin`` beside it, "
                 "before anything is read.",
-                "Beside them is carried the ``plugin-skipped`` of a run given ``--no-plugins``, "
-                "prefixed alike but graded as the run grades its own findings, since that the "
-                "baseline's plugin did not run is the run's doing.",
+                "the ``plugin-skipped`` of a run given ``--no-plugins``, carried and prefixed "
+                "alike but graded as the run grades its own findings, since that the baseline's "
+                "plugin did not run is the run's doing.",
             ),
         ),
         "docs/command_line_interface.rst": (
@@ -12328,10 +12328,11 @@ class TestARunThatRunsNoPlugin:
                 "held back as ``check --standalone`` holds them. ``--no-plugins`` runs none of the "
                 "plugins the project names, as it does for ``check``.",
                 "``--standalone`` dumps a component on its own, as it does for ``list``, and "
-                "``--no-plugins`` runs none of its plugins.",
+                "``--no-plugins`` runs none of the plugins the project names.",
                 "It reports its findings without letting them change its exit code. With "
-                "``--no-plugins`` it imports none of them, and leaves out a plugin named by a "
-                "dotted module name, since locating its file imports the packages above it.",
+                "``--no-plugins`` it imports none of the plugins the project names, and leaves "
+                "out a plugin named by a dotted module name, since locating its file imports the "
+                "packages above it.",
                 "see :doc:`editor_integration`. ``ddd lsp --no-plugins`` runs none of the plugins "
                 "the projects name, at any read the server makes.",
             ),
@@ -12473,3 +12474,74 @@ class TestWhereAReaderMeetsThatAProjectsPluginsRun:
             "every module the project names is imported, unless --no-plugins is given."
         )
 
+
+class TestTheRulesOfAMissingPluginAfterTheSwitch:
+    """1:I15. A read that skipped a plugin files no ``missing-plugin`` for a plugin the baseline
+    records, and every home of the rule, the registry's summary and the README's row, the check
+    reference, the plugin page and the comparison page, says so, and none says a plugin of the
+    run was loaded where ``--no-plugins`` skipped it."""
+
+    MISSING: ClassVar[str] = (
+        "a compared dictionary records a plugin this run has not loaded, so that plugin's "
+        "comparison rules did not run; none is filed while the candidate's read skipped a plugin"
+    )
+    """The registry's wording, as ``ddd checks`` prints it."""
+
+    def test_the_registry_says_when_no_missing_plugin_is_filed(self) -> None:
+        assert CHECKS["missing-plugin"].description == self.MISSING
+
+    def test_the_readme_table_says_it_as_the_registry_does(self) -> None:
+        assert f"| warning | `missing-plugin` | {self.MISSING} |" in README
+
+    PAGES_SAID: ClassVar[dict[str, tuple[str, ...]]] = {
+        "docs/consistency_checks.rst": (
+            "a compared dictionary records a plugin that is not among the candidate's, so that "
+            "plugin's comparison rules did not run, save while the candidate's read skipped a "
+            "plugin (``--no-plugins``), which may be that one.",
+        ),
+        "docs/plugins.rst": (
+            "A compared dictionary that records a plugin that is not among the candidate's is "
+            "``missing-plugin``, a warning saying that plugin's rules did not run, so that a "
+            "comparison can never silently skip one, save while the candidate's read skipped a "
+            "plugin (``--no-plugins``), which may be that one;",
+            "Unless ``--no-plugins`` skipped it, a plugin only the baseline names is one the run "
+            "did load",
+        ),
+        "SPEC.md": (
+            "Each side given as a description runs the plugins it names for its own analysis "
+            "(a run given `--no-plugins` runs none);",
+        ),
+        "docs/comparing_deliveries.rst": (
+            "A promotion of this run does not make one of them an error, and a ``-W`` that "
+            "relaxes the check relaxes it. The one exception is the ``plugin-skipped`` of a run "
+            "given ``--no-plugins``, carried and prefixed alike but graded as the run grades its "
+            "own findings, since that the baseline's plugin did not run is the run's doing.",
+        ),
+        "docs/command_line_interface.rst": (
+            "``--no-plugins`` runs none of the plugins the project names.",
+            "With ``--no-plugins`` it imports none of the plugins the project names, and leaves "
+            "out a plugin named by a dotted module name",
+        ),
+    }
+
+    STALE: ClassVar[dict[str, tuple[str, ...]]] = {
+        "docs/consistency_checks.rst": (
+            "a compared dictionary records a plugin that is not among the candidate's, so that "
+            "plugin's comparison rules did not run. Once per plugin",
+        ),
+        "docs/plugins.rst": ("A plugin only the baseline names is one the run did load",),
+        "docs/comparing_deliveries.rst": (
+            "Beside them is carried the ``plugin-skipped``",
+            "the run's doing. A candidate given as a description",
+        ),
+        "docs/command_line_interface.rst": ("runs none of its plugins", "it imports none of them"),
+    }
+    """What a page said before it said it as above."""
+
+    @pytest.mark.parametrize("page", sorted(PAGES_SAID))
+    def test_the_page_says_it(self, page: str) -> None:
+        said = flattened(PAGES[page] if page != "SPEC.md" else SPEC)
+        for phrase in self.PAGES_SAID[page]:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"
+        for phrase in self.STALE.get(page, ()):
+            assert phrase not in said, f"{page} still says: {phrase!r}"

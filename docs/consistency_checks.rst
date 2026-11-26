@@ -946,7 +946,8 @@ registry can be read in one place.
    * - ``missing-plugin``
      - warning
      - a compared dictionary records a plugin that is not among the candidate's, so that
-       plugin's comparison rules did not run. Once per plugin and side, reported at the file
+       plugin's comparison rules did not run, save while the candidate's read skipped a
+       plugin (``--no-plugins``), which may be that one. Once per plugin and side, reported at the file
        that records it, because a comparison that silently skipped a rule would be a
        confident verdict with a hole in it.
    * - ``added-object``

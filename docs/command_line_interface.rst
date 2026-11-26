@@ -277,7 +277,7 @@ The commands
        exit code rather than the presence of the file - once the files were read and validated.
        An error in reading or validating a file leaves no dictionary and so no file, and ``-o``
        leaves the file as it was. ``--standalone`` dumps a component on its own, as it does for
-       ``list``, and ``--no-plugins`` runs none of its plugins.
+       ``list``, and ``--no-plugins`` runs none of the plugins the project names.
    * - ``ddd id --assign FILE...``
      - write an ``id`` into every producing declaration of the given description files that
        has none, as one added line each, right after the declaration's ``name``: the file keeps
@@ -300,8 +300,8 @@ The commands
      - list every file the project is built out of - the description files and the modules of
        the plugins it names - for the dependency list of a build system. It reports its
        findings without letting them change its exit code. With ``--no-plugins`` it imports
-       none of them, and leaves out a plugin named by a dotted module name, since locating its
-       file imports the packages above it.
+       none of the plugins the project names, and leaves out a plugin named by a dotted module
+       name, since locating its file imports the packages above it.
    * - ``ddd artefacts [FILE]``
      - list the artefacts ``generate`` accepts for this project: the built-in ``c`` and
        ``a2l``, and the name of every plugin it names that provides one. What each writes is

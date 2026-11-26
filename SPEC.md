@@ -1996,7 +1996,7 @@ Warnings, because behaviour or tooling changes while no consumer becomes wrong:
   comparison rules did not run. Once per plugin and side, reported at the file that records
   it, because a comparison that silently skipped a rule would be a confident verdict with a
   hole in it. Each side given as a description runs the
-  plugins it names for its own analysis; the comparison hooks are the candidate's (or
+  plugins it names for its own analysis (a run given `--no-plugins` runs none); the comparison hooks are the candidate's (or
   `--plugin`'s for a dumped candidate), and `missing-plugin` is reported for a plugin either
   side records that the comparison did not run - including one this run did load, for the
   baseline's own analysis, whose comparison rules are therefore not in play. A severity

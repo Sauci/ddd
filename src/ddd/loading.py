@@ -566,6 +566,12 @@ class Workspace:
     standalone mode holds back for exactly that reason.
     """
 
+    skipped: tuple[str, ...] = field(kw_only=True)
+    """The plugins the project files name that this read did not run, as ``--no-plugins`` asks,
+    by the spelling of each entry, once for each entry, in the order they were read: empty where
+    every plugin ran, and for a component read on its own. This read's alone, where the bag it
+    reported through may hold another's (:attr:`~ddd.diagnostics.DiagnosticBag.skipped`)."""
+
     project_extensions: dict[str, dict[str, Any]] = field(default_factory=dict)
     """The settings block of each plugin, as the project files wrote it, by plugin name."""
 
@@ -783,9 +789,10 @@ class _Loader:
         self._bag = bag
         self._plugin_defects_are_findings = plugin_defects_are_findings
         self._run_plugins = run_plugins
-        self._skipped = False
-        """Whether this read skipped a plugin the files name: the read's own, never read off
-        ``bag``, which another read may have noted skips on as well."""
+        self._skipped: list[str] = []
+        """The plugins this read skipped, by the spelling of each entry (:attr:`Workspace.skipped`):
+        the read's own, never read off ``bag``, which another read may have noted skips on as
+        well."""
         self._root_includes = includes
         self._files_read = files_read
         self._components: list[LoadedComponent] = []
@@ -843,6 +850,7 @@ class _Loader:
                 ),
                 read_paths=tuple(sorted(self._read_paths)),
                 plugins=self._loaded_plugins,
+                skipped=tuple(self._skipped),
                 plugin_paths=self._plugin_paths,
                 project_extensions={
                     name: block for name, (block, _) in self._project_blocks.items()
@@ -873,6 +881,7 @@ class _Loader:
             constants=tuple(sorted(self._constants_by_name.values(), key=lambda entry: entry.name)),
             read_paths=tuple(sorted(self._read_paths)),
             plugins=self._loaded_plugins,
+            skipped=tuple(self._skipped),
             plugin_paths=self._plugin_paths,
             project_extensions={name: block for name, (block, _) in self._project_blocks.items()},
             project_settings=dict(self._project_settings),
@@ -1252,7 +1261,7 @@ class _Loader:
     def _skip_plugin(self, spelling: str, origin: Location) -> None:
         """Report a plugin the project names as not run, as ``--no-plugins`` asks, where it is
         named: once for each entry, since nothing says which of them name one module."""
-        self._skipped = True
+        self._skipped.append(spelling)
         self._bag.skip(spelling)
         self._bag.add(
             "plugin-skipped",

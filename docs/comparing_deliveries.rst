@@ -289,7 +289,9 @@ them together with everything else.
    * - warning
      - ``missing-plugin``
      - a compared dictionary records a plugin that is not among the candidate's, so that
-       plugin's comparison rules did not run
+       plugin's comparison rules did not run; while the candidate's read skipped a plugin
+       (``--no-plugins``), none is reported for a plugin the baseline records, which may be the
+       one skipped
    * - info
      - ``added-object``
      - the candidate declares an object the baseline did not

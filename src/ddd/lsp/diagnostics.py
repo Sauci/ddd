@@ -243,6 +243,7 @@ def _run(
                 True,
                 workspace.sources(),
                 workspace.settings,
+                skipped=workspace.skipped,
             )
     except PluginError as error:
         # A hook or a model raising is a defect of the plugin, not of the project: ``ddd

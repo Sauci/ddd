@@ -16,7 +16,7 @@ drifted from that the first time either side changed.
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
@@ -141,6 +141,14 @@ class Resolved:
     though a ``dump --standalone`` of a component is partial: it carries no mark saying so, the
     mark is a change of the format, and a dump is compared as it always was."""
 
+    skipped: tuple[str, ...] = field(kw_only=True)
+    """The plugins a description given for this side names that its read did not run, as
+    ``--no-plugins`` asks (:attr:`~ddd.loading.Workspace.skipped`); none for an archived dump.
+
+    What a comparison has to know of its candidate: a plugin's name is known once it ran, so a
+    plugin the baseline records may be one the candidate names and its read skipped, and is then
+    not said to be missing from it (:func:`~ddd.plugins.run_compare_hooks`)."""
+
 
 def read_dictionary(
     path: Path,
@@ -196,6 +204,7 @@ def read_dictionary(
             workspace.sources(),
             workspace.settings,
             alone=not workspace.projects,
+            skipped=workspace.skipped,
         )
     if document is not None and not holds_a_dictionary(document):
         # Neither: ``format`` has a default, so a file stating only a name validates as an empty
@@ -224,6 +233,7 @@ def read_dictionary(
         False,
         (archived.path,),
         lambda plugin: settings_of(plugin, dictionary.extensions),
+        skipped=(),
     )
 
 
@@ -430,6 +440,7 @@ def compare_deliveries(
             candidate.locate,
             location,
             baseline_location,
+            skipped=candidate.skipped,
         )
     except PluginError as error:
         if on_plugin_error is None:

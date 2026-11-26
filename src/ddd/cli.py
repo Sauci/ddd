@@ -2238,6 +2238,7 @@ def _analyze(
         True,
         workspace.sources(),
         workspace.settings,
+        skipped=workspace.skipped,
     )
     return resolved, bag
 

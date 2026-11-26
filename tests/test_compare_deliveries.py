@@ -1064,6 +1064,68 @@ class TestADeliveryReadWithNoPlugin:
         )
         assert f"warning[plugin-skipped]: in the baseline: {SKIPPED}" in said
 
+    @pytest.mark.parametrize("command", ["check", "compare"])
+    def test_a_plugin_the_candidate_s_read_skipped_is_not_missing(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], command: str
+    ) -> None:
+        """The archive was made with the plugin and records it; the candidate names it and the
+        run skipped it, and which name a plugin has only its module knows."""
+        described = naming_the_marker(tmp_path)
+        archive = tmp_path / "release.json"
+        assert main(["dump", str(described), "-o", str(archive)]) == EXIT_OK
+        assert json.loads(archive.read_text(encoding="utf-8"))["plugins"] == ["mark"]
+        capsys.readouterr()
+        argv = {
+            "check": ["check", str(described), "--baseline", str(archive)],
+            "compare": ["compare", str(archive), str(described)],
+        }[command]
+        assert main([*argv, "--no-plugins", "-W", "missing-id=ignore"]) == EXIT_OK
+        said = capsys.readouterr().err
+        assert "missing-plugin" not in said
+        assert f"warning[plugin-skipped]: {SKIPPED}" in said
+
+    @pytest.mark.parametrize(
+        ("candidate", "side", "why"),
+        [
+            ("a project naming no plugin", "baseline", "is not among the candidate's plugins"),
+            ("an archive made with the plugin", "candidate", "this run has not loaded"),
+        ],
+    )
+    def test_a_plugin_no_read_skipped_is_missing_as_ever(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        candidate: str,
+        side: str,
+        why: str,
+    ) -> None:
+        described = naming_the_marker(tmp_path)
+        archive = tmp_path / "release.json"
+        assert main(["dump", str(described), "-o", str(archive)]) == EXIT_OK
+        plain = _plain_dump(tmp_path)
+        baseline, compared = {
+            "a project naming no plugin": (archive, tmp_path / "plain" / "p.ddd.json"),
+            "an archive made with the plugin": (plain, archive),
+        }[candidate]
+        capsys.readouterr()
+        argv = ["compare", "--no-plugins", "-W", "missing-id=ignore", str(baseline), str(compared)]
+        assert main(argv) == EXIT_OK
+        said = capsys.readouterr().err
+        assert (
+            f"warning[missing-plugin]: the {side} was produced with plugin 'mark', which {why};"
+            in said
+        )
+
+    def test_a_delivery_read_says_which_plugins_it_skipped(self, tmp_path: Path) -> None:
+        described = naming_the_marker(tmp_path)
+        archive = _plain_dump(tmp_path)
+        skipping = read_dictionary(described, DiagnosticBag(), run_plugins=False)
+        assert skipping is not None and skipping.skipped == ("tools/mark.py",)
+        dumped = read_dictionary(archive, DiagnosticBag(), run_plugins=False)
+        assert dumped is not None and dumped.skipped == ()
+        running = read_dictionary(described, DiagnosticBag())
+        assert running is not None and running.skipped == ()
+
     @pytest.mark.parametrize("reader", [read_dictionary, read_baseline])
     def test_a_description_read_as_a_delivery_runs_its_plugins_unless_asked_not_to(
         self, tmp_path: Path, reader: Any

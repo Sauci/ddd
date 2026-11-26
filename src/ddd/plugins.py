@@ -522,6 +522,8 @@ def run_compare_hooks(
     locate: Callable[[str], Location | None],
     location: Location | None,
     baseline_location: Location | None = None,
+    *,
+    skipped: Sequence[str] = (),
 ) -> None:
     """Run every compare hook, after saying which recorded plugin is not among ``plugins``.
 
@@ -541,6 +543,11 @@ def run_compare_hooks(
     baseline's own analysis - and whose comparison rules still did not run. That side's
     message says what is not in play rather than claiming the run never loaded it; the
     candidate's side, where the run really has not, says so.
+
+    ``skipped`` are the plugins the candidate names and its read did not run, as ``--no-plugins``
+    asks (:attr:`~ddd.deliveries.Resolved.skipped`). A plugin's name is known once it ran, so
+    while one was skipped any plugin the baseline records may be it, and none is said to be
+    missing from the candidate; ``plugin-skipped`` has said that it did not run.
     """
     loaded = {plugin.name for plugin in plugins}
     sides = (
@@ -558,6 +565,8 @@ def run_compare_hooks(
         ("candidate", candidate, location, "this run has not loaded"),
     )
     for side, dictionary, where, why in sides:
+        if side == "baseline" and skipped:
+            continue
         for name in dictionary.plugins:
             if name not in loaded:
                 bag.add(

@@ -14972,6 +14972,15 @@ class TestAServerRunningNoPlugin:
         reads[reader]()
         assert ran(tmp_path)
 
+    def test_a_run_s_resolution_says_which_plugins_it_skipped(self, tmp_path: Path) -> None:
+        """What ``ddd gui`` compares a run's project by, as the commands compare theirs."""
+        root = naming_the_marker(tmp_path)
+        info = BuildInfo(project=root.as_posix(), image="fw")
+        skipping = service.run_build(info, run_plugins=False).resolved
+        assert skipping is not None and skipping.skipped == ("tools/mark.py",)
+        running = service.run_build(info).resolved
+        assert running is not None and running.skipped == ()
+
     def test_a_file_read_as_a_component_that_is_a_project_by_its_load_runs_none(
         self, tmp_path: Path
     ) -> None:

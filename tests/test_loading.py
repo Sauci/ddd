@@ -1009,6 +1009,7 @@ class TestAReadThatRunsNoPlugin:
         assert workspace is not None
         assert not ran(tree)
         assert workspace.plugins == ()
+        assert workspace.skipped == ("tools/mark.py",)
         assert workspace.project_settings == {}
         assert bag.skipped == ("tools/mark.py",)
         assert bag.registered == {}
@@ -1030,13 +1031,17 @@ class TestAReadThatRunsNoPlugin:
             },
         )
         bag = DiagnosticBag(SeverityPolicy.from_strings(["missing-id=ignore"]))
-        assert load_workspace(tree / "p.ddd.json", bag, run_plugins=False) is not None
+        workspace = load_workspace(tree / "p.ddd.json", bag, run_plugins=False)
+        assert workspace is not None
         assert [(found.check, found.location) for found in bag.sorted] == [
             ("plugin-skipped", Location(tree / "p.ddd.json", "project.plugins[0]")),
             ("plugin-skipped", Location(tree / "sub" / "s.ddd.json", "project.plugins[0]")),
             ("plugin-skipped", Location(tree / "sub" / "s.ddd.json", "project.plugins[1]")),
         ]
         assert bag.skipped == ("tools/mark.py", "../tools/mark.py", "nowhere.py")
+        assert workspace.skipped == bag.skipped
+        ran_too = load_workspace(tree / "p.ddd.json", DiagnosticBag())
+        assert ran_too is not None and ran_too.skipped == ()
 
     def test_a_skipped_plugin_s_blocks_reach_the_dictionary_as_written(self, tree: Path) -> None:
         """Neither block is one the plugin's models take, which only the plugin says."""

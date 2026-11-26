@@ -2206,6 +2206,32 @@ class TestTheCompareHook:
         assert main(arguments) == EXIT_USAGE
         assert "settings of plugin 'tag' are invalid" in capsys.readouterr().err
 
+    def test_a_plugin_the_baseline_records_is_missing_unless_the_candidate_skipped_one(
+        self, tree: Path
+    ) -> None:
+        """1:I15. A plugin the candidate's read skipped has a name only its module knows, so
+        any the baseline records may be it."""
+        from ddd.plugins import run_compare_hooks
+
+        recorded, _ = analysed(tree, declare("local", "X"))
+        candidate = recorded.model_copy(update={"plugins": ()})
+        reported = DiagnosticBag()
+        run_compare_hooks((), recorded, candidate, lambda _: None, reported, lambda _: None, None)
+        assert checks(reported) == ["missing-plugin"]
+        assert "the baseline was produced with plugin 'tag'" in messages(reported)
+        skipping = DiagnosticBag()
+        run_compare_hooks(
+            (),
+            recorded,
+            candidate,
+            lambda _: None,
+            skipping,
+            lambda _: None,
+            None,
+            skipped=("tools/tag_plugin.py",),
+        )
+        assert checks(skipping) == []
+
     def test_a_plugin_without_a_compare_hook_is_nothing(self, tree: Path) -> None:
         from ddd.plugins import run_compare_hooks
 

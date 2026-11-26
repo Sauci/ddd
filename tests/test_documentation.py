@@ -12269,6 +12269,14 @@ class TestARunThatRunsNoPlugin:
                 "`--no-plugins` runs none of them.",
                 "which beside a project candidate is a usage error, because the project names its "
                 "own, and so is it beside `--no-plugins`, which runs none on either side;",
+                "a compared dictionary recording a plugin the run has not loaded is "
+                "`missing-plugin` ([section 4.1](#41-comparing-two-deliveries)), save one the "
+                "baseline records while the candidate's read skipped a plugin, which may be that "
+                "one.",
+                "A plugin the candidate names and its read skipped (`--no-plugins`) is not "
+                "missing: a plugin's name is known once it ran, so while the candidate's read "
+                "skipped one, none is reported for a plugin the baseline records, any of them "
+                "being possibly that one, and `plugin-skipped` says that it did not run.",
                 "The one exception is `plugin-skipped`, which a run given `--no-plugins` files for "
                 "a plugin the baseline names ([section 3.11](#311-plugins)): carried and prefixed "
                 "alike, it is graded as this run grades its own findings, since that the plugin "
@@ -12287,6 +12295,15 @@ class TestARunThatRunsNoPlugin:
                 "Where a plugin the run names was skipped (``--no-plugins``), which checks it "
                 "registers is not known, and an override naming a plugin's check is accepted "
                 "unverified.",
+            ),
+        ),
+        "docs/comparing_deliveries.rst": (
+            COMPARING_DELIVERIES,
+            (
+                "``missing-plugin`` - a compared dictionary records a plugin that is not among "
+                "the candidate's, so that plugin's comparison rules did not run; while the "
+                "candidate's read skipped a plugin (``--no-plugins``), none is reported for a "
+                "plugin the baseline records, which may be the one skipped",
             ),
         ),
         "docs/plugins.rst": (

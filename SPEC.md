@@ -1317,7 +1317,8 @@ candidate is a project runs that project's plugins, and one whose candidate is a
 dump loads them with `ddd compare --plugin`, which beside a project candidate is a usage
 error, because the project names its own, and so is it beside `--no-plugins`, which runs none
 on either side; a compared dictionary recording a plugin the
-run has not loaded is `missing-plugin` ([section 4.1](#41-comparing-two-deliveries)). The
+run has not loaded is `missing-plugin` ([section 4.1](#41-comparing-two-deliveries)), save one
+the baseline records while the candidate's read skipped a plugin, which may be that one. The
 api is documented in the plugins page of the documentation; `examples/plugins/ddd_layout.py`
 is a worked example, and `examples/layout` a project that names it.
 
@@ -1999,7 +2000,11 @@ Warnings, because behaviour or tooling changes while no consumer becomes wrong:
   `--plugin`'s for a dumped candidate), and `missing-plugin` is reported for a plugin either
   side records that the comparison did not run - including one this run did load, for the
   baseline's own analysis, whose comparison rules are therefore not in play. A severity
-  override naming a check of such a plugin is accepted, since the run knows it.
+  override naming a check of such a plugin is accepted, since the run knows it. A plugin the
+  candidate names and its read skipped (`--no-plugins`) is not missing: a plugin's name is
+  known once it ran, so while the candidate's read skipped one, none is reported for a plugin
+  the baseline records, any of them being possibly that one, and `plugin-skipped` says that it
+  did not run.
 
 Information:
 

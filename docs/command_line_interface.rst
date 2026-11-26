@@ -248,8 +248,10 @@ The commands
        ``--address-map`` or ``--a2l-module-fragment`` is refused rather than quietly ignored, and a run that has subtracted
        the c neither wants nor accepts ``-t``.
        ``--dry-run`` reports what would be written without writing anything, ``--force``
-       generates in spite of errors. Every artefact also takes ``--dictionary FILE``, which
-       writes the resolved data dictionary - the text ``ddd dump`` prints - in the same write as
+       generates in spite of the errors of the analysis; a file that cannot be read or does
+       not fit its format leaves no dictionary, and nothing to generate. Every artefact also
+       takes ``--dictionary FILE``, which writes the resolved data dictionary - the text
+       ``ddd dump`` prints - in the same write as
        the artefacts, so that all of them are written or none is; a path an artefact of the
        run is written to is refused, and so is ``.ddd-manifest.json`` in the output directory,
        the name the run's manifest is kept under. That is how a build keeps the dictionary
@@ -267,9 +269,9 @@ The commands
        build depending on it needs and what a redirection cannot promise. Unlike ``generate``,
        a finding does not hold the dictionary back: errors and all, the dictionary is what the
        project resolved to and ``-o`` writes it, so a script archiving a delivery reads the
-       exit code rather than the presence of the file. Only a root that cannot be read leaves
-       the file as it was - there is then no dictionary at all. ``--standalone``
-       dumps a component on its own, as it does for ``list``.
+       exit code rather than the presence of the file - once the files were read and validated.
+       An error in reading or validating a file leaves no dictionary and so no file, and ``-o``
+       leaves the file as it was. ``--standalone`` dumps a component on its own, as it does for ``list``.
    * - ``ddd id --assign FILE...``
      - write an ``id`` into every producing declaration of the given description files that
        has none, as one added line each, right after the declaration's ``name``: the file keeps
@@ -926,7 +928,8 @@ of a component carries no mark of how it was read, and :doc:`comparing_deliverie
 that costs.
 ``ddd generate`` takes no ``--standalone``: generating from a component is generating the c
 and the a2l of a project of one, and the inputs nobody produces there are errors that stop
-the run. A supplier who wants the files anyway asks for them with ``--force``, or silences
+the run. A supplier who wants the files anyway asks for them with ``--force``, which the errors of the analysis allow and
+those of reading or validating a file do not, or silences
 the checks it has decided about with ``-W``.
 
 The ``-t`` of the c-rendering artefacts has no default at all: an invocation that renders c

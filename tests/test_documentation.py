@@ -12102,3 +12102,56 @@ class TestWhatTheRunReadIsNeverWrittenOver:
         said = flattened(text)
         for phrase in phrases:
             assert phrase in said, f"{page} no longer says: {phrase!r}"
+
+
+class TestAnErrorOfTheFirstStageLeavesNoDictionary:
+    """Reading and validating the files is the first stage and the analysis the second: an
+    error of the first leaves nothing analysed and nothing for ``--force`` or ``dump``
+    to write, and each page that speaks of the dictionary or of ``--force`` says so."""
+
+    SAID: ClassVar[dict[str, tuple[str, tuple[str, ...], tuple[str, ...]]]] = {
+        "SPEC.md": (
+            SPEC,
+            (
+                "A run has two stages. The first stage reads every file and validates it "
+                "against its format and the vocabularies' entries; an error there stops the "
+                "second, so that nothing is analysed, no dictionary is resolved and `--force` "
+                "has nothing to write",
+                "left as it was where there is no dictionary to write: an error of the first "
+                "stage ([section 4](#4-consistency-checks)) leaves none. Past that stage "
+                "findings do not hold the dictionary back",
+                "unless `--force` asks for the outputs anyway, which it can only where the "
+                "analysis ran: an error of the first stage ([section 4](#4-consistency-checks)) "
+                "leaves no dictionary and nothing to write",
+            ),
+            (
+                "whatever was reported",
+                "that is where the root itself could not be read",
+            ),
+        ),
+        "docs/command_line_interface.rst": (
+            COMMAND_LINE_INTERFACE,
+            (
+                "``--force`` generates in spite of the errors of the analysis; a file that "
+                "cannot be read or does not fit its format leaves no dictionary, and nothing "
+                "to generate",
+                "the presence of the file - once the files were read and validated",
+                "An error in reading or validating a file leaves no dictionary and so no file",
+                "asks for them with ``--force``, which the errors of the analysis allow and "
+                "those of reading or validating a file do not",
+            ),
+            (
+                "generates in spite of errors",
+                "Only a root that cannot be read leaves the file as it was",
+            ),
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(SAID))
+    def test_the_page_says_it(self, page: str) -> None:
+        text, phrases, stale = self.SAID[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"
+        for phrase in stale:
+            assert phrase not in said, f"{page} still says: {phrase!r}"

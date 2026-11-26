@@ -376,6 +376,21 @@ VOCABULARY = EXAMPLES / "vocabulary" / "project.ddd.json"
 MODULE_OPENING = '  /begin MODULE DemoDevice "'
 
 
+class TestWhatTheForceHelpSays:
+    """The help is where a build author looks before asking for the outputs anyway."""
+
+    def test_the_generate_help_says_force_cannot_write_what_was_never_resolved(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``--force`` writes what the analysis resolved; a file that cannot be read or does not
+        fit its format leaves no dictionary, and the help is where a build author looks."""
+        with pytest.raises(SystemExit):
+            main(["generate", "all", "--help"])
+        said = " ".join(capsys.readouterr().out.split())
+        assert "generate in spite of the errors of the analysis" in said
+        assert "a file that cannot be read or checked against its format leaves nothing" in said
+
+
 class TestTheA2lModuleFragment:
     """``--a2l-module-fragment``: a project's file pasted at the head of the ``MODULE``."""
 

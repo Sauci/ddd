@@ -776,7 +776,12 @@ def _add_generate_arguments(
         "--dry-run", action="store_true", help="report what would be written, write nothing"
     )
     parser.add_argument(
-        "--force", action="store_true", help="generate even if the consistency check fails"
+        "--force",
+        action="store_true",
+        help=(
+            "generate in spite of the errors of the analysis; a file that cannot be read or "
+            "checked against its format leaves nothing to generate"
+        ),
     )
     parser.set_defaults(
         handler=_command_generate,

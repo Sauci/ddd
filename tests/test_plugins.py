@@ -23,6 +23,7 @@ from conftest import (
     component,
     declare,
     directory_link,
+    looped,
     messages,
     project,
     run_analysis,
@@ -3897,3 +3898,33 @@ class TestWhatAPluginHandsBackAtImport:
         )
         assert "plugin-invalid" in checks(bag)
         assert "failed to read PLUGIN: lazy" in messages(bag)
+
+
+class TestAPathTheSystemRefuses:
+    """A path that cannot be resolved names nothing: as a missing file does, it is not found."""
+
+    def test_a_path_holding_a_nul_is_not_found(self, tmp_path: Path) -> None:
+        with pytest.raises(PluginNotFoundError, match="cannot be resolved"):
+            load_plugin("tools/a\0b.py", tmp_path)
+
+    def test_a_path_looping_through_links_is_not_found(self, tmp_path: Path) -> None:
+        """Python 3.12 raises on resolving it, and 3.13 walks past it to a file that is not
+        there: not found on both, said in the words of each."""
+        looped(tmp_path / "loop", tmp_path / "pool")
+        with pytest.raises(PluginNotFoundError, match=r"cannot be resolved|does not exist"):
+            load_plugin("loop/plugin.py", tmp_path)
+
+    def test_a_project_naming_such_a_path_files_it_and_goes_on(self, tree: Path) -> None:
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/a\0b.py"]),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        assert "plugin-not-found" in checks(bag)
+
+    def test_the_files_of_such_a_path_are_none(self, tmp_path: Path) -> None:
+        from ddd.plugins import plugin_files
+
+        assert plugin_files("tools/a\0b.py", tmp_path) == ()

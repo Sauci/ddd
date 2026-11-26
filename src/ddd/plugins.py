@@ -189,7 +189,10 @@ def plugin_files(spelling: str, base: Path, *, run_plugins: bool = True) -> tupl
     name, and nothing for a dotted one, whose packages the finder imports to locate it.
     """
     if spelling.endswith(".py"):
-        source: Path | None = _path_of(spelling, base)
+        try:
+            source: Path | None = _path_of(spelling, base)
+        except PluginNotFoundError:
+            source = None
     elif not run_plugins:
         located = None if "." in spelling else _located(spelling)
         source = Path(located).resolve() if located else None
@@ -255,8 +258,14 @@ def _located(spelling: str) -> str | None:
 
 
 def _path_of(spelling: str, base: Path) -> Path:
+    """The file a path spelling names, resolved; a path the system refuses to resolve - one
+    holding a NUL, or a loop of links - names none, as a path to nothing does."""
     raw = Path(spelling)
-    return (raw if raw.is_absolute() else base / raw).resolve()
+    try:
+        return (raw if raw.is_absolute() else base / raw).resolve()
+    except (OSError, ValueError, RuntimeError) as error:
+        msg = f"plugin '{spelling}' names a path that cannot be resolved: {error}"
+        raise PluginNotFoundError(msg) from error
 
 
 def _exit_text(error: SystemExit) -> str:

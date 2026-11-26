@@ -629,6 +629,29 @@ class SeverityPolicy:
         return severity
 
 
+def _refused(what: str, wanted: str, given: object) -> str:
+    return f"{what} must be {wanted}, not {type(given).__name__}"
+
+
+def _pairs(notes: Any) -> tuple[tuple[str, Location | None], ...]:
+    """The notes of a finding as pairs of a ``str`` and a location or ``None``, each a tuple."""
+    try:
+        listed = tuple(notes)
+    except TypeError:
+        raise TypeError(_refused("notes", "an iterable of pairs", notes)) from None
+    pairs: list[tuple[str, Location | None]] = []
+    for note in listed:
+        if not (isinstance(note, tuple | list) and len(note) == 2):
+            raise TypeError(_refused("note", "a pair of a str and a Location or None", note))
+        text, where = note
+        if not isinstance(text, str):
+            raise TypeError(_refused("note text", "a str", text))
+        if where is not None and not isinstance(where, Location):
+            raise TypeError(_refused("note location", "a Location or None", where))
+        pairs.append((text, where))
+    return tuple(pairs)
+
+
 class DiagnosticBag:
     """Collects diagnostics and applies the severity policy."""
 
@@ -683,12 +706,29 @@ class DiagnosticBag:
         report no verdict and exit 0. And a producer the candidate lost under the floor of
         ``--standalone`` is filed by the comparison as the error its check is by default, since
         the floor's ``ignore`` is the policy's only word on it (:attr:`SeverityPolicy.floored`).
+
+        A finding is held to its shape here: a ``TypeError`` for a ``check`` or a ``message``
+        that is no ``str``, a ``location`` that is no :class:`Location` or ``None``, a ``severity``
+        that is no :class:`Severity` or ``None`` (``"warning"`` is not one), and a note that is
+        no pair of a ``str`` and such a location. Python checks none of it, and a finding that
+        is none was kept until the report, where it ended the run in a traceback with every
+        other finding lost; raised here it is the failure of the hook that filed it, which a
+        plugin's hook is reported as (:class:`~ddd.plugins.PluginError`).
         """
+        if not isinstance(check, str):
+            raise TypeError(_refused("check", "a str", check))
+        if not isinstance(message, str):
+            raise TypeError(_refused("message", "a str", message))
+        if location is not None and not isinstance(location, Location):
+            raise TypeError(_refused("location", "a Location or None", location))
+        if severity is not None and not isinstance(severity, Severity):
+            raise TypeError(_refused("severity", "a Severity or None", severity))
+        notes = _pairs(notes)
         if severity is None:
             severity = self.policy.resolve(check, self._registered.get(check))
         if severity is Severity.IGNORE:
             return None
-        diagnostic = Diagnostic(check, severity, message, location, tuple(notes), len(self._items))
+        diagnostic = Diagnostic(check, severity, message, location, notes, len(self._items))
         self._items.append(diagnostic)
         return diagnostic
 

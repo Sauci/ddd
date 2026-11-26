@@ -3928,3 +3928,88 @@ class TestAPathTheSystemRefuses:
         from ddd.plugins import plugin_files
 
         assert plugin_files("tools/a\0b.py", tmp_path) == ()
+
+
+class TestTheBagHoldsAFindingToItsShape:
+    """A finding that is no finding is refused where it is added, so that the failure is raised
+    inside the hook that made it and names its plugin, rather than at the report, where every
+    finding was already lost."""
+
+    @pytest.mark.parametrize(
+        ("arguments", "keywords", "refused"),
+        [
+            (("tag/x", "m", Path("file.json")), {}, "location"),
+            (("tag/x", "m", "file.json"), {}, "location"),
+            (("tag/x", Path("file.json")), {}, "message"),
+            (("tag/x", "m"), {"severity": "warning"}, "severity"),
+            ((Path("file.json"), "m"), {}, "check"),
+            (("tag/x", "m", None, ["see here"]), {}, "note"),
+            (("tag/x", "m", None, [("see here",)]), {}, "note"),
+            (("tag/x", "m", None, [(1, None)]), {}, "note"),
+            (("tag/x", "m", None, [("see here", "file.json")]), {}, "note"),
+            (("tag/x", "m", None, 3), {}, "notes"),
+        ],
+    )
+    def test_a_bad_finding_is_refused_and_not_recorded(
+        self, arguments: tuple, keywords: dict, refused: str
+    ) -> None:
+        bag = DiagnosticBag()
+        with pytest.raises(TypeError, match=f"^{refused} "):
+            bag.add(*arguments, **keywords)
+        assert len(bag) == 0
+
+    def test_a_good_finding_is_recorded_as_it_was_given(self) -> None:
+        where = Location(Path("file.json"))
+        bag = DiagnosticBag()
+        bag.register([CheckInfo("tag/x", Severity.WARNING, "x")])
+        added = bag.add("tag/x", "m", where, [("see here", where), ["and here", None]])
+        assert added is not None
+        assert added.notes == (("see here", where), ("and here", None))
+        assert bag.add("tag/x", "m", None, severity=Severity.ERROR) is not None
+
+    @pytest.mark.parametrize(
+        "slip",
+        [
+            'context.bag.add("tag/x", "m", Path("file.json"))',
+            'context.bag.add("tag/x", "m", severity="warning")',
+            'context.bag.add("tag/x", "m", None, ["see here"])',
+        ],
+    )
+    def test_a_hook_that_files_one_is_a_usage_error_naming_the_plugin(
+        self, tree: Path, capsys: pytest.CaptureFixture[str], slip: str
+    ) -> None:
+        source = TAG_PLUGIN.replace(
+            "def check(context: CheckContext) -> None:\n",
+            f"def check(context: CheckContext) -> None:\n    {slip}\n",
+        )
+        write_plugin(tree / "tools", source=source)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        root = str(tree / "project.ddd.json")
+        assert main(["check", root, "--format", "json"]) == EXIT_USAGE
+        captured = capsys.readouterr()
+        assert "plugin 'tag' failed in its check hook: " in captured.err
+        assert "Traceback" not in captured.err
+        assert "missing-id" in [entry["check"] for entry in json.loads(captured.out)["diagnostics"]]
+
+    def test_the_language_server_survives_it(self, tree: Path) -> None:
+        source = TAG_PLUGIN.replace(
+            "def check(context: CheckContext) -> None:\n",
+            'def check(context: CheckContext) -> None:\n    context.bag.add("tag/x", "m", "f")\n',
+        )
+        write_plugin(tree / "tools", source=source)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        bag, _ = analyse_standalone(tree / "project.ddd.json")
+        assert "plugin-invalid" in checks(bag)
+        assert "failed in its check hook: location must be" in messages(bag)

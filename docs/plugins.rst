@@ -283,8 +283,8 @@ published schema key it, and ``round_trip`` leaves every ``@computed_field`` out
 block as it read the block. A hook reading a block itself - ``Entry.model_validate(block)``, as
 the worked example does - reads it by alias, as the loader reads a file.
 
-The settings a hook is handed are never read back from the dictionary: ``settings`` is
-validated from the block the project states, and only an archived dictionary, under
+Over a project, the settings a hook is handed are never read back from the dictionary:
+``settings`` is validated from the block the project states; only an archived dictionary, under
 ``ddd compare --plugin``, has its settings validated from the block it carries. A model whose
 dump does not read back as its block did is handed its settings in full over a project, and
 fails or differs wherever its dump is read: in a hook reading a block from the dictionary, and

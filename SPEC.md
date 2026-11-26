@@ -1273,10 +1273,11 @@ baseline's own, which that run loaded to analyse it.
 The dictionary carries every block in resolved form on the object and on the project, and
 records the names of the plugins in play (`plugins`), so that an archived dump keeps every
 question a plugin can ask answerable. A block in resolved form is its model's dump,
-`model_dump(mode="json", by_alias=True, round_trip=True)`: validated, with its defaults filled
-in, keyed by alias as the file keys it, and without the model's computed fields. A hook reading
-a block from the dictionary validates that dump, by alias as the loader reads the file, so a
-plugin's model has to read back its own dump. The settings a hook is handed are not read
+`model_dump(mode="json", by_alias=True, round_trip=True)`: validated, with its defaults
+filled in, keyed by alias as the file keys it, without the model's computed fields,
+and with a `Json` field written back as json text. A hook reading a block from the
+dictionary validates that dump, by alias as the loader reads the file, so a plugin's
+model has to read back its own dump. The settings a hook is handed are not read
 back from the dictionary: each hook over a project is handed the block the project states,
 validated against the plugin's project model, and only a comparison whose candidate is an
 archived dump validates the block the dump carries, so that the settings of a model which

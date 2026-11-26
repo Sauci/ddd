@@ -11865,11 +11865,12 @@ class TestAModelReadsBackItsOwnDump:
             (
                 'A block in resolved form is its model\'s dump, `model_dump(mode="json", '
                 "by_alias=True, round_trip=True)`: validated, with its defaults filled in, keyed "
-                "by alias as the file keys it, and without the model's computed fields.",
+                "by alias as the file keys it, without the model's computed fields, and with a "
+                "`Json` field written back as json text.",
                 "A hook reading a block from the dictionary validates that dump, by alias as the "
                 "loader reads the file, so a plugin's model has to read back its own dump.",
             ),
-            (),
+            ("and without the model's computed fields.",),
         ),
         "docs/plugins.rst": (
             PAGES["docs/plugins.rst"],
@@ -11935,8 +11936,8 @@ class TestAHookIsHandedTheSettingsTheProjectStates:
                 "one);",
                 "``settings``, the candidate's, from the block its project states or the one an "
                 "archived candidate carries;",
-                "The settings a hook is handed are never read back from the dictionary: "
-                "``settings`` is validated from the block the project states, and only an "
+                "Over a project, the settings a hook is handed are never read back from the "
+                "dictionary: ``settings`` is validated from the block the project states; only an "
                 "archived dictionary, under ``ddd compare --plugin``, has its settings validated "
                 "from the block it carries.",
                 "A model whose dump does not read back as its block did is handed its settings "
@@ -11954,6 +11955,7 @@ class TestAHookIsHandedTheSettingsTheProjectStates:
                 "``settings``, the project block validated against ``project_model``",
                 "and fails wherever its dump is read",
                 "``settings``, the candidate's; ``bag``",
+                "The settings a hook is handed are never read back",
             ),
         ),
     }

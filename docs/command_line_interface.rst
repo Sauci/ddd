@@ -928,9 +928,8 @@ of a component carries no mark of how it was read, and :doc:`comparing_deliverie
 that costs.
 ``ddd generate`` takes no ``--standalone``: generating from a component is generating the c
 and the a2l of a project of one, and the inputs nobody produces there are errors that stop
-the run. A supplier who wants the files anyway asks for them with ``--force``, which the errors of the analysis allow and
-those of reading or validating a file do not, or silences
-the checks it has decided about with ``-W``.
+the run. A supplier who wants the files anyway asks for them with ``--force``, which the errors of the analysis allow and those of
+reading or validating a file do not, or silences the checks it has decided about with ``-W``.
 
 The ``-t`` of the c-rendering artefacts has no default at all: an invocation that renders c
 without it is refused rather than falling back to templates of DDD's own.

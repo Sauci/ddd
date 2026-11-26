@@ -613,8 +613,9 @@ agreed on are worse than no sources:
    1 error, 1 warning, 1 info
 
 .. warning::
-   ``--force`` generates in spite of the errors, using the producer's definition
-   wherever the components disagree, and still exits with 1. It exists for the case where a
+   ``--force`` generates in spite of the errors of the analysis, using the producer's
+   definition wherever the components disagree, and still exits with 1; a file that cannot be
+   read or does not fit its format leaves no dictionary, and nothing to generate. It exists for the case where a
    developer needs the headers to keep working while a disagreement is being sorted out
    between teams, and it is the wrong thing to put in a ci job: the exit code stays 1 precisely
    so that a pipeline which ignores it has to say so explicitly.

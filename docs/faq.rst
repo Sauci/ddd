@@ -229,7 +229,8 @@ reported:
 
 If the disagreement is real and the project needs to see the generated files anyway - to
 compare them, or to get an image out of the door while two teams argue - the ``--force``
-option of ``ddd generate`` writes the artefacts despite the errors and still exits with 1.
+option of ``ddd generate`` writes the artefacts despite the errors of the analysis and still
+exits with 1; a file that cannot be read or does not fit its format leaves nothing to write.
 Without it nothing at all is written, so a failed check can never leave a half generated
 directory behind.
 

@@ -12155,3 +12155,68 @@ class TestAnErrorOfTheFirstStageLeavesNoDictionary:
             assert phrase in said, f"{page} no longer says: {phrase!r}"
         for phrase in stale:
             assert phrase not in said, f"{page} still says: {phrase!r}"
+
+
+class TestEveryPageSaysWhatForceCannotWrite:
+    """``--force`` writes what the analysis resolved; no page says it generates in spite of
+    errors without saying that a file that cannot be read or checked leaves nothing to write."""
+
+    SAID: ClassVar[dict[str, tuple[str, tuple[str, ...], tuple[str, ...]]]] = {
+        "README.md": (
+            README,
+            (
+                "`--force` (generate despite the errors of the analysis - the files are "
+                "written using the producing component's definition, but the command still "
+                "reports every finding and still exits `1`; a file that cannot be read or does "
+                "not fit its format leaves no dictionary, and nothing to write)",
+            ),
+            ("`--force` (generate despite errors - ",),
+        ),
+        "docs/getting_started.rst": (
+            PAGES["docs/getting_started.rst"],
+            (
+                "``--force`` generates in spite of the errors of the analysis, using the "
+                "producer's definition wherever the components disagree, and still exits with "
+                "1; a file that cannot be read or does not fit its format leaves no "
+                "dictionary, and nothing to generate",
+            ),
+            ("``--force`` generates in spite of the errors, using",),
+        ),
+        "docs/generated_artefacts.rst": (
+            PAGES["docs/generated_artefacts.rst"],
+            (
+                "``--force`` overrides that refusal where the checks ran - a file that cannot "
+                "be read or does not fit its format leaves no dictionary to hand over - for "
+                "the case where somebody needs to look at the output",
+            ),
+            ("``--force`` overrides that refusal for the case",),
+        ),
+        "docs/consistency_checks.rst": (
+            CONSISTENCY_CHECKS,
+            (
+                "unless it is told to with ``--force``, which the errors of the checks allow "
+                "and those of reading or validating a file do not:",
+                "unless ``--force`` was given and the files were read and validated, an error "
+                "of that leaving nothing to write.",
+            ),
+            ("wrote nothing, unless ``--force`` was given.",),
+        ),
+        "docs/faq.rst": (
+            PAGES["docs/faq.rst"],
+            (
+                "writes the artefacts despite the errors of the analysis and still exits with "
+                "1; a file that cannot be read or does not fit its format leaves nothing to "
+                "write",
+            ),
+            ("writes the artefacts despite the errors and still",),
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(SAID))
+    def test_the_page_says_it(self, page: str) -> None:
+        text, phrases, stale = self.SAID[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"
+        for phrase in stale:
+            assert phrase not in said, f"{page} still says: {phrase!r}"

@@ -16,7 +16,8 @@ at link time or in the calibration lab.
 The same checks run on every command that resolves a project - ``check``, ``generate``, ``list``
 and ``dump`` - so the artefacts can never be generated from inputs that were not checked.
 ``ddd generate`` refuses to write anything while an error is outstanding, unless it is told to
-with ``--force``:
+with ``--force``, which the errors of the checks allow and those of reading or validating a file
+do not:
 
 .. code-block:: text
 
@@ -1135,7 +1136,8 @@ DDD is meant to be a build step, so the verdict is in the exit code and not only
        that.
    * - ``1``
      - At least one finding was reported with the severity ``error``, whatever its default
-       severity was. ``ddd generate`` additionally wrote nothing, unless ``--force`` was given.
+       severity was. ``ddd generate`` additionally wrote nothing, unless ``--force`` was given and the files
+       were read and validated, an error of that leaving nothing to write.
    * - ``2``
      - The command was used wrongly: an unknown severity, or an unknown check that names
        no plugin, in ``-W``, an attempt to change one of the fixed checks, a missing or

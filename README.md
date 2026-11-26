@@ -783,8 +783,10 @@ produces no plugin artefact at all, so a project that names a plugin and used to
 options, and subtracting an artefact takes its options with it, so `--without a2l` beside an
 `--address-map` is refused rather than quietly ignored.  Useful ones: `--dry-run` (reports
 what would be written and exits `0` either way, so it is not a staleness gate on its own),
-`--force` (generate despite errors - the files are written using the producing component's
-definition, but the command still reports every finding and still exits `1`),
+`--force` (generate despite the errors of the analysis - the files are written using the
+producing component's definition, but the command still reports every finding and still exits
+`1`; a file that cannot be read or does not fit its format leaves no dictionary, and nothing to
+write),
 `--byte-order big`, `--address-map addresses.json`, `--image firmware.elf` (the a2l's
 addresses read out of the linked image, below), `--a2l-module-fragment module.a2l` (a project's
 text at the head of the a2l's `MODULE`, below).

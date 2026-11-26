@@ -1321,10 +1321,10 @@ unreadable, and the two that make a project uninterpretable
 tool prints itself (`ddd checks`).
 
 A run has two stages. The first stage reads every file and validates it against its format and
-the vocabularies' entries; an error there stops the second, so that nothing is analysed, no dictionary
-is resolved and `--force` has nothing to write ([section 7](#7-tool-interface)). The second
-stage is the analysis, which makes the other checks, and an identifier can be reported by
-either.
+the vocabularies' entries; an error there stops the second, so that nothing is analysed, no
+dictionary is resolved and `--force` has nothing to write ([section 7](#7-tool-interface)).
+The second stage is the analysis, which makes the other checks, and an identifier can be
+reported by either.
 
 An override is written `check=severity` (`ddd check -W unused-output=info`), with `error`,
 `warning`, `info` and `ignore` as the severities; `ignore` drops the finding entirely. The
@@ -2616,8 +2616,8 @@ untouched when its content would not change - and left as it was where there is 
 dictionary to write: an error of the first stage ([section 4](#4-consistency-checks)) leaves
 none. Past that stage findings do not hold the dictionary back: `dump` prints one and
 `dump -o` writes one whatever the analysis reported, errors included, which is where it
-parts from `generate` ([section 5](#5-generated-artefacts)),
-and a build archiving a delivery therefore gates on the exit code rather than on the file
+parts from `generate` ([section 5](#5-generated-artefacts)), and a build archiving a delivery
+therefore gates on the exit code rather than on the file
 appearing); writing an identity into every
 producing declaration that has none (`ddd id --assign FILE...`, editing the named
 description files textually, as `ddd gui` writes an edit - the new key goes right after the

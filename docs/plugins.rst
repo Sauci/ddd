@@ -291,11 +291,13 @@ and a hook that assigns to it has changed it for the hooks after it. Only an arc
 dictionary, under ``ddd compare --plugin``, has its settings validated from the block it
 carries. A model whose dump does not read back as its block did is handed its settings in full
 over a project, and fails or differs wherever its dump is read: in a hook reading a block from
-the dictionary, and in the settings of an archived dictionary. One requiring a field its dump
-leaves out (``Field(exclude=True)``), one with a ``strict`` enum or date, which the dump writes
-as a string, and one whose serializer changes the shape of a value fail there, the settings of
-an archive a usage error naming the plugin; one whose validator does not hand back what it is
-given fails nothing, and reads a value nobody stated.
+the dictionary, and in the settings of an archived dictionary. One that cannot validate its own
+dump fails there, the settings of an archive a usage error naming the plugin: one requiring a
+field its dump leaves out (``Field(exclude=True)``), one with a ``strict`` enum or date, which
+the dump writes as a string, one whose serializer changes the shape of a value, and one whose
+validator refuses what it hands back. One whose dump validates into another value - its
+validator changes what it is given, and takes what it handed back - reads a value nobody
+stated, and fails nothing.
 
 The editor
 ----------

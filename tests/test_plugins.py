@@ -2214,6 +2214,20 @@ class S(BaseModel):
 """
 """A validator that does not hand back what it is given: a value read twice doubles twice."""
 
+SPLITTING = """
+class S(BaseModel):
+    keys: list[str] = []
+
+    @field_validator("keys", mode="before")
+    @classmethod
+    def split(cls, value: object) -> list[str]:
+        if not isinstance(value, str):
+            raise ValueError("keys are written as one string, a,b")
+        return value.split(",")
+"""
+"""A validator that changes what it is given and refuses what it handed back: keys written as
+one string become a list, which it does not take."""
+
 STRICT_ENUM = """
 class S(BaseModel):
     model_config = ConfigDict(strict=True)
@@ -2339,10 +2353,11 @@ class TestAHookIsHandedTheSettingsTheProjectStates:
     def test_an_archive_of_a_validator_read_twice_reads_a_value_nobody_stated(
         self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """A validator that does not hand back what it is given reads its own dump without an
-        error, and changes it once more: two archives of a project stating 5 carry the 10 it
-        made of it, and comparing them hands the hook 20 and exits 0, with nothing said. Not
-        every model whose dump does not read back fails where the dump is read."""
+        """A validator that changes what it is given, and takes what it handed back, reads its
+        own dump without an error and changes it once more: two archives of a project
+        stating 5 carry the 10 it made of it, and comparing them hands the hook 20 and exits 0,
+        with nothing said. Not every model whose dump does not read back fails where the dump is
+        read."""
         old = stating(tree, DOUBLING, {"a": 5}, "old")
         new = stating(tree, DOUBLING, {"a": 5}, "new")
         old_dump, new_dump = (
@@ -2355,6 +2370,26 @@ class TestAHookIsHandedTheSettingsTheProjectStates:
         arguments = ["compare", old_dump, new_dump, "--plugin", "tools/set_plugin.py"]
         assert main(arguments) == EXIT_OK, capsys.readouterr().err
         assert "compare was handed S(a=20)" in capsys.readouterr().err
+
+    def test_an_archive_of_a_validator_refusing_what_it_hands_back_is_the_plugins_error(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A validator that does not hand back what it is given fails where its dump is read when
+        it refuses what it handed back: keys written as one string become a list over the
+        project, which its hooks are handed, and two archives of it are the plugin's usage
+        error."""
+        old = stating(tree, SPLITTING, {"keys": "a,b"}, "old")
+        new = stating(tree, SPLITTING, {"keys": "a,b"}, "new")
+        assert main(["check", new, "-W", "missing-id=ignore"]) == EXIT_OK, capsys.readouterr().err
+        assert "check was handed S(keys=['a', 'b'])" in capsys.readouterr().err
+        old_dump, new_dump = (
+            dumped(old, tree, "old.json", capsys),
+            dumped(new, tree, "new.json", capsys),
+        )
+        monkeypatch.chdir(tree)
+        arguments = ["compare", old_dump, new_dump, "--plugin", "tools/set_plugin.py"]
+        assert main(arguments) == EXIT_USAGE
+        assert "the settings of plugin 'set' are invalid" in capsys.readouterr().err
 
     @pytest.mark.parametrize("stated", [None, {}], ids=["no block", "an empty block"])
     def test_a_default_drawn_afresh_is_one_value_for_the_dump_and_every_hook(

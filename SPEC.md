@@ -2743,9 +2743,16 @@ rather than behind them. The exit code distinguishes clean runs (0),
 findings (1), usage
 errors (2) and a run stopped by the user (130, the code a shell reports for a command killed
 by SIGINT: an interrupt ends the run with `ddd: interrupted` on stderr rather than with a
-traceback, and is not a finding). A reader of the tool's standard output that stops reading -
-`ddd schema component | head -1` - ends the run at 0 and in silence, since a closed pipe is
-not this run's error. Every long option **must** be spelled in full; no abbreviation of one
+traceback, and is not a finding). A closed pipe is not this run's error, and it changes no
+verdict either: a reader of the tool's standard output that stops reading - `ddd schema
+component | head -1` - or is gone before the first line ends the run in silence at the code
+it would have ended at had the reader read on, so that a check of a project with errors
+still fails under `set -o pipefail` however early its reader stopped, and a command with no
+verdict to keep - `schema`, `checks`, `cmake-dir`, `--version` and `--help` among them - ends
+at 0. A standard error whose reader has gone by the time the run writes to it is never
+0, since what the run owed there was not said: the run ends at 1 where it would have, and at
+2 otherwise.
+Every long option **must** be spelled in full; no abbreviation of one
 is accepted, so that adding an option cannot change what an existing command line means. A
 usage error raised by a step that follows the analysis - a plugin hook
 that raises, an override naming a plugin check that no loaded plugin registers, which

@@ -185,7 +185,8 @@ The exit code is the same everywhere, which lets a build system treat DDD like a
        side, which names its own plugins, or a run that would write nothing - reports the
        findings of the run
        first, in the requested format, before the error follows; the exit code is still
-       ``2``.
+       ``2``. A run that found no error ends at ``2`` as well when the report it owed on
+       standard error could not be written there, its reader gone (below).
    * - ``130``
      - the run was interrupted: Ctrl-C, or anything else that raises ``KeyboardInterrupt``,
        inside DDD or inside a plugin's hook. It is the code a shell reports for a command
@@ -193,9 +194,16 @@ The exit code is the same everywhere, which lets a build system treat DDD like a
        not read a run somebody stopped as a project with errors. The run prints one line,
        ``ddd: interrupted``, and no traceback.
 
-A reader of standard output that stops reading is not an error either: ``ddd schema component
-| head -1`` ends at ``0`` and in silence, where the broken pipe used to be reported as a usage
-error and failed a paging script under ``set -o pipefail``.
+A reader that stops reading is not an error either, and it takes nothing of the verdict with
+it. Whether the reader of standard output stops early - ``ddd check project.ddd.json --format
+json | head -1`` - or is gone before the first line, the run ends in silence at the code it
+would have ended at had the reader read on: ``1`` for a project with errors, so that a gate
+under ``set -o pipefail`` still fails it however early its reader stopped, and ``0`` for a
+clean one and for a command with no verdict to keep, such as ``ddd schema component | head
+-1``. A standard error whose reader has gone by the time the run writes its report there is
+never ``0``, since that report was not made: the run ends at ``1`` where it would have, and
+at ``2`` otherwise. Windows reports a pipe nobody reads any more as an invalid argument, and
+the run reads it there as the closed pipe it is.
 
 Every long option is spelled in full. ``argparse`` offers any unambiguous prefix by default,
 and DDD turns that off: ``--stand`` for ``--standalone`` would work until the day a second

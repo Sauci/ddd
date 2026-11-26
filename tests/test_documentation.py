@@ -12545,3 +12545,55 @@ class TestTheRulesOfAMissingPluginAfterTheSwitch:
             assert phrase in said, f"{page} no longer says: {phrase!r}"
         for phrase in self.STALE.get(page, ()):
             assert phrase not in said, f"{page} still says: {phrase!r}"
+
+
+class TestWhatAClosedPipeEndsARunAt:
+    """19:I3 and 9:M1. A reader that stops reading takes nothing of the verdict with it, and a
+    standard error that loses its reader is never 0: SPEC 7 and the command line page say so, of
+    a reader gone before the first line too, and neither says any longer that a closed pipe ends
+    every run at 0."""
+
+    SAID: ClassVar[dict[str, tuple[str, ...]]] = {
+        "SPEC.md": (
+            "A closed pipe is not this run's error, and it changes no verdict either: a reader of "
+            "the tool's standard output that stops reading - `ddd schema component | head -1` - "
+            "or is gone before the first line ends the run in silence at the code it would have "
+            "ended at had the reader read on, so that a check of a project with errors still "
+            "fails under `set -o pipefail` however early its reader stopped, and a command with "
+            "no verdict to keep - `schema`, `checks`, `cmake-dir`, `--version` and `--help` among "
+            "them - ends at 0.",
+            "A standard error whose reader has gone by the time the run writes to it is never 0, "
+            "since what the run owed there was not said: the run ends at 1 where it would have, "
+            "and at 2 otherwise.",
+        ),
+        "docs/command_line_interface.rst": (
+            "A run that found no error ends at ``2`` as well when the report it owed on standard "
+            "error could not be written there, its reader gone (below).",
+            "A reader that stops reading is not an error either, and it takes nothing of the "
+            "verdict with it.",
+            "Whether the reader of standard output stops early - ``ddd check project.ddd.json "
+            "--format json | head -1`` - or is gone before the first line, the run ends in "
+            "silence at the code it would have ended at had the reader read on: ``1`` for a "
+            "project with errors, so that a gate under ``set -o pipefail`` still fails it however "
+            "early its reader stopped, and ``0`` for a clean one and for a command with no "
+            "verdict to keep, such as ``ddd schema component | head -1``.",
+            "A standard error whose reader has gone by the time the run writes its report there "
+            "is never ``0``, since that report was not made: the run ends at ``1`` where it would "
+            "have, and at ``2`` otherwise.",
+            "Windows reports a pipe nobody reads any more as an invalid argument, and the run "
+            "reads it there as the closed pipe it is.",
+        ),
+    }
+
+    STALE: ClassVar[dict[str, str]] = {
+        "SPEC.md": "ends the run at 0 and in silence",
+        "docs/command_line_interface.rst": "ends at ``0`` and in silence",
+    }
+    """What each said before: a closed pipe ended every run at 0."""
+
+    @pytest.mark.parametrize("page", sorted(SAID))
+    def test_the_page_says_what_a_closed_pipe_ends_a_run_at(self, page: str) -> None:
+        said = flattened(SPEC if page == "SPEC.md" else PAGES[page])
+        for phrase in self.SAID[page]:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"
+        assert self.STALE[page] not in said, f"{page} still says: {self.STALE[page]!r}"

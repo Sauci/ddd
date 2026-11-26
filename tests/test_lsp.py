@@ -18,6 +18,7 @@ from collections import Counter
 from collections.abc import Callable, Sequence
 from functools import partial
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, ClassVar, Final
 
 import pytest
@@ -80,6 +81,7 @@ from ddd.lsp.ranges import Document, differs_from_disk, read
 from ddd.lsp.server import Server, uri_to_path
 from ddd.lsp.units import rename_unit, text_edits, unit_drift, vocabulary_project
 from ddd.plans import Plan, PlannedEdit, PlanRefusalError
+from test_plugins import SKIPPED, naming_the_marker, ran
 from test_variable_keys import edited
 
 
@@ -1170,9 +1172,9 @@ class TestTheProjectIsReadOnce:
         """Every file the server reads a workspace out of, in order, wherever it does it."""
         seen: list[Path] = []
 
-        def spy(path: Path, bag: DiagnosticBag) -> Any:
+        def spy(path: Path, bag: DiagnosticBag, **options: Any) -> Any:
             seen.append(path)
-            return load_workspace(path, bag)
+            return load_workspace(path, bag, **options)
 
         monkeypatch.setattr(navigation, "load_workspace", spy)
         monkeypatch.setattr(service, "load_workspace", spy)
@@ -5493,9 +5495,9 @@ class TestServer:
         loads: list[Path] = []
         original = navigation.load_workspace
 
-        def counted(path: Path, bag: Any) -> Any:
+        def counted(path: Path, bag: Any, **options: Any) -> Any:
             loads.append(path)
-            return original(path, bag)
+            return original(path, bag, **options)
 
         monkeypatch.setattr(navigation, "load_workspace", counted)
 
@@ -7034,9 +7036,9 @@ class TestServer:
         """Every file the server reads a workspace out of from now on, resolved, in order."""
         seen: list[Path] = []
 
-        def spy(path: Path, bag: DiagnosticBag) -> Any:
+        def spy(path: Path, bag: DiagnosticBag, **options: Any) -> Any:
             seen.append(path.resolve())
-            return load_workspace(path, bag)
+            return load_workspace(path, bag, **options)
 
         monkeypatch.setattr(navigation, "load_workspace", spy)
         return seen
@@ -10689,9 +10691,9 @@ class TestAFixInTwoImages:
         assert server._handle({"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {}})
         seen: list[Path] = []
 
-        def spy(path: Path, bag: DiagnosticBag) -> Any:
+        def spy(path: Path, bag: DiagnosticBag, **options: Any) -> Any:
             seen.append(path.resolve())
-            return load_workspace(path, bag)
+            return load_workspace(path, bag, **options)
 
         monkeypatch.setattr(navigation, "load_workspace", spy)
         assert server._handle(request)
@@ -13251,9 +13253,9 @@ class TestDocumentsMarkedTogetherAreCheckedTogether:
         seen: list[Path] = []
         original = navigation.load_workspace
 
-        def counted(path: Path, bag: DiagnosticBag) -> Any:
+        def counted(path: Path, bag: DiagnosticBag, **options: Any) -> Any:
             seen.append(path)
-            return original(path, bag)
+            return original(path, bag, **options)
 
         monkeypatch.setattr(navigation, "load_workspace", counted)
         reports = service.collect([], [tmp_path / name for name in names], tmp_path)
@@ -14806,3 +14808,177 @@ class TestARelativeBuildDirectoryIsReadInEachFolder:
         assert server._handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
         assert server._handle(holding(here / "c.ddd.json", "{}"))
         assert logged(writer) == [f"here.elf: {(here / 'p.ddd.json').as_posix()}"]
+
+
+class TestAServerRunningNoPlugin:
+    """1:I15. ``ddd lsp --no-plugins`` imports no plugin a description names at any read the
+    server makes - a build's project, a description above an opened file, the file itself, what a
+    question reads and what a refresh reads again - and publishes each entry naming one as
+    ``plugin-skipped``. Each test that says a plugin did not run says, with them, that it did."""
+
+    @staticmethod
+    def opened(path: Path) -> dict[str, Any]:
+        return {
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": {"textDocument": {"uri": path.as_uri()}},
+        }
+
+    @staticmethod
+    def asked(method: str, path: Path, request_id: int = 7) -> dict[str, Any]:
+        """A request at the start of ``path``: what it asks needs the projects holding it read."""
+        start = {"line": 0, "character": 0}
+        where: dict[str, Any] = (
+            {"range": {"start": start, "end": start}, "context": {"diagnostics": []}}
+            if method == "textDocument/codeAction"
+            else {"position": start}
+        )
+        return {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "method": method,
+            "params": {"textDocument": {"uri": path.as_uri()}, **where},
+        }
+
+    def served(self, tmp_path: Path, *messages: dict[str, Any], run_plugins: bool) -> dict:
+        """What a session of ``messages`` published, by uri."""
+        writer = io.BytesIO()
+        Server(session(*messages, *END), writer, root=tmp_path, run_plugins=run_plugins).run()
+        return published(writer)
+
+    @pytest.mark.parametrize(
+        ("way", "publishes"),
+        [
+            ("a build record names the project", True),
+            ("a project above the opened file holds it", True),
+            ("the project file is opened alone", True),
+            ("a definition is asked before anything is opened", False),
+            ("a definition is asked after an open", False),
+            ("a definition is asked of the project file alone", False),
+        ],
+    )
+    def test_no_read_the_server_makes_runs_a_plugin(
+        self, tmp_path: Path, way: str, publishes: bool
+    ) -> None:
+        root = naming_the_marker(tmp_path)
+        component_file = tmp_path / "a.ddd.json"
+        if way == "a build record names the project":
+            build_record(tmp_path, root)
+        messages = {
+            "a build record names the project": [self.opened(component_file)],
+            "a project above the opened file holds it": [self.opened(component_file)],
+            "the project file is opened alone": [self.opened(root)],
+            "a definition is asked before anything is opened": [
+                self.asked("textDocument/definition", component_file)
+            ],
+            "a definition is asked after an open": [
+                self.opened(component_file),
+                self.asked("textDocument/definition", component_file),
+            ],
+            "a definition is asked of the project file alone": [
+                self.asked("textDocument/definition", root)
+            ],
+        }[way]
+        found = self.served(tmp_path, *messages, run_plugins=False)
+        assert not ran(tmp_path)
+        if publishes:
+            (skipped,) = [entry for entry in found[root.as_uri()] if entry["code"] != "missing-id"]
+            assert (skipped["code"], skipped["severity"], skipped["message"]) == (
+                "plugin-skipped",
+                2,
+                SKIPPED,
+            )
+            spot = Document(root.read_text(encoding="utf-8")).range_of("project.plugins[0]")
+            assert skipped["range"] == spot
+        self.served(tmp_path, *messages, run_plugins=True)
+        assert ran(tmp_path)
+
+    @pytest.mark.parametrize("run_plugins", [False, True])
+    def test_a_build_s_override_of_a_plugin_s_check_is_unverified_while_none_ran(
+        self, tmp_path: Path, run_plugins: bool
+    ) -> None:
+        """The plugin that ran registers no ``mark/no-such``, which a record naming it is told on
+        the project file; the one that was skipped may."""
+        root = naming_the_marker(tmp_path)
+        build_record(tmp_path, root, severity=["mark/no-such=ignore", "missing-id=ignore"])
+        found = self.served(tmp_path, self.opened(tmp_path / "a.ddd.json"), run_plugins=run_plugins)
+        codes = {entry["code"] for entry in found[root.as_uri()]}
+        assert ("plugin-invalid" in codes) is run_plugins
+        assert ("plugin-skipped" in codes) is not run_plugins
+
+    def test_a_refresh_reading_again_a_project_its_fixes_were_withheld_from_runs_none(
+        self, tmp_path: Path
+    ) -> None:
+        """The quick fixes are withheld from a project a file of which did not load, and every
+        refresh reads that project again to know whether it still has to say so."""
+        naming_the_marker(tmp_path)
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project(
+                    "P",
+                    "a.ddd.json",
+                    "b.ddd.json",
+                    plugins=["tools/mark.py"],
+                    extensions={"mark": {"level": 2}},
+                ),
+                "b.ddd.json": DROPPED,
+            },
+        )
+        component_file = tmp_path / "a.ddd.json"
+        saved = {"textDocument": {"uri": component_file.as_uri()}}
+        for run_plugins in (False, True):
+            server = Server(io.BytesIO(), io.BytesIO(), root=tmp_path, run_plugins=run_plugins)
+            assert server._handle({"jsonrpc": "2.0", "id": 1, "method": "initialize"})
+            assert server._handle(self.opened(component_file))
+            assert server._handle(self.asked("textDocument/codeAction", component_file, 13))
+            assert server._told, "the quick fixes were not withheld"
+            assert server._handle(
+                {"jsonrpc": "2.0", "method": "textDocument/didSave", "params": saved}
+            )
+            assert ran(tmp_path) is run_plugins
+
+    def test_a_project_read_afresh_runs_its_plugins_unless_it_is_asked_not_to(
+        self, tmp_path: Path
+    ) -> None:
+        root = naming_the_marker(tmp_path)
+        loaded = navigation.read_project(root, run_plugins=False)
+        assert loaded is not None
+        assert not ran(tmp_path)
+        assert checks(loaded.bag) == ["plugin-skipped"]
+        assert navigation.read_project(root) is not None
+        assert ran(tmp_path)
+
+    def test_a_file_read_on_its_own_runs_none_either(self, tmp_path: Path) -> None:
+        """What the server reads on its own is a file no project holds, which names no plugin;
+        read so all the same, a project file runs none of the plugins it names."""
+        root = naming_the_marker(tmp_path)
+        bag, _ = service.analyse_standalone(root, run_plugins=False)
+        assert not ran(tmp_path)
+        assert "plugin-skipped" in checks(bag)
+        service.analyse_standalone(root)
+        assert ran(tmp_path)
+
+    def test_the_command_runs_none(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        root = naming_the_marker(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        for arguments, imported in ((["lsp", "--no-plugins"], False), (["lsp"], True)):
+            wire = io.BytesIO()
+            stdout = io.TextIOWrapper(wire, encoding="utf-8", write_through=True)
+            monkeypatch.setattr(
+                sys,
+                "stdin",
+                SimpleNamespace(buffer=session(self.opened(tmp_path / "a.ddd.json"), *END)),
+            )
+            monkeypatch.setattr(sys, "stdout", stdout)
+            assert main(arguments) == EXIT_OK
+            written = io.BytesIO(wire.getvalue())
+            assert ran(tmp_path) is imported
+            codes = [
+                entry["code"]
+                for message in sent(written)
+                if message.get("method") == "textDocument/publishDiagnostics"
+                and message["params"]["uri"] == root.as_uri()
+                for entry in message["params"]["diagnostics"]
+            ]
+            assert ("plugin-skipped" in codes) is not imported

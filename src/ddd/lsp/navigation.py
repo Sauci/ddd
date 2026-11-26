@@ -487,11 +487,15 @@ class Descriptions(dict[Path, Loaded | None]):
     """Every description one question has read, by the path it resolves to: what it read as, or
     ``None`` where it could not be read."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, run_plugins: bool = True) -> None:
         super().__init__()
         self.failed: dict[Path, str] = {}
         """Why each description a plugin defect stopped could not be read, by the path it
         resolves to: what a rename that depends on a description it cannot read says."""
+        self.run_plugins = run_plugins
+        """Whether a description is read running the plugins it names, or as ``--no-plugins``
+        asks: every read made through these is made one way, so that none is kept for the
+        other."""
 
 
 def workspaces(
@@ -535,7 +539,7 @@ def workspaces(
         # hover after a save take three times what checking the whole project takes.
         found.extend(resolve_projects(document, root, descriptions).projects)
     if not found:
-        alone = _loaded(document, unreadable)
+        alone = _loaded(document, unreadable, run_plugins=descriptions.run_plugins)
         if alone is not None:
             found.append(alone)
     return found
@@ -548,20 +552,21 @@ def _read_once(path: Path, failed: dict[Path, str], descriptions: Descriptions) 
     ``descriptions.failed`` for whoever asks later."""
     key = path.resolve()
     if key not in descriptions:
-        descriptions[key] = _loaded(path, failed)
+        descriptions[key] = _loaded(path, failed, run_plugins=descriptions.run_plugins)
         if path in failed:
             descriptions.failed[key] = failed[path]
     return descriptions[key]
 
 
-def read_project(path: Path) -> Loaded | None:
+def read_project(path: Path, *, run_plugins: bool = True) -> Loaded | None:
     """One project description read afresh, as the search reads each candidate, or nothing where
     it cannot be read: for a caller that keeps what it learnt of a project between two questions,
-    and settles it again whenever the files may have changed."""
-    return _loaded(path, {})
+    and settles it again whenever the files may have changed. ``run_plugins`` is how the caller's
+    other reads are made (:attr:`Descriptions.run_plugins`)."""
+    return _loaded(path, {}, run_plugins=run_plugins)
 
 
-def _loaded(path: Path, failed: dict[Path, str]) -> Loaded | None:
+def _loaded(path: Path, failed: dict[Path, str], *, run_plugins: bool) -> Loaded | None:
     """One project read for a question about it, or nothing when it cannot be read.
 
     Reading a project runs the models its plugins declare, over every ``extensions`` block in
@@ -572,11 +577,12 @@ def _loaded(path: Path, failed: dict[Path, str]) -> Loaded | None:
     that exits and the findings of the same save already name the plugin.
 
     The bag the read reported through is kept, not discarded: which files did not load is what
-    an edit over this project has to know before it rewrites any of them.
+    an edit over this project has to know before it rewrites any of them. ``run_plugins`` false
+    reads it as ``--no-plugins`` asks (:func:`~ddd.loading.load_workspace`).
     """
     bag = DiagnosticBag()
     try:
-        workspace = load_workspace(path, bag)
+        workspace = load_workspace(path, bag, run_plugins=run_plugins)
     except PluginError as error:
         failed[path] = str(error)
         return None

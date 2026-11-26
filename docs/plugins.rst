@@ -281,8 +281,9 @@ you did not write, and why the server will not run there until you trust the wor
 is true of the cmake integration too: ``ddd_generate()`` runs ``ddd`` at configure time, so
 the plugins a project names are imported when CMake runs, not only when the generation does
 (see :doc:`build_integration`). Only ``--no-plugins`` runs none, on ``ddd check``, ``ddd
-list``, ``ddd dump``, ``ddd sources`` and ``ddd compare``, both sides of a comparison alike: no
-module a description names is imported, each entry naming one is reported as
+list``, ``ddd dump``, ``ddd sources`` and ``ddd compare``, both sides of a comparison alike, and
+on ``ddd lsp``, at every read the server makes: no module a description names is imported,
+each entry naming one is reported as
 ``plugin-skipped``, a warning, and its blocks are carried into the dictionary as written,
 neither validated nor reported as ``unknown-extension``. ``ddd generate``, ``ddd artefacts``
 and ``ddd gui`` do not take it, each running what the project names as a build does.

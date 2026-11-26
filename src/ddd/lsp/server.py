@@ -355,9 +355,15 @@ class Server:
         writer: IO[bytes],
         root: Path | None = None,
         build_directories: Sequence[Path] = (),
+        *,
+        run_plugins: bool = True,
     ) -> None:
         self.reader = reader
         self.writer = writer
+        self._run_plugins = run_plugins
+        """Whether a read of a project runs the plugins it names, or none, as ``ddd lsp
+        --no-plugins`` asks: every read the server makes is made one way, a check's, a question's
+        and the one a refresh makes again (:meth:`_mended`)."""
         self._started_in = root or Path.cwd()
         """The folder the server answers in while the client names none (:attr:`roots`)."""
         self._folders: list[Path] = []
@@ -406,7 +412,7 @@ class Server:
         question is entitled to the first one's answer; :meth:`_forget` is where that stops.
         """
 
-        self._described = Descriptions()
+        self._described = Descriptions(run_plugins=run_plugins)
         """Every description read since :meth:`_forget`, by the path it resolves to, as each
         question reads them (:meth:`_descriptions`): kept for the reason the projects are, one
         level down. The quick fixes reach the projects holding each file they write, as a rename
@@ -1101,7 +1107,7 @@ class Server:
         """
         self._builds = None
         self._projects.clear()
-        self._described = Descriptions()
+        self._described = Descriptions(run_plugins=self._run_plugins)
         self._dictionaries.clear()
 
     def _descriptions(self) -> Descriptions:
@@ -1149,6 +1155,7 @@ class Server:
             self._root_for,
             self._cache(),
             ran,
+            run_plugins=self._run_plugins,
         )
         # What a run of this check reported on last time and no run of it reports on now.
         dropped: set[Path] = set()
@@ -1177,7 +1184,7 @@ class Server:
         again, so a refresh while nothing is withheld reads what it read before.
         """
         for path in sorted(self._told):
-            loaded = read_project(path)
+            loaded = read_project(path, run_plugins=self._run_plugins)
             if loaded is not None and not loaded.unreadable:
                 del self._told[path]
 
@@ -1967,8 +1974,9 @@ class Server:
         )
 
 
-def serve(build_directories: Sequence[Path] = ()) -> int:
-    """Run a server on this process's stdin and stdout.
+def serve(build_directories: Sequence[Path] = (), *, run_plugins: bool = True) -> int:
+    """Run a server on this process's stdin and stdout; ``run_plugins`` false is ``ddd lsp
+    --no-plugins`` (:attr:`Server._run_plugins`).
 
     The binary buffers, because the protocol counts bytes; and stdout is the wire, which is
     why nothing in DDD prints there except through :func:`write_message`. A plugin, or a
@@ -1989,4 +1997,6 @@ def serve(build_directories: Sequence[Path] = ()) -> int:
     except io.UnsupportedOperation:
         reader = stdin
     with contextlib.redirect_stdout(sys.stderr):
-        return Server(reader, wire, build_directories=build_directories).run()
+        return Server(
+            reader, wire, build_directories=build_directories, run_plugins=run_plugins
+        ).run()

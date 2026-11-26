@@ -372,6 +372,7 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
             "folders while the editor names none"
         ),
     )
+    _add_no_plugins_argument(lsp, "; at every read the server makes")
     lsp.set_defaults(handler=_command_lsp)
 
     gui = subparsers.add_parser(
@@ -1895,7 +1896,7 @@ def _command_lsp(args: argparse.Namespace) -> int:
     # without ever using it.
     from ddd.lsp.server import serve
 
-    return serve(args.build_directory)
+    return serve(args.build_directory, run_plugins=not args.no_plugins)
 
 
 def _command_gui(args: argparse.Namespace) -> int:

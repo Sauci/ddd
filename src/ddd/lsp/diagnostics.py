@@ -89,16 +89,18 @@ class Run:
         return None if self.resolved is None else self.resolved.dictionary
 
 
-def analyse(info: BuildInfo) -> tuple[DiagnosticBag, frozenset[Path]]:
+def analyse(info: BuildInfo, *, run_plugins: bool = True) -> tuple[DiagnosticBag, frozenset[Path]]:
     """Run the checks over one configured project, exactly as its build would.
 
     The editor's answer; :func:`run_build` is the same run keeping the dictionary as well.
     """
-    run = run_build(info)
+    run = run_build(info, run_plugins=run_plugins)
     return run.bag, run.covered
 
 
-def run_build(info: BuildInfo, *, includes: Sequence[str] | None = None) -> Run:
+def run_build(
+    info: BuildInfo, *, includes: Sequence[str] | None = None, run_plugins: bool = True
+) -> Run:
     """Run the checks over one configured project, exactly as its build would, keeping what it
     resolved to.
 
@@ -112,34 +114,48 @@ def run_build(info: BuildInfo, *, includes: Sequence[str] | None = None) -> Run:
 
     ``includes`` is :func:`~ddd.loading.load_workspace`'s own override, passed on unchanged: the
     server's, for the one analysis that judges a removal, and never the editor's own runs.
+
+    ``run_plugins`` false runs the checks as ``ddd check --no-plugins`` would, importing no
+    plugin the project names, so that an override naming a plugin's check is accepted
+    unverified while one was skipped (:meth:`~ddd.diagnostics.SeverityPolicy.verify`).
     """
     policy = SeverityPolicy.from_strings(list(info.severity), strict=info.strict)
     project = Path(info.project)
-    run = _run(project, DiagnosticBag(policy), includes=includes)
+    run = _run(project, DiagnosticBag(policy), includes=includes, run_plugins=run_plugins)
     try:
-        policy.verify(run.bag.registered)
+        policy.verify(run.bag.registered, run.bag.skipped)
     except UnknownCheckError as fault:
         run.bag.add("plugin-invalid", str(fault), Location(project))
     return run
 
 
-def run_project(root: Path, *, includes: Sequence[str] | None = None) -> Run:
+def run_project(
+    root: Path, *, includes: Sequence[str] | None = None, run_plugins: bool = True
+) -> Run:
     """Run the checks over a project description under the default severities, the way a
     project file no build configured is checked.
 
-    ``includes`` is passed on to :func:`_run` unchanged - see :func:`run_build`.
+    ``includes`` and ``run_plugins`` are passed on to :func:`_run` unchanged - see
+    :func:`run_build`.
     """
-    return _run(root, DiagnosticBag(), includes=includes)
+    return _run(root, DiagnosticBag(), includes=includes, run_plugins=run_plugins)
 
 
-def analyse_standalone(path: Path) -> tuple[DiagnosticBag, frozenset[Path]]:
-    """Run the checks over a file read as "a component on its own"."""
+def analyse_standalone(
+    path: Path, *, run_plugins: bool = True
+) -> tuple[DiagnosticBag, frozenset[Path]]:
+    """Run the checks over a file read as "a component on its own".
+
+    A component names no plugin, and ``run_plugins`` is passed on all the same: what is read
+    here is whatever the file holds when it is read, a project file among what it may hold."""
     policy = SeverityPolicy.from_strings(list(STANDALONE_POLICY), strict=False, standalone=True)
-    run = _run(path, DiagnosticBag(policy))
+    run = _run(path, DiagnosticBag(policy), run_plugins=run_plugins)
     return run.bag, run.covered
 
 
-def _analyse_root(path: Path, cache: dict[Path, Document]) -> tuple[DiagnosticBag, frozenset[Path]]:
+def _analyse_root(
+    path: Path, cache: dict[Path, Document], *, run_plugins: bool
+) -> tuple[DiagnosticBag, frozenset[Path]]:
     """Run the checks over a file no build and no project above it claims.
 
     A project file is the whole project, whatever no build record says about it: it lists the
@@ -153,9 +169,9 @@ def _analyse_root(path: Path, cache: dict[Path, Document]) -> tuple[DiagnosticBa
     mistake.
     """
     if _declares_a_project(path, cache):
-        run = run_project(path)
+        run = run_project(path, run_plugins=run_plugins)
         return run.bag, run.covered
-    return analyse_standalone(path)
+    return analyse_standalone(path, run_plugins=run_plugins)
 
 
 def _declares_a_project(path: Path, cache: dict[Path, Document]) -> bool:
@@ -183,7 +199,9 @@ def _analysed(loaded: Loaded) -> tuple[DiagnosticBag, frozenset[Path]]:
     return bag, frozenset(loaded.workspace.sources())
 
 
-def _run(root: Path, bag: DiagnosticBag, *, includes: Sequence[str] | None = None) -> Run:
+def _run(
+    root: Path, bag: DiagnosticBag, *, includes: Sequence[str] | None = None, run_plugins: bool
+) -> Run:
     """The two phases of a run, and which files it turned out to cover.
 
     The early return when reading reported an error is the same one ``ddd check`` makes: there
@@ -198,14 +216,17 @@ def _run(root: Path, bag: DiagnosticBag, *, includes: Sequence[str] | None = Non
     every file the project covers, rather than of the project file alone.
 
     ``includes`` is passed on to :func:`~ddd.loading.load_workspace` unchanged, replacing the
-    root project's own list for this one read alone - see :func:`run_build`.
+    root project's own list for this one read alone - see :func:`run_build` - and so is
+    ``run_plugins``.
     """
     covered = frozenset({root})
     resolved: Resolved | None = None
     built: Index | None = None
     files_read: dict[Path, FileRead] = {}
     try:
-        workspace = load_workspace(root, bag, includes=includes, files_read=files_read)
+        workspace = load_workspace(
+            root, bag, includes=includes, files_read=files_read, run_plugins=run_plugins
+        )
         if workspace is None:
             return Run(bag, covered, None, files_read=files_read)
         covered = frozenset(workspace.sources())
@@ -237,6 +258,8 @@ def collect(
     root: Path | Callable[[Path], Path] | None = None,
     buffers: Mapping[Path, Document] | None = None,
     reported: dict[Path, set[Path]] | None = None,
+    *,
+    run_plugins: bool = True,
 ) -> dict[Path, list[dict[str, Any]]]:
     """Findings for every file the given builds cover, plus any document they do not.
 
@@ -284,6 +307,10 @@ def collect(
     one; a document searched for is there whatever its search found. What a caller needs to tell
     a file no run reported on this time from one that a run from the same place no longer
     reports on, as the server does between two checks (:meth:`~ddd.lsp.server.Server.refresh`).
+
+    ``run_plugins`` false reads every project as ``ddd lsp --no-plugins`` asks: no plugin a
+    description names is imported, by a build's run, a search above a document or a run of a
+    document on its own.
     """
     cache: dict[Path, Document] = {}
     """The files as the disk holds them, for what each declares itself."""
@@ -300,10 +327,10 @@ def collect(
         ran.setdefault(origin.resolve(), set()).update(said)
 
     for info in builds:
-        bag, sources = analyse(info)
+        bag, sources = analyse(info, run_plugins=run_plugins)
         spoken(Path(info.project), sources | group_findings(bag, Path(info.project), grouped))
     claimed = frozenset(covered)
-    descriptions = Descriptions()
+    descriptions = Descriptions(run_plugins=run_plugins)
     analysed: set[Path] = set()
     alone: list[Path] = []
     for document in documents:
@@ -332,7 +359,7 @@ def collect(
                 spoken(description, sources | group_findings(bag, loaded.path, grouped))
     for resolved in alone:
         if resolved not in covered:
-            bag, sources = _analyse_root(resolved, cache)
+            bag, sources = _analyse_root(resolved, cache, run_plugins=run_plugins)
             spoken(resolved, sources | group_findings(bag, resolved, grouped))
 
     return {

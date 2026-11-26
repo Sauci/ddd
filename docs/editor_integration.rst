@@ -14,7 +14,7 @@ wrong.
 .. code-block:: text
 
    $ ddd lsp --help
-   usage: ddd lsp [-h] [-b DIR]
+   usage: ddd lsp [-h] [-b DIR] [--no-plugins]
 
    Speaks the Language Server Protocol on stdin and stdout. It reports the
    consistency checks while a description file is being written, which a json
@@ -32,6 +32,10 @@ wrong.
                            searched in each, the directory the server is started
                            in standing for the folders while the editor names
                            none
+     --no-plugins          import none of the plugins the project names,
+                           reporting each as plugin-skipped, a warning: its
+                           checks do not run and its blocks are not validated; at
+                           every read the server makes
 
 The command is not meant to be run by hand: it speaks the Language Server Protocol on stdin
 and stdout and expects an editor on the other end. A plugin's ``print`` is bound to standard
@@ -382,7 +386,10 @@ repository ships, exactly as ``ddd check`` on it would - the difference is that 
 the command. Open a repository in the editor only when you would run its build. The VS Code
 extension declines a workspace that has not been trusted (VS Code's *Restricted Mode*), so
 the server starts only once you have said so; an editor that launches the server itself has
-to make the same decision.
+to make the same decision. Started as ``ddd lsp --no-plugins``, the server runs none of them:
+no plugin a description names is imported, at any read the server makes, and each entry
+naming one is drawn as ``plugin-skipped``, a warning, its checks not run and its blocks not
+validated.
 
 VS Code
 -------

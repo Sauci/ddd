@@ -12249,14 +12249,22 @@ class TestARunThatRunsNoPlugin:
                 "dictionary as written rather than being `unknown-extension`.",
                 "under `--no-plugins`, one named as a module is listed only where its name holds "
                 "no dot, since the finder imports the packages above a dotted name to locate it;",
-                "`ddd check`, `ddd list`, `ddd dump`, `ddd sources` and `ddd compare` take "
-                "`--no-plugins`, which imports none of the plugins a project names and reports "
-                "each as `plugin-skipped` ([section 3.11](#311-plugins)), on both sides of a "
-                "comparison: `ddd check --baseline` applies it to the baseline as to the project, "
-                "a baseline's finding prefixed as its carried errors are and graded as the run "
-                "grades its own, and `ddd compare` refuses `--plugin` beside it as a usage error, "
-                "before anything is read. `ddd generate`, `ddd artefacts` and `ddd gui` do not "
-                "take it, each running what the project names as a build does.",
+                "`ddd check`, `ddd list`, `ddd dump`, `ddd sources`, `ddd compare` and `ddd lsp` "
+                "take `--no-plugins`, which imports none of the plugins a project names and "
+                "reports each as `plugin-skipped` ([section 3.11](#311-plugins)), on both sides of "
+                "a comparison: `ddd check --baseline` applies it to the baseline as to the "
+                "project, a baseline's finding prefixed as its carried errors are and graded as "
+                "the run grades its own, and `ddd compare` refuses `--plugin` beside it as a usage "
+                "error, before anything is read; `ddd lsp` applies it to every read it makes "
+                "([section 7.2](#72-editor-integration)). `ddd generate`, `ddd artefacts` and "
+                "`ddd gui` do not take it, each running what the project names as a build does.",
+                "Given `--no-plugins`, it imports no plugin a description names at any read it "
+                "makes - a build's project, a description read to find out whether it includes an "
+                "opened file, the opened file itself - and publishes each entry naming one as "
+                "`plugin-skipped` ([section 3.11](#311-plugins)).",
+                "the server runs the plugins of every project it analyses, unless it was started "
+                "with `--no-plugins`, which runs none ([section 3.11](#311-plugins)): so opening a "
+                "repository is running its python,",
                 "which beside a project candidate is a usage error, because the project names its "
                 "own, and so is it beside `--no-plugins`, which runs none on either side;",
                 "The one exception is `plugin-skipped`, which a run given `--no-plugins` files for "
@@ -12288,12 +12296,26 @@ class TestARunThatRunsNoPlugin:
                 "registers is not known, and an override naming a plugin's check is accepted "
                 "unverified.",
                 "Only ``--no-plugins`` runs none, on ``ddd check``, ``ddd list``, ``ddd dump``, "
-                "``ddd sources`` and ``ddd compare``, both sides of a comparison alike: no module "
-                "a description names is imported, each entry naming one is reported as "
+                "``ddd sources`` and ``ddd compare``, both sides of a comparison alike, and on "
+                "``ddd lsp``, at every read the server makes: no module a description names is "
+                "imported, each entry naming one is reported as "
                 "``plugin-skipped``, a warning, and its blocks are carried into the dictionary as "
                 "written, neither validated nor reported as ``unknown-extension``. ``ddd "
                 "generate``, ``ddd artefacts`` and ``ddd gui`` do not take it, each running what "
                 "the project names as a build does.",
+            ),
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            (
+                "Started as ``ddd lsp --no-plugins``, the server runs none of them: no plugin a "
+                "description names is imported, at any read the server makes, and each entry "
+                "naming one is drawn as ``plugin-skipped``, a warning, its checks not run and its "
+                "blocks not validated.",
+                "usage: ddd lsp [-h] [-b DIR] [--no-plugins]",
+                "--no-plugins import none of the plugins the project names, reporting each as "
+                "plugin-skipped, a warning: its checks do not run and its blocks are not "
+                "validated; at every read the server makes",
             ),
         ),
         "README.md": (
@@ -12315,7 +12337,14 @@ class TestARunThatRunsNoPlugin:
     def test_the_commands_that_take_it_are_those_the_pages_name(self) -> None:
         """Decision M7: ``ddd generate``, ``ddd artefacts`` and ``ddd gui`` run what the project
         names, as a build does."""
-        assert commands_with("--no-plugins") == ["check", "compare", "dump", "list", "sources"]
+        assert commands_with("--no-plugins") == [
+            "check",
+            "compare",
+            "dump",
+            "list",
+            "lsp",
+            "sources",
+        ]
 
     HELP: ClassVar[str] = (
         "import none of the plugins the project names, reporting each as plugin-skipped, a "
@@ -12331,6 +12360,9 @@ class TestARunThatRunsNoPlugin:
         assert option_help("check", "--no-plugins") == (
             f"{self.HELP}; with --baseline, the baseline's too, reported as the baseline's"
         )
+
+    def test_the_help_of_the_server_says_it_reaches_every_read(self) -> None:
+        assert option_help("lsp", "--no-plugins") == f"{self.HELP}; at every read the server makes"
 
     def test_the_help_of_compare_says_it_reaches_either_side_and_not_plugin(self) -> None:
         assert option_help("compare", "--no-plugins") == (

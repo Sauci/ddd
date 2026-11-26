@@ -2702,13 +2702,15 @@ same set the editor holds back ([section 7.2](#72-editor-integration)); an expli
 the same run still wins. Given a project root, `--standalone` holds the same checks back
 project-wide, which is rarely wanted.
 
-`ddd check`, `ddd list`, `ddd dump`, `ddd sources` and `ddd compare` take `--no-plugins`,
-which imports none of the plugins a project names and reports each as `plugin-skipped`
-([section 3.11](#311-plugins)), on both sides of a comparison: `ddd check --baseline` applies
-it to the baseline as to the project, a baseline's finding prefixed as its carried errors are
-and graded as the run grades its own, and `ddd compare` refuses `--plugin` beside it as a usage
-error, before anything is read. `ddd generate`, `ddd artefacts` and `ddd gui` do not take it,
-each running what the project names as a build does.
+`ddd check`, `ddd list`, `ddd dump`, `ddd sources`, `ddd compare` and `ddd lsp` take
+`--no-plugins`, which imports none of the plugins a project names and reports each as
+`plugin-skipped` ([section 3.11](#311-plugins)), on both sides of a comparison:
+`ddd check --baseline` applies it to the baseline as to the project, a baseline's finding
+prefixed as its carried errors are and graded as the run grades its own, and `ddd compare`
+refuses `--plugin` beside it as a usage error, before anything is read; `ddd lsp` applies it
+to every read it makes ([section 7.2](#72-editor-integration)). `ddd generate`,
+`ddd artefacts` and `ddd gui` do not take it, each running what the project names as a build
+does.
 
 Every command that reports findings can produce machine readable JSON (`--format json`): a
 `diagnostics` list, each finding carrying `check`, `severity`, `message`, a `location` of
@@ -3233,6 +3235,10 @@ The server speaks the protocol on stdin and stdout, and takes the build director
 repeatable `-b` arguments, a relative one read against each workspace folder, or against the
 server's working directory while the client names none; the shipped VS Code extension exposes
 them as the setting `ddd.buildDirectories`, and the executable to launch as `ddd.executable`.
+Given `--no-plugins`, it imports no plugin a description names at any read it makes - a build's
+project, a description read to find out whether it includes an opened file, the opened file
+itself - and publishes each entry naming one as `plugin-skipped`
+([section 3.11](#311-plugins)).
 It starts the server once a description file is open or the workspace holds one, so that a
 json file of another name starts nothing.
 
@@ -3247,8 +3253,9 @@ directories and offer to restart it: everything a reader sees is the tool's answ
 server asks the client itself for what it needs to hear of the files, so that an editor DDD
 ships nothing for is not at a disadvantage. It **shall** launch the server only in a workspace
 the reader has trusted, where the editor has such a notion: the server runs the plugins of
-every project it analyses ([section 3.11](#311-plugins)), so opening a repository is running
-its python, and that is a decision the reader makes, not the extension.
+every project it analyses, unless it was started with `--no-plugins`, which runs none
+([section 3.11](#311-plugins)): so opening a repository is running its python, and that is a
+decision the reader makes, not the extension.
 
 ### 7.3 Toolbox
 

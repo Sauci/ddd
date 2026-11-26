@@ -1038,6 +1038,18 @@ class TestADeliveryReadWithNoPlugin:
         assert "unknown check" not in capsys.readouterr().err
         assert not ran(tmp_path)
 
+    @pytest.mark.parametrize("reader", [read_dictionary, read_baseline])
+    def test_a_description_read_as_a_delivery_runs_its_plugins_unless_asked_not_to(
+        self, tmp_path: Path, reader: Any
+    ) -> None:
+        described = naming_the_marker(tmp_path)
+        bag = DiagnosticBag()
+        assert reader(described, bag, run_plugins=False) is not None
+        assert not ran(tmp_path)
+        assert bag.skipped == ("tools/mark.py",)
+        assert reader(described, DiagnosticBag()) is not None
+        assert ran(tmp_path)
+
     def test_plugin_beside_no_plugins_is_refused_before_anything_is_read(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
     ) -> None:

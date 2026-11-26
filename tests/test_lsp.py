@@ -14949,6 +14949,44 @@ class TestAServerRunningNoPlugin:
         assert navigation.read_project(root) is not None
         assert ran(tmp_path)
 
+    @pytest.mark.parametrize("reader", ["analyse", "run_build", "run_project", "collect", "search"])
+    def test_each_reader_runs_a_project_s_plugins_unless_it_is_asked_not_to(
+        self, tmp_path: Path, reader: str
+    ) -> None:
+        """What reads a project for the server, and for ``ddd gui``, runs its plugins as every
+        command does, and none where it is asked as ``--no-plugins`` asks."""
+        root = naming_the_marker(tmp_path)
+        component_file = tmp_path / "a.ddd.json"
+        info = BuildInfo(project=root.as_posix(), image="fw")
+        reads: dict[str, Callable[..., object]] = {
+            "analyse": lambda **asked: service.analyse(info, **asked),
+            "run_build": lambda **asked: service.run_build(info, **asked),
+            "run_project": lambda **asked: service.run_project(root, **asked),
+            "collect": lambda **asked: service.collect([], [component_file], tmp_path, **asked),
+            "search": lambda **asked: navigation.workspaces(
+                [], component_file, tmp_path, navigation.Descriptions(**asked)
+            ),
+        }
+        reads[reader](run_plugins=False)
+        assert not ran(tmp_path)
+        reads[reader]()
+        assert ran(tmp_path)
+
+    def test_a_file_read_as_a_component_that_is_a_project_by_its_load_runs_none(
+        self, tmp_path: Path
+    ) -> None:
+        """Which way a document no project holds is checked is read off the text a refresh read
+        it as, and the check loads the file again: one read as a component, which names no
+        plugin, and saved as a project in between is loaded as the project, and runs none of
+        the plugins it names."""
+        root = naming_the_marker(tmp_path)
+        held = {root: Document(json.dumps(component("A")))}
+        bag, _ = service._analyse_root(root, held, run_plugins=False)
+        assert not ran(tmp_path)
+        assert "plugin-skipped" in checks(bag)
+        service._analyse_root(root, held, run_plugins=True)
+        assert ran(tmp_path)
+
     def test_a_file_read_on_its_own_runs_none_either(self, tmp_path: Path) -> None:
         """What the server reads on its own is a file no project holds, which names no plugin;
         read so all the same, a project file runs none of the plugins it names."""

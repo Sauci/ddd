@@ -11850,3 +11850,57 @@ class TestAPluginChangedUnderDddGui:
         }
         missing = [name for name, phrase in phrases.items() if phrase not in said[name]]
         assert not missing, f"no longer said of plugin-changed by {missing}"
+
+
+class TestAModelReadsBackItsOwnDump:
+    """19:I1, decision 19.2. A block reaches the dictionary as its model's dump, by alias and for a
+    round trip, and a hook reading a block from the dictionary validates that dump again: the
+    pages say how a block is dumped, that a model reads its dump back, and that a hook reading a
+    block itself reads it by alias. The worked example, which a plugin is copied from, says so
+    where it reads one."""
+
+    SAID: ClassVar[dict[str, tuple[str, tuple[str, ...], tuple[str, ...]]]] = {
+        "SPEC.md": (
+            SPEC,
+            (
+                'A block in resolved form is its model\'s dump, `model_dump(mode="json", '
+                "by_alias=True, round_trip=True)`: validated, with its defaults filled in, keyed "
+                "by alias as the file keys it, and without the model's computed fields.",
+                "A hook reading a block from the dictionary validates that dump, by alias as the "
+                "loader reads the file, so a plugin's model has to read back its own dump.",
+            ),
+            (),
+        ),
+        "docs/plugins.rst": (
+            PAGES["docs/plugins.rst"],
+            (
+                "A model reads back its own dump. A block is dumped with "
+                '``model_dump(mode="json", by_alias=True, round_trip=True)``: a field with an '
+                "alias is keyed by it, as the file and the published schema key it, and "
+                "``round_trip`` leaves every ``@computed_field`` out and writes a ``Json`` field "
+                "back as json text, so that a model forbidding extra keys reads the dump of a "
+                "block as it read the block.",
+                "A hook reading a block itself - ``Entry.model_validate(block)``, as the worked "
+                "example does - reads it by alias, as the loader reads a file.",
+            ),
+            (),
+        ),
+        "examples/plugins/ddd_layout.py": (
+            (ROOT / "examples" / "plugins" / "ddd_layout.py").read_text(encoding="utf-8"),
+            (
+                "A block in the dictionary is ``Entry``'s own dump - by alias, keyed as the file "
+                "keys it - and a model reads back its own dump, so ``model_validate`` reads the "
+                "block as the loader read the file.",
+            ),
+            (),
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(SAID))
+    def test_the_page_says_a_model_reads_back_its_own_dump(self, page: str) -> None:
+        text, phrases, stale = self.SAID[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"
+        for phrase in stale:
+            assert phrase not in said, f"{page} still says: {phrase!r}"

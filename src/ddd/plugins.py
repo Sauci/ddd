@@ -345,7 +345,10 @@ def resolve_blocks(
     """Every block in its resolved form, keyed by plugin name in sorted order.
 
     Validated against the plugin's model and dumped back to json, so defaults are filled in
-    and two dumps compare on one shape. A block no loaded plugin owns, or one the plugin
+    and two dumps compare on one shape. Dumped by alias, so that a block is keyed in the
+    dictionary as its file keys it, and for a round trip, which leaves a computed field out:
+    a hook reading a block from the dictionary, and a comparison reading an archived one back,
+    hand the model what it reads. A block no loaded plugin owns, or one the plugin
     declares no model for, is carried as written: the loader has already reported it, and a
     project that relaxed ``unknown-extension`` asked for exactly that. On the project, every
     plugin that declares a project model appears, with its defaults, whether or not the
@@ -360,13 +363,15 @@ def resolve_blocks(
                 resolved[name] = dict(blocks[name])
             else:
                 with guarding_plugin_model(name, "validating a block against its own model"):
-                    resolved[name] = model.model_validate(blocks[name]).model_dump(mode="json")
+                    resolved[name] = model.model_validate(blocks[name]).model_dump(
+                        mode="json", by_alias=True, round_trip=True
+                    )
         if on_project:
             for name, plugin in plugins.items():
                 if name not in resolved and plugin.project_model is not None:
                     with guarding_plugin_model(name, "building the defaults of its settings"):
                         resolved[name] = plugin.project_model.model_validate({}).model_dump(
-                            mode="json"
+                            mode="json", by_alias=True, round_trip=True
                         )
     except ValidationError as error:
         # The loader has validated every block a run of the checks reaches; a hover resolves

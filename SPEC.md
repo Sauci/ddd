@@ -1272,8 +1272,12 @@ baseline's own, which that run loaded to analyse it.
 
 The dictionary carries every block in resolved form on the object and on the project, and
 records the names of the plugins in play (`plugins`), so that an archived dump keeps every
-question a plugin can ask answerable. A leaf of a structured variable carries no block; the
-instance carries one for the whole structure. `ddd schema --plugin` publishes a kind's
+question a plugin can ask answerable. A block in resolved form is its model's dump,
+`model_dump(mode="json", by_alias=True, round_trip=True)`: validated, with its defaults filled
+in, keyed by alias as the file keys it, and without the model's computed fields. A hook reading
+a block from the dictionary validates that dump, by alias as the loader reads the file, so a
+plugin's model has to read back its own dump. A leaf of a structured variable carries no block;
+the instance carries one for the whole structure. `ddd schema --plugin` publishes a kind's
 schema with the `extensions` property closed over the named plugins' models, so that an
 editor validates a block as it is typed; the dictionary schema stays open. A comparison whose
 candidate is a project runs that project's plugins, and one whose candidate is an archived

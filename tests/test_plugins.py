@@ -1135,6 +1135,255 @@ class TestTheDictionary:
         assert again == dictionary
 
 
+SETTINGS_PLUGIN = '''
+"""A plugin whose project model is ``S``, and whose every hook says the settings it was handed."""
+
+from __future__ import annotations
+
+import datetime
+import enum
+from pathlib import Path
+
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_serializer, field_validator
+
+from ddd.backends import GeneratedFile
+from ddd.diagnostics import CheckInfo, Severity
+from ddd.ir import DataDictionary
+from ddd.plugins import CheckContext, CompareContext, GenerateContext, Plugin
+
+
+class Colour(enum.Enum):
+    RED = "red"
+
+
+MODEL
+
+
+def check(context: CheckContext) -> None:
+    context.bag.add("set/handed", f"check was handed {context.settings!r}")
+
+
+def compare(context: CompareContext) -> None:
+    context.bag.add("set/handed", f"compare was handed {context.settings!r}")
+
+
+class HandedBackend:
+    name = "set"
+
+    def __init__(self, settings: BaseModel | None) -> None:
+        self.settings = settings
+
+    def generate(self, dictionary: DataDictionary, output_dir: Path) -> list[GeneratedFile]:
+        said = f"backend was handed {self.settings!r}\\n"
+        return [GeneratedFile(output_dir / "handed.txt", said)]
+
+
+def backend(context: GenerateContext) -> HandedBackend:
+    return HandedBackend(context.settings)
+
+
+PLUGIN = Plugin(
+    name="set",
+    project_model=S,
+    checks=(CheckInfo("set/handed", Severity.INFO, "the settings a hook was handed"),),
+    check=check,
+    compare=compare,
+    backend=backend,
+)
+'''
+"""``MODEL`` is the class ``S``, the plugin's project model; every use replaces it with one."""
+
+ALIASED = """
+class S(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    max_key: int = Field(alias="max-key")
+"""
+"""A field keyed by an alias, which is how a key such as ``max-key`` is spelled at all."""
+
+KEYWORD = """
+class S(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    class_: int = Field(alias="class")
+"""
+"""A key python spells as a keyword, which a field can only take through an alias."""
+
+ALIASED_BY_DEFAULT = """
+class S(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    max_key: int = Field(default=7, alias="max-key")
+"""
+
+COMPUTED = """
+class S(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    max_key: int = 7
+
+    @computed_field
+    @property
+    def doubled(self) -> int:
+        return self.max_key * 2
+"""
+
+
+def stating(base: Path, model: str, settings: dict | None, name: str = "p") -> str:
+    """A project naming the plugin of :data:`SETTINGS_PLUGIN` with ``model`` as its ``S``, stating
+    ``settings`` for it - no block at all where that is ``None`` - and the path of its file."""
+    write_plugin(base / "tools", "set_plugin.py", SETTINGS_PLUGIN.replace("MODEL", model))
+    extensions = {} if settings is None else {"extensions": {"set": settings}}
+    write_tree(
+        base,
+        {
+            f"{name}.ddd.json": project(
+                "P", f"{name}-a.ddd.json", plugins=["tools/set_plugin.py"], **extensions
+            ),
+            f"{name}-a.ddd.json": component("A", declare("local", "X")),
+        },
+    )
+    return str(base / f"{name}.ddd.json")
+
+
+ENTRY_PLUGIN = '''
+"""A plugin whose object model is ``Entry``, and whose check hook reads every block on a
+definition back with it, as the worked example reads its own."""
+
+from __future__ import annotations
+
+from pydantic import BaseModel, ConfigDict, Field, computed_field
+
+from ddd.diagnostics import CheckInfo, Severity
+from ddd.plugins import CheckContext, Plugin
+
+MODEL
+
+
+def check(context: CheckContext) -> None:
+    for entry in context.dictionary.objects:
+        block = entry.extensions.get("entry")
+        if block is not None:
+            context.bag.add("entry/read", f"read back {Entry.model_validate(block)!r}")
+
+
+PLUGIN = Plugin(
+    name="entry",
+    object_model=Entry,
+    checks=(CheckInfo("entry/read", Severity.INFO, "a block read back"),),
+    check=check,
+)
+'''
+"""``MODEL`` is the class ``Entry``, the plugin's object model; every use replaces it with one."""
+
+ENTRY_ALIASED = """
+class Entry(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    key_no: int = Field(alias="key-no")
+"""
+
+ENTRY_KEYWORD = """
+class Entry(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    class_: str = Field(alias="class")
+"""
+
+ENTRY_COMPUTED = """
+class Entry(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    key: int
+
+    @computed_field
+    @property
+    def doubled(self) -> int:
+        return self.key * 2
+"""
+
+
+class TestABlockIsDumpedAsTheFileSpellsIt:
+    """19:I1, decision 19.2. The dictionary holds each block as its model's dump, and the dump was
+    keyed by field name and carried every computed value. A model with an alias - the only way a
+    field takes a key like ``max-key`` or ``class`` - or with a computed field beside
+    ``extra="forbid"`` could not validate that dump, so the settings read back from it refused
+    each run with a hook in it, and the dictionary keyed a block differently from its file. The
+    dump is by alias now, keyed as the file keys it, and for a round trip, which leaves a
+    computed field out: what the model reads."""
+
+    @pytest.mark.parametrize(
+        ("model", "stated", "dumped"),
+        [
+            (ALIASED, {"max-key": 5}, {"max-key": 5}),
+            (KEYWORD, {"class": 1}, {"class": 1}),
+            (COMPUTED, {"max_key": 5}, {"max_key": 5}),
+            (ALIASED_BY_DEFAULT, None, {"max-key": 7}),
+            (COMPUTED, None, {"max_key": 7}),
+        ],
+        ids=[
+            "an alias",
+            "class, through an alias",
+            "a computed field",
+            "an alias by default",
+            "a computed field by default",
+        ],
+    )
+    def test_the_settings_are_dumped_as_the_file_spells_them(
+        self,
+        tree: Path,
+        capsys: pytest.CaptureFixture[str],
+        model: str,
+        stated: dict | None,
+        dumped: dict,
+    ) -> None:
+        """Stated and built from the defaults alike: a project stating no block is dumped by
+        the same rule as one that states it."""
+        root = stating(tree, model, stated)
+        assert main(["dump", root, "-W", "missing-id=ignore"]) == EXIT_OK, capsys.readouterr().err
+        assert json.loads(capsys.readouterr().out)["extensions"] == {"set": dumped}
+
+    @pytest.mark.parametrize("command", ["check", "list"])
+    def test_a_hook_runs_beside_an_aliased_block_the_loader_took(
+        self, tree: Path, capsys: pytest.CaptureFixture[str], command: str
+    ) -> None:
+        """``Field(alias="max-key")`` under ``extra="forbid"``, stated as ``{"max-key": 5}``, beside
+        a check hook: the settings named the field twice over, as missing and as an extra key,
+        and both commands exited 2."""
+        root = stating(tree, ALIASED, {"max-key": 5})
+        assert main([command, root, "-W", "missing-id=ignore"]) == EXIT_OK
+        said = capsys.readouterr().err
+        assert "are invalid" not in said
+        assert "check was handed S(max_key=5)" in said
+
+    @pytest.mark.parametrize(
+        ("model", "block", "read"),
+        [
+            (ENTRY_ALIASED, {"key-no": 3}, "Entry(key_no=3)"),
+            (ENTRY_KEYWORD, {"class": "a"}, "Entry(class_='a')"),
+            (ENTRY_COMPUTED, {"key": 3}, "Entry(key=3, doubled=6)"),
+        ],
+        ids=["an alias", "class, through an alias", "a computed field"],
+    )
+    def test_a_block_on_a_definition_reads_back_as_it_was_stated(
+        self,
+        tree: Path,
+        capsys: pytest.CaptureFixture[str],
+        model: str,
+        block: dict,
+        read: str,
+    ) -> None:
+        """A hook reaches a definition's block through the dictionary alone, and reads it with
+        the object model, as the worked example does: the block it meets is the file's, which
+        its model reads, and the dump an archive keeps is the same."""
+        write_plugin(tree / "tools", "entry_plugin.py", ENTRY_PLUGIN.replace("MODEL", model))
+        write_tree(
+            tree,
+            {
+                "p.ddd.json": project("P", "p-a.ddd.json", plugins=["tools/entry_plugin.py"]),
+                "p-a.ddd.json": component("A", declare("local", "X", extensions={"entry": block})),
+            },
+        )
+        root = str(tree / "p.ddd.json")
+        assert main(["check", root, "-W", "missing-id=ignore"]) == EXIT_OK, capsys.readouterr().err
+        assert f"read back {read}" in capsys.readouterr().err
+        assert main(["dump", root, "-W", "missing-id=ignore"]) == EXIT_OK
+        assert json.loads(capsys.readouterr().out)["objects"][0]["extensions"] == {"entry": block}
+
+
 class TestConsumerExtension:
     def test_a_consumer_stating_a_block_is_refused_where_it_is_written(self, tree: Path) -> None:
         _, bag = run_analysis(

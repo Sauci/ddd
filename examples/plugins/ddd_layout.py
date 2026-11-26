@@ -51,7 +51,12 @@ class Settings(BaseModel):
 
 
 def _stamped(dictionary: DataDictionary) -> list[tuple[Stamped, Entry]]:
-    """Every object carrying a block, with the block, sorted by key."""
+    """Every object carrying a block, with the block, sorted by key.
+
+    A block in the dictionary is ``Entry``'s own dump - by alias, keyed as the file keys it -
+    and a model reads back its own dump, so ``model_validate`` reads the block as the loader
+    read the file.
+    """
     found: list[tuple[Stamped, Entry]] = []
     for entry in (*dictionary.objects, *dictionary.instances):
         block = entry.extensions.get("layout")

@@ -275,6 +275,13 @@ block; its instance carries one for the whole structure, and a plugin reaches it
 leaf's ``instance``. The c templates receive the block on every object view, so a table the
 project derives from a block renders from its own templates without a hook.
 
+A model reads back its own dump. A block is dumped with ``model_dump(mode="json",
+by_alias=True, round_trip=True)``: a field with an alias is keyed by it, as the file and the
+published schema key it, and ``round_trip`` leaves every ``@computed_field`` out and writes a
+``Json`` field back as json text, so that a model forbidding extra keys reads the dump of a
+block as it read the block. A hook reading a block itself - ``Entry.model_validate(block)``, as
+the worked example does - reads it by alias, as the loader reads a file.
+
 The editor
 ----------
 

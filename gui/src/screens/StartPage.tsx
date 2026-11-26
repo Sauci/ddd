@@ -5,6 +5,7 @@ import {
   isOpen,
   listHeld,
   noProjectSentence,
+  OPENING_RUNS_PLUGINS,
   UNREAD_HEADING,
   unreadLine,
   unreadShown,
@@ -40,28 +41,31 @@ export function StartPage({
       {found.data.projects.length === 0 ? (
         <p>{noProjectSentence(found.data.unreadable.length)}</p>
       ) : (
-        <ul className="projects">
-          {found.data.projects.map((project) => {
-            const here = isOpen(project.path, open);
-            return (
-              <li key={project.path}>
-                <button
-                  type="button"
-                  disabled={listHeld(opening.status, opening.context?.before ?? null, open)}
-                  aria-current={here ? "true" : undefined}
-                  onClick={() => (here ? onGo() : opening.mutate(project.path))}
-                >
-                  <span className="name">{project.name ?? "Unnamed project"}</span>
-                  <span className="path">{project.path}</span>
-                  {project.images.length > 0 && (
-                    <span className="quiet">built as {project.images.join(", ")}</span>
-                  )}
-                  {here && <span className="open">{ALREADY_OPEN}</span>}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+        <>
+          <p className="quiet">{OPENING_RUNS_PLUGINS}</p>
+          <ul className="projects">
+            {found.data.projects.map((project) => {
+              const here = isOpen(project.path, open);
+              return (
+                <li key={project.path}>
+                  <button
+                    type="button"
+                    disabled={listHeld(opening.status, opening.context?.before ?? null, open)}
+                    aria-current={here ? "true" : undefined}
+                    onClick={() => (here ? onGo() : opening.mutate(project.path))}
+                  >
+                    <span className="name">{project.name ?? "Unnamed project"}</span>
+                    <span className="path">{project.path}</span>
+                    {project.images.length > 0 && (
+                      <span className="quiet">built as {project.images.join(", ")}</span>
+                    )}
+                    {here && <span className="open">{ALREADY_OPEN}</span>}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </>
       )}
       {unreadShown(found.data.unreadable) && (
         <>

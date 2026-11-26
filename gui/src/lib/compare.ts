@@ -185,3 +185,11 @@ export function typedIn(held: CompareHeld, typed: string): CompareHeld {
 export function askedIn(held: CompareHeld): CompareHeld {
   return { ...held, asked: nextAsk(held.asked, held.typed) };
 }
+
+/** What the Compare form says under its field: the paths it takes, and which of them run code. A
+ * project or component given as the baseline is read as a description is, so the plugins it names
+ * run; a dumped dictionary is data, and runs none. */
+export const BASELINE_ACCEPTS =
+  "Accepts a dumped dictionary, or a project or component description, at a path under the " +
+  "directory ddd gui was started in. A project or component given as the baseline runs the " +
+  "plugins it names; a dumped dictionary runs none.";

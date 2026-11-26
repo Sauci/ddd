@@ -1,6 +1,7 @@
 import type { CompareReply, State } from "../api/types";
 import {
   asksNothing,
+  BASELINE_ACCEPTS,
   compareLine,
   compareRouteReason,
   compareRows,
@@ -96,10 +97,7 @@ export function CompareView(props: CompareViewProps) {
             "this project's own root" told the reader it was narrower than it is. `holds_a_description`
             answers for a component file too, so one is a baseline of its own and the sentence says
             so rather than offering less than the field takes. */}
-        <p className="quiet">
-          Accepts a dumped dictionary, or a project or component description, at a path under the
-          directory ddd gui was started in.
-        </p>
+        <p className="quiet">{BASELINE_ACCEPTS}</p>
         <Button
           variant="primary"
           isDisabled={busy || asksNothing(props.baseline)}

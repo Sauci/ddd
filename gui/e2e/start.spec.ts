@@ -542,6 +542,10 @@ test("a project is listed with the images its build records name", async ({ page
   const logging = page.getByRole("button", { name: /^Logging/ });
   await expect(logging).toBeVisible();
   await expect(logging.getByText(/^built as/)).toHaveCount(0);
+  // The list says what opening one does, over it.
+  await expect(
+    page.getByText("Opening a project runs the plugins its descriptions name.", { exact: true }),
+  ).toBeVisible();
 });
 
 test("a project whose description does not load is listed as an unnamed project", async ({

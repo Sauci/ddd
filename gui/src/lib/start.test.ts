@@ -4,6 +4,7 @@ import {
   isOpen,
   listHeld,
   noProjectSentence,
+  OPENING_RUNS_PLUGINS,
   UNREAD_HEADING,
   unreadLine,
   unreadShown,
@@ -78,4 +79,8 @@ test("every other project the list offers is opened, and none is while none is o
     false,
   );
   expect(isOpen("/work/demo/demo.ddd.json", null)).toBe(false);
+});
+
+test("the start page says that opening a project runs the plugins its descriptions name", () => {
+  expect(OPENING_RUNS_PLUGINS).toBe("Opening a project runs the plugins its descriptions name.");
 });

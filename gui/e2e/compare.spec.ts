@@ -23,6 +23,10 @@ test("a reader can ask whether this delivery replaces the last", async ({ page, 
 
   await page.goto(gui.address);
   await page.getByRole("link", { name: "Compare" }).click();
+  // The form says which baselines run plugins, before one is asked for.
+  await expect(
+    page.getByText("A project or component given as the baseline runs the plugins it names;"),
+  ).toContainText("a dumped dictionary runs none.");
   await page.getByRole("textbox", { name: "Baseline" }).fill("baseline.json");
   await page.getByRole("button", { name: "Compare" }).click();
 

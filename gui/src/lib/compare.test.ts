@@ -3,6 +3,7 @@ import type { CompareReply, Finding, State } from "../api/types";
 import {
   askedIn,
   asksNothing,
+  BASELINE_ACCEPTS,
   baselineOf,
   type CompareRow,
   compareLine,
@@ -307,5 +308,13 @@ test("a reply of another revision than the state drawn says the project's own er
   expect(ownErrorsLine(reply({ revision: 8, own_errors: 2 }), one)).toBe(
     "This project has errors of its own, and the verdict counts them as ddd compare does: the " +
       "Findings tab lists them.",
+  );
+});
+
+test("the Compare form says which baselines run plugins, and that a dumped dictionary runs none", () => {
+  expect(BASELINE_ACCEPTS).toBe(
+    "Accepts a dumped dictionary, or a project or component description, at a path under the " +
+      "directory ddd gui was started in. A project or component given as the baseline runs the " +
+      "plugins it names; a dumped dictionary runs none.",
   );
 });

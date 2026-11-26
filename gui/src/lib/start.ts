@@ -61,3 +61,7 @@ export function noProjectSentence(unread: number): string {
   }
   return "No project description found here could be read. Each is listed below with why.";
 }
+
+/** What the start page says over its list: pressing a project opens it, and opening runs the
+ * Python plugins that its descriptions name, as every command over a project does. */
+export const OPENING_RUNS_PLUGINS = "Opening a project runs the plugins its descriptions name.";

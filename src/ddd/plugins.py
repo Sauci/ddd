@@ -115,7 +115,7 @@ class Plugin:
     backend: Callable[[GenerateContext], Backend] | None = None
 
     def __post_init__(self) -> None:
-        if not _PLUGIN_NAME.match(self.name):
+        if not _PLUGIN_NAME.fullmatch(self.name):
             msg = f"plugin name '{self.name}' is not a lowercase identifier"
             raise ValueError(msg)
         if self.name in BUILT_IN_ARTEFACTS:
@@ -126,7 +126,7 @@ class Plugin:
         for info in self.checks:
             identifier = info.identifier
             rest = identifier.removeprefix(prefix)
-            if rest == identifier or not _CHECK_PATTERN.match(rest):
+            if rest == identifier or not _CHECK_PATTERN.fullmatch(rest):
                 msg = (
                     f"check '{identifier}' of plugin '{self.name}' is not spelled '{prefix}<check>'"
                 )

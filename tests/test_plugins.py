@@ -3789,3 +3789,16 @@ class TestARunThatRunsNoPlugin:
         finally:
             for name in ("marking_module", "marking_pkg", "marking_pkg.plugin"):
                 sys.modules.pop(name, None)
+
+
+class TestANameIsHeldToTheGrammarWhole:
+    """``$`` matches before a trailing newline, so a name or a check spelled with one passed
+    where the grammar of the block key refuses it."""
+
+    def test_a_name_ending_in_a_newline_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="lowercase identifier"):
+            Plugin(name="bad\n")
+
+    def test_a_check_ending_in_a_newline_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="is not spelled 'tag/<check>'"):
+            Plugin(name="tag", checks=(CheckInfo("tag/bad\n", Severity.ERROR, "x"),))

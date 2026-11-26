@@ -2235,10 +2235,10 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
 - **An edit past its limit, in part** (task 10a, branch 10's entry; R339): `request` refuses,
   unsent, a body past `EDIT_BODY`; but where the server turns an Apply's body of 1 to 8 MiB away,
   `401` or `403`, for its token or its origin, ahead of reading it, the drain behind the refusal
-  still reads 1 MiB of it at most, and on Windows the reset after can lose the answer, the page
-  then taking the server for one not answering. Nothing `request` can look at beforehand tells it
-  which Apply the server will turn away. The maintainer's: `gui/server.py` is on no later branch's list for behaviour, branch
-  14 moving code and keeping what it does.
+  still reads 1 MiB of it at most, and on Windows the reset after can lose the answer, the page then
+  taking the server for one not answering. Nothing `request` can look at beforehand tells it which
+  Apply the server will turn away. The maintainer's: `gui/server.py` is on no later branch's list
+  for behaviour, branch 14 moving code and keeping what it does.
 - **Three panels and the plan before a stale refusal** (task 10b; R365): the values grid, the
   declare panel and the Shared files add form ask for their plan anew when the next revision has
   landed, and not before, so that until then they offer the plan made ahead of the refusal, a
@@ -4045,9 +4045,9 @@ Every departure from a task's text, with its reason, numbered `R1`, `R2`, and so
   R319's list, the preview being where the strip first learns that its entry is dead; and that
   the preview moves the stack, and the version with it, on the token alone was accepted (ruling
   B11-60), which the final wave wrote on the security page (R373).
-- **R368.** `GET /api/undo` answers for the edit its `?at=` names, previewing it and taking it
-  off, and refuses another as no longer on top, so that each window previews and takes off its own entry, and a late `stale`
-  answer is held only while the strip is open (ruling B11-61).
+- **R368.** `GET /api/undo` answers for the edit its `?at=` names, previewing it and taking it off,
+  and refuses another as no longer on top, so that each window previews and takes off its own entry,
+  and a late `stale` answer is held only while the strip is open (ruling B11-61).
 - **R369.** 11a's message before its review and 11b's dispatch told their implementers to ablate
   in place, against the plan's rule; both trees were found clean, and the dispatches after carry
   the rule (ruling B11-62, the controller's own error).
@@ -4112,7 +4112,8 @@ Every departure from a task's text, with its reason, numbered `R1`, `R2`, and so
 | 7, `fix/gui-server-hardening` | #93 | 2026-11-18, into master (`2fbd374b`) | Pass 12's findings and `9:M8`, on what `ddd gui`'s server lets an edit change, where it listens, what it prints and how it answers, named by id alone (decision M4); the re-review's residuals carried into branch 8's D0 |
 | 8, `fix/release-machinery` | #94 | 2026-11-19, into master (`96900155`) | Pass 20's findings and what branch 8 covers: what a release publishes wrong and the notes it carries (`4:I7`, `4:I8`, `5:I1`, `4:M12`, `20:I2`, `20:I3`, `20:M5`, `20:M4`, `20:M6`, `20:M13` in part, `20:M16`, `20:M2`, `20:M3`, `20:M7`, `20:M11`, `20:M12`, `20:M15`, `20:I4`), named by id alone (decision M4); the re-review's two residuals carried into branch 9's D0 |
 | 9, `fix/editor` | #95 | 2026-11-21, into master (`c011143b`) | Pass 10's findings and what branch 9 covers: the language server, `ddd lsp` and the VS Code extension (`10:I1`, `10:I2`, `10:I3`, `10:I4`, `10:I5`, `10:I6`, `10:I13`, `10:I8`, `10:I9`, `10:I10`, `10:I11`, `10:I12`, `10:M1` to `10:M12`, `14:M13`), named by id alone (decision M4); the re-review's residuals carried into branch 10's D0 |
-| 10, `fix/gui-plans-and-answers` | #96 | open into master, which holds branch 9 through #95's merge (`c011143b`) | The findings and what branch 10 covers: what `ddd gui`'s server notices, answers and refuses, what a plan costs and carries, and what the page is told (`3:I1`, `3:I2`, `3:M9`, `14:I2`, `14:I3`, `14:I4`, `14:I5`, `14:I6`, `14:M12`, `14:M14`, `2:I9`, `2:I10`, `2:M2`, `15:I4`, `3:I8`, `16:I8`, `14:M1`, `14:M2`, `14:M3`, `14:M5`, `14:M7`, `14:M8`, `14:M9`, `14:M11`, `14:M15`), named by id alone (decision M4); its re-review found every finding addressed and nothing new, so no residual passes to branch 11's D0 |
+| 10, `fix/gui-plans-and-answers` | #96 | 2026-11-22, into master (`ea3840af`) | Pass 14's findings and what branch 10 covers: what `ddd gui`'s server notices, answers and refuses, what a plan costs and carries, and what the page is told (`3:I1`, `3:I2`, `3:M9`, `14:I2`, `14:I3`, `14:I4`, `14:I5`, `14:I6`, `14:M12`, `14:M14`, `2:I9`, `2:I10`, `2:M2`, `15:I4`, `3:I8`, `16:I8`, `14:M1`, `14:M2`, `14:M3`, `14:M5`, `14:M7`, `14:M8`, `14:M9`, `14:M11`, `14:M15`), named by id alone (decision M4); its re-review found every finding addressed and nothing new, so no residual passes to branch 11's D0 |
+| 11, `fix/gui-screens` | #97 | 2026-11-25, into master (`9eadfcbf`) | Passes 15 and 16's findings and what branch 11 covers: what `ddd gui`'s page asks for and keeps when the server is slow, stopped or refuses, and what it says beside a refusal (`15:I2`, `15:I3`, `15:I5`, `15:M1`, `15:M2`, `15:M3`, `15:M11`, `15:M12`, `15:M14`, `15:M15`), the declare form and the panels' keys (`16:I5`, `16:I6`, `16:M7`, `3:M8`), the long lists, the filter and the go-to (`16:I7`, `16:I14`, `16:M1`, `16:M10`, `16:M17`), what the page says of what did not load (`16:I9`, `16:M13`), how a person moves through it: focus, titles, contrast, narrow widths, colour and motion (`16:I11`, `16:I12`, `16:I13`, `16:M9`, `16:M14`, `16:M19`), the undo and the Findings window's keys (`16:M23`), and the Compare, panel, Graph and naming items of its ninth task (`16:M2`, `16:M3`, `16:M4`, `16:M5`, `16:M6`, `16:M8`, `16:M11`, `16:M12`, `16:M15`, `16:M16`, `16:M18`, `16:M20`, `16:M21`, `16:M22`), with decisions 15.1 and 15.2 for a paste; named by id alone (decision M4); the whole-branch review and one final wave ran before the merge, and the pull request names its red middle commits (R376) |
 
 ## Self-review
 

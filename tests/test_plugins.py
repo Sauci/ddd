@@ -4094,3 +4094,72 @@ class TestAHookReturnsNothing:
         err = capsys.readouterr().err
         assert "plugin 'tag' returned a list from its check hook" in err
         assert "context.bag.add" in err
+
+
+class TestABackendThatRaisesWhenRead:
+    """What a backend hook returns is plugin code, and reading its ``name`` runs it."""
+
+    @staticmethod
+    def _backend_plugin(backend: object) -> Plugin:
+        return Plugin(name="plug", backend=lambda context: backend)  # type: ignore[arg-type, return-value]
+
+    def test_a_name_that_raises_is_a_plugin_error(self) -> None:
+        class Raising:
+            @property
+            def name(self) -> str:
+                raise RuntimeError("no name today")
+
+            def generate(self, dictionary: object, output_dir: Path) -> list:
+                return []
+
+        with pytest.raises(
+            PluginError,
+            match=r"plugin 'plug' failed reading the name of its backend: no name today",
+        ):
+            backend_of(self._backend_plugin(Raising()), None, "ddd test")
+
+    def test_a_name_that_exits_is_a_plugin_error(self) -> None:
+        class Exiting:
+            @property
+            def name(self) -> str:
+                raise SystemExit(3)
+
+            def generate(self, dictionary: object, output_dir: Path) -> list:
+                return []
+
+        with pytest.raises(PluginError, match=r"of its backend: SystemExit\(3\)"):
+            backend_of(self._backend_plugin(Exiting()), None, "ddd test")
+
+    def test_a_name_that_is_interrupted_still_interrupts(self) -> None:
+        class Interrupted:
+            @property
+            def name(self) -> str:
+                raise KeyboardInterrupt
+
+            def generate(self, dictionary: object, output_dir: Path) -> list:
+                return []
+
+        with pytest.raises(KeyboardInterrupt):
+            backend_of(self._backend_plugin(Interrupted()), None, "ddd test")
+
+    def test_a_generate_that_raises_when_read_is_a_plugin_error(self) -> None:
+        class Raising:
+            name = "raising"
+
+            @property
+            def generate(self) -> object:
+                raise RuntimeError("no generate today")
+
+        with pytest.raises(
+            PluginError, match=r"failed reading the generate of its backend: no gen"
+        ):
+            backend_of(self._backend_plugin(Raising()), None, "ddd test")
+
+    def test_a_backend_that_is_read_once_is_the_control(self) -> None:
+        class Plain:
+            name = "plain"
+
+            def generate(self, dictionary: object, output_dir: Path) -> list:
+                return []
+
+        assert backend_of(self._backend_plugin(Plain()), None, "ddd test").name == "plain"

@@ -628,15 +628,29 @@ def backend_of(plugin: Plugin, settings: BaseModel | None, generator: str) -> Ba
     if backend is None:
         msg = f"plugin '{plugin.name}' returned no backend from its backend hook"
         raise PluginError(msg)
-    if not isinstance(getattr(backend, "name", None), str) or not callable(
-        getattr(backend, "generate", None)
-    ):
+    name = _read(plugin, backend, "name")
+    if not isinstance(name, str) or not callable(_read(plugin, backend, "generate")):
         msg = (
             f"plugin '{plugin.name}' returned something other than a backend from its "
             f"backend hook: {type(backend).__name__}"
         )
         raise PluginError(msg)
-    return _GuardedBackend(plugin, backend)
+    return _GuardedBackend(plugin, backend, name)
+
+
+def _read(plugin: Plugin, backend: object, attribute: str) -> object:
+    """``backend.attribute`` as ``getattr`` reads it, ``None`` for one it has not; a read is plugin
+    code too - a property runs - and what it raises is the plugin's failure, a
+    :class:`PluginError`, as the hook's own is. The interrupt still interrupts."""
+    try:
+        with _stdout_on_stderr():
+            return getattr(backend, attribute, None)
+    except KeyboardInterrupt:
+        raise
+    except BaseException as error:
+        detail = _exit_text(error) if isinstance(error, SystemExit) else str(error)
+        msg = f"plugin '{plugin.name}' failed reading the {attribute} of its backend: {detail}"
+        raise PluginError(msg) from error
 
 
 def _has_the_shape_of_a_generated_file(item: object) -> bool:
@@ -660,10 +674,10 @@ class _GuardedBackend:
     ``Backend`` protocol asks for, so this satisfies it structurally without naming it.
     """
 
-    def __init__(self, plugin: Plugin, backend: Backend) -> None:
+    def __init__(self, plugin: Plugin, backend: Backend, name: str) -> None:
         self._plugin = plugin
         self._backend = backend
-        self.name = backend.name
+        self.name = name
 
     def generate(self, dictionary: DataDictionary, output_dir: Path) -> list[GeneratedFile]:
         result = _call(

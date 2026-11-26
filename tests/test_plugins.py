@@ -4252,6 +4252,18 @@ class TestAHookReturnsNothing:
             with pytest.raises(PluginError, match=r"returned a Diagnostic from its check hook"):
                 self._run(Plugin(name="plug", check=returning), tree)
 
+    def test_a_copy_of_the_finding_the_bag_recorded_is_refused(self, tree: Path) -> None:
+        """Identity, not equality: a copy that compares equal is a finding made by hand."""
+        import dataclasses
+
+        def copying(context: CheckContext) -> object:
+            filed = context.bag.add("duplicate-section", "filed, and copied")
+            assert filed is not None
+            return dataclasses.replace(filed)
+
+        with pytest.raises(PluginError, match=r"returned a Diagnostic from its check hook"):
+            self._run(Plugin(name="plug", check=copying), tree)
+
     def test_a_hook_returning_the_finding_an_ignored_check_dropped_passes(self, tree: Path) -> None:
         """``add`` returns ``None`` for a check the policy ignores, which is no return at all."""
         from ddd.plugins import run_check_hooks

@@ -1079,14 +1079,24 @@ class TestADeliveryReadWithNoPlugin:
     def test_plugin_beside_no_plugins_is_refused_before_anything_is_read(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """A description on one side, which a read says a word of: nothing is said but the
+        refusal, and no plugin ran, neither the description's nor the one ``--plugin`` names."""
+        described = naming_the_marker(tmp_path)
         archive = _plain_dump(tmp_path)
-        write_plugin(tmp_path / "tools", "mark.py", MARKING_PLUGIN)
+        write_plugin(tmp_path / "named", "mark.py", MARKING_PLUGIN)
         monkeypatch.chdir(tmp_path)
         capsys.readouterr()
-        argv = ["compare", "--no-plugins", "--plugin", "tools/mark.py", str(archive), str(archive)]
+        argv = [
+            "compare",
+            "--no-plugins",
+            "--plugin",
+            "named/mark.py",
+            str(described),
+            str(archive),
+        ]
         assert main(argv) == EXIT_USAGE
         assert capsys.readouterr() == (
             "",
             "ddd: --plugin cannot be given together with --no-plugins, which runs no plugin\n",
         )
-        assert not ran(tmp_path)
+        assert sorted(tmp_path.rglob("ran.txt")) == []

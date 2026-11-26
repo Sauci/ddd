@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import errno
 import json
 import os
 import re
@@ -124,40 +125,130 @@ def _write_utf8(stream: Any) -> None:
             reconfigure(encoding="utf-8")
 
 
+class _Watched:
+    """A standard stream while :func:`main` runs, noting a reader that went away.
+
+    A closed pipe is a write the system refuses because nothing reads the other end any more,
+    and the exception says only that, not which stream it was: the stream that met it knows, at
+    its own write or flush, and nothing else does. Windows refuses that write with ``EINVAL``, a
+    plain :class:`OSError` that reads as an invalid argument; from a stream's own write or flush
+    it is the closed pipe, raised as the :class:`BrokenPipeError` it is, while an ``EINVAL`` of
+    anything else still means what it says. Everything but a write and a flush is the stream's.
+    """
+
+    def __init__(self, stream: Any) -> None:
+        self.stream = stream
+        self.lost_its_reader = False
+
+    def write(self, text: str) -> Any:
+        try:
+            return self.stream.write(text)
+        except OSError as error:
+            self._met(error)
+            raise
+
+    def flush(self) -> None:
+        # A stream with no flush has nothing to flush: `None`, which a descriptor closed before
+        # the interpreter started leaves, or a test's that is only the buffer a server reads.
+        flush = getattr(self.stream, "flush", None)
+        if flush is None:
+            return
+        try:
+            flush()
+        except OSError as error:
+            self._met(error)
+            raise
+
+    def _met(self, error: OSError) -> None:
+        if isinstance(error, BrokenPipeError):
+            self.lost_its_reader = True
+        elif sys.platform == "win32" and error.errno == errno.EINVAL:
+            self.lost_its_reader = True
+            raise BrokenPipeError(errno.EPIPE, os.strerror(errno.EPIPE)) from error
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.stream, name)
+
+
+@contextlib.contextmanager
+def _watching() -> Iterator[tuple[_Watched, _Watched]]:
+    """Both standard streams, each a :class:`_Watched` of itself while the run lasts.
+
+    Given back as the run ends, flushed first. Python flushes both once more as the interpreter
+    ends, past every clause of :func:`main`, and a stream that still points at a pipe whose
+    reader went away fails there again: ``Exception ignored``, and an exit code of 120 in place
+    of the run's own. So once either has lost its reader both are pointed at the null device,
+    the recipe python's own documentation gives, and what they still hold goes nowhere. A stream
+    that is ``None`` stays ``None``, which a ``print`` writes nothing to already.
+    """
+    given = sys.stdout, sys.stderr
+    watched = _Watched(given[0]), _Watched(given[1])
+    sys.stdout, sys.stderr = (
+        None if stream is None else watch for stream, watch in zip(given, watched, strict=True)
+    )
+    try:
+        yield watched
+    finally:
+        for watch in watched:
+            with contextlib.suppress(OSError, ValueError):
+                watch.flush()
+        if any(watch.lost_its_reader for watch in watched):
+            null = os.open(os.devnull, os.O_WRONLY)
+            for stream in given:
+                # A stream with no descriptor - `None`, a test's capture - has none to point.
+                with contextlib.suppress(AttributeError, OSError, ValueError):
+                    os.dup2(null, stream.fileno())
+            os.close(null)
+        sys.stdout, sys.stderr = given
+
+
+def _flush(*streams: _Watched) -> None:
+    """Flush each in turn, raising what the first to fail met."""
+    for stream in streams:
+        stream.flush()
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Entry point of the ``ddd`` command; returns the process exit code."""
     _write_utf8(sys.stdout)
     _write_utf8(sys.stderr)
     arguments = list(sys.argv[1:] if argv is None else argv)
     parser = _build_parser(_plugin_artefact(arguments))
-    args = parser.parse_args(arguments)
-    try:
-        handler: Any = args.handler
-        return int(handler(args))
-    except KeyboardInterrupt:
-        # Ctrl-C during a long run, or during a plugin's hook, which re-raises it rather than
-        # blaming the plugin for it. One line instead of the thirty a traceback costs, and a
-        # code of its own so that a caller does not read a stopped run as a failed check.
-        print("ddd: interrupted", file=sys.stderr)
-        return EXIT_INTERRUPTED
-    except BrokenPipeError:
-        # `ddd schema component | head -1`: the reader stopped reading, which is what a pager
-        # and `head` do, and nothing about it is this run's error - reported as a usage error
-        # it failed a paging script on the tool's side under `set -o pipefail`. stdout is
-        # pointed at the null device first, the recipe python's own documentation gives, so
-        # that the interpreter's final flush does not print `Exception ignored` after us.
-        with contextlib.suppress(OSError, ValueError):
-            target = sys.stdout.fileno()
-            os.dup2(os.open(os.devnull, os.O_WRONLY), target)
-        return EXIT_OK
-    except UnknownCheckError as error:
-        # UnknownCheckError is a ValueError, listed first only to keep its own wording apart
-        # from the clause below; being one, `_reported_on_failure` already covers it too.
-        print(f"ddd: {error}", file=sys.stderr)
-        return EXIT_USAGE
-    except (OSError, ValueError) as error:
-        print(f"ddd: {error}", file=sys.stderr)
-        return EXIT_USAGE
+    with _watching() as watched:
+        try:
+            try:
+                args = parser.parse_args(arguments)
+                handler: Any = args.handler
+                code = int(handler(args))
+            except SystemExit:
+                # `--version`, `--help` and a command line argparse refuses itself: it printed
+                # and left, and what it printed is flushed here as well.
+                _flush(*watched)
+                raise
+            # Flushed inside the run, so that a closed pipe met by what is still buffered is
+            # answered by the clauses below; flushed as the interpreter ended, it met none.
+            _flush(*watched)
+            return code
+        except KeyboardInterrupt:
+            # Ctrl-C during a long run, or during a plugin's hook, which re-raises it rather than
+            # blaming the plugin for it. One line instead of the thirty a traceback costs, and a
+            # code of its own so that a caller does not read a stopped run as a failed check.
+            print("ddd: interrupted", file=sys.stderr)
+            return EXIT_INTERRUPTED
+        except BrokenPipeError:
+            # `ddd schema component | head -1`: the reader stopped reading, which is what a pager
+            # and `head` do, and nothing about it is this run's error - reported as a usage error
+            # it failed a paging script on the tool's side under `set -o pipefail`. What either
+            # stream still holds goes to the null device as the run ends (`_watching`).
+            return EXIT_OK
+        except UnknownCheckError as error:
+            # UnknownCheckError is a ValueError, listed first only to keep its own wording apart
+            # from the clause below; being one, `_reported_on_failure` already covers it too.
+            print(f"ddd: {error}", file=sys.stderr)
+            return EXIT_USAGE
+        except (OSError, ValueError) as error:
+            print(f"ddd: {error}", file=sys.stderr)
+            return EXIT_USAGE
 
 
 def _plugin_artefact(arguments: Sequence[str]) -> str | None:

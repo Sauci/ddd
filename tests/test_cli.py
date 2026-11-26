@@ -10,6 +10,7 @@ import os
 import re
 import shutil
 import stat
+import subprocess
 import sys
 from collections.abc import Callable
 from itertools import pairwise
@@ -3807,11 +3808,18 @@ class TestAClosedPipe:
 
     The broken pipe arrived as an ``OSError`` and was reported as a usage error: one line of
     errno text and exit 2, which under ``set -o pipefail`` fails a paging script on the tool's
-    side.
+    side. A reader gone before the run wrote anything was not answered at all: what stayed in a
+    buffer was flushed as the interpreter ended, past every clause of ``main``, which printed
+    ``Exception ignored`` and exited 120, and Windows reports that reader as ``EINVAL``, read
+    as an invalid argument.
+
+    A test that closes one stream hands the other to ``capsys`` or to a stand-in: a closed pipe
+    points both at the null device, and pytest's own capture is a descriptor as well.
     """
 
     class _Closed:
-        """A stdout whose reader is gone; ``fileno`` is what a captured stream refuses."""
+        """A standard stream whose reader is gone; ``fileno`` is what a captured stream
+        refuses."""
 
         def write(self, text: str) -> int:
             raise BrokenPipeError(errno.EPIPE, "Broken pipe")
@@ -3830,6 +3838,22 @@ class TestAClosedPipe:
 
         def fileno(self) -> int:
             return self._descriptor
+
+    class _Held(_ClosedOnFd):
+        """The same as a real stream into a pipe meets it: what it is given waits in a buffer,
+        and the closed pipe is met when that is flushed."""
+
+        def write(self, text: str) -> int:
+            return len(text)
+
+    class _Invalid(_Closed):
+        """The same stream as Windows reports it: ``EINVAL``, a plain ``OSError``."""
+
+        def write(self, text: str) -> int:
+            raise OSError(errno.EINVAL, "Invalid argument")
+
+        def flush(self) -> None:
+            raise OSError(errno.EINVAL, "Invalid argument")
 
     def test_the_run_ends_quietly_and_successfully(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
@@ -3852,6 +3876,177 @@ class TestAClosedPipe:
             os.close(spare)
         assert (tmp_path / "spare").read_bytes() == b""
         assert capsys.readouterr().err == ""
+
+    def test_what_argparse_prints_is_answered_inside_the_run(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``ddd --version | true``: argparse prints and leaves by ``SystemExit``, and what it
+        printed was flushed only as the interpreter ended. Flushed inside the run, the closed
+        pipe is the run's to answer, and nothing is left for the interpreter to fail on."""
+        spare = os.open(tmp_path / "spare", os.O_WRONLY | os.O_CREAT)
+        try:
+            monkeypatch.setattr("sys.stdout", self._ClosedOnFd(spare))
+            assert main(["--version"]) == EXIT_OK
+            os.write(spare, b"whatever is still buffered")
+        finally:
+            os.close(spare)
+        assert (tmp_path / "spare").read_bytes() == b""
+        assert capsys.readouterr().err == ""
+
+    def test_both_streams_are_pointed_at_the_null_device(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Whichever lost its reader: the interpreter flushes both as it ends, and stderr is
+        often the same pipe as stdout (``2>&1 | head``)."""
+        spare = os.open(tmp_path / "spare", os.O_WRONLY | os.O_CREAT)
+        try:
+            with (tmp_path / "stderr").open("w", encoding="utf-8") as stderr:
+                monkeypatch.setattr("sys.stdout", self._ClosedOnFd(spare))
+                monkeypatch.setattr("sys.stderr", stderr)
+                assert main(["schema", "component"]) == EXIT_OK
+                os.write(spare, b"left in stdout")
+                os.write(stderr.fileno(), b"left in stderr")
+        finally:
+            os.close(spare)
+        assert (tmp_path / "spare").read_bytes() == b""
+        assert (tmp_path / "stderr").read_bytes() == b""
+
+    def test_findings_a_usage_error_prints_into_a_closed_pipe_leave_nothing_behind(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A usage error after the analysis prints the findings first, in json on stdout here,
+        and its reader may be gone by then: the run still ends at 2, and what it printed there
+        goes to the null device rather than to the interpreter's last flush."""
+        spare = os.open(tmp_path / "spare", os.O_WRONLY | os.O_CREAT)
+        try:
+            monkeypatch.setattr("sys.stdout", self._Held(spare))
+            arguments = ["check", str(INCONSISTENT), "--format", "json"]
+            assert main([*arguments, "-W", "nosuch/check=ignore"]) == EXIT_USAGE
+            os.write(spare, b"whatever is still buffered")
+        finally:
+            os.close(spare)
+        assert (tmp_path / "spare").read_bytes() == b""
+        assert "nosuch/check" in capsys.readouterr().err
+
+    @pytest.mark.parametrize("arguments", [["schema", "component"], ["--version"]])
+    def test_on_windows_a_reader_gone_is_a_closed_pipe_not_an_invalid_argument(
+        self,
+        arguments: list[str],
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """``ddd schema component | true`` ended with ``ddd: [Errno 22] Invalid argument`` and
+        exit 2 on Windows. ``schema`` meets it in its own write, ``--version`` in the flush
+        after argparse, which ignores a failing write of its own."""
+        monkeypatch.setattr(sys, "platform", "win32")
+        monkeypatch.setattr("sys.stdout", self._Invalid())
+        assert main(arguments) == EXIT_OK
+        assert capsys.readouterr().err == ""
+
+    def test_on_windows_an_invalid_argument_of_anything_else_stays_a_usage_error(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``EINVAL`` is a closed pipe only where a stream's own write or flush answers it: said
+        of a path, or by a plugin, it still means what it says."""
+
+        def schema_text(kind: str, plugins: Any = ()) -> str:
+            raise OSError(errno.EINVAL, "Invalid argument")
+
+        monkeypatch.setattr(sys, "platform", "win32")
+        monkeypatch.setattr("ddd.cli.schema_text", schema_text)
+        assert main(["schema", "component"]) == EXIT_USAGE
+        assert capsys.readouterr().err == "ddd: [Errno 22] Invalid argument\n"
+
+    def test_on_windows_a_stream_failing_otherwise_stays_a_usage_error(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A full disk under a redirected stdout is no reader gone."""
+
+        class Full:
+            def write(self, text: str) -> int:
+                raise OSError(errno.ENOSPC, "No space left on device")
+
+            def flush(self) -> None:
+                pass
+
+        monkeypatch.setattr(sys, "platform", "win32")
+        monkeypatch.setattr("sys.stdout", Full())
+        assert main(["schema", "component"]) == EXIT_USAGE
+        assert capsys.readouterr().err == "ddd: [Errno 28] No space left on device\n"
+
+    def test_elsewhere_an_invalid_argument_of_stdout_stays_a_usage_error(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Only Windows answers a closed pipe with ``EINVAL``: on any other system it means what
+        it says."""
+        monkeypatch.setattr(sys, "platform", "linux")
+        monkeypatch.setattr("sys.stdout", self._Invalid())
+        assert main(["schema", "component"]) == EXIT_USAGE
+        assert "[Errno 22] Invalid argument" in capsys.readouterr().err
+
+    def test_a_stream_closed_before_the_run_is_left_as_python_left_it(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A descriptor closed before the interpreter started (``ddd schema component >&-``)
+        leaves ``sys.stdout`` at ``None``, which a ``print`` writes nothing to."""
+        monkeypatch.setattr("sys.stdout", None)
+        assert main(["schema", "component"]) == EXIT_OK
+        assert capsys.readouterr().err == ""
+
+
+def _from_these_sources() -> dict[str, str]:
+    """The environment of a ``python -m ddd`` that runs the sources this suite tests, whatever
+    else is installed."""
+    sources = str(EXAMPLES.parent / "src")
+    path = os.pathsep.join(filter(None, [sources, os.environ.get("PYTHONPATH")]))
+    return {**os.environ, "PYTHONPATH": path}
+
+
+class TestAClosedPipeInAProcessOfItsOwn:
+    """What only a process of its own shows: the code that reaches the shell.
+
+    A stream into a pipe is buffered, so a closed pipe is met at a flush, and python flushes
+    both streams once more as it ends: one that still points at the pipe then fails again,
+    prints ``Exception ignored`` where nobody reads it, and makes the exit code 120, whatever
+    ``main`` returned. A stream replaced in process meets none of that.
+    """
+
+    @staticmethod
+    def with_a_reader_gone(arguments: list[str], stream: str) -> subprocess.CompletedProcess[bytes]:
+        """``ddd`` with ``stream`` a pipe whose reading end was closed before the run began, so
+        that the first write the run makes into it meets a closed pipe."""
+        read, write = os.pipe()
+        os.close(read)
+        try:
+            return subprocess.run(
+                [sys.executable, "-m", "ddd", *arguments],
+                stdout=write if stream == "stdout" else subprocess.DEVNULL,
+                stderr=write if stream == "stderr" else subprocess.PIPE,
+                cwd=EXAMPLES.parent,
+                env=_from_these_sources(),
+                check=False,
+            )
+        finally:
+            os.close(write)
+
+    @pytest.mark.parametrize(
+        ("arguments", "stream", "code"),
+        [
+            (["--version"], "stdout", EXIT_OK),
+            (["--help"], "stdout", EXIT_OK),
+            (["cmake-dir"], "stdout", EXIT_OK),
+            (["checks"], "stdout", EXIT_OK),
+            (["schema", "component"], "stdout", EXIT_OK),
+            (["check", str(DEMO), "--format", "json"], "stdout", EXIT_OK),
+        ],
+        ids=["--version", "--help", "cmake-dir", "checks", "schema", "a clean check in json"],
+    )
+    def test_a_reader_gone_before_the_first_line_leaves_the_code_to_the_run(
+        self, arguments: list[str], stream: str, code: int
+    ) -> None:
+        ran = self.with_a_reader_gone(arguments, stream)
+        assert ran.returncode == code, ran.stderr
+        assert ran.stderr in (None, b"")
 
 
 class TestATargetWithNoName:

@@ -1278,14 +1278,17 @@ filled in, keyed by alias as the file keys it, without the model's computed fiel
 and with a `Json` field written back as json text. A hook reading a block from the
 dictionary validates that dump, by alias as the loader reads the file, so a plugin's
 model has to read back its own dump. The settings a hook is handed are not read back from the
-dictionary: each hook over a project is handed the block the project states, validated against
-the plugin's project model once, while the files are read, into the instance the dictionary's
-dump of them is written from - a default drawn afresh is drawn once - and only a comparison
-whose candidate is an archived dump validates the block the dump carries, so that the
-settings of a model which does not read back its own dump fail, or differ, only there:
-one that cannot validate its dump is a usage error naming the plugin, and one whose dump
-validates into another value - a validator changing what it is given and taking what it handed
-back - reads a value nobody stated. A leaf of a structured variable carries no block; the
+dictionary: each hook over a project is handed a shallow copy of the instance the block the
+project states was validated into against the plugin's project model, once, while the files
+were read - the instance the dictionary's dump of them is written from, so that a default drawn
+afresh is drawn once - and only a comparison whose candidate is an archived dump validates
+the block the dump carries, so that the settings of a model which does not read back its own
+dump fail, or differ, only there: one that cannot validate its dump is a usage error naming
+the plugin, and one whose dump validates into another value - a validator changing what it
+is given and taking what it handed back - reads a value nobody stated. A hook **should not**
+change its settings: a field it assigns is its own copy's, but a value it changes in place
+is the instance's, seen by the hooks after it and, in `ddd gui`, by every comparison of the
+revision while the revision stands. A leaf of a structured variable carries no block; the
 instance carries one for the whole structure. `ddd schema --plugin` publishes a kind's
 schema with the `extensions` property closed over the named plugins' models, so that an
 editor validates a block as it is typed; the dictionary schema stays open. A comparison whose

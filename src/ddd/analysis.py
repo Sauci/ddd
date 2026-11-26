@@ -956,9 +956,9 @@ class _Analysis:
         )
         # Inside the analysis rather than beside it, so that nothing that analyses a project -
         # the cli, the language server, a test - can forget to run them. A hook sees the whole
-        # dictionary, and every built-in finding is already in the bag. Its settings are the
-        # instance the loader validated the project's block into, which the dump above was
-        # written from, and not the dictionary's dump of them read back.
+        # dictionary, and every built-in finding is already in the bag. Its settings are a copy
+        # of the instance the loader validated the project's block into, which the dump above
+        # was written from, and not the dictionary's dump of them read back.
         run_check_hooks(
             workspace.plugins, dictionary, workspace.settings, self._bag, workspace.locate
         )

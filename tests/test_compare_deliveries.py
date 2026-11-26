@@ -34,7 +34,7 @@ from ddd.gui.api import Api
 from ddd.gui.session import Session
 from ddd.plugins import CompareContext, Plugin, PluginError
 from test_gui_api import Reply, get, posix
-from test_plugins import DOUBLING, DRAWN, SETTINGS_PLUGIN, write_plugin
+from test_plugins import DOUBLING, DRAWN, MEDDLING, SETTINGS_PLUGIN, write_plugin
 
 CLEAN: dict[str, object] = {
     "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
@@ -386,6 +386,32 @@ class TestACompareHookIsHandedWhatTheCandidateStates:
         ]
         assert len(own) == 1 and own[0].startswith("check was handed ")
         assert handed == [own[0].replace("check", "compare", 1)]
+
+    def test_a_field_a_compare_hook_assigns_stays_out_of_the_tab_s_next_request(
+        self, tmp_path: Path
+    ) -> None:
+        """The revision keeps one instance for as long as it stands, and the tab runs the
+        comparison anew at each request: each compare hook is handed a shallow copy, so the ``a``
+        it assigns is gone by the next request, while the list it appends to in place, as the
+        revision's check hook did, is the instance's and grows."""
+        baseline = _baseline(tmp_path)
+        plugin = SETTINGS_PLUGIN.replace("MODEL", MEDDLING)
+        write_plugin(tmp_path / "new" / "tools", "set_plugin.py", plugin)
+        named = project("P", "a.ddd.json", "b.ddd.json", plugins=["tools/set_plugin.py"])
+        api = _candidate(tmp_path, {"p.ddd.json": named})
+        handed = []
+        for _ in range(2):
+            reply = get(api, "/api/compare", baseline=baseline.as_posix())
+            assert reply.status == 200
+            handed += [
+                found["message"]
+                for found in reply.body["findings"]
+                if found["check"] == "set/handed"
+            ]
+        assert handed == [
+            "compare was handed S(a=1, keys=['x'])",
+            "compare was handed S(a=1, keys=['x', 'x'])",
+        ]
 
 
 class TestTheBaselinesOwnErrors:

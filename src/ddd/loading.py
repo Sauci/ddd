@@ -571,10 +571,10 @@ class Workspace:
     its block - as the project files wrote it, or ``{}`` where none states it - was validated
     into, once, while the files were read.
 
-    The one the dictionary's dump of the settings is written from and every hook of a run over
-    the project is handed (:meth:`settings`), so that the dump and the hooks hold one value: a
-    default drawn afresh at each validation, a time or a uuid, is drawn once. A block that did
-    not validate has none."""
+    The one the dictionary's dump of the settings is written from, and of which every hook of
+    a run over the project is handed a shallow copy (:meth:`settings`), so that the dump and
+    the hooks hold one value: a default drawn afresh at each validation, a time or a uuid, is
+    drawn once. A block that did not validate has none."""
 
     point_counts: PointCounts = PointCounts.NONE
     """The project's default for where tables store their point counts, as the one project
@@ -610,10 +610,23 @@ class Workspace:
         return self.locations.get(name)
 
     def settings(self, plugin: Plugin) -> BaseModel | None:
-        """What a hook of ``plugin`` is handed as its settings: the instance its project block
-        was validated into (:attr:`project_settings`), or ``None`` for a plugin that declares
-        no project model - and for one whose block did not validate, which no run hands a hook."""
-        return self.project_settings.get(plugin.name)
+        """What a hook of ``plugin`` is handed as its settings: a shallow copy (``model_copy()``)
+        of the instance its project block was validated into (:attr:`project_settings`), or
+        ``None`` for a plugin that declares no project model - and for one whose block did not
+        validate, which no run hands a hook.
+
+        Copying validates nothing and draws nothing, so the copy holds the value the dump was
+        written from; a field a hook assigns is the copy's alone, so the next hook, and the next
+        comparison ``ddd gui`` runs over a revision, is handed the validated value. A nested
+        value changed in place is the instance's still. Shallow rather than deep: a deep copy
+        fails on a value that cannot be copied, a lock held in a private attribute, where
+        nothing failed before. Guarded as the model's own code, as every other call of it is.
+        """
+        validated = self.project_settings.get(plugin.name)
+        if validated is None:
+            return None
+        with guarding_plugin_model(plugin.name, "copying its settings"):
+            return validated.model_copy()
 
 
 def read_json_document(path: Path) -> dict[str, Any] | None:
@@ -1280,8 +1293,8 @@ class _Loader:
         later, in the analysis, and a typo is a typo either way.
 
         The instance each project block is validated into is kept (``project_settings``): the
-        dictionary's dump of the settings is written from it, and every hook is handed it, so
-        that nothing validates a project's settings again.
+        dictionary's dump of the settings is written from it, and every hook is handed a copy of
+        it, so that nothing validates a project's settings again.
         """
         plugins = {name: loaded.plugin for name, loaded in self._plugins_by_name.items()}
         for name, (block, location) in sorted(self._project_blocks.items()):

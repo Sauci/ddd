@@ -120,8 +120,8 @@ class Resolved:
     a cached baseline has to be read again."""
 
     settings: Callable[[Plugin], BaseModel | None]
-    """The settings a hook of this side is handed for a plugin: for a description, the instance
-    its project block was validated into while the files were read
+    """The settings a hook of this side is handed for a plugin: for a description, a shallow
+    copy of the instance its project block was validated into while the files were read
     (:meth:`~ddd.loading.Workspace.settings`), the one its dictionary's dump of the settings
     was written from; for an archived dump, the block it carries validated against the
     plugin's project model (:func:`~ddd.plugins.settings_of`), which is all there is of it.

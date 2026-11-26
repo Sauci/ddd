@@ -11919,17 +11919,23 @@ class TestAHookIsHandedTheSettingsTheProjectStates:
             SPEC,
             (
                 "The settings a hook is handed are not read back from the dictionary: each hook "
-                "over a project is handed the block the project states, validated against the "
-                "plugin's project model once, while the files are read, into the instance the "
-                "dictionary's dump of them is written from - a default drawn afresh is drawn once "
-                "- and only a comparison whose candidate is an archived dump validates the block "
-                "the dump carries,",
+                "over a project is handed a shallow copy of the instance the block the project "
+                "states was validated into against the plugin's project model, once, while the "
+                "files were read - the instance the dictionary's dump of them is written from, so "
+                "that a default drawn afresh is drawn once - and only a comparison whose candidate "
+                "is an archived dump validates the block the dump carries,",
                 "so that the settings of a model which does not read back its own dump fail, or "
                 "differ, only there: one that cannot validate its dump is a usage error naming the "
                 "plugin, and one whose dump validates into another value - a validator changing "
                 "what it is given and taking what it handed back - reads a value nobody stated.",
+                "A hook **should not** change its settings: a field it assigns is its own copy's, "
+                "but a value it changes in place is the instance's, seen by the hooks after it "
+                "and, in `ddd gui`, by every comparison of the revision while the revision "
+                "stands.",
             ),
             (
+                "handed the block the project states, validated against the plugin's project "
+                "model once",
                 "does not read back its own dump fail only there, a usage error naming the plugin",
                 "and one whose validator changes what it is given reads a value nobody stated",
                 "validated against the plugin's project model, and only a comparison",
@@ -11944,11 +11950,15 @@ class TestAHookIsHandedTheSettingsTheProjectStates:
                 "``settings``, the candidate's, from the block its project states or the one an "
                 "archived candidate carries;",
                 "Over a project, the settings a hook is handed are never read back from the "
-                "dictionary: ``settings`` is the instance validated from the block the project "
-                "states, once, while the files are read: the dictionary's dump of the settings is "
-                "written from it, and every hook of the run is handed it, so a default drawn "
-                "afresh at each validation - a time, a uuid - is drawn once, and a hook that "
-                "assigns to it has changed it for the hooks after it.",
+                "dictionary: ``settings`` is validated from the block the project states, once, "
+                "while the files are read: the dictionary's dump of the settings is written from "
+                "that instance, and every hook of the run is handed a shallow copy of it "
+                "(``model_copy()``), so a default drawn afresh at each validation - a time, a uuid "
+                "- is drawn once.",
+                "A hook should not change its settings: a field it assigns is its own copy's, but "
+                "a value it changes in place - a list it appends to - is the instance's, and the "
+                "hooks after it see the change, as does every comparison ``ddd gui`` runs over the "
+                "revision while the revision stands.",
                 "Only an archived dictionary, under ``ddd compare --plugin``, has its settings "
                 "validated from the block it carries.",
                 "A model whose dump does not read back as its block did is handed its settings "
@@ -11972,6 +11982,7 @@ class TestAHookIsHandedTheSettingsTheProjectStates:
                 "The settings a hook is handed are never read back",
                 "``settings`` is validated from the block the project states;",
                 "one whose validator does not hand back what it is given fails nothing",
+                "and a hook that assigns to it has changed it for the hooks after it",
             ),
         ),
     }

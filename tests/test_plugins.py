@@ -1156,15 +1156,22 @@ class Colour(enum.Enum):
     RED = "red"
 
 
+def meddle(settings: BaseModel | None) -> None:
+    """What a check or compare hook does to its settings once it has said what it was handed:
+    nothing, unless the model's text defines it again."""
+
+
 MODEL
 
 
 def check(context: CheckContext) -> None:
     context.bag.add("set/handed", f"check was handed {context.settings!r}")
+    meddle(context.settings)
 
 
 def compare(context: CompareContext) -> None:
     context.bag.add("set/handed", f"compare was handed {context.settings!r}")
+    meddle(context.settings)
 
 
 class HandedBackend:
@@ -2214,6 +2221,28 @@ class S(BaseModel):
 """
 """A validator that does not hand back what it is given: a value read twice doubles twice."""
 
+MEDDLING = """
+class S(BaseModel):
+    a: int = 1
+    keys: list[str] = []
+
+
+def meddle(settings: S) -> None:
+    settings.a = 99
+    settings.keys.append("x")
+"""
+"""A model whose check and compare hooks change their settings once they have said what they
+were handed: a field assigned, and a list appended to in place."""
+
+UNCOPIABLE = """
+class S(BaseModel):
+    a: int = 1
+
+    def __copy__(self) -> S:
+        raise RuntimeError("this model is not to be copied")
+"""
+"""A model whose own copying raises: the one way the shallow copy a hook is handed can fail."""
+
 SPLITTING = """
 class S(BaseModel):
     keys: list[str] = []
@@ -2390,6 +2419,42 @@ class TestAHookIsHandedTheSettingsTheProjectStates:
         arguments = ["compare", old_dump, new_dump, "--plugin", "tools/set_plugin.py"]
         assert main(arguments) == EXIT_USAGE
         assert "the settings of plugin 'set' are invalid" in capsys.readouterr().err
+
+    def test_a_field_a_check_hook_assigns_is_its_own_and_a_list_it_appends_to_is_not(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Every hook is handed a shallow copy of the one instance: the backend after a check hook
+        that assigned ``a`` is handed the validated value, and sees the list the check hook
+        appended to, which the copies share."""
+        root = stating(tree, MEDDLING, None)
+        out = tree / "out"
+        arguments = ["generate", "set", root, "-o", str(out), "-W", "missing-id=ignore"]
+        assert main(arguments) == EXIT_OK, capsys.readouterr().err
+        assert "check was handed S(a=1, keys=[])" in capsys.readouterr().err
+        said = (out / "handed.txt").read_text(encoding="utf-8")
+        assert said == "backend was handed S(a=1, keys=['x'])\n"
+
+    def test_a_model_that_refuses_its_copy_is_the_plugins_failure(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The copy a hook is handed is made by the model's own code, and a model whose copying
+        raises is a defect of the plugin like a validator that raises: a usage error naming the
+        plugin, not a traceback."""
+        root = stating(tree, UNCOPIABLE, None)
+        assert main(["check", root, "-W", "missing-id=ignore"]) == EXIT_USAGE
+        said = capsys.readouterr().err
+        assert "plugin 'set' failed copying its settings: this model is not to be copied" in said
+
+    def test_a_field_a_check_hook_assigns_stays_out_of_the_compare_hook(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The candidate's check hook, run by its analysis, assigns ``a``; its compare hook, run by
+        the comparison after it, is handed the validated value."""
+        old, new = stating(tree, MEDDLING, None, "old"), stating(tree, MEDDLING, None, "new")
+        assert main(["compare", old, new, "-W", "missing-id=ignore"]) == EXIT_OK
+        said = capsys.readouterr().err
+        assert "check was handed S(a=1, keys=[])" in said
+        assert "compare was handed S(a=1, keys=['x'])" in said
 
     @pytest.mark.parametrize("stated", [None, {}], ids=["no block", "an empty block"])
     def test_a_default_drawn_afresh_is_one_value_for_the_dump_and_every_hook(

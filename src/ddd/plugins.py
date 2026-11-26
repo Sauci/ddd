@@ -58,8 +58,10 @@ class CheckContext:
     settings: BaseModel | None
     """The block the project states, validated against the plugin's ``project_model`` - not the
     dictionary's dump of it read back - and built from ``{}`` where the project states none;
-    ``None`` for a plugin that declares no project model. Validated once: the instance the
-    dictionary's dump of the settings is written from, and the one every hook is handed."""
+    ``None`` for a plugin that declares no project model. Validated once, into the instance
+    the dictionary's dump of the settings is written from, of which every hook is handed a
+    shallow copy: a field a hook assigns is its own, a nested value it changes in place is
+    not, so a hook should change neither."""
     bag: DiagnosticBag
     locate: Callable[[str], Location | None]
     """Where a finding about the named object belongs: the producing declaration under
@@ -442,7 +444,8 @@ def settings_of(plugin: Plugin, extensions: Mapping[str, Mapping[str, Any]]) -> 
 
     ``extensions`` are the blocks an archived dictionary carries, by plugin name, which are all
     there is of its settings: a project's blocks are validated once, by the loader, and every
-    hook over the project is handed that instance (:meth:`~ddd.loading.Workspace.settings`).
+    hook over the project is handed a copy of that instance
+    (:meth:`~ddd.loading.Workspace.settings`).
     Built from ``{}`` where the plugin has none there, so that defaults apply; ``None`` for a
     plugin that declares no project model. A failure here therefore comes from an archive: one
     dumped before the plugin required a setting, or by a model that does not read back its own
@@ -467,10 +470,10 @@ def run_check_hooks(
 ) -> None:
     """Run every check hook over the dictionary, in the order the project lists the plugins.
 
-    ``settings`` is what each hook is handed for its plugin: the instance the project's block
-    was validated into, once (:meth:`~ddd.loading.Workspace.settings`), and never the
-    dictionary's dump of it read back - a model reads its dump back only as far as the dump
-    keeps what it read, and the block the loader took is what the hook is owed.
+    ``settings`` is what each hook is handed for its plugin: a copy of the instance the
+    project's block was validated into, once (:meth:`~ddd.loading.Workspace.settings`),
+    never the dictionary's dump of it read back - a model reads its dump back only as far as
+    the dump keeps what it read, and the block the loader took is what the hook is owed.
     """
     for plugin in plugins:
         if plugin.check is not None:
@@ -490,9 +493,9 @@ def run_compare_hooks(
 ) -> None:
     """Run every compare hook, after saying which recorded plugin is not among ``plugins``.
 
-    ``settings`` is what each hook is handed for its plugin, the candidate's: the instance its
-    project's block was validated into, or, for an archived dictionary, the block it carries
-    validated against the plugin's project model (:func:`settings_of`).
+    ``settings`` is what each hook is handed for its plugin, the candidate's: a copy of the
+    instance its project's block was validated into, or, for an archived dictionary, the
+    block it carries validated against the plugin's project model (:func:`settings_of`).
 
     A comparison that silently skipped a rule would be a confident "can replace" with a hole
     in it; ``missing-plugin`` is what closes the hole, once per plugin and side. Each side's
@@ -541,8 +544,8 @@ def backend_of(plugin: Plugin, settings: BaseModel | None, generator: str) -> Ba
     """The backend a plugin provides, or a usage error saying it provides none or provides one
     only in name.
 
-    The hook is handed ``settings``, the instance the project's block was validated into, as a
-    check hook is (:func:`run_check_hooks`).
+    The hook is handed ``settings``, a copy of the instance the project's block was validated
+    into, as a check hook is (:func:`run_check_hooks`).
 
     A hook's own signature says it returns a ``Backend``, but nothing stops it returning
     ``None`` - the shape a hook that only checks its settings and forgets to build one tends

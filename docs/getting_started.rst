@@ -615,10 +615,10 @@ agreed on are worse than no sources:
 .. warning::
    ``--force`` generates in spite of the errors of the analysis, using the producer's
    definition wherever the components disagree, and still exits with 1; a file that cannot be
-   read or does not fit its format leaves no dictionary, and nothing to generate. It exists for the case where a
-   developer needs the headers to keep working while a disagreement is being sorted out
-   between teams, and it is the wrong thing to put in a ci job: the exit code stays 1 precisely
-   so that a pipeline which ignores it has to say so explicitly.
+   read or does not fit its format leaves no dictionary, and nothing to generate. It exists for the
+   case where a developer needs the headers to keep working while a disagreement is being sorted out
+   between teams, and it is the wrong thing to put in a ci job: the exit code stays 1 precisely so
+   that a pipeline which ignores it has to say so explicitly.
 
 Put ``sint16`` back and the project is clean again. That loop - describe, check, generate - is
 the whole daily workflow; everything else DDD offers is either a different question about the

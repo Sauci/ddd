@@ -1136,8 +1136,8 @@ DDD is meant to be a build step, so the verdict is in the exit code and not only
        that.
    * - ``1``
      - At least one finding was reported with the severity ``error``, whatever its default
-       severity was. ``ddd generate`` additionally wrote nothing, unless ``--force`` was given and the files
-       were read and validated, an error of that leaving nothing to write.
+       severity was. ``ddd generate`` additionally wrote nothing, unless ``--force`` was given and
+       the files were read and validated, an error of that leaving nothing to write.
    * - ``2``
      - The command was used wrongly: an unknown severity, or an unknown check that names
        no plugin, in ``-W``, an attempt to change one of the fixed checks, a missing or

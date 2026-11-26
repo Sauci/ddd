@@ -6,10 +6,10 @@ dictionary to the backends, because generating from a project whose components d
 would produce code that compiles and links and is nevertheless wrong; ``--force`` overrides
 that refusal where the checks ran - a file that cannot be read or does not fit its format
 leaves no dictionary to hand over - for the case where somebody needs to look at the output
-of a project that is still being assembled. What comes out is c code - the definition of every global variable and
-the declarations each component is allowed to see - and the a2l description that measurement
-and calibration tools read. The two backends never see each other: the c backend does not
-know that a2l exists, the a2l backend does not know what a ``uint16_t`` is called, and both
+of a project that is still being assembled. What comes out is c code - the definition of every
+global variable and the declarations each component is allowed to see - and the a2l description that
+measurement and calibration tools read. The two backends never see each other: the c backend does
+not know that a2l exists, the a2l backend does not know what a ``uint16_t`` is called, and both
 consume the same :doc:`data dictionary </data_dictionary>`.
 
 The two artefacts are not produced the same way, and that asymmetry is deliberate. How many c

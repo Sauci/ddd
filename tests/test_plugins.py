@@ -3802,3 +3802,98 @@ class TestANameIsHeldToTheGrammarWhole:
     def test_a_check_ending_in_a_newline_is_refused(self) -> None:
         with pytest.raises(ValueError, match="is not spelled 'tag/<check>'"):
             Plugin(name="tag", checks=(CheckInfo("tag/bad\n", Severity.ERROR, "x"),))
+
+
+class TestWhatAPluginHandsBackAtImport:
+    """Everything an import can raise but an interrupt is the plugin's failure, reported."""
+
+    @pytest.mark.parametrize(
+        ("raised", "shown"),
+        [
+            ('type("Boom", (BaseException,), {})("boom")', "boom"),
+            ("__import__('asyncio').CancelledError('cancelled')", "cancelled"),
+        ],
+        ids=["a custom base exception", "a cancellation"],
+    )
+    def test_a_base_exception_in_a_file_is_invalid_and_not_cached(
+        self, tmp_path: Path, raised: str, shown: str
+    ) -> None:
+        marker = tmp_path / "name.txt"
+        source = (
+            "from pathlib import Path\n\n"
+            f"Path({marker.as_posix()!r}).write_text(__name__, encoding='utf-8')\n"
+            f"raise {raised}\n"
+        )
+        write_plugin(tmp_path, "cancels.py", source)
+        for _ in range(2):
+            with pytest.raises(PluginInvalidError, match=f"failed to import: {shown}"):
+                load_plugin("cancels.py", tmp_path)
+        assert marker.read_text(encoding="utf-8") not in sys.modules
+
+    def test_a_base_exception_in_a_module_is_invalid(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        write_plugin(
+            tmp_path,
+            "cancels_as_module.py",
+            "raise __import__('asyncio').CancelledError('cancelled')\n",
+        )
+        monkeypatch.syspath_prepend(str(tmp_path))
+        try:
+            with pytest.raises(PluginInvalidError, match="failed to import: cancelled"):
+                load_plugin("cancels_as_module", tmp_path)
+        finally:
+            sys.modules.pop("cancels_as_module", None)
+
+    def test_an_interrupt_in_a_module_still_interrupts(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        write_plugin(tmp_path, "interrupts_as_module.py", "raise KeyboardInterrupt\n")
+        monkeypatch.syspath_prepend(str(tmp_path))
+        try:
+            with pytest.raises(KeyboardInterrupt):
+                load_plugin("interrupts_as_module", tmp_path)
+        finally:
+            sys.modules.pop("interrupts_as_module", None)
+
+    def test_a_module_that_raises_when_asked_for_its_plugin(self, tmp_path: Path) -> None:
+        source = "def __getattr__(name):\n    raise RuntimeError('lookup')\n"
+        write_plugin(tmp_path, "lazy.py", source)
+        with pytest.raises(PluginInvalidError, match=r"'lazy\.py' failed to read PLUGIN: lookup"):
+            load_plugin("lazy.py", tmp_path)
+
+    def test_a_module_that_is_interrupted_when_asked_for_its_plugin(self, tmp_path: Path) -> None:
+        source = "def __getattr__(name):\n    raise KeyboardInterrupt\n"
+        write_plugin(tmp_path, "lazy_interrupt.py", source)
+        with pytest.raises(KeyboardInterrupt):
+            load_plugin("lazy_interrupt.py", tmp_path)
+
+    def test_a_module_that_exits_when_asked_for_its_plugin(self, tmp_path: Path) -> None:
+        source = "def __getattr__(name):\n    raise SystemExit(4)\n"
+        write_plugin(tmp_path, "lazy_exit.py", source)
+        with pytest.raises(PluginInvalidError, match=r"failed to read PLUGIN: SystemExit\(4\)"):
+            load_plugin("lazy_exit.py", tmp_path)
+
+    def test_a_cancelled_import_is_a_finding_of_the_project(self, tree: Path) -> None:
+        write_plugin(tree, "cancels.py", "raise __import__('asyncio').CancelledError('gone')\n")
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["cancels.py"]),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        assert "plugin-invalid" in checks(bag)
+        assert "failed to import: gone" in messages(bag)
+
+    def test_a_lazy_plugin_that_raises_is_a_finding_of_the_project(self, tree: Path) -> None:
+        write_plugin(tree, "lazy.py", "def __getattr__(name):\n    raise RuntimeError('lazy')\n")
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["lazy.py"]),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        assert "plugin-invalid" in checks(bag)
+        assert "failed to read PLUGIN: lazy" in messages(bag)

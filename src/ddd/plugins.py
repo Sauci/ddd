@@ -153,7 +153,18 @@ def load_plugin(spelling: str, base: Path) -> Plugin:
     so nothing is added to the runtime dependencies.
     """
     module = _load_from_path(spelling, base) if spelling.endswith(".py") else _import(spelling)
-    plugin = getattr(module, "PLUGIN", None)
+    try:
+        # A module may compute its attributes (`__getattr__`), and that is plugin code, run here
+        # as much as its body was at import: what it raises is the plugin's failure. An
+        # attribute it does not have is the default, as `getattr` gives it.
+        with _stdout_on_stderr():
+            plugin = getattr(module, "PLUGIN", None)
+    except KeyboardInterrupt:
+        raise
+    except BaseException as error:
+        detail = _exit_text(error) if isinstance(error, SystemExit) else str(error)
+        msg = f"plugin '{spelling}' failed to read PLUGIN: {detail}"
+        raise PluginInvalidError(msg) from error
     if not isinstance(plugin, Plugin):
         msg = f"plugin '{spelling}' exposes no PLUGIN that is a ddd.plugins.Plugin"
         raise PluginInvalidError(msg)
@@ -317,26 +328,24 @@ def _load_from_path(spelling: str, base: Path) -> Any:
         source = path.read_bytes()
         with _stdout_on_stderr():
             spec.loader.exec_module(module)
-    except (Exception, SystemExit) as error:
-        # Not left cached half-run: a second load must retry it and report again, rather than
-        # hand out a module whose body never finished. A plugin body that calls sys.exit(...)
-        # - deliberately, or by copying a script's own __main__ guard - is no less in need of
-        # that than one that raises: it is reported the same way, naming the code it exited
-        # with rather than the empty or misleading text str(SystemExit(...)) would give.
-        sys.modules.pop(name, None)
-        if isinstance(error, SystemExit):
-            msg = f"plugin '{spelling}' exited during import: {_exit_text(error)}"
-        else:
-            msg = f"plugin '{spelling}' failed to import: {error}"
-        raise PluginInvalidError(msg) from error
-    except BaseException:
-        # Anything else - KeyboardInterrupt above all - is not this plugin's error to own, and
-        # still has to interrupt. Only the cache is this function's business: left registered,
-        # a second load in the same process (the language server re-analysing after every
-        # keystroke) would find a module that never finished running and skip re-running its
-        # body at all, rather than trying again.
+    except KeyboardInterrupt:
+        # Not this plugin's error to own, and still has to interrupt. Only the cache is this
+        # function's business: left registered, a second load in the same process (the language
+        # server re-analysing after every keystroke) would find a module that never finished
+        # running and skip re-running its body at all, rather than trying again.
         sys.modules.pop(name, None)
         raise
+    except BaseException as error:
+        # Not left cached half-run: a second load must retry it and report again, rather than
+        # hand out a module whose body never finished. Everything else a body can raise, more
+        # than `Exception`, is the plugin's failure and is reported as one: `SystemExit`, from a
+        # body that calls sys.exit(...) - deliberately, or by copying a script's own __main__
+        # guard - naming the code it exited with rather than the empty or misleading text
+        # str(SystemExit(...)) would give, and a `BaseException` of any other kind, an
+        # `asyncio.CancelledError` or one the plugin declared itself, which ended `ddd check` in
+        # a traceback under the findings exit code.
+        sys.modules.pop(name, None)
+        raise PluginInvalidError(_import_failure(spelling, error)) from error
     _RUN_FROM[name] = hashlib.sha256(source).hexdigest()
     return module
 
@@ -356,19 +365,23 @@ def _import(spelling: str) -> Any:
             raise PluginNotFoundError(msg) from error
         msg = f"plugin '{spelling}' failed to import: {error}"
         raise PluginInvalidError(msg) from error
-    except (Exception, SystemExit) as error:
-        # SystemExit is not an Exception: a plugin package whose __init__ calls sys.exit(...)
-        # - deliberately, or by copying a script's own __main__ guard - is no less in need of
-        # this than one that raises, and is reported the same way, naming the code it exited
-        # with rather than the empty or misleading text str(SystemExit(...)) would give. Unlike
-        # _load_from_path, nothing here has registered the module into sys.modules by hand, so
-        # there is no cache to unwind on the way out - import_module leaves none behind itself,
-        # on a failure of either kind.
-        if isinstance(error, SystemExit):
-            msg = f"plugin '{spelling}' exited during import: {_exit_text(error)}"
-        else:
-            msg = f"plugin '{spelling}' failed to import: {error}"
-        raise PluginInvalidError(msg) from error
+    except KeyboardInterrupt:
+        raise
+    except BaseException as error:
+        # More than `Exception`, as in `_load_from_path`: a plugin package whose __init__ calls
+        # sys.exit(...), or raises a `BaseException` of its own, is reported as the plugin's
+        # failure and no other way. Unlike there, nothing here has registered the module into
+        # sys.modules by hand, so there is no cache to unwind on the way out - import_module
+        # leaves none behind itself, on a failure of either kind.
+        raise PluginInvalidError(_import_failure(spelling, error)) from error
+
+
+def _import_failure(spelling: str, error: BaseException) -> str:
+    """What an import that raised ``error`` is reported as: the code a ``SystemExit`` carries, or
+    the text of any other."""
+    if isinstance(error, SystemExit):
+        return f"plugin '{spelling}' exited during import: {_exit_text(error)}"
+    return f"plugin '{spelling}' failed to import: {error}"
 
 
 def resolve_blocks(

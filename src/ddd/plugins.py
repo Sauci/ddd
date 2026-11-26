@@ -30,7 +30,7 @@ import sys
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, cast
 
 from pydantic import BaseModel, ValidationError
 
@@ -638,13 +638,14 @@ def backend_of(plugin: Plugin, settings: BaseModel | None, generator: str) -> Ba
         msg = f"plugin '{plugin.name}' returned no backend from its backend hook"
         raise PluginError(msg)
     name = _read(plugin, backend, "name")
-    if not isinstance(name, str) or not callable(_read(plugin, backend, "generate")):
+    generate = _read(plugin, backend, "generate")
+    if not isinstance(name, str) or not callable(generate):
         msg = (
             f"plugin '{plugin.name}' returned something other than a backend from its "
             f"backend hook: {type(backend).__name__}"
         )
         raise PluginError(msg)
-    return _GuardedBackend(plugin, backend, name)
+    return _GuardedBackend(plugin, name, cast("Callable[..., object]", generate))
 
 
 def _read(plugin: Plugin, backend: object, attribute: str) -> object:
@@ -683,16 +684,16 @@ class _GuardedBackend:
     ``Backend`` protocol asks for, so this satisfies it structurally without naming it.
     """
 
-    def __init__(self, plugin: Plugin, backend: Backend, name: str) -> None:
+    def __init__(self, plugin: Plugin, name: str, generate: Callable[..., object]) -> None:
         self._plugin = plugin
-        self._backend = backend
+        self._generate = generate
         self.name = name
 
     def generate(self, dictionary: DataDictionary, output_dir: Path) -> list[GeneratedFile]:
         result = _call(
             self._plugin,
             "generate",
-            lambda _: self._backend.generate(dictionary, output_dir),
+            lambda _: self._generate(dictionary, output_dir),
             None,
         )
         # Checked here, outside _call, rather than inside the lambda: raised from there, a

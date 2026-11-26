@@ -4311,11 +4311,26 @@ class TestABackendThatRaisesWhenRead:
         assert captured.out == ""
         assert "said when read" in captured.err
 
-    def test_a_backend_that_is_read_once_is_the_control(self) -> None:
-        class Plain:
-            name = "plain"
+    def test_a_backend_is_read_once_whatever_it_is_called_after(self, tmp_path: Path) -> None:
+        """What ``backend_of`` reads of the backend is read once - its ``name`` and its
+        ``generate`` - and what the guarded backend runs is what was read, however often it is
+        called, so a read that fails the second time is never blamed on another hook."""
+        reads: dict[str, int] = {"name": 0, "generate": 0}
 
-            def generate(self, dictionary: object, output_dir: Path) -> list:
-                return []
+        class Counting:
+            @property
+            def name(self) -> str:
+                reads["name"] += 1
+                return "counting"
 
-        assert backend_of(self._backend_plugin(Plain()), None, "ddd test").name == "plain"
+            @property
+            def generate(self) -> object:
+                reads["generate"] += 1
+                return lambda dictionary, output_dir: []
+
+        guarded = backend_of(self._backend_plugin(Counting()), None, "ddd test")
+        assert guarded.name == "counting"
+        assert guarded.generate(None, tmp_path) == []
+        assert guarded.generate(None, tmp_path) == []
+        assert guarded.name == "counting"
+        assert reads == {"name": 1, "generate": 1}

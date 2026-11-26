@@ -11909,8 +11909,9 @@ class TestAModelReadsBackItsOwnDump:
 class TestAHookIsHandedTheSettingsTheProjectStates:
     """19:I1. A hook over a project is handed the settings validated from the block the project
     states, and only a comparison of an archived dictionary validates the block it carries: the
-    pages say which block each hook's settings come from, and where a model that does not read
-    back its own dump fails."""
+    pages say which block each hook's settings come from, and what a model that does not read
+    back its own dump meets where its dump is read: a failure, or, where its validator changes
+    whatever it reads, a value nobody stated and no failure at all."""
 
     SAID: ClassVar[dict[str, tuple[str, tuple[str, ...], tuple[str, ...]]]] = {
         "SPEC.md": (
@@ -11920,10 +11921,11 @@ class TestAHookIsHandedTheSettingsTheProjectStates:
                 "over a project is handed the block the project states, validated against the "
                 "plugin's project model, and only a comparison whose candidate is an archived "
                 "dump validates the block the dump carries, so that the settings of a model which "
-                "does not read back its own dump fail only there, a usage error naming the "
-                "plugin.",
+                "does not read back its own dump fail, or differ, only there: one that cannot "
+                "validate its dump is a usage error naming the plugin, and one whose validator "
+                "changes what it is given reads a value nobody stated.",
             ),
-            (),
+            ("does not read back its own dump fail only there, a usage error naming the plugin",),
         ),
         "docs/plugins.rst": (
             PAGES["docs/plugins.rst"],
@@ -11937,16 +11939,20 @@ class TestAHookIsHandedTheSettingsTheProjectStates:
                 "``settings`` is validated from the block the project states, and only an "
                 "archived dictionary, under ``ddd compare --plugin``, has its settings validated "
                 "from the block it carries.",
-                "A model whose dump does not read back as its block did - a field it requires "
-                "and its dump leaves out (``Field(exclude=True)``), a validator that does not "
-                "hand back what it is given, a ``strict`` enum or date, which the dump writes as "
-                "a string, a serializer that changes the shape of a value - is handed its "
-                "settings in full over a project, and fails wherever its dump is read: in a hook "
-                "reading a block from the dictionary, and as the settings of an archived "
-                "dictionary, a usage error naming the plugin.",
+                "A model whose dump does not read back as its block did is handed its settings "
+                "in full over a project, and fails or differs wherever its dump is read: in a "
+                "hook reading a block from the dictionary, and in the settings of an archived "
+                "dictionary.",
+                "One requiring a field its dump leaves out (``Field(exclude=True)``), one with a "
+                "``strict`` enum or date, which the dump writes as a string, and one whose "
+                "serializer changes the shape of a value fail there, the settings of an archive "
+                "a usage error naming the plugin; one whose validator does not hand back what it "
+                "is given fails nothing, and reads a value nobody stated.",
             ),
             (
+                "what it is given, a ``strict``",
                 "``settings``, the project block validated against ``project_model``",
+                "and fails wherever its dump is read",
                 "``settings``, the candidate's; ``bag``",
             ),
         ),

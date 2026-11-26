@@ -2322,6 +2322,26 @@ class TestAHookIsHandedTheSettingsTheProjectStates:
         assert main(arguments) == EXIT_USAGE
         assert "the settings of plugin 'set' are invalid" in capsys.readouterr().err
 
+    def test_an_archive_of_a_validator_read_twice_reads_a_value_nobody_stated(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A validator that does not hand back what it is given reads its own dump without an
+        error, and changes it once more: two archives of a project stating 5 carry the 10 it
+        made of it, and comparing them hands the hook 20 and exits 0, with nothing said. Not
+        every model whose dump does not read back fails where the dump is read."""
+        old = stating(tree, DOUBLING, {"a": 5}, "old")
+        new = stating(tree, DOUBLING, {"a": 5}, "new")
+        old_dump, new_dump = (
+            dumped(old, tree, "old.json", capsys),
+            dumped(new, tree, "new.json", capsys),
+        )
+        archived = json.loads(Path(new_dump).read_text(encoding="utf-8"))
+        assert archived["extensions"] == {"set": {"a": 10}}
+        monkeypatch.chdir(tree)
+        arguments = ["compare", old_dump, new_dump, "--plugin", "tools/set_plugin.py"]
+        assert main(arguments) == EXIT_OK, capsys.readouterr().err
+        assert "compare was handed S(a=20)" in capsys.readouterr().err
+
 
 class TestWhenAnOverrideIsVerified:
     """A ``-W`` naming a plugin's check is held to the plugins this run loaded, whether or

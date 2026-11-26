@@ -1744,7 +1744,7 @@ class TestTheHookBoundary:
         dictionary, bag = analysed(tree, declare("local", "X"))
         plugin = Plugin(name="interrupting", check=interrupting)
         with pytest.raises(KeyboardInterrupt):
-            run_check_hooks((plugin,), dictionary, {}, bag, lambda _: None)
+            run_check_hooks((plugin,), dictionary, lambda _: None, bag, lambda _: None)
 
     @pytest.mark.parametrize(
         ("code", "rendered"),
@@ -1764,7 +1764,7 @@ class TestTheHookBoundary:
         dictionary, bag = analysed(tree, declare("local", "X"))
         plugin = Plugin(name="exiting", check=exiting)
         with pytest.raises(PluginError, match=re.escape(f"failed in its check hook: {rendered}")):
-            run_check_hooks((plugin,), dictionary, {}, bag, lambda _: None)
+            run_check_hooks((plugin,), dictionary, lambda _: None, bag, lambda _: None)
 
 
 class TestAnInterruptedRun:
@@ -2191,7 +2191,9 @@ class TestTheCompareHook:
         # too - otherwise 'missing-plugin' fires and this stops testing what it says it tests.
         dictionary, bag = analysed(tree, declare("local", "X"))
         plugins = (Plugin(name="bare"), Plugin(name="tag"))
-        run_compare_hooks(plugins, dictionary, dictionary, {}, bag, lambda _: None, None)
+        run_compare_hooks(
+            plugins, dictionary, dictionary, lambda _: None, bag, lambda _: None, None
+        )
         assert checks(bag) == []
 
 
@@ -2234,6 +2236,18 @@ class S(BaseModel):
         return ",".join(str(key) for key in keys)
 """
 """A serializer writing a list as one string, which the field does not read."""
+
+DRAWN = """
+import itertools
+
+_DRAWN = itertools.count(1)
+
+
+class S(BaseModel):
+    a: int = Field(default_factory=lambda: next(_DRAWN))
+"""
+"""A default drawn afresh at each validation, as a time or a uuid would be: the count it was
+drawn at says which validation a value came from."""
 
 HANDED = {
     "a field its dump leaves out": (EXCLUDED, {"a": 3}, "S(a=3)"),
@@ -2341,6 +2355,37 @@ class TestAHookIsHandedTheSettingsTheProjectStates:
         arguments = ["compare", old_dump, new_dump, "--plugin", "tools/set_plugin.py"]
         assert main(arguments) == EXIT_OK, capsys.readouterr().err
         assert "compare was handed S(a=20)" in capsys.readouterr().err
+
+    @pytest.mark.parametrize("stated", [None, {}], ids=["no block", "an empty block"])
+    def test_a_default_drawn_afresh_is_one_value_for_the_dump_and_every_hook(
+        self, tree: Path, capsys: pytest.CaptureFixture[str], stated: dict | None
+    ) -> None:
+        """One instance is validated from the block the project states - an empty one, or none,
+        and so ``{}`` - and the dictionary's dump of the settings and every hook of the run hold
+        it, so a default drawn afresh at each validation is drawn once: a backend stamping one
+        agrees with the dictionary archived beside its artefact, as when each hook read the
+        dump's value back."""
+        root = stating(tree, DRAWN, stated)
+        out, written = tree / "out", tree / "dictionary.json"
+        arguments = ["generate", "set", root, "-o", str(out), "--dictionary", str(written)]
+        assert main([*arguments, "-W", "missing-id=ignore"]) == EXIT_OK, capsys.readouterr().err
+        drawn = json.loads(written.read_text(encoding="utf-8"))["extensions"]["set"]["a"]
+        assert f"check was handed S(a={drawn})" in capsys.readouterr().err
+        said = (out / "handed.txt").read_text(encoding="utf-8")
+        assert said == f"backend was handed S(a={drawn})\n"
+
+    def test_a_default_drawn_afresh_is_one_value_for_a_candidate_s_hooks(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The candidate project's check hook, run by its analysis, and its compare hook, run by
+        the comparison, are handed one instance: the baseline's own hooks report into a bag of
+        its own, so the one check finding said is the candidate's."""
+        old, new = stating(tree, DRAWN, None, "old"), stating(tree, DRAWN, None, "new")
+        assert main(["compare", old, new, "-W", "missing-id=ignore"]) == EXIT_OK
+        said = capsys.readouterr().err
+        checked = re.findall(r"check was handed (S\(a=\d+\))", said)
+        assert len(checked) == 1, said
+        assert f"compare was handed {checked[0]}" in said
 
 
 class TestWhenAnOverrideIsVerified:
@@ -2887,7 +2932,7 @@ class TestGenerate:
         templates.mkdir()
         (templates / "tags.txt.jinja2").write_text("x\n", encoding="utf-8")
         plugin = load_plugin("tools/tag_plugin.py", tree)
-        backends = [CBackend(templates), backend_of(plugin, {}, "ddd test")]
+        backends = [CBackend(templates), backend_of(plugin, settings_of(plugin, {}), "ddd test")]
         with pytest.raises(
             ValueError, match=re.escape("the tag and c backends would both write 'tags.txt'")
         ):

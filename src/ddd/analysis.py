@@ -919,7 +919,12 @@ class _Analysis:
         kept = {(ref.component_name, ref.index) for _, refs in resolved for ref in refs}
         known = self._enums.by_name
 
-        extensions = resolve_blocks(self._plugins, workspace.project_extensions, on_project=True)
+        extensions = resolve_blocks(
+            self._plugins,
+            workspace.project_extensions,
+            on_project=True,
+            validated=workspace.project_settings,
+        )
         dictionary = DataDictionary(
             name=workspace.name,
             description=workspace.description,
@@ -952,9 +957,10 @@ class _Analysis:
         # Inside the analysis rather than beside it, so that nothing that analyses a project -
         # the cli, the language server, a test - can forget to run them. A hook sees the whole
         # dictionary, and every built-in finding is already in the bag. Its settings are the
-        # blocks the project states, validated, and not the dictionary's dump of them read back.
+        # instance the loader validated the project's block into, which the dump above was
+        # written from, and not the dictionary's dump of them read back.
         run_check_hooks(
-            workspace.plugins, dictionary, workspace.project_extensions, self._bag, workspace.locate
+            workspace.plugins, dictionary, workspace.settings, self._bag, workspace.locate
         )
         return dictionary
 

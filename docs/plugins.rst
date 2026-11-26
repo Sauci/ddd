@@ -284,14 +284,17 @@ block as it read the block. A hook reading a block itself - ``Entry.model_valida
 the worked example does - reads it by alias, as the loader reads a file.
 
 Over a project, the settings a hook is handed are never read back from the dictionary:
-``settings`` is validated from the block the project states; only an archived dictionary, under
-``ddd compare --plugin``, has its settings validated from the block it carries. A model whose
-dump does not read back as its block did is handed its settings in full over a project, and
-fails or differs wherever its dump is read: in a hook reading a block from the dictionary, and
-in the settings of an archived dictionary. One requiring a field its dump leaves out
-(``Field(exclude=True)``), one with a ``strict`` enum or date, which the dump writes as a
-string, and one whose serializer changes the shape of a value fail there, the settings of an
-archive a usage error naming the plugin; one whose validator does not hand back what it is
+``settings`` is the instance validated from the block the project states, once, while the files
+are read: the dictionary's dump of the settings is written from it, and every hook of the run
+is handed it, so a default drawn afresh at each validation - a time, a uuid - is drawn once,
+and a hook that assigns to it has changed it for the hooks after it. Only an archived
+dictionary, under ``ddd compare --plugin``, has its settings validated from the block it
+carries. A model whose dump does not read back as its block did is handed its settings in full
+over a project, and fails or differs wherever its dump is read: in a hook reading a block from
+the dictionary, and in the settings of an archived dictionary. One requiring a field its dump
+leaves out (``Field(exclude=True)``), one with a ``strict`` enum or date, which the dump writes
+as a string, and one whose serializer changes the shape of a value fail there, the settings of
+an archive a usage error naming the plugin; one whose validator does not hand back what it is
 given fails nothing, and reads a value nobody stated.
 
 The editor

@@ -566,6 +566,16 @@ class Workspace:
     project_extensions: dict[str, dict[str, Any]] = field(default_factory=dict)
     """The settings block of each plugin, as the project files wrote it, by plugin name."""
 
+    project_settings: dict[str, BaseModel] = field(default_factory=dict)
+    """The settings of each plugin that declares a project model, by plugin name: the instance
+    its block - as the project files wrote it, or ``{}`` where none states it - was validated
+    into, once, while the files were read.
+
+    The one the dictionary's dump of the settings is written from and every hook of a run over
+    the project is handed (:meth:`settings`), so that the dump and the hooks hold one value: a
+    default drawn afresh at each validation, a time or a uuid, is drawn once. A block that did
+    not validate has none."""
+
     point_counts: PointCounts = PointCounts.NONE
     """The project's default for where tables store their point counts, as the one project
     file stating it wrote it; ``none`` when no file does, and for a component read alone."""
@@ -585,12 +595,12 @@ class Workspace:
         return tuple(sorted({self.root, *self.read_paths, *self.plugin_paths}))
 
     def __hash__(self) -> int:
-        """Every field but the two mappings, which cannot be hashed."""
+        """Every field but the three mappings, which cannot be hashed."""
         return hash(
             tuple(
                 getattr(self, entry.name)
                 for entry in fields(self)
-                if entry.name not in ("project_extensions", "locations")
+                if entry.name not in ("project_extensions", "project_settings", "locations")
             )
         )
 
@@ -598,6 +608,12 @@ class Workspace:
         """Where a plugin's finding about the object ``name`` belongs, or ``None`` when no
         component names it - a leaf, or a name the plugin made up."""
         return self.locations.get(name)
+
+    def settings(self, plugin: Plugin) -> BaseModel | None:
+        """What a hook of ``plugin`` is handed as its settings: the instance its project block
+        was validated into (:attr:`project_settings`), or ``None`` for a plugin that declares
+        no project model - and for one whose block did not validate, which no run hands a hook."""
+        return self.project_settings.get(plugin.name)
 
 
 def read_json_document(path: Path) -> dict[str, Any] | None:
@@ -758,6 +774,7 @@ class _Loader:
         self._plugins_by_name: dict[str, LoadedPlugin] = {}
         self._plugin_files: dict[Path, None] = {}
         self._project_blocks: dict[str, tuple[dict[str, Any], Location]] = {}
+        self._project_settings: dict[str, BaseModel] = {}
         self._point_counts: tuple[PointCounts, Location] | None = None
 
     def load(self, path: Path) -> Workspace | None:
@@ -800,6 +817,7 @@ class _Loader:
                 project_extensions={
                     name: block for name, (block, _) in self._project_blocks.items()
                 },
+                project_settings=dict(self._project_settings),
                 locations=self._locations(),
             )
 
@@ -827,6 +845,7 @@ class _Loader:
             plugins=self._loaded_plugins,
             plugin_paths=self._plugin_paths,
             project_extensions={name: block for name, (block, _) in self._project_blocks.items()},
+            project_settings=dict(self._project_settings),
             point_counts=self._point_counts[0] if self._point_counts else PointCounts.NONE,
             locations=self._locations(),
         )
@@ -1259,16 +1278,26 @@ class _Loader:
         the sub-project that names its plugin would otherwise be refused for a block that is
         about to become valid. A block on a consumer is validated too: whose claim it is comes
         later, in the analysis, and a typo is a typo either way.
+
+        The instance each project block is validated into is kept (``project_settings``): the
+        dictionary's dump of the settings is written from it, and every hook is handed it, so
+        that nothing validates a project's settings again.
         """
         plugins = {name: loaded.plugin for name, loaded in self._plugins_by_name.items()}
         for name, (block, location) in sorted(self._project_blocks.items()):
-            self._validate_block(plugins.get(name), name, block, location, on_project=True)
+            settings = self._validate_block(
+                plugins.get(name), name, block, location, on_project=True
+            )
+            if settings is not None:
+                self._project_settings[name] = settings
         for plugin in self._loaded_plugins:
             # A plugin whose settings have a required field, in a project stating none: the
             # finding belongs where the block would be written.
             if plugin.project_model is not None and plugin.name not in self._project_blocks:
                 location = Location(root, f"project.extensions.{plugin.name}")
-                self._validate_block(plugin, plugin.name, {}, location, on_project=True)
+                settings = self._validate_block(plugin, plugin.name, {}, location, on_project=True)
+                if settings is not None:
+                    self._project_settings[plugin.name] = settings
         for loaded in self._components:
             for index, declaration in enumerate(loaded.component.interface):
                 for name, block in declaration.definition.extensions.items():
@@ -1284,7 +1313,9 @@ class _Loader:
         location: Location,
         *,
         on_project: bool,
-    ) -> None:
+    ) -> BaseModel | None:
+        """The instance ``block`` validates into against the model of the plugin that owns it,
+        or ``None`` where it does not - the reason reported."""
         if plugin is None:
             self._bag.add(
                 "unknown-extension",
@@ -1292,17 +1323,17 @@ class _Loader:
                 f"to the plugin that owns it",
                 location,
             )
-            return
+            return None
         model = plugin.project_model if on_project else plugin.object_model
         if model is None:
             where = "the project" if on_project else "a definition"
             self._bag.add(
                 "schema", f"plugin '{name}' takes no 'extensions' block on {where}", location
             )
-            return
+            return None
         try:
             with guarding_plugin_model(name, "validating an 'extensions' block"):
-                model.model_validate(block)
+                return model.model_validate(block)
         except ValidationError as error:
             _report_validation_error(
                 location.path, error, self._bag, prefix=location.pointer, document=block
@@ -1311,6 +1342,7 @@ class _Loader:
             if not self._plugin_defects_are_findings:
                 raise
             self._bag.add("plugin-invalid", str(error), location)
+        return None
 
     def _expand(
         self, source: Path, pattern: str, origin: Location, excluded: set[Path]

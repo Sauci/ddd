@@ -10,6 +10,7 @@ answer.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 from pathlib import Path
 from typing import Any, ClassVar
@@ -33,7 +34,7 @@ from ddd.gui.api import Api
 from ddd.gui.session import Session
 from ddd.plugins import CompareContext, Plugin, PluginError
 from test_gui_api import Reply, get, posix
-from test_plugins import DOUBLING, SETTINGS_PLUGIN, write_plugin
+from test_plugins import DOUBLING, DRAWN, SETTINGS_PLUGIN, write_plugin
 
 CLEAN: dict[str, object] = {
     "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
@@ -356,6 +357,35 @@ class TestACompareHookIsHandedWhatTheCandidateStates:
             found["message"] for found in reply.body["findings"] if found["check"] == "set/handed"
         ]
         assert handed == ["compare was handed S(a=10)"]
+
+    def test_the_three_hand_the_hook_the_instance_the_candidate_s_check_hook_had(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """One instance per read of the candidate, validated once, and its check hook and its
+        compare hook both handed it: a default drawn afresh at each validation is one value for
+        the two, in each command and in the tab, whose check hook ran in its own analysis."""
+        baseline = _baseline(tmp_path)
+        plugin = SETTINGS_PLUGIN.replace("MODEL", DRAWN)
+        write_plugin(tmp_path / "new" / "tools", "set_plugin.py", plugin)
+        named = project("P", "a.ddd.json", "b.ddd.json", plugins=["tools/set_plugin.py"])
+        api = _candidate(tmp_path, {"p.ddd.json": named})
+        compared, checked, reply = _the_three(tmp_path, baseline, api)
+        assert (compared, checked) == (EXIT_OK, EXIT_OK)
+        said = re.findall(r"(check|compare) was handed (S\(a=\d+\))", capsys.readouterr().err)
+        assert [hook for hook, _ in said] == ["check", "compare", "check", "compare"]
+        assert said[0][1] == said[1][1] and said[2][1] == said[3][1]
+        revision = api.session.revision
+        assert revision is not None
+        own = [
+            filed.diagnostic.message
+            for filed in revision.findings
+            if filed.diagnostic.check == "set/handed"
+        ]
+        handed = [
+            found["message"] for found in reply.body["findings"] if found["check"] == "set/handed"
+        ]
+        assert len(own) == 1 and own[0].startswith("check was handed ")
+        assert handed == [own[0].replace("check", "compare", 1)]
 
 
 class TestTheBaselinesOwnErrors:

@@ -1277,13 +1277,14 @@ question a plugin can ask answerable. A block in resolved form is its model's du
 filled in, keyed by alias as the file keys it, without the model's computed fields,
 and with a `Json` field written back as json text. A hook reading a block from the
 dictionary validates that dump, by alias as the loader reads the file, so a plugin's
-model has to read back its own dump. The settings a hook is handed are not read
-back from the dictionary: each hook over a project is handed the block the project states,
-validated against the plugin's project model, and only a comparison whose candidate is an
-archived dump validates the block the dump carries, so that the settings of a model which
-does not read back its own dump fail, or differ, only there: one that cannot validate
-its dump is a usage error naming the plugin, and one whose validator changes what it is
-given reads a value nobody stated. A leaf of a structured variable carries no block; the
+model has to read back its own dump. The settings a hook is handed are not read back from the
+dictionary: each hook over a project is handed the block the project states, validated against
+the plugin's project model once, while the files are read, into the instance the dictionary's
+dump of them is written from - a default drawn afresh is drawn once - and only a comparison
+whose candidate is an archived dump validates the block the dump carries, so that the settings
+of a model which does not read back its own dump fail, or differ, only there: one that cannot
+validate its dump is a usage error naming the plugin, and one whose validator changes what it
+is given reads a value nobody stated. A leaf of a structured variable carries no block; the
 instance carries one for the whole structure. `ddd schema --plugin` publishes a kind's
 schema with the `extensions` property closed over the named plugins' models, so that an
 editor validates a block as it is typed; the dictionary schema stays open. A comparison whose

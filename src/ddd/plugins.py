@@ -58,7 +58,8 @@ class CheckContext:
     settings: BaseModel | None
     """The block the project states, validated against the plugin's ``project_model`` - not the
     dictionary's dump of it read back - and built from ``{}`` where the project states none;
-    ``None`` for a plugin that declares no project model."""
+    ``None`` for a plugin that declares no project model. Validated once: the instance the
+    dictionary's dump of the settings is written from, and the one every hook is handed."""
     bag: DiagnosticBag
     locate: Callable[[str], Location | None]
     """Where a finding about the named object belongs: the producing declaration under
@@ -343,6 +344,7 @@ def resolve_blocks(
     blocks: Mapping[str, Mapping[str, Any]],
     *,
     on_project: bool,
+    validated: Mapping[str, BaseModel] | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Every block in its resolved form, keyed by plugin name in sorted order.
 
@@ -355,7 +357,15 @@ def resolve_blocks(
     project that relaxed ``unknown-extension`` asked for exactly that. On the project, every
     plugin that declares a project model appears, with its defaults, whether or not the
     project stated a block for it: the dictionary carries each plugin's settings.
+
+    ``validated`` are the instances the loader validated a project's blocks into, by plugin
+    name (:attr:`~ddd.loading.Workspace.project_settings`): a block one of them holds is dumped
+    from it rather than validated again, so that the dictionary holds the value every hook is
+    handed, a default drawn afresh included. Any other block is validated here: a definition's,
+    whose instance no hook is handed, and a project's that the loader holds none of, which only
+    a hover over a project that did not read cleanly meets.
     """
+    held: Mapping[str, BaseModel] = {} if validated is None else validated
     resolved: dict[str, dict[str, Any]] = {}
     try:
         for name in blocks:
@@ -365,14 +375,18 @@ def resolve_blocks(
                 resolved[name] = dict(blocks[name])
             else:
                 with guarding_plugin_model(name, "validating a block against its own model"):
-                    resolved[name] = model.model_validate(blocks[name]).model_dump(
+                    instance = held[name] if name in held else model.model_validate(blocks[name])
+                    resolved[name] = instance.model_dump(
                         mode="json", by_alias=True, round_trip=True
                     )
         if on_project:
             for name, plugin in plugins.items():
                 if name not in resolved and plugin.project_model is not None:
                     with guarding_plugin_model(name, "building the defaults of its settings"):
-                        resolved[name] = plugin.project_model.model_validate({}).model_dump(
+                        instance = (
+                            held[name] if name in held else plugin.project_model.model_validate({})
+                        )
+                        resolved[name] = instance.model_dump(
                             mode="json", by_alias=True, round_trip=True
                         )
     except ValidationError as error:
@@ -426,12 +440,13 @@ def guarding_plugin_model(name: str, what: str) -> Iterator[None]:
 def settings_of(plugin: Plugin, extensions: Mapping[str, Mapping[str, Any]]) -> BaseModel | None:
     """The plugin's block in ``extensions`` validated against its project model.
 
-    ``extensions`` are the blocks a project states, by plugin name, or those an archived
-    dictionary carries, which are then all there is of them. Built from ``{}`` where the plugin
-    has none there, so that defaults apply; ``None`` for a plugin that declares no project
-    model. The loader has validated a block a project states already, so a failure here comes
-    from an archive: one dumped before the plugin required a setting, or by a model that does
-    not read back its own dump.
+    ``extensions`` are the blocks an archived dictionary carries, by plugin name, which are all
+    there is of its settings: a project's blocks are validated once, by the loader, and every
+    hook over the project is handed that instance (:meth:`~ddd.loading.Workspace.settings`).
+    Built from ``{}`` where the plugin has none there, so that defaults apply; ``None`` for a
+    plugin that declares no project model. A failure here therefore comes from an archive: one
+    dumped before the plugin required a setting, or by a model that does not read back its own
+    dump.
     """
     if plugin.project_model is None:
         return None
@@ -446,27 +461,28 @@ def settings_of(plugin: Plugin, extensions: Mapping[str, Mapping[str, Any]]) -> 
 def run_check_hooks(
     plugins: Sequence[Plugin],
     dictionary: DataDictionary,
-    extensions: Mapping[str, Mapping[str, Any]],
+    settings: Callable[[Plugin], BaseModel | None],
     bag: DiagnosticBag,
     locate: Callable[[str], Location | None],
 ) -> None:
     """Run every check hook over the dictionary, in the order the project lists the plugins.
 
-    Each hook is handed the settings validated from ``extensions``, the blocks the project
-    states, and never from the dictionary's dump of them: a model reads its dump back only as
-    far as the dump keeps what it read, and a block the loader took is what the hook is owed.
+    ``settings`` is what each hook is handed for its plugin: the instance the project's block
+    was validated into, once (:meth:`~ddd.loading.Workspace.settings`), and never the
+    dictionary's dump of it read back - a model reads its dump back only as far as the dump
+    keeps what it read, and the block the loader took is what the hook is owed.
     """
     for plugin in plugins:
         if plugin.check is not None:
-            settings = settings_of(plugin, extensions)
-            _call(plugin, "check", plugin.check, CheckContext(dictionary, settings, bag, locate))
+            context = CheckContext(dictionary, settings(plugin), bag, locate)
+            _call(plugin, "check", plugin.check, context)
 
 
 def run_compare_hooks(
     plugins: Sequence[Plugin],
     baseline: DataDictionary,
     candidate: DataDictionary,
-    extensions: Mapping[str, Mapping[str, Any]],
+    settings: Callable[[Plugin], BaseModel | None],
     bag: DiagnosticBag,
     locate: Callable[[str], Location | None],
     location: Location | None,
@@ -474,8 +490,9 @@ def run_compare_hooks(
 ) -> None:
     """Run every compare hook, after saying which recorded plugin is not among ``plugins``.
 
-    ``extensions`` are the candidate's blocks each hook's settings are validated from: those
-    its project states, or, for an archived dictionary, those it carries.
+    ``settings`` is what each hook is handed for its plugin, the candidate's: the instance its
+    project's block was validated into, or, for an archived dictionary, the block it carries
+    validated against the plugin's project model (:func:`settings_of`).
 
     A comparison that silently skipped a rule would be a confident "can replace" with a hole
     in it; ``missing-plugin`` is what closes the hole, once per plugin and side. Each side's
@@ -516,19 +533,16 @@ def run_compare_hooks(
                 )
     for plugin in plugins:
         if plugin.compare is not None:
-            settings = settings_of(plugin, extensions)
-            context = CompareContext(baseline, candidate, settings, bag, locate)
+            context = CompareContext(baseline, candidate, settings(plugin), bag, locate)
             _call(plugin, "compare", plugin.compare, context)
 
 
-def backend_of(
-    plugin: Plugin, extensions: Mapping[str, Mapping[str, Any]], generator: str
-) -> Backend:
+def backend_of(plugin: Plugin, settings: BaseModel | None, generator: str) -> Backend:
     """The backend a plugin provides, or a usage error saying it provides none or provides one
     only in name.
 
-    The hook is handed the settings validated from ``extensions``, the blocks the project
-    states, as a check hook is (:func:`run_check_hooks`).
+    The hook is handed ``settings``, the instance the project's block was validated into, as a
+    check hook is (:func:`run_check_hooks`).
 
     A hook's own signature says it returns a ``Backend``, but nothing stops it returning
     ``None`` - the shape a hook that only checks its settings and forgets to build one tends
@@ -542,7 +556,7 @@ def backend_of(
     if plugin.backend is None:
         msg = f"plugin '{plugin.name}' provides no artefact"
         raise ValueError(msg)
-    context = GenerateContext(settings_of(plugin, extensions), generator)
+    context = GenerateContext(settings, generator)
     backend = _call(plugin, "backend", plugin.backend, context)
     if backend is None:
         msg = f"plugin '{plugin.name}' returned no backend from its backend hook"

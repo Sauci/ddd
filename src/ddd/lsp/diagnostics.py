@@ -221,7 +221,7 @@ def _run(root: Path, bag: DiagnosticBag, *, includes: Sequence[str] | None = Non
                 workspace.locate,
                 True,
                 workspace.sources(),
-                workspace.project_extensions,
+                workspace.settings,
             )
     except PluginError as error:
         # A hook or a model raising is a defect of the plugin, not of the project: ``ddd

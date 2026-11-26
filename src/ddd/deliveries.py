@@ -14,7 +14,7 @@ drifted from that the first time either side changed.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -31,6 +31,8 @@ from ddd.diagnostics import (
 )
 
 if TYPE_CHECKING:
+    from pydantic import BaseModel
+
     from ddd.compare import Pairing
     from ddd.ir import DataDictionary
     from ddd.plugins import Plugin, PluginError
@@ -97,7 +99,7 @@ class Reading:
 class Resolved:
     """A dictionary and what a plugin's hook needs beside it.
 
-    A description resolved on the spot keeps its plugins and the blocks it states, and can
+    A description resolved on the spot keeps its plugins and the settings it states, and can
     point a finding at a declaration; an archived dump has neither plugins nor declarations,
     so its plugins come from ``--plugin``, a finding points at the file, and its settings are
     read back from the blocks it carries.
@@ -117,16 +119,17 @@ class Resolved:
     staleness makes a reading of this side stale, which is how :mod:`ddd.gui.compare` decides
     a cached baseline has to be read again."""
 
-    project_extensions: Mapping[str, Mapping[str, Any]]
-    """Each plugin's settings block by plugin name, as a hook of this side is handed it
-    validated (:func:`~ddd.plugins.settings_of`): a description's as its project files state it
-    (:attr:`~ddd.loading.Workspace.project_extensions`), and an archived dump's as it carries it,
-    which is all there is of it.
+    settings: Callable[[Plugin], BaseModel | None]
+    """The settings a hook of this side is handed for a plugin: for a description, the instance
+    its project block was validated into while the files were read
+    (:meth:`~ddd.loading.Workspace.settings`), the one its dictionary's dump of the settings
+    was written from; for an archived dump, the block it carries validated against the
+    plugin's project model (:func:`~ddd.plugins.settings_of`), which is all there is of it.
 
-    Never the dictionary's dump of a block a description states: a model reads its dump back
-    only as far as the dump keeps what it read - a field it excludes, a validator that does not
-    hand back what it is given, a strict field the dump writes as a string - and the hooks over
-    a project are handed what the project stated."""
+    Never the dictionary's dump of a block a description states, read back: a model reads its
+    dump back only as far as the dump keeps what it read - a field it excludes, a validator
+    that does not hand back what it is given, a strict field the dump writes as a string - and
+    a default drawn afresh would be drawn again."""
 
     alone: bool = False
     """Whether this side is one component file, read without a project around it.
@@ -164,6 +167,7 @@ def read_dictionary(
     """
     from ddd.analysis import analyze
     from ddd.loading import load_dictionary, load_workspace, read_json_document
+    from ddd.plugins import settings_of
 
     account = Reading() if reading is None else reading
     document = read_json_document(path)
@@ -185,7 +189,7 @@ def read_dictionary(
             workspace.locate,
             True,
             workspace.sources(),
-            workspace.project_extensions,
+            workspace.settings,
             alone=not workspace.projects,
         )
     if document is not None and not holds_a_dictionary(document):
@@ -209,7 +213,12 @@ def read_dictionary(
         return None
     archived = where(path)
     return Resolved(
-        dictionary, (), lambda _: archived, False, (archived.path,), dictionary.extensions
+        dictionary,
+        (),
+        lambda _: archived,
+        False,
+        (archived.path,),
+        lambda plugin: settings_of(plugin, dictionary.extensions),
     )
 
 
@@ -391,7 +400,7 @@ def compare_deliveries(
             candidate.plugins if plugins is None else plugins,
             baseline.dictionary,
             candidate.dictionary,
-            candidate.project_extensions,
+            candidate.settings,
             bag,
             candidate.locate,
             location,

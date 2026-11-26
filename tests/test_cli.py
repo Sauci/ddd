@@ -4092,16 +4092,23 @@ class TestAnArtefactThatIsAFileTheRunRead:
         "A.ddd.json": component("A", declare("local", "X")),
     }
 
+    ARTEFACT_ADVICE = "give -o a directory of its own"
+
     def made(self, tree: Path) -> Path:
         write_tree(tree, self.FILES)
         return tree / "project.ddd.json"
 
-    def refused(self, arguments: list[str], read: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    def refused(
+        self,
+        arguments: list[str],
+        read: Path,
+        capsys: pytest.CaptureFixture[str],
+        advice: str = "give it a file of its own",
+    ) -> None:
         before = read.read_bytes()
         assert main(arguments) == EXIT_USAGE
-        assert f"would write over '{read.as_posix()}', which this run reads" in (
-            capsys.readouterr().err
-        )
+        said = capsys.readouterr().err.splitlines()[-1]
+        assert f"would write over '{read.as_posix()}', which this run reads; {advice}" in said
         assert read.read_bytes() == before
 
     def test_a_dictionary_over_the_image_is_refused(
@@ -4134,7 +4141,9 @@ class TestAnArtefactThatIsAFileTheRunRead:
         arguments += ["--a2l-module-fragment", str(fragment), "--dictionary", str(fragment)]
         self.refused(arguments, fragment, capsys)
 
-    @pytest.mark.parametrize("name", ["a.c.jinja2", "_helper.jinja2", "notes.txt"])
+    @pytest.mark.parametrize(
+        "name", ["a.c.jinja2", "_helper.jinja2", "notes.txt", "deeper/_helper.jinja2"]
+    )
     def test_a_dictionary_over_a_file_of_the_template_directory_is_refused(
         self, name: str, tree: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -4143,6 +4152,7 @@ class TestAnArtefactThatIsAFileTheRunRead:
         (tree / "tpl").mkdir()
         (tree / "tpl" / "a.c.jinja2").write_text("{# one #}\n", encoding="utf-8")
         read = tree / "tpl" / name
+        read.parent.mkdir(exist_ok=True)
         read.write_text(read.read_text(encoding="utf-8") if read.exists() else "x\n", "utf-8")
         arguments = ["generate", "c", str(root), "-o", str(tree / "gen"), "-t", str(tree / "tpl")]
         self.refused([*arguments, "--dictionary", str(read)], read, capsys)
@@ -4155,7 +4165,9 @@ class TestAnArtefactThatIsAFileTheRunRead:
         addresses = tree / "P.a2l"
         addresses.write_text('{"X": "0x20001000"}', encoding="utf-8")
         arguments = ["generate", "a2l", str(root), "-o", str(tree)]
-        self.refused([*arguments, "--address-map", str(addresses)], addresses, capsys)
+        self.refused(
+            [*arguments, "--address-map", str(addresses)], addresses, capsys, self.ARTEFACT_ADVICE
+        )
 
     @pytest.mark.parametrize("dry_run", [False, True], ids=["written", "dry-run"])
     @pytest.mark.parametrize("name", ["project.ddd.json", "{component}.ddd.json"])
@@ -4169,7 +4181,8 @@ class TestAnArtefactThatIsAFileTheRunRead:
         (tree / "tpl" / f"{name}.jinja2").write_text("{}\n", encoding="utf-8")
         read = root if name == "project.ddd.json" else tree / "A.ddd.json"
         arguments = ["generate", "c", str(root), "-o", str(tree), "-t", str(tree / "tpl")]
-        self.refused([*arguments, *(["--dry-run"] if dry_run else [])], read, capsys)
+        arguments += ["--dry-run"] if dry_run else []
+        self.refused(arguments, read, capsys, self.ARTEFACT_ADVICE)
 
     def test_a_dictionary_over_a_file_the_run_did_not_read_is_written(self, tree: Path) -> None:
         """The control: the image of a run that writes no a2l is never read."""
@@ -4219,8 +4232,36 @@ class TestARecordOrASchemaThatIsADescription:
             ]
         )
         assert main([*arguments, "-o", str(target)]) == EXIT_USAGE
-        assert f"-o names a description, '{target.as_posix()}'" in capsys.readouterr().err
+        said = capsys.readouterr().err
+        assert f"-o names a description, '{target.as_posix()}'" in said
+        assert said.endswith("is not one; give it another name\n")
         assert target.read_bytes() == before
+
+    @pytest.mark.parametrize("command", ["build-info", "schema"])
+    def test_a_description_name_is_refused_in_any_case(
+        self, command: str, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A file system that ignores case holds the description under either spelling."""
+        write_tree(tree, self.FILES)
+        target = tree / "Other.DDD.JSON"
+        arguments = (
+            ["build-info", str(tree / "project.ddd.json")]
+            if command == "build-info"
+            else [
+                "schema",
+                "component",
+            ]
+        )
+        assert main([*arguments, "-o", str(target)]) == EXIT_USAGE
+        assert f"-o names a description, '{target.as_posix()}'" in capsys.readouterr().err
+        assert not target.exists()
+
+    def test_a_build_record_naming_a_directory_is_refused(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        root = self.made(tree)
+        assert main(["build-info", str(root), "-o", "."]) == EXIT_USAGE
+        assert "-o names a directory, '.'; give it a file to write" in capsys.readouterr().err
 
     def test_a_build_record_is_written_like_a_dictionary_and_left_alone_when_unchanged(
         self, tree: Path, capsys: pytest.CaptureFixture[str]

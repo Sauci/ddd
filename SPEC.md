@@ -1270,8 +1270,11 @@ and `column` are integers or `None`, a severity that is a `Severity` or `None`, 
 string and such a location - and refuses one that is none with a `TypeError`, which is raised
 inside the hook that filed it and so is that hook's failure, reported as above; the findings
 gathered before it are still reported. A `check` or `compare` hook returns nothing: one that
-returns anything, its findings, a generator, a coroutine of an `async` hook, ran none of what
-it was written to run, and is refused as a failure of the hook naming what it returned. The
+returns its findings, a generator or the coroutine of an `async` hook ran none of what it was
+written to run, and is refused as a failure of the hook naming what it returned. What the bag's
+`add` hands back is the one thing it may return: `check=lambda context: context.bag.add(...)`
+ran and filed, and the finding it returns is the very one its bag recorded, told by identity; a
+finding the bag never recorded is still refused. The
 `name` and the `generate` of the backend a hook returns are read once, as plugin code: one that
 raises is a failure of the plugin's `backend` hook too. Every hook and every
 backend a hook returns runs with standard output bound to standard error, because standard

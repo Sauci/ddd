@@ -4208,6 +4208,65 @@ class TestAHookReturnsNothing:
                 (plugin,), dictionary, dictionary, lambda _: None, bag, lambda _: None, None
             )
 
+    def test_a_hook_returning_what_its_bag_recorded_passes(self, tree: Path) -> None:
+        """``check=lambda context: context.bag.add(...)`` ran and filed: what ``add`` handed back
+        is the very finding the bag holds, and a hook that returns it has returned no findings of
+        its own."""
+        from ddd.plugins import run_check_hooks
+
+        def filing(context: CheckContext) -> object:
+            return context.bag.add("duplicate-section", "filed by a hook that returns it")
+
+        dictionary, bag = analysed(tree, declare("local", "X"))
+        before = len(bag)
+        plugin = Plugin(name="plug", check=filing)
+        run_check_hooks((plugin,), dictionary, lambda _: None, bag, lambda _: None)
+        assert len(bag) == before + 1
+
+    def test_a_compare_hook_returning_what_its_bag_recorded_passes(self, tree: Path) -> None:
+        from ddd.plugins import run_compare_hooks
+
+        def filing(context: CompareContext) -> object:
+            return context.bag.add("duplicate-section", "filed by a hook that returns it")
+
+        dictionary, bag = analysed(tree, declare("local", "X"))
+        plugin = Plugin(name="plug", compare=filing)
+        run_compare_hooks(
+            (plugin,), dictionary, dictionary, lambda _: None, bag, lambda _: None, None
+        )
+        assert "filed by a hook that returns it" in messages(bag)
+
+    def test_a_hook_returning_a_finding_its_bag_never_recorded_is_refused(self, tree: Path) -> None:
+        """The slip is a finding that was made and not filed: a ``Diagnostic`` of the bag's own
+        shape that the bag does not hold, or one another bag recorded."""
+        from ddd.diagnostics import Diagnostic
+
+        other = DiagnosticBag()
+        elsewhere = other.add("missing-id", "recorded by another bag")
+        made = Diagnostic("missing-id", Severity.INFO, "made, never filed")
+        for returned in (made, elsewhere):
+
+            def returning(context: CheckContext, returned: object = returned) -> object:
+                return returned
+
+            with pytest.raises(PluginError, match=r"returned a Diagnostic from its check hook"):
+                self._run(Plugin(name="plug", check=returning), tree)
+
+    def test_a_hook_returning_the_finding_an_ignored_check_dropped_passes(self, tree: Path) -> None:
+        """``add`` returns ``None`` for a check the policy ignores, which is no return at all."""
+        from ddd.plugins import run_check_hooks
+
+        def filing(context: CheckContext) -> object:
+            return context.bag.add("duplicate-section", "ignored")
+
+        dictionary, bag = analysed(tree, declare("local", "X"))
+        bag.policy = SeverityPolicy.from_strings(["duplicate-section=ignore"])
+        before = len(bag)
+        run_check_hooks(
+            (Plugin(name="plug", check=filing),), dictionary, lambda _: None, bag, lambda _: None
+        )
+        assert len(bag) == before
+
     def test_a_hook_returning_none_is_the_control(self, tree: Path) -> None:
         def quiet(context: CheckContext) -> None:
             return None

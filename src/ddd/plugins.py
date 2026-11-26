@@ -542,7 +542,7 @@ def run_check_hooks(
     for plugin in plugins:
         if plugin.check is not None:
             context = CheckContext(dictionary, settings(plugin), bag, locate)
-            _returns_nothing(plugin, "check", _call(plugin, "check", plugin.check, context))
+            _returns_nothing(plugin, "check", _call(plugin, "check", plugin.check, context), bag)
 
 
 def run_compare_hooks(
@@ -610,7 +610,9 @@ def run_compare_hooks(
     for plugin in plugins:
         if plugin.compare is not None:
             context = CompareContext(baseline, candidate, settings(plugin), bag, locate)
-            _returns_nothing(plugin, "compare", _call(plugin, "compare", plugin.compare, context))
+            _returns_nothing(
+                plugin, "compare", _call(plugin, "compare", plugin.compare, context), bag
+            )
 
 
 def backend_of(plugin: Plugin, settings: BaseModel | None, generator: str) -> Backend:
@@ -710,7 +712,7 @@ class _GuardedBackend:
         return result
 
 
-def _returns_nothing(plugin: Plugin, hook: str, returned: object) -> None:
+def _returns_nothing(plugin: Plugin, hook: str, returned: object, bag: DiagnosticBag) -> None:
     """Refuse what a ``check`` or a ``compare`` hook returned, which is nothing: it reports through
     the bag.
 
@@ -719,8 +721,13 @@ def _returns_nothing(plugin: Plugin, hook: str, returned: object) -> None:
     the list, the generator or the coroutine - so the rule it was meant to apply never did, and a
     run that passes reads as one the rule passed. A coroutine is closed first, so that no
     "never awaited" warning follows the failure that explains it.
+
+    What :meth:`~ddd.diagnostics.DiagnosticBag.add` hands back is the one thing a hook may return:
+    ``check=lambda context: context.bag.add(...)`` ran and filed, and the finding it returns is the
+    very one the bag holds, which is told by identity. A finding the bag never recorded - made by
+    hand, or recorded by another bag - is still the slip.
     """
-    if returned is None:
+    if returned is None or any(returned is recorded for recorded in bag):
         return
     reason = "a hook reports with context.bag.add, and returns nothing"
     if inspect.iscoroutine(returned):

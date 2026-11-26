@@ -12613,6 +12613,8 @@ class TestWhatAPluginHandsBackIsStated:
             "whose `path` is a `Path`, whose `pointer` is a string and whose `line` and `column` "
             "are integers or `None`",
             "A `check` or `compare` hook returns nothing",
+            "What the bag's `add` hands back is the one thing it may return",
+            "a finding the bag never recorded is still refused",
             "ends the run at 2 with one line, `ddd: unexpected` and the type of the",
             "that cannot be found, or by a path the system refuses to resolve",
             "or raises when its `PLUGIN` is read",
@@ -12623,6 +12625,9 @@ class TestWhatAPluginHandsBackIsStated:
             "A finding is held to its shape where the bag takes it",
             "nor is a ``Location`` whose ``path`` is a string",
             "A ``check`` or ``compare`` hook returns nothing",
+            "What ``add`` hands back is the one thing a hook may return",
+            "a finding the bag never recorded, made by hand or filed in another bag, is still "
+            "refused",
             "a module-level ``__getattr__`` that raises",
             "is ``plugin-not-found``, as a path to nothing is",
             "a name ending in a newline is refused",

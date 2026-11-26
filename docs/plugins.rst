@@ -219,7 +219,10 @@ A ``check`` or ``compare`` hook returns nothing. One that hands its findings bac
 yields and one declared ``async`` run none of what they were written to run - calling any of
 them only makes the list, the generator or the coroutine - so that a rule that never applied
 would read as a rule that passed; each is refused, as a failure of the hook that names what it
-returned. Report with ``context.bag.add``, in a plain ``def``.
+returned. Report with ``context.bag.add``, in a plain ``def``. What ``add`` hands back is the one
+thing a hook may return: ``check=lambda context: context.bag.add(...)`` ran and filed, and the
+finding it returns is the very one its bag recorded, which passes; a finding the bag never
+recorded, made by hand or filed in another bag, is still refused.
 
 A hook that raises is a defect of the plugin, not a finding about the project: the exception
 is reported as a usage error naming the plugin and the hook, with exit code 2, after the

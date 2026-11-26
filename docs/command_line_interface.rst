@@ -169,9 +169,10 @@ The exit code is the same everywhere, which lets a build system treat DDD like a
    * - ``2``
      - the command line itself was wrong: a missing or malformed argument, an unknown
        severity, or an unknown check that names no plugin, in ``-W``, a fixed check
-       overridden, or a missing ``-t`` where the c sources are part of the run - raised
-       before any analysis, so the project was never examined and nothing but the error
-       is printed. A usage error raised by a step that follows the analysis instead - a
+       overridden, ``--plugin`` given to ``ddd compare`` beside ``--no-plugins``, or a missing
+       ``-t`` where the c sources are part of the run - raised before any analysis, so the
+       project was never examined and nothing but the error is printed. A usage error raised
+       by a step that follows the analysis instead - a
        plugin hook that raises, an override naming a plugin check no loaded plugin
        registers, a ``--renames`` file, a dumped dictionary or an artefact that cannot be
        written, an output path naming a file the run itself read (``dump -o``,
@@ -214,13 +215,16 @@ The commands
      - run every consistency check on a project or on a single component; with ``--baseline``
        also answer whether that project can still replace a published delivery, so that one
        command and one exit code cover both questions, and with ``--standalone`` judge a
-       component on its own, holding back the checks that need the rest of the project.
+       component on its own, holding back the checks that need the rest of the project. With
+       ``--no-plugins`` it runs none of the plugins the project names, nor, with
+       ``--baseline``, the baseline's.
    * - ``ddd compare BASELINE CANDIDATE``
      - report whether the candidate delivery can stand in for the baseline. Either side may be
        an archived dictionary or a project description; ``--plugin`` loads the plugins of an
        archived candidate, since only a project description names its own, and ``--renames``
        also writes the old-to-new name pairs the identities revealed, for migrating datasets
-       and recordings.
+       and recordings. ``--no-plugins`` runs none of the plugins a description on either side
+       names, and is refused beside ``--plugin``.
    * - ``ddd generate c|a2l|all|<plugin> FILE -o DIR``
      - check the project and, if it is consistent, write the named artefact into ``DIR``:
        ``c`` renders the c sources, ``a2l`` writes the a2l file, ``all`` produces both and
@@ -261,6 +265,7 @@ The commands
        with its physical reading, producer and consumers - the quickest answer to "who
        writes this?". With ``--standalone`` a component is listed on its own, the checks
        that need the rest of its project held back as ``check --standalone`` holds them.
+       ``--no-plugins`` runs none of the plugins the project names, as it does for ``check``.
    * - ``ddd dump FILE [-o FILE]``
      - print the resolved data dictionary, the contract every backend consumes. This is what
        gets archived next to a delivery and handed to ``ddd compare`` later. ``-o`` writes it
@@ -272,7 +277,7 @@ The commands
        exit code rather than the presence of the file - once the files were read and validated.
        An error in reading or validating a file leaves no dictionary and so no file, and ``-o``
        leaves the file as it was. ``--standalone`` dumps a component on its own, as it does for
-       ``list``.
+       ``list``, and ``--no-plugins`` runs none of its plugins.
    * - ``ddd id --assign FILE...``
      - write an ``id`` into every producing declaration of the given description files that
        has none, as one added line each, right after the declaration's ``name``: the file keeps
@@ -294,7 +299,9 @@ The commands
    * - ``ddd sources FILE``
      - list every file the project is built out of - the description files and the modules of
        the plugins it names - for the dependency list of a build system. It reports its
-       findings without letting them change its exit code.
+       findings without letting them change its exit code. With ``--no-plugins`` it imports
+       none of them, and leaves out a plugin named by a dotted module name, since locating its
+       file imports the packages above it.
    * - ``ddd artefacts [FILE]``
      - list the artefacts ``generate`` accepts for this project: the built-in ``c`` and
        ``a2l``, and the name of every plugin it names that provides one. What each writes is
@@ -308,7 +315,8 @@ The commands
    * - ``ddd lsp``
      - run the language server, speaking the Language Server Protocol on stdin and stdout,
        so an editor reports the checks while a description file is being written; see
-       :doc:`editor_integration`.
+       :doc:`editor_integration`. ``ddd lsp --no-plugins`` runs none of the plugins the
+       projects name, at any read the server makes.
    * - ``ddd gui [PROJECT]``
      - preview: serve a browser interface over one project's description files, on this
        computer by default, and open the browser on it. The project opens on a graph

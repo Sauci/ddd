@@ -12304,6 +12304,36 @@ class TestARunThatRunsNoPlugin:
                 "the candidate's, so that plugin's comparison rules did not run; while the "
                 "candidate's read skipped a plugin (``--no-plugins``), none is reported for a "
                 "plugin the baseline records, which may be the one skipped",
+                "``ddd compare`` and ``ddd check --baseline`` take ``--no-plugins``, which runs "
+                "none of the plugins a description on either side names (:doc:`plugins`): each "
+                "entry naming one is reported as ``plugin-skipped``, a baseline's under the ``in "
+                "the baseline:`` prefix, and ``ddd compare`` refuses ``--plugin`` beside it, "
+                "before anything is read.",
+                "Beside them is carried the ``plugin-skipped`` of a run given ``--no-plugins``, "
+                "prefixed alike but graded as the run grades its own findings, since that the "
+                "baseline's plugin did not run is the run's doing.",
+            ),
+        ),
+        "docs/command_line_interface.rst": (
+            COMMAND_LINE_INTERFACE,
+            (
+                "a fixed check overridden, ``--plugin`` given to ``ddd compare`` beside "
+                "``--no-plugins``, or a missing ``-t`` where the c sources are part of the run - "
+                "raised before any analysis,",
+                "holding back the checks that need the rest of the project. With "
+                "``--no-plugins`` it runs none of the plugins the project names, nor, with "
+                "``--baseline``, the baseline's.",
+                "for migrating datasets and recordings. ``--no-plugins`` runs none of the plugins "
+                "a description on either side names, and is refused beside ``--plugin``.",
+                "held back as ``check --standalone`` holds them. ``--no-plugins`` runs none of the "
+                "plugins the project names, as it does for ``check``.",
+                "``--standalone`` dumps a component on its own, as it does for ``list``, and "
+                "``--no-plugins`` runs none of its plugins.",
+                "It reports its findings without letting them change its exit code. With "
+                "``--no-plugins`` it imports none of them, and leaves out a plugin named by a "
+                "dotted module name, since locating its file imports the packages above it.",
+                "see :doc:`editor_integration`. ``ddd lsp --no-plugins`` runs none of the plugins "
+                "the projects name, at any read the server makes.",
             ),
         ),
         "docs/plugins.rst": (

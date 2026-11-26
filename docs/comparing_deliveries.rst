@@ -152,6 +152,11 @@ is read, so that an input nobody in the file produces is an error of the candida
 comparing two versions of a component with inputs therefore uses
 ``ddd check --baseline --standalone``, the command that takes the option.
 
+``ddd compare`` and ``ddd check --baseline`` take ``--no-plugins``, which runs none of the
+plugins a description on either side names (:doc:`plugins`): each entry naming one is reported
+as ``plugin-skipped``, a baseline's under the ``in the baseline:`` prefix, and ``ddd compare``
+refuses ``--plugin`` beside it, before anything is read.
+
 Renames
 -------
 
@@ -859,7 +864,10 @@ Its errors are another matter. A baseline whose own components disagree has no d
 can be trusted, so every error it produces is carried over under the ``in the baseline:``
 prefix, at the severity its own analysis gave it, and the run fails on them: the comparison is
 made, the errors are reported beside it and the verdict is a refusal, whether the candidate is a
-dump or a description. A candidate given as a description is analysed all the same, and all its
+dump or a description. Beside them is carried the ``plugin-skipped`` of a run given
+``--no-plugins``, prefixed alike but graded as the run grades its own findings, since that the
+baseline's plugin did not run is the run's doing.
+A candidate given as a description is analysed all the same, and all its
 findings and its renames are reported - a broken baseline withholds nothing of the candidate's,
 as ``ddd check --baseline`` never withheld it. A baseline that could not be read at all, as in the
 missing-file example above, is carried over in the same way, but has no dictionary to compare

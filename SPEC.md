@@ -1203,10 +1203,11 @@ one on the project, and contributing checks, comparison rules and an artefact of
   ([section 7](#7-tool-interface)) runs none: no module a description names is imported, and
   each entry of a `plugins` list is reported as `plugin-skipped`, a warning, at the entry
   ([section 4](#4-consistency-checks)), so that plugin's checks do not run and its blocks are
-  not validated. Where one was skipped, a block naming no loaded plugin is carried into the
-  dictionary as written rather than reported as `unknown-extension`, since which plugin owns a
-  block is known only once the plugins are imported, and the dictionary's `plugins` names none
-  that was skipped. A module is imported once per process; an edit
+  not validated. A read that skipped one - each side of a comparison being a read of its own -
+  carries a block naming no loaded plugin into the dictionary as written rather than reporting
+  it as `unknown-extension`, since which plugin owns a block is known only once the plugins are
+  imported, and the dictionary's `plugins` names none that was skipped. A module is imported
+  once per process; an edit
   takes effect in the next run, and in the editor and in `ddd gui` after the server is
   restarted, which `ddd gui` says meanwhile with `plugin-changed` on the file of a plugin
   named by its path. A module a plugin imports is not watched, and a plugin named as a
@@ -1560,9 +1561,9 @@ Warnings:
 
 - `plugin-skipped`: a project names a plugin ([section 3.11](#311-plugins)) that the run did
   not import, as `--no-plugins` asks, so its checks did not run and its blocks were not
-  validated: reported once for each entry of a `plugins` list, at the entry. Where one was
-  skipped, a block naming no loaded plugin reaches the dictionary as written rather than being
-  `unknown-extension`.
+  validated: reported once for each entry of a `plugins` list, at the entry. A read that
+  skipped one carries a block naming no loaded plugin into the dictionary as written rather
+  than reporting it as `unknown-extension`.
 - `storage-mismatch`: components disagree on how the A2L presents the object; the producer
   wins.
 - `section-alignment`: an object needs stricter alignment than its section guarantees. This

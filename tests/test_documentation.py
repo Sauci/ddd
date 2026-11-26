@@ -12236,17 +12236,18 @@ class TestARunThatRunsNoPlugin:
                 "as `plugin-skipped`, a warning, at the entry "
                 "([section 4](#4-consistency-checks)), so that plugin's checks do not run and its "
                 "blocks are not validated.",
-                "Where one was skipped, a block naming no loaded plugin is carried into the "
-                "dictionary as written rather than reported as `unknown-extension`, since which "
-                "plugin owns a block is known only once the plugins are imported, and the "
-                "dictionary's `plugins` names none that was skipped.",
+                "A read that skipped one - each side of a comparison being a read of its own - "
+                "carries a block naming no loaded plugin into the dictionary as written rather "
+                "than reporting it as `unknown-extension`, since which plugin owns a block is "
+                "known only once the plugins are imported, and the dictionary's `plugins` names "
+                "none that was skipped.",
                 "where a plugin the run names was skipped, which checks it registers is not known, "
                 "and the override is accepted unverified;",
                 "- `plugin-skipped`: a project names a plugin ([section 3.11](#311-plugins)) that "
                 "the run did not import, as `--no-plugins` asks, so its checks did not run and its "
                 "blocks were not validated: reported once for each entry of a `plugins` list, at "
-                "the entry. Where one was skipped, a block naming no loaded plugin reaches the "
-                "dictionary as written rather than being `unknown-extension`.",
+                "the entry. A read that skipped one carries a block naming no loaded plugin into "
+                "the dictionary as written rather than reporting it as `unknown-extension`.",
                 "under `--no-plugins`, one named as a module is listed only where its name holds "
                 "no dot, since the finder imports the packages above a dotted name to locate it;",
                 "`ddd check`, `ddd list`, `ddd dump`, `ddd sources`, `ddd compare` and `ddd lsp` "
@@ -12280,8 +12281,9 @@ class TestARunThatRunsNoPlugin:
                 "* - ``plugin-skipped`` - warning - a project names a :doc:`plugin <plugins>` that "
                 "the run did not import, as ``--no-plugins`` asks, so its checks did not run and "
                 "its blocks were not validated: one finding for each entry of a ``plugins`` list, "
-                "at the entry. Where one was skipped, a block naming no loaded plugin is carried "
-                "into the dictionary as written rather than reported as ``unknown-extension``.",
+                "at the entry. A read that skipped one carries a block naming no loaded plugin "
+                "into the dictionary as written rather than reporting it as "
+                "``unknown-extension``.",
                 "Where a plugin the run names was skipped (``--no-plugins``), which checks it "
                 "registers is not known, and an override naming a plugin's check is accepted "
                 "unverified.",
@@ -12329,7 +12331,11 @@ class TestARunThatRunsNoPlugin:
     }
 
     STALE: ClassVar[dict[str, tuple[str, ...]]] = {
-        "SPEC.md": ("unless it was started with `--no-plugins`, which runs none",),
+        "SPEC.md": (
+            "unless it was started with `--no-plugins`, which runs none",
+            "Where one was skipped, a block naming no loaded plugin",
+        ),
+        "docs/consistency_checks.rst": ("Where one was skipped, a block naming no loaded plugin",),
     }
     """What a page said of the switch before it said it as above."""
 

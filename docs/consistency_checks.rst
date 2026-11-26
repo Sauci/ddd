@@ -659,9 +659,9 @@ it is either a smell or a decision somebody should have taken consciously.
      - warning
      - a project names a :doc:`plugin <plugins>` that the run did not import, as
        ``--no-plugins`` asks, so its checks did not run and its blocks were not validated: one
-       finding for each entry of a ``plugins`` list, at the entry. Where one was skipped, a
-       block naming no loaded plugin is carried into the dictionary as written rather than
-       reported as ``unknown-extension``.
+       finding for each entry of a ``plugins`` list, at the entry. A read that skipped one
+       carries a block naming no loaded plugin into the dictionary as written rather than
+       reporting it as ``unknown-extension``.
    * - ``storage-mismatch``
      - warning
      - two components describe the same variable differently in a property that shapes how

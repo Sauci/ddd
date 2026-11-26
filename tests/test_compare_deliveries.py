@@ -1038,6 +1038,32 @@ class TestADeliveryReadWithNoPlugin:
         assert "unknown check" not in capsys.readouterr().err
         assert not ran(tmp_path)
 
+    def test_a_candidate_s_block_no_plugin_could_own_is_unknown_beside_a_skipping_baseline(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Whether a read skipped a plugin is the read's own: the run skipped the baseline's, and
+        the candidate, which names none, still carries a block no plugin could own."""
+        described = naming_the_marker(tmp_path)
+        write_tree(
+            tmp_path,
+            {
+                "stray/p.ddd.json": project("P", "a.ddd.json"),
+                "stray/a.ddd.json": component(
+                    "A", declare("local", "X", extensions={"mark": {"key": 1}})
+                ),
+            },
+        )
+        capsys.readouterr()
+        stray = tmp_path / "stray" / "p.ddd.json"
+        argv = ["compare", "--no-plugins", "-W", "missing-id=ignore", str(described), str(stray)]
+        assert main(argv) == EXIT_FINDINGS
+        said = capsys.readouterr().err
+        assert (
+            "a.ddd.json#component.interface[0].definition.extensions.mark: error[unknown-extension]"
+            in said
+        )
+        assert f"warning[plugin-skipped]: in the baseline: {SKIPPED}" in said
+
     @pytest.mark.parametrize("reader", [read_dictionary, read_baseline])
     def test_a_description_read_as_a_delivery_runs_its_plugins_unless_asked_not_to(
         self, tmp_path: Path, reader: Any

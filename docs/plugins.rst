@@ -210,13 +210,33 @@ serving the workspace; and a module body that exits while it is imported is ``pl
 exactly as one that raises there.
 
 A hook, and the backend a ``backend`` hook returns, runs with ``sys.stdout`` bound to
-``sys.stderr``. Standard output is a document wherever DDD writes one there - the
-``--format json`` report, the dictionary ``ddd dump`` prints, the json-rpc wire of the
-language server - and ``ddd dump -o`` promises it empty, so a ``print`` left in a hook would
-otherwise be read as part of one of them and a build's ``json.loads`` would fail on it. It is
-redirected rather than silenced: what a plugin prints is still its author's to read, on the
-stream every other word DDD says about a run goes to. A plugin that wants to write a file of
-its own writes one; a plugin that wants to be quiet prints nothing.
+``sys.stderr``, and so does everything else of the plugin's that DDD runs: the module while it
+is imported, so a ``print`` at the top of it, or a banner an imported library prints, is
+caught; every validation against, and copy of, one of its models, so a ``print`` in a
+``@field_validator`` or a ``@model_validator`` is too; and the rendering of their schema by
+``ddd schema --plugin``. Standard output is a document wherever DDD writes one there - the
+``--format json`` report, the dictionary ``ddd dump`` prints, the list ``ddd sources`` prints,
+the json-rpc wire of the language server - and ``ddd dump -o`` promises it empty, so a
+``print`` left in a plugin would otherwise be read as part of one of them and a build's
+``json.loads`` would fail on it. It is redirected rather than silenced: what a plugin prints is
+still its author's to read, on the stream every other word DDD says about a run goes to. A
+plugin that wants to write a file of its own writes one; a plugin that wants to be quiet prints
+nothing.
+
+What is redirected is ``sys.stdout``: a ``print``, and anything else that writes to it. Three
+things reach standard output all the same, inside a document or, under ``ddd lsp``, between two
+messages of the wire, and are the plugin's to keep off it: a child process that inherits the
+descriptor (``subprocess.run(...)`` without ``capture_output=True`` or a ``stdout=`` of its
+own), a write to the descriptor itself (``os.write(1, ...)``), and a write to the interpreter's
+own handle (``sys.__stdout__``).
+
+Two more things are worth knowing. Under ``ddd dump --format json`` the findings document goes
+to standard error, as the dictionary takes standard output, so what a hook prints shares
+standard error with it, ahead of the document, and a consumer reading the findings from there
+has to keep a plugin from printing. And the redirect is the interpreter's: ``sys.stdout`` is
+bound for every thread of the process while the plugin's code runs, not only the one running
+it, so a thread that writes to ``sys.stdout`` meanwhile - a thread of the plugin's own, or
+``ddd gui``'s - writes to standard error for as long as that lasts.
 
 The models are the one place where raising is part of the contract. A ``@field_validator`` on
 ``object_model`` or ``project_model`` runs on every block written against it, and the

@@ -1258,10 +1258,21 @@ output is a document wherever DDD writes one there - a `--format json` report, t
 dictionary `ddd dump` prints, the protocol wire of the language server - and a plugin is
 under no discipline about what it prints; what a plugin writes there is therefore read on
 standard error rather than lost, and never inside a document
-([section 7](#7-tool-interface)). A plugin's own models
-are held to the same rule: a validator on one of them refusing a block is the `schema`
-finding above, but one that raises anything else, or exits the interpreter, is the plugin's
-failure and is reported exactly as a hook's is. Plugin checks are registered per run rather
+([section 7](#7-tool-interface)). The same binding holds wherever DDD runs a plugin's own
+code: while its module is imported, while a block or the settings are validated against, or
+copied from, one of its models, and while the schema of its models is rendered. A plugin's own
+models are also held to the rule on what they raise: a validator on one of them refusing a
+block is the `schema` finding above, but one that raises anything else, or exits the
+interpreter, is the plugin's failure and is reported exactly as a hook's is.
+
+What is bound is `sys.stdout`, and no more: a `print` or a write to `sys.stdout` goes to
+standard error, but a child process the plugin starts without capturing its output, a write to
+descriptor 1 (`os.write(1, ...)`) and a write to `sys.__stdout__` still reach standard output,
+inside the document, and on the wire of `ddd lsp` between two messages, and are the plugin's to
+keep off it. The binding is the interpreter's, so it holds for every thread of the process
+while it lasts, a thread of the plugin's own and the language server's included. Under
+`ddd dump --format json` standard error carries the findings document, so what a hook prints
+shares it, ahead of the document. Plugin checks are registered per run rather
 than in the built-in registry, and an override naming a plugin check is accepted
 provisionally and held, once the project is read, to the checks the loaded plugins
 registered: one that no loaded plugin registers is then the usage error an unknown built-in

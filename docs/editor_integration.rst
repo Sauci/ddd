@@ -34,9 +34,11 @@ wrong.
                            none
 
 The command is not meant to be run by hand: it speaks the Language Server Protocol on stdin
-and stdout and expects an editor on the other end. Editors that launch language servers
-themselves - Neovim, Helix, Emacs - need only the command; VS Code needs the extension
-described at the bottom of this page.
+and stdout and expects an editor on the other end. A plugin's ``print`` is bound to standard
+error, so it never lands on the wire, but a child process of its own or a write to descriptor 1
+is not, and corrupts the stream between two messages (:doc:`plugins`). Editors that launch
+language servers themselves - Neovim, Helix, Emacs - need only the command; VS Code needs the
+extension described at the bottom of this page.
 
 A request the server fails on, through a defect of its own rather than anything in the files,
 is answered with the protocol's internal error, and the session goes on with every finding on

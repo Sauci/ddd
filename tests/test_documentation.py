@@ -11995,3 +11995,72 @@ class TestAHookIsHandedTheSettingsTheProjectStates:
             assert phrase in said, f"{page} no longer says: {phrase!r}"
         for phrase in stale:
             assert phrase not in said, f"{page} still says: {phrase!r}"
+
+
+class TestWhatIsRedirectedAndWhatIsNot:
+    """5:I4, 9:M2. What a plugin prints while its module is imported, or while one of its models
+    validates, goes to stderr as a hook's does, and the pages say what that covers: what is redirected (``sys.stdout``),
+    what stays the plugin's to keep off standard output (a child process, ``os.write(1, ...)``,
+    ``sys.__stdout__``, on the wire of ``ddd lsp`` too), that under ``dump --format json`` a
+    hook's print shares standard error with the findings document, and that the redirect binds
+    ``sys.stdout`` for every thread while it lasts."""
+
+    SAID: ClassVar[dict[str, tuple[str, tuple[str, ...], tuple[str, ...]]]] = {
+        "SPEC.md": (
+            SPEC,
+            (
+                "The same binding holds wherever DDD runs a plugin's own code: while its module "
+                "is imported, while a block or the settings are validated against, or copied "
+                "from, one of its models, and while the schema of its models is rendered.",
+                "What is bound is `sys.stdout`, and no more:",
+                "a child process the plugin starts without capturing its output, a write to "
+                "descriptor 1 (`os.write(1, ...)`) and a write to `sys.__stdout__` still reach "
+                "standard output, inside the document, and on the wire of `ddd lsp` between two "
+                "messages, and are the plugin's to keep off it.",
+                "so it holds for every thread of the process while it lasts,",
+                "Under `ddd dump --format json` standard error carries the findings document, so "
+                "what a hook prints shares it, ahead of the document.",
+            ),
+            (),
+        ),
+        "docs/plugins.rst": (
+            PAGES["docs/plugins.rst"],
+            (
+                "and so does everything else of the plugin's that DDD runs: the module while it "
+                "is imported, so a ``print`` at the top of it, or a banner an imported library "
+                "prints, is caught; every validation against, and copy of, one of its models, so "
+                "a ``print`` in a ``@field_validator`` or a ``@model_validator`` is too; and the "
+                "rendering of their schema by ``ddd schema --plugin``.",
+                "What is redirected is ``sys.stdout``: a ``print``, and anything else that "
+                "writes to it.",
+                "a child process that inherits the descriptor",
+                "(``subprocess.run(...)`` without ``capture_output=True`` or a ``stdout=`` of "
+                "its own), a write to the descriptor itself (``os.write(1, ...)``), and a write "
+                "to the interpreter's own handle (``sys.__stdout__``).",
+                "Under ``ddd dump --format json`` the findings document goes to standard error, "
+                "as the dictionary takes standard output, so what a hook prints shares standard "
+                "error with it, ahead of the document,",
+                "``sys.stdout`` is bound for every thread of the process while the plugin's code "
+                "runs, not only the one running it,",
+            ),
+            (),
+        ),
+        "docs/editor_integration.rst": (
+            EDITOR_INTEGRATION,
+            (
+                "A plugin's ``print`` is bound to standard error, so it never lands on the "
+                "wire, but a child process of its own or a write to descriptor 1 is not, and "
+                "corrupts the stream between two messages",
+            ),
+            (),
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(SAID))
+    def test_the_page_says_what_is_redirected_and_what_is_not(self, page: str) -> None:
+        text, phrases, stale = self.SAID[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"
+        for phrase in stale:
+            assert phrase not in said, f"{page} still says: {phrase!r}"

@@ -12612,6 +12612,10 @@ class TestWhatAPluginHandsBackIsStated:
             "The bag holds a finding to its shape where it is added",
             "A `check` or `compare` hook returns nothing",
             "ends the run at 2 with one line, `ddd: unexpected` and the type of the",
+            "that cannot be found, or by a path the system refuses to resolve",
+            "or raises when its `PLUGIN` is read",
+            "`[a-z][a-z0-9]*(-[a-z0-9]+)*`, as a whole",
+            "The `name` and the `generate` of the backend a hook returns are read once",
         ),
         "docs/plugins.rst": (
             "A finding is held to its shape where the bag takes it",
@@ -12620,6 +12624,8 @@ class TestWhatAPluginHandsBackIsStated:
             "is ``plugin-not-found``, as a path to nothing is",
             "a name ending in a newline is refused",
             "one line, ``ddd: unexpected`` and the type",
+            "The ``name`` and the ``generate`` of the backend a ``backend`` hook returns are read "
+            "once",
         ),
         "docs/command_line_interface.rst": (
             "raised what no other clause names ends at ``2`` too, with one line, "

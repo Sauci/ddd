@@ -3876,6 +3876,21 @@ class TestWhatAPluginHandsBackAtImport:
         with pytest.raises(PluginInvalidError, match=r"failed to read PLUGIN: SystemExit\(4\)"):
             load_plugin("lazy_exit.py", tmp_path)
 
+    def test_what_a_module_prints_when_asked_for_its_plugin_goes_to_stderr(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Plugin code, so held to the binding of ``sys.stdout`` to ``sys.stderr`` as the body of
+        the module is."""
+        source = (
+            "def __getattr__(name):\n    print('said when asked')\n    raise AttributeError(name)\n"
+        )
+        write_plugin(tmp_path, "chatty.py", source)
+        with pytest.raises(PluginInvalidError, match="exposes no PLUGIN"):
+            load_plugin("chatty.py", tmp_path)
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "said when asked" in captured.err
+
     def test_a_cancelled_import_is_a_finding_of_the_project(self, tree: Path) -> None:
         write_plugin(tree, "cancels.py", "raise __import__('asyncio').CancelledError('gone')\n")
         _, bag = run_analysis(
@@ -3914,6 +3929,24 @@ class TestAPathTheSystemRefuses:
         looped(tmp_path / "loop", tmp_path / "pool")
         with pytest.raises(PluginNotFoundError, match=r"cannot be resolved|does not exist"):
             load_plugin("loop/plugin.py", tmp_path)
+
+    @pytest.mark.parametrize(
+        "refusal",
+        [OSError(40, "Too many levels of symbolic links"), RuntimeError("Symlink loop")],
+        ids=["an os error", "a runtime error"],
+    )
+    def test_whatever_the_system_refuses_with_is_not_found(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, refusal: Exception
+    ) -> None:
+        """Python 3.12 refuses a loop of links with a ``RuntimeError`` and a later one with the
+        ``OSError`` of the system call, and each is held to here whichever python runs."""
+
+        def refusing(self: Path, strict: bool = False) -> Path:
+            raise refusal
+
+        monkeypatch.setattr(Path, "resolve", refusing)
+        with pytest.raises(PluginNotFoundError, match="cannot be resolved"):
+            load_plugin("tools/plugin.py", tmp_path)
 
     def test_a_project_naming_such_a_path_files_it_and_goes_on(self, tree: Path) -> None:
         _, bag = run_analysis(
@@ -4039,7 +4072,9 @@ class TestAHookReturnsNothing:
             context.bag.add("plug/x", "never filed")
             yield
 
-        with pytest.raises(PluginError, match=r"returned a generator from its check hook"):
+        with pytest.raises(
+            PluginError, match=r"returned a generator from its check hook: .* do not yield"
+        ):
             self._run(Plugin(name="plug", check=generating), tree)
 
     def test_an_async_hook_is_refused_and_leaves_nothing_unawaited(self, tree: Path) -> None:
@@ -4051,7 +4086,10 @@ class TestAHookReturnsNothing:
 
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            with pytest.raises(PluginError, match=r"returned a coroutine from its check hook"):
+            with pytest.raises(
+                PluginError,
+                match=r"a coroutine from its check hook: .* declare it with def, not async def",
+            ):
                 self._run(Plugin(name="plug", check=awaiting), tree)
             gc.collect()
         assert [str(warning.message) for warning in caught] == []
@@ -4154,6 +4192,23 @@ class TestABackendThatRaisesWhenRead:
             PluginError, match=r"failed reading the generate of its backend: no gen"
         ):
             backend_of(self._backend_plugin(Raising()), None, "ddd test")
+
+    def test_what_a_property_prints_goes_to_stderr(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        class Chatty:
+            @property
+            def name(self) -> str:
+                print("said when read")
+                return "chatty"
+
+            def generate(self, dictionary: object, output_dir: Path) -> list:
+                return []
+
+        backend_of(self._backend_plugin(Chatty()), None, "ddd test")
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "said when read" in captured.err
 
     def test_a_backend_that_is_read_once_is_the_control(self) -> None:
         class Plain:

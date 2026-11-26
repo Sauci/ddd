@@ -1744,7 +1744,7 @@ class TestTheHookBoundary:
         dictionary, bag = analysed(tree, declare("local", "X"))
         plugin = Plugin(name="interrupting", check=interrupting)
         with pytest.raises(KeyboardInterrupt):
-            run_check_hooks((plugin,), dictionary, bag, lambda _: None)
+            run_check_hooks((plugin,), dictionary, {}, bag, lambda _: None)
 
     @pytest.mark.parametrize(
         ("code", "rendered"),
@@ -1764,7 +1764,7 @@ class TestTheHookBoundary:
         dictionary, bag = analysed(tree, declare("local", "X"))
         plugin = Plugin(name="exiting", check=exiting)
         with pytest.raises(PluginError, match=re.escape(f"failed in its check hook: {rendered}")):
-            run_check_hooks((plugin,), dictionary, bag, lambda _: None)
+            run_check_hooks((plugin,), dictionary, {}, bag, lambda _: None)
 
 
 class TestAnInterruptedRun:
@@ -2191,8 +2191,136 @@ class TestTheCompareHook:
         # too - otherwise 'missing-plugin' fires and this stops testing what it says it tests.
         dictionary, bag = analysed(tree, declare("local", "X"))
         plugins = (Plugin(name="bare"), Plugin(name="tag"))
-        run_compare_hooks(plugins, dictionary, dictionary, bag, lambda _: None, None)
+        run_compare_hooks(plugins, dictionary, dictionary, {}, bag, lambda _: None, None)
         assert checks(bag) == []
+
+
+EXCLUDED = """
+class S(BaseModel):
+    a: int = Field(exclude=True)
+"""
+"""A field the model requires and its dump leaves out."""
+
+DOUBLING = """
+class S(BaseModel):
+    a: int
+
+    @field_validator("a")
+    @classmethod
+    def twice(cls, value: int) -> int:
+        return value * 2
+"""
+"""A validator that does not hand back what it is given: a value read twice doubles twice."""
+
+STRICT_ENUM = """
+class S(BaseModel):
+    model_config = ConfigDict(strict=True)
+    colour: Colour = Colour.RED
+"""
+"""A strict enum at its default, which the dump writes as the string a strict field refuses."""
+
+STRICT_DATE = """
+class S(BaseModel):
+    model_config = ConfigDict(strict=True)
+    since: datetime.date = datetime.date(2020, 1, 1)
+"""
+
+SERIALIZED = """
+class S(BaseModel):
+    keys: list[int] = [1, 2]
+
+    @field_serializer("keys")
+    def joined(self, keys: list[int]) -> str:
+        return ",".join(str(key) for key in keys)
+"""
+"""A serializer writing a list as one string, which the field does not read."""
+
+HANDED = {
+    "a field its dump leaves out": (EXCLUDED, {"a": 3}, "S(a=3)"),
+    "a validator read twice": (DOUBLING, {"a": 5}, "S(a=10)"),
+    "a strict enum by default": (STRICT_ENUM, None, "S(colour=<Colour.RED: 'red'>)"),
+    "a strict date by default": (STRICT_DATE, None, "S(since=datetime.date(2020, 1, 1))"),
+    "a serializer of another shape": (SERIALIZED, None, "S(keys=[1, 2])"),
+}
+"""Models whose dump does not read back as their block did, each as ``(model, stated, handed)``:
+the block the project states, ``None`` for none, and the settings a hook is handed of it."""
+
+
+class TestAHookIsHandedTheSettingsTheProjectStates:
+    """19:I1. A hook's settings were the dictionary's dump of the block, validated once more, and a
+    model reads its own dump only as far as it was written to: a field the dump leaves out, a
+    validator changing a value each time it reads one, a strict field the dump writes as a
+    string, a serializer of another shape. Each stopped a run with a hook in it at exit 2, or
+    handed the hook a value nobody stated, over a block the loader had taken. A hook over a
+    project is handed the settings validated from the block the project states; an archived
+    dictionary alone, which states none, has its own block read back."""
+
+    @pytest.mark.parametrize("case", sorted(HANDED))
+    def test_the_check_hook(
+        self, tree: Path, capsys: pytest.CaptureFixture[str], case: str
+    ) -> None:
+        model, stated, handed = HANDED[case]
+        root = stating(tree, model, stated)
+        assert main(["check", root, "-W", "missing-id=ignore"]) == EXIT_OK, capsys.readouterr().err
+        assert f"check was handed {handed}" in capsys.readouterr().err
+
+    @pytest.mark.parametrize("case", sorted(HANDED))
+    def test_the_backend_hook_named_and_under_all(
+        self, tree: Path, capsys: pytest.CaptureFixture[str], case: str
+    ) -> None:
+        model, stated, handed = HANDED[case]
+        root = stating(tree, model, stated)
+        for artefact, options in (("set", []), ("all", ["-t", str(TEMPLATES)])):
+            out = tree / artefact
+            arguments = ["generate", artefact, root, "-o", str(out), *options]
+            assert main([*arguments, "-W", "missing-id=ignore"]) == EXIT_OK, capsys.readouterr().err
+            said = (out / "handed.txt").read_text(encoding="utf-8")
+            assert said == f"backend was handed {handed}\n"
+
+    @pytest.mark.parametrize("case", sorted(HANDED))
+    def test_the_compare_hook_of_a_project_candidate(
+        self, tree: Path, capsys: pytest.CaptureFixture[str], case: str
+    ) -> None:
+        model, stated, handed = HANDED[case]
+        old, new = stating(tree, model, stated, "old"), stating(tree, model, stated, "new")
+        arguments = ["compare", old, new, "-W", "missing-id=ignore"]
+        assert main(arguments) == EXIT_OK, capsys.readouterr().err
+        assert f"compare was handed {handed}" in capsys.readouterr().err
+
+    def test_an_archived_candidate_is_read_back_from_the_block_it_carries(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Two dumps under ``ddd compare --plugin`` come with no project to take the settings
+        from: the candidate's are read back from its own block, keyed by alias as its file was."""
+        old = stating(tree, ALIASED, {"max-key": 5}, "old")
+        new = stating(tree, ALIASED, {"max-key": 5}, "new")
+        old_dump, new_dump = (
+            dumped(old, tree, "old.json", capsys),
+            dumped(new, tree, "new.json", capsys),
+        )
+        monkeypatch.chdir(tree)
+        arguments = ["compare", old_dump, new_dump, "--plugin", "tools/set_plugin.py"]
+        assert main(arguments) == EXIT_OK, capsys.readouterr().err
+        assert "compare was handed S(max_key=5)" in capsys.readouterr().err
+
+    def test_an_archive_its_model_cannot_read_back_is_the_plugins_error(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """What the dump of a block leaves out an archive does not have, and a run over the
+        project does: the two projects compare, and their two dumps are the plugin's usage
+        error."""
+        old = stating(tree, EXCLUDED, {"a": 3}, "old")
+        new = stating(tree, EXCLUDED, {"a": 3}, "new")
+        assert main(["compare", old, new, "-W", "missing-id=ignore"]) == EXIT_OK
+        capsys.readouterr()
+        old_dump, new_dump = (
+            dumped(old, tree, "old.json", capsys),
+            dumped(new, tree, "new.json", capsys),
+        )
+        monkeypatch.chdir(tree)
+        arguments = ["compare", old_dump, new_dump, "--plugin", "tools/set_plugin.py"]
+        assert main(arguments) == EXIT_USAGE
+        assert "the settings of plugin 'set' are invalid" in capsys.readouterr().err
 
 
 class TestWhenAnOverrideIsVerified:
@@ -2739,7 +2867,7 @@ class TestGenerate:
         templates.mkdir()
         (templates / "tags.txt.jinja2").write_text("x\n", encoding="utf-8")
         plugin = load_plugin("tools/tag_plugin.py", tree)
-        backends = [CBackend(templates), backend_of(plugin, dictionary, "ddd test")]
+        backends = [CBackend(templates), backend_of(plugin, {}, "ddd test")]
         with pytest.raises(
             ValueError, match=re.escape("the tag and c backends would both write 'tags.txt'")
         ):

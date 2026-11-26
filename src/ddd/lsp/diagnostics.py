@@ -213,7 +213,7 @@ def _run(root: Path, bag: DiagnosticBag, *, includes: Sequence[str] | None = Non
         if not bag.has_errors:
             # Exactly what `deliveries.read_dictionary` builds for a side of a comparison given
             # as a description, from the same workspace: a run of the checks over a project and
-            # a read of it as a delivery resolve the same four things, and they say so here by
+            # a read of it as a delivery resolve the same five things, and they say so here by
             # holding one shape rather than two that have to be kept in step by hand.
             resolved = Resolved(
                 analyze(workspace, bag),
@@ -221,6 +221,7 @@ def _run(root: Path, bag: DiagnosticBag, *, includes: Sequence[str] | None = Non
                 workspace.locate,
                 True,
                 workspace.sources(),
+                workspace.project_extensions,
             )
     except PluginError as error:
         # A hook or a model raising is a defect of the plugin, not of the project: ``ddd

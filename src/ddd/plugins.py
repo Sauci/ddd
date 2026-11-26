@@ -56,8 +56,9 @@ class CheckContext:
 
     dictionary: DataDictionary
     settings: BaseModel | None
-    """The project block validated against the plugin's ``project_model``; ``None`` for a
-    plugin that declares no project model."""
+    """The block the project states, validated against the plugin's ``project_model`` - not the
+    dictionary's dump of it read back - and built from ``{}`` where the project states none;
+    ``None`` for a plugin that declares no project model."""
     bag: DiagnosticBag
     locate: Callable[[str], Location | None]
     """Where a finding about the named object belongs: the producing declaration under
@@ -66,7 +67,8 @@ class CheckContext:
 
 @dataclass(frozen=True, slots=True)
 class CompareContext:
-    """What a compare hook receives. ``settings`` are the candidate's."""
+    """What a compare hook receives. ``settings`` are the candidate's: validated from the block a
+    candidate project states, and from the block an archived candidate carries."""
 
     baseline: DataDictionary
     candidate: DataDictionary
@@ -422,11 +424,14 @@ def guarding_plugin_model(name: str, what: str) -> Iterator[None]:
 
 
 def settings_of(plugin: Plugin, extensions: Mapping[str, Mapping[str, Any]]) -> BaseModel | None:
-    """The project block validated against the plugin's project model.
+    """The plugin's block in ``extensions`` validated against its project model.
 
-    Built from ``{}`` when the project states none, so that defaults apply; ``None`` for a
-    plugin that declares no project model. The loader has validated a stated block already,
-    so a failure here comes from a dump - one archived before the plugin required a setting.
+    ``extensions`` are the blocks a project states, by plugin name, or those an archived
+    dictionary carries, which are then all there is of them. Built from ``{}`` where the plugin
+    has none there, so that defaults apply; ``None`` for a plugin that declares no project
+    model. The loader has validated a block a project states already, so a failure here comes
+    from an archive: one dumped before the plugin required a setting, or by a model that does
+    not read back its own dump.
     """
     if plugin.project_model is None:
         return None
@@ -441,13 +446,19 @@ def settings_of(plugin: Plugin, extensions: Mapping[str, Mapping[str, Any]]) -> 
 def run_check_hooks(
     plugins: Sequence[Plugin],
     dictionary: DataDictionary,
+    extensions: Mapping[str, Mapping[str, Any]],
     bag: DiagnosticBag,
     locate: Callable[[str], Location | None],
 ) -> None:
-    """Run every check hook over the dictionary, in the order the project lists the plugins."""
+    """Run every check hook over the dictionary, in the order the project lists the plugins.
+
+    Each hook is handed the settings validated from ``extensions``, the blocks the project
+    states, and never from the dictionary's dump of them: a model reads its dump back only as
+    far as the dump keeps what it read, and a block the loader took is what the hook is owed.
+    """
     for plugin in plugins:
         if plugin.check is not None:
-            settings = settings_of(plugin, dictionary.extensions)
+            settings = settings_of(plugin, extensions)
             _call(plugin, "check", plugin.check, CheckContext(dictionary, settings, bag, locate))
 
 
@@ -455,12 +466,16 @@ def run_compare_hooks(
     plugins: Sequence[Plugin],
     baseline: DataDictionary,
     candidate: DataDictionary,
+    extensions: Mapping[str, Mapping[str, Any]],
     bag: DiagnosticBag,
     locate: Callable[[str], Location | None],
     location: Location | None,
     baseline_location: Location | None = None,
 ) -> None:
     """Run every compare hook, after saying which recorded plugin is not among ``plugins``.
+
+    ``extensions`` are the candidate's blocks each hook's settings are validated from: those
+    its project states, or, for an archived dictionary, those it carries.
 
     A comparison that silently skipped a rule would be a confident "can replace" with a hole
     in it; ``missing-plugin`` is what closes the hole, once per plugin and side. Each side's
@@ -501,14 +516,19 @@ def run_compare_hooks(
                 )
     for plugin in plugins:
         if plugin.compare is not None:
-            settings = settings_of(plugin, candidate.extensions)
+            settings = settings_of(plugin, extensions)
             context = CompareContext(baseline, candidate, settings, bag, locate)
             _call(plugin, "compare", plugin.compare, context)
 
 
-def backend_of(plugin: Plugin, dictionary: DataDictionary, generator: str) -> Backend:
+def backend_of(
+    plugin: Plugin, extensions: Mapping[str, Mapping[str, Any]], generator: str
+) -> Backend:
     """The backend a plugin provides, or a usage error saying it provides none or provides one
     only in name.
+
+    The hook is handed the settings validated from ``extensions``, the blocks the project
+    states, as a check hook is (:func:`run_check_hooks`).
 
     A hook's own signature says it returns a ``Backend``, but nothing stops it returning
     ``None`` - the shape a hook that only checks its settings and forgets to build one tends
@@ -522,7 +542,7 @@ def backend_of(plugin: Plugin, dictionary: DataDictionary, generator: str) -> Ba
     if plugin.backend is None:
         msg = f"plugin '{plugin.name}' provides no artefact"
         raise ValueError(msg)
-    context = GenerateContext(settings_of(plugin, dictionary.extensions), generator)
+    context = GenerateContext(settings_of(plugin, extensions), generator)
     backend = _call(plugin, "backend", plugin.backend, context)
     if backend is None:
         msg = f"plugin '{plugin.name}' returned no backend from its backend hook"

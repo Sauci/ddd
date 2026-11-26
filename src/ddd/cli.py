@@ -1458,7 +1458,7 @@ def _command_generate(args: argparse.Namespace) -> int:
             # which is the order their hooks run in; the renderer refuses a path two backends
             # claim.
             backends.extend(
-                backend_of(plugin, dictionary, GENERATOR)
+                backend_of(plugin, resolved.project_extensions, GENERATOR)
                 for plugin in resolved.plugins
                 if plugin.backend is not None
             )
@@ -1472,7 +1472,7 @@ def _command_generate(args: argparse.Namespace) -> int:
                     f"{provided or 'no plugin artefact'}"
                 )
                 raise ValueError(msg)
-            backends.append(backend_of(plugin, dictionary, GENERATOR))
+            backends.append(backend_of(plugin, resolved.project_extensions, GENERATOR))
         files = render(dictionary, backends, args.output_dir)
         # What this run produced into the directory it writes to, which is what decides the
         # files of earlier runs it may take back: the artefacts it did not produce - the a2l
@@ -2161,7 +2161,15 @@ def _analyze(
         # A plugin hook that raises is a usage error naming the plugin (section 3.11); the
         # findings collected before the hook ran are the project's, and are printed first.
         dictionary = analyze(workspace, bag)
-    return Resolved(dictionary, workspace.plugins, workspace.locate, True, workspace.sources()), bag
+    resolved = Resolved(
+        dictionary,
+        workspace.plugins,
+        workspace.locate,
+        True,
+        workspace.sources(),
+        workspace.project_extensions,
+    )
+    return resolved, bag
 
 
 def _refuse_a_directory(path: Path, option: str) -> None:

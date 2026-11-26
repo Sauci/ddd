@@ -11904,3 +11904,59 @@ class TestAModelReadsBackItsOwnDump:
             assert phrase in said, f"{page} no longer says: {phrase!r}"
         for phrase in stale:
             assert phrase not in said, f"{page} still says: {phrase!r}"
+
+
+class TestAHookIsHandedTheSettingsTheProjectStates:
+    """19:I1. A hook over a project is handed the settings validated from the block the project
+    states, and only a comparison of an archived dictionary validates the block it carries: the
+    pages say which block each hook's settings come from, and where a model that does not read
+    back its own dump fails."""
+
+    SAID: ClassVar[dict[str, tuple[str, tuple[str, ...], tuple[str, ...]]]] = {
+        "SPEC.md": (
+            SPEC,
+            (
+                "The settings a hook is handed are not read back from the dictionary: each hook "
+                "over a project is handed the block the project states, validated against the "
+                "plugin's project model, and only a comparison whose candidate is an archived "
+                "dump validates the block the dump carries, so that the settings of a model which "
+                "does not read back its own dump fail only there, a usage error naming the "
+                "plugin.",
+            ),
+            (),
+        ),
+        "docs/plugins.rst": (
+            PAGES["docs/plugins.rst"],
+            (
+                "``settings``, the block the project states, validated against ``project_model`` "
+                "(built from ``{}`` when the project states none, ``None`` for a plugin without "
+                "one);",
+                "``settings``, the candidate's, from the block its project states or the one an "
+                "archived candidate carries;",
+                "The settings a hook is handed are never read back from the dictionary: "
+                "``settings`` is validated from the block the project states, and only an "
+                "archived dictionary, under ``ddd compare --plugin``, has its settings validated "
+                "from the block it carries.",
+                "A model whose dump does not read back as its block did - a field it requires "
+                "and its dump leaves out (``Field(exclude=True)``), a validator that does not "
+                "hand back what it is given, a ``strict`` enum or date, which the dump writes as "
+                "a string, a serializer that changes the shape of a value - is handed its "
+                "settings in full over a project, and fails wherever its dump is read: in a hook "
+                "reading a block from the dictionary, and as the settings of an archived "
+                "dictionary, a usage error naming the plugin.",
+            ),
+            (
+                "``settings``, the project block validated against ``project_model``",
+                "``settings``, the candidate's; ``bag``",
+            ),
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(SAID))
+    def test_the_page_says_which_block_a_hook_s_settings_come_from(self, page: str) -> None:
+        text, phrases, stale = self.SAID[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"
+        for phrase in stale:
+            assert phrase not in said, f"{page} still says: {phrase!r}"

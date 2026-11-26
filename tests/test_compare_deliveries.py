@@ -33,6 +33,7 @@ from ddd.gui.api import Api
 from ddd.gui.session import Session
 from ddd.plugins import CompareContext, Plugin, PluginError
 from test_gui_api import Reply, get, posix
+from test_plugins import DOUBLING, SETTINGS_PLUGIN, write_plugin
 
 CLEAN: dict[str, object] = {
     "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
@@ -325,6 +326,36 @@ class TestCompareDeliveries:
             baseline, candidate, DiagnosticBag(), location=Location(tmp_path / "p.ddd.json")
         )
         assert renames(found.paired) == []
+
+
+class TestACompareHookIsHandedWhatTheCandidateStates:
+    """19:I1. Every caller hands a compare hook the settings validated from the block the
+    candidate project states, and none the dictionary's dump of that block validated once more:
+    a model reads its dump back only as far as it was written to, and the one here doubles what
+    its validator is given, so a value read twice doubles twice."""
+
+    def test_the_three_hand_the_hook_the_block_the_candidate_states(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        baseline = _baseline(tmp_path)
+        plugin = SETTINGS_PLUGIN.replace("MODEL", DOUBLING)
+        write_plugin(tmp_path / "new" / "tools", "set_plugin.py", plugin)
+        stated = project(
+            "P",
+            "a.ddd.json",
+            "b.ddd.json",
+            plugins=["tools/set_plugin.py"],
+            extensions={"set": {"a": 5}},
+        )
+        api = _candidate(tmp_path, {"p.ddd.json": stated})
+        compared, checked, reply = _the_three(tmp_path, baseline, api)
+        assert (compared, checked) == (EXIT_OK, EXIT_OK)
+        assert capsys.readouterr().err.count("compare was handed S(a=10)") == 2
+        assert reply.status == 200
+        handed = [
+            found["message"] for found in reply.body["findings"] if found["check"] == "set/handed"
+        ]
+        assert handed == ["compare was handed S(a=10)"]
 
 
 class TestTheBaselinesOwnErrors:

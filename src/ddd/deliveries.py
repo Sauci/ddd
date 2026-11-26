@@ -14,7 +14,7 @@ drifted from that the first time either side changed.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -97,9 +97,10 @@ class Reading:
 class Resolved:
     """A dictionary and what a plugin's hook needs beside it.
 
-    A description resolved on the spot keeps its plugins and can point a finding at a
-    declaration; an archived dump has neither, so its plugins come from ``--plugin`` and a
-    finding points at the file.
+    A description resolved on the spot keeps its plugins and the blocks it states, and can
+    point a finding at a declaration; an archived dump has neither plugins nor declarations,
+    so its plugins come from ``--plugin``, a finding points at the file, and its settings are
+    read back from the blocks it carries.
     """
 
     dictionary: DataDictionary
@@ -115,6 +116,17 @@ class Resolved:
     delivery was read from - and before it trusts anything it kept: this is the set whose
     staleness makes a reading of this side stale, which is how :mod:`ddd.gui.compare` decides
     a cached baseline has to be read again."""
+
+    project_extensions: Mapping[str, Mapping[str, Any]]
+    """Each plugin's settings block by plugin name, as a hook of this side is handed it
+    validated (:func:`~ddd.plugins.settings_of`): a description's as its project files state it
+    (:attr:`~ddd.loading.Workspace.project_extensions`), and an archived dump's as it carries it,
+    which is all there is of it.
+
+    Never the dictionary's dump of a block a description states: a model reads its dump back
+    only as far as the dump keeps what it read - a field it excludes, a validator that does not
+    hand back what it is given, a strict field the dump writes as a string - and the hooks over
+    a project are handed what the project stated."""
 
     alone: bool = False
     """Whether this side is one component file, read without a project around it.
@@ -173,6 +185,7 @@ def read_dictionary(
             workspace.locate,
             True,
             workspace.sources(),
+            workspace.project_extensions,
             alone=not workspace.projects,
         )
     if document is not None and not holds_a_dictionary(document):
@@ -195,7 +208,9 @@ def read_dictionary(
         account.refusal = _unread(document)
         return None
     archived = where(path)
-    return Resolved(dictionary, (), lambda _: archived, False, (archived.path,))
+    return Resolved(
+        dictionary, (), lambda _: archived, False, (archived.path,), dictionary.extensions
+    )
 
 
 def _is_a_component(document: dict[str, Any] | None) -> bool:
@@ -376,6 +391,7 @@ def compare_deliveries(
             candidate.plugins if plugins is None else plugins,
             baseline.dictionary,
             candidate.dictionary,
+            candidate.project_extensions,
             bag,
             candidate.locate,
             location,

@@ -951,8 +951,11 @@ class _Analysis:
         )
         # Inside the analysis rather than beside it, so that nothing that analyses a project -
         # the cli, the language server, a test - can forget to run them. A hook sees the whole
-        # dictionary, and every built-in finding is already in the bag.
-        run_check_hooks(workspace.plugins, dictionary, self._bag, workspace.locate)
+        # dictionary, and every built-in finding is already in the bag. Its settings are the
+        # blocks the project states, validated, and not the dictionary's dump of them read back.
+        run_check_hooks(
+            workspace.plugins, dictionary, workspace.project_extensions, self._bag, workspace.locate
+        )
         return dictionary
 
     def _a2l_closure(self, resolved: list[tuple[str, list[DeclarationRef]]]) -> set[str]:

@@ -130,11 +130,12 @@ be added without breaking a plugin written against the previous version.
      - fields
    * - ``CheckContext``
      - ``dictionary``, the resolved :doc:`data dictionary <data_dictionary>`; ``settings``,
-       the project block validated against ``project_model`` (built from ``{}`` when the
-       project states none, ``None`` for a plugin without one); ``bag``, the diagnostic bag;
-       ``locate(name)``, where a finding about the object ``name`` belongs.
+       the block the project states, validated against ``project_model`` (built from ``{}``
+       when the project states none, ``None`` for a plugin without one); ``bag``, the
+       diagnostic bag; ``locate(name)``, where a finding about the object ``name`` belongs.
    * - ``CompareContext``
-     - ``baseline`` and ``candidate``; ``settings``, the candidate's; ``bag``; ``locate``.
+     - ``baseline`` and ``candidate``; ``settings``, the candidate's, from the block its
+       project states or the one an archived candidate carries; ``bag``; ``locate``.
    * - ``GenerateContext``
      - ``settings``; ``generator``, the tool name and version the built-in backends put into
        their banners.
@@ -281,6 +282,16 @@ published schema key it, and ``round_trip`` leaves every ``@computed_field`` out
 ``Json`` field back as json text, so that a model forbidding extra keys reads the dump of a
 block as it read the block. A hook reading a block itself - ``Entry.model_validate(block)``, as
 the worked example does - reads it by alias, as the loader reads a file.
+
+The settings a hook is handed are never read back from the dictionary: ``settings`` is
+validated from the block the project states, and only an archived dictionary, under
+``ddd compare --plugin``, has its settings validated from the block it carries. A model whose
+dump does not read back as its block did - a field it requires and its dump leaves out
+(``Field(exclude=True)``), a validator that does not hand back what it is given, a ``strict``
+enum or date, which the dump writes as a string, a serializer that changes the shape of a
+value - is handed its settings in full over a project, and fails wherever its dump is read: in
+a hook reading a block from the dictionary, and as the settings of an archived dictionary, a
+usage error naming the plugin.
 
 The editor
 ----------

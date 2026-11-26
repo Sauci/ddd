@@ -12615,7 +12615,8 @@ class TestWhatAPluginHandsBackIsStated:
             "A `check` or `compare` hook returns nothing",
             "What the bag's `add` hands back is the one thing it may return",
             "a finding the bag never recorded is still refused",
-            "ends the run at 2 with one line, `ddd: unexpected` and the type of the",
+            "An `Exception` that no command reports in words ends the run at 2 with one line, "
+            "`ddd: unexpected` and its type, and no traceback, rather than at 1",
             "that cannot be found, or by a path the system refuses to resolve",
             "or raises when its `PLUGIN` is read",
             "`[a-z][a-z0-9]*(-[a-z0-9]+)*`, as a whole",
@@ -12631,13 +12632,14 @@ class TestWhatAPluginHandsBackIsStated:
             "a module-level ``__getattr__`` that raises",
             "is ``plugin-not-found``, as a path to nothing is",
             "a name ending in a newline is refused",
-            "one line, ``ddd: unexpected`` and the type",
+            "An ``Exception`` that nothing of this names ends ``ddd`` at exit code ``2`` with one "
+            "line, ``ddd: unexpected`` and the type, rather than at ``1``",
             "The ``name`` and the ``generate`` of the backend a ``backend`` hook returns are read "
             "once",
         ),
         "docs/command_line_interface.rst": (
-            "raised what no other clause names ends at ``2`` too, with one line, "
-            "``ddd: unexpected``",
+            "raised an ``Exception`` no command reports in words ends at ``2`` too, with one line, "
+            "``ddd: unexpected`` and the type of the exception, rather than at ``1``",
         ),
     }
 

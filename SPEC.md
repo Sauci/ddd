@@ -1449,9 +1449,11 @@ Errors:
 - `duplicate-raster`: a measurement raster is declared more than once, within one file or
   across files ([section 3.10](#310-measurement-rasters)).
 - `plugin-not-found`: a project names a plugin ([section 3.11](#311-plugins)) that cannot be
-  found, or by a path the system refuses to resolve. Fixed severity, because a project cannot be interpreted without the plugins it names.
+  found, or by a path the system refuses to resolve. Fixed severity, because a project cannot
+  be interpreted without the plugins it names.
 - `plugin-invalid`: a plugin module raises, whatever it raises but an interrupt, or exits the
-  interpreter on import, or raises when its `PLUGIN` is read, exposes no `PLUGIN`, exposes one that is malformed, or claims a name another plugin already has, and, in
+  interpreter on import, or raises when its `PLUGIN` is read, exposes no `PLUGIN`, exposes one
+  that is malformed, or claims a name another plugin already has, and, in
   the language server, and beside the listing of `ddd sources` and `ddd artefacts`, a hook or a
   model of the plugin's own that raises or exits while a file is checked or while a project is
   read to find out whether it contains an open file, or while a block is validated
@@ -2759,9 +2761,9 @@ rather than behind them. The exit code distinguishes clean runs (0),
 findings (1), usage
 errors (2) and a run stopped by the user (130, the code a shell reports for a command killed
 by SIGINT: an interrupt ends the run with `ddd: interrupted` on stderr rather than with a
-traceback, and is not a finding). A failure no command reports in words - an exception nothing
-above names - ends the run at 2 with one line, `ddd: unexpected` and the type of the
-exception, and no traceback, and never at 1, which means findings. A closed pipe is not this run's error, and it changes no
+traceback, and is not a finding). An `Exception` that no command reports in words ends the
+run at 2 with one line, `ddd: unexpected` and its type, and no traceback, rather than at 1,
+which means findings. A closed pipe is not this run's error, and it changes no
 verdict either: a reader of the tool's standard output that stops reading - `ddd schema
 component | head -1` - or is gone before the first line ends the run in silence at the code
 it would have ended at had the reader read on, so that a check of a project with errors

@@ -238,8 +238,9 @@ is asked for. A plugin named by a ``.py`` path the system refuses to resolve - o
 NUL - is ``plugin-not-found``, as a path to nothing is. A plugin's name, and each check it
 registers, must match its grammar whole: a name ending in a newline is refused. The
 ``name`` and the ``generate`` of the backend a ``backend`` hook returns are read once, as
-plugin code, and one that raises is a failure of that hook. What no part of this names ends
-``ddd`` at exit code ``2`` with one line, ``ddd: unexpected`` and the type, and never at ``1``.
+plugin code, and one that raises is a failure of that hook. An ``Exception``
+that nothing of this names ends ``ddd`` at exit code ``2`` with one line, ``ddd: unexpected`` and
+the type, rather than at ``1``.
 
 A hook, and the backend a ``backend`` hook returns, runs with ``sys.stdout`` bound to
 ``sys.stderr``, and so does everything else of the plugin's that DDD runs: the module while it

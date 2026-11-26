@@ -187,8 +187,8 @@ The exit code is the same everywhere, which lets a build system treat DDD like a
        first, in the requested format, before the error follows; the exit code is still
        ``2``. A run that found no error ends at ``2`` as well when the report it owed on
        standard error could not be written there, its reader gone (below). A run that
-       raised what no other clause names ends at ``2`` too, with one line, ``ddd: unexpected``
-       and the type of the exception, and never at ``1``.
+       raised an ``Exception`` no command reports in words ends at ``2`` too, with one line,
+       ``ddd: unexpected`` and the type of the exception, rather than at ``1``.
    * - ``130``
      - the run was interrupted: Ctrl-C, or anything else that raises ``KeyboardInterrupt``,
        inside DDD or inside a plugin's hook. It is the code a shell reports for a command

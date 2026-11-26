@@ -18,7 +18,7 @@ from typing import Any, ClassVar
 import pytest
 
 from conftest import component, declare, project, write_tree
-from ddd.cli import EXIT_FINDINGS, EXIT_OK, main
+from ddd.cli import EXIT_FINDINGS, EXIT_OK, EXIT_USAGE, main
 from ddd.compare import renames
 from ddd.deliveries import (
     Comparison,
@@ -34,7 +34,17 @@ from ddd.gui.api import Api
 from ddd.gui.session import Session
 from ddd.plugins import CompareContext, Plugin, PluginError
 from test_gui_api import Reply, get, posix
-from test_plugins import DOUBLING, DRAWN, MEDDLING, SETTINGS_PLUGIN, write_plugin
+from test_plugins import (
+    DOUBLING,
+    DRAWN,
+    MARKING_PLUGIN,
+    MEDDLING,
+    SETTINGS_PLUGIN,
+    SKIPPED,
+    naming_the_marker,
+    ran,
+    write_plugin,
+)
 
 CLEAN: dict[str, object] = {
     "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
@@ -925,3 +935,120 @@ class TestAProducerLostInAComponentReadAlone:
         argv = ["check", str(tmp_path / "new" / "p.ddd.json"), "--baseline"]
         main([*argv, str(tmp_path / "old" / "p.ddd.json")])
         assert len(_findings(capsys.readouterr().err)) == 1
+
+
+def _plain_dump(tmp_path: Path) -> Path:
+    """A dump of a project ``P`` naming no plugin, declaring the one object the marking project
+    of :func:`~test_plugins.naming_the_marker` does."""
+    write_tree(
+        tmp_path,
+        {
+            "plain/p.ddd.json": project("P", "a.ddd.json"),
+            "plain/a.ddd.json": component("A", declare("local", "X")),
+        },
+    )
+    archive = tmp_path / "plain.json"
+    assert main(["dump", str(tmp_path / "plain" / "p.ddd.json"), "-o", str(archive)]) == EXIT_OK
+    return archive
+
+
+class TestADeliveryReadWithNoPlugin:
+    """1:I15. ``ddd compare --no-plugins`` imports no plugin a description on either side names,
+    and ``ddd check --baseline --no-plugins`` none on either side: each is said not to have run,
+    a baseline's as the baseline's, graded as the run grades its own. Each test that says a plugin
+    did not run says, without the switch, that it did."""
+
+    @pytest.mark.parametrize(
+        ("side", "said"),
+        [
+            ("baseline", ["in the baseline: "]),
+            ("candidate", [""]),
+            ("both", ["", "in the baseline: "]),
+        ],
+    )
+    def test_compare_runs_no_plugin_a_description_on_either_side_names(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], side: str, said: list[str]
+    ) -> None:
+        described = naming_the_marker(tmp_path)
+        archive = _plain_dump(tmp_path)
+        baseline, candidate = {
+            "baseline": (described, archive),
+            "candidate": (archive, described),
+            "both": (described, described),
+        }[side]
+        capsys.readouterr()
+        argv = [str(baseline), str(candidate), "-W", "missing-id=ignore"]
+        assert main(["compare", "--no-plugins", *argv]) == EXIT_OK
+        assert not ran(tmp_path)
+        found = re.findall(
+            r"warning\[plugin-skipped\]: (in the baseline: )?(.*)", capsys.readouterr().err
+        )
+        assert sorted(found) == [(prefix, SKIPPED) for prefix in said]
+        assert main(["compare", *argv]) == EXIT_OK
+        assert ran(tmp_path)
+
+    @pytest.mark.parametrize("named_by", ["the baseline", "the project"])
+    def test_check_with_a_baseline_runs_no_plugin_on_either_side(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], named_by: str
+    ) -> None:
+        described = naming_the_marker(tmp_path)
+        archive = _plain_dump(tmp_path)
+        plain = tmp_path / "plain" / "p.ddd.json"
+        checked, baseline, prefix = {
+            "the baseline": (plain, described, "in the baseline: "),
+            "the project": (described, archive, ""),
+        }[named_by]
+        capsys.readouterr()
+        argv = ["-W", "missing-id=ignore", str(checked), "--baseline", str(baseline)]
+        assert main(["check", "--no-plugins", *argv]) == EXIT_OK
+        assert not ran(tmp_path)
+        assert f"warning[plugin-skipped]: {prefix}{SKIPPED}" in capsys.readouterr().err
+        assert main(["check", *argv]) == EXIT_OK
+        assert ran(tmp_path)
+
+    def test_the_baseline_s_finding_is_graded_as_the_run_grades_its_own(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A plugin that did not run is this run's doing, not the baseline's: ``--strict`` makes
+        it an error, and an override silences it, as they do the candidate's."""
+        described = naming_the_marker(tmp_path)
+        archive = _plain_dump(tmp_path)
+        capsys.readouterr()
+        argv = ["compare", "--no-plugins", str(described), str(archive), "-W", "missing-id=ignore"]
+        assert main([*argv, "--strict"]) == EXIT_FINDINGS
+        assert f"error[plugin-skipped]: in the baseline: {SKIPPED}" in capsys.readouterr().err
+        assert main([*argv, "-W", "plugin-skipped=ignore"]) == EXIT_OK
+        assert "plugin-skipped" not in capsys.readouterr().err
+
+    @pytest.mark.parametrize("command", ["check", "compare"])
+    def test_an_override_naming_a_check_the_baseline_s_plugin_may_register_is_accepted(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], command: str
+    ) -> None:
+        """Which checks the baseline's plugin registers is known once it ran, as the candidate's
+        is: here the candidate names none, and the baseline's was skipped."""
+        described = naming_the_marker(tmp_path)
+        archive = _plain_dump(tmp_path)
+        plain = tmp_path / "plain" / "p.ddd.json"
+        argv = {
+            "check": ["check", str(plain), "--baseline", str(described)],
+            "compare": ["compare", str(described), str(archive)],
+        }[command]
+        capsys.readouterr()
+        assert main([*argv, "--no-plugins", "-W", "mark/checked=ignore"]) == EXIT_OK
+        assert "unknown check" not in capsys.readouterr().err
+        assert not ran(tmp_path)
+
+    def test_plugin_beside_no_plugins_is_refused_before_anything_is_read(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        archive = _plain_dump(tmp_path)
+        write_plugin(tmp_path / "tools", "mark.py", MARKING_PLUGIN)
+        monkeypatch.chdir(tmp_path)
+        capsys.readouterr()
+        argv = ["compare", "--no-plugins", "--plugin", "tools/mark.py", str(archive), str(archive)]
+        assert main(argv) == EXIT_USAGE
+        assert capsys.readouterr() == (
+            "",
+            "ddd: --plugin cannot be given together with --no-plugins, which runs no plugin\n",
+        )
+        assert not ran(tmp_path)

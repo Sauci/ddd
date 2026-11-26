@@ -1314,7 +1314,8 @@ schema with the `extensions` property closed over the named plugins' models, so 
 editor validates a block as it is typed; the dictionary schema stays open. A comparison whose
 candidate is a project runs that project's plugins, and one whose candidate is an archived
 dump loads them with `ddd compare --plugin`, which beside a project candidate is a usage
-error, because the project names its own; a compared dictionary recording a plugin the
+error, because the project names its own, and so is it beside `--no-plugins`, which runs none
+on either side; a compared dictionary recording a plugin the
 run has not loaded is `missing-plugin` ([section 4.1](#41-comparing-two-deliveries)). The
 api is documented in the plugins page of the documentation; `examples/plugins/ddd_layout.py`
 is a worked example, and `examples/layout` a project that names it.
@@ -1744,7 +1745,11 @@ analysed in its own right, under neither `--strict` nor the promotions of the `-
 its findings being its own; only its error findings are carried into the report, each prefixed
 with "in the baseline:" and at the severity its own analysis gave them, so that a broken baseline
 is visible without drowning the comparison and without this run's strictness promoting its
-warnings. What does reach it is the relaxations of the project's `-W`, an override grading a
+warnings. The one exception is `plugin-skipped`, which a run given `--no-plugins` files for a
+plugin the baseline names ([section 3.11](#311-plugins)): carried and prefixed alike, it is
+graded as this run grades its own findings, since that the plugin did not run is this run's
+doing rather than the baseline's.
+What does reach it is the relaxations of the project's `-W`, an override grading a
 check below the grade it has by default - a plugin's check, whose grade is not known until its
 plugin is loaded, only as `ignore` - because a project that decided it can live with a
 finding decided it of the delivery it compares against as much as of its own: a project that
@@ -2697,10 +2702,13 @@ same set the editor holds back ([section 7.2](#72-editor-integration)); an expli
 the same run still wins. Given a project root, `--standalone` holds the same checks back
 project-wide, which is rarely wanted.
 
-`ddd check`, `ddd list`, `ddd dump` and `ddd sources` take `--no-plugins`, which imports none
-of the plugins a project names and reports each as `plugin-skipped`
-([section 3.11](#311-plugins)); `ddd generate`, `ddd artefacts` and `ddd gui` do not, each
-running what the project names as a build does.
+`ddd check`, `ddd list`, `ddd dump`, `ddd sources` and `ddd compare` take `--no-plugins`,
+which imports none of the plugins a project names and reports each as `plugin-skipped`
+([section 3.11](#311-plugins)), on both sides of a comparison: `ddd check --baseline` applies
+it to the baseline as to the project, a baseline's finding prefixed as its carried errors are
+and graded as the run grades its own, and `ddd compare` refuses `--plugin` beside it as a usage
+error, before anything is read. `ddd generate`, `ddd artefacts` and `ddd gui` do not take it,
+each running what the project names as a build does.
 
 Every command that reports findings can produce machine readable JSON (`--format json`): a
 `diagnostics` list, each finding carrying `check`, `severity`, `message`, a `location` of

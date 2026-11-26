@@ -8,7 +8,8 @@ would have had to copy it.
 
 What makes the copy dangerous is not the reading but the policy around it: a baseline is analysed
 in a bag of its own, without ``--strict`` however strict the run asking is, and only its errors
-are carried over. :func:`read_baseline` says why at length. A second implementation would have
+are carried over, with what the run did not run of it. :func:`read_baseline` says why at length.
+A second implementation would have
 drifted from that the first time either side changed.
 """
 
@@ -147,6 +148,7 @@ def read_dictionary(
     reading: Reading | None = None,
     *,
     floor_when_alone: bool = False,
+    run_plugins: bool = True,
 ) -> Resolved | None:
     """A dumped dictionary, or a project/component description resolved into one.
 
@@ -164,6 +166,9 @@ def read_dictionary(
     since the loader reports some of what the floor silences, and set on ``bag`` itself: its
     policy is replaced by the floor under the overrides it held, and stays so after the read,
     so a caller hands it a bag of its own, as :func:`read_baseline` does.
+
+    ``run_plugins`` false reads a description as ``--no-plugins`` asks, importing no plugin it
+    names (:func:`~ddd.loading.load_workspace`); a dumped dictionary runs none either way.
     """
     from ddd.analysis import analyze
     from ddd.loading import load_dictionary, load_workspace, read_json_document
@@ -179,7 +184,7 @@ def read_dictionary(
         # analysed, so its own findings and its renames were withheld from a run that reports
         # a candidate's everything.
         held = bag.count(Severity.ERROR)
-        workspace = load_workspace(path, bag)
+        workspace = load_workspace(path, bag, run_plugins=run_plugins)
         if workspace is None or bag.count(Severity.ERROR) > held:
             account.refusal = Refusal.DESCRIPTION
             return None
@@ -262,7 +267,12 @@ def relaxations(policy: SeverityPolicy) -> dict[str, Severity]:
 
 
 def read_baseline(
-    path: Path, bag: DiagnosticBag, standalone: bool = False, reading: Reading | None = None
+    path: Path,
+    bag: DiagnosticBag,
+    standalone: bool = False,
+    reading: Reading | None = None,
+    *,
+    run_plugins: bool = True,
 ) -> Resolved | None:
     """Resolve the baseline side of a comparison, in a bag of its own.
 
@@ -292,6 +302,12 @@ def read_baseline(
     so - ``ddd compare`` has no flag to say it with - so that one file is read one way by every
     caller: against the floor, the component's own input nobody was shown the producer of was
     an error of the baseline.
+
+    ``run_plugins`` false reads it as ``--no-plugins`` asks, as the candidate is read. That a
+    plugin of the baseline did not run is this run's doing rather than the baseline's, so its
+    ``plugin-skipped`` is carried over beside the errors, prefixed as they are and graded as
+    the run grades its own, and the plugin is noted on ``bag`` as not run
+    (:meth:`~ddd.diagnostics.DiagnosticBag.skip`), which checks it registers being unknown.
     """
     floor = SeverityPolicy.from_strings(
         STANDALONE_POLICY if standalone else (), strict=False, standalone=standalone
@@ -299,7 +315,7 @@ def read_baseline(
     own = DiagnosticBag(
         SeverityPolicy({**floor.overrides, **relaxations(bag.policy)}, False, standalone)
     )
-    resolved = read_dictionary(path, own, reading, floor_when_alone=True)
+    resolved = read_dictionary(path, own, reading, floor_when_alone=True, run_plugins=run_plugins)
     for diagnostic in own.sorted:
         if diagnostic.severity is Severity.ERROR:
             bag.add(
@@ -313,6 +329,15 @@ def read_baseline(
                 # untrustworthy dictionary visible.
                 severity=diagnostic.severity,
             )
+        elif diagnostic.check == "plugin-skipped":
+            bag.add(
+                diagnostic.check,
+                f"{BASELINE_PREFIX}{diagnostic.message}",
+                diagnostic.location,
+                diagnostic.notes,
+            )
+    for spelling in own.skipped:
+        bag.skip(spelling)
     return resolved
 
 

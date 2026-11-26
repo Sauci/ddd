@@ -216,7 +216,9 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
         help="also verify that the project can still replace this published dictionary",
     )
     _add_standalone_argument(check, "check")
-    _add_no_plugins_argument(check)
+    _add_no_plugins_argument(
+        check, "; with --baseline, the baseline's too, reported as the baseline's"
+    )
     check.set_defaults(handler=_command_check)
 
     compare_parser = subparsers.add_parser(
@@ -235,6 +237,11 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
         help="also write the old-to-new name pairs here, for migrating datasets and recordings",
     )
     _add_plugin_argument(compare_parser)
+    _add_no_plugins_argument(
+        compare_parser,
+        "; a description on either side runs none, the baseline's reported as the baseline's, "
+        "and --plugin is refused beside it",
+    )
     _add_policy_arguments(compare_parser)
     compare_parser.set_defaults(handler=_command_compare)
 
@@ -915,7 +922,12 @@ def _command_check(args: argparse.Namespace) -> int:
             # has to say, and a comparison against them would say nothing. The overrides are
             # still held to what did load, so a typo is reported by the run that made it.
             baseline = (
-                read_baseline(args.baseline, bag, getattr(args, "standalone", False))
+                read_baseline(
+                    args.baseline,
+                    bag,
+                    getattr(args, "standalone", False),
+                    run_plugins=not args.no_plugins,
+                )
                 if resolved is not None
                 else None
             )
@@ -946,14 +958,17 @@ def _command_check(args: argparse.Namespace) -> int:
 def _command_compare(args: argparse.Namespace) -> int:
     from ddd.compare import renames
 
+    if args.plugin and args.no_plugins:
+        msg = "--plugin cannot be given together with --no-plugins, which runs no plugin"
+        raise ValueError(msg)
     policy = SeverityPolicy.from_strings(args.severity, strict=args.strict)
     bag = DiagnosticBag(policy)
     # The baseline is a delivery that has already gone out; its own findings are not this
     # run's business. The candidate's are, which is why only it shares the bag - checking a
     # project description and comparing it are both reported by one `ddd compare`.
     with _reported_on_failure(bag, args.format):
-        baseline = read_baseline(args.baseline, bag)
-        candidate = read_dictionary(args.candidate, bag)
+        baseline = read_baseline(args.baseline, bag, run_plugins=not args.no_plugins)
+        candidate = read_dictionary(args.candidate, bag, run_plugins=not args.no_plugins)
         if baseline is None or candidate is None:
             _report(bag, args.format)
             return EXIT_FINDINGS

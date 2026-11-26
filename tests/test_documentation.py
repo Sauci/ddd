@@ -12249,10 +12249,20 @@ class TestARunThatRunsNoPlugin:
                 "dictionary as written rather than being `unknown-extension`.",
                 "under `--no-plugins`, one named as a module is listed only where its name holds "
                 "no dot, since the finder imports the packages above a dotted name to locate it;",
-                "`ddd check`, `ddd list`, `ddd dump` and `ddd sources` take `--no-plugins`, which "
-                "imports none of the plugins a project names and reports each as `plugin-skipped` "
-                "([section 3.11](#311-plugins)); `ddd generate`, `ddd artefacts` and `ddd gui` do "
-                "not, each running what the project names as a build does.",
+                "`ddd check`, `ddd list`, `ddd dump`, `ddd sources` and `ddd compare` take "
+                "`--no-plugins`, which imports none of the plugins a project names and reports "
+                "each as `plugin-skipped` ([section 3.11](#311-plugins)), on both sides of a "
+                "comparison: `ddd check --baseline` applies it to the baseline as to the project, "
+                "a baseline's finding prefixed as its carried errors are and graded as the run "
+                "grades its own, and `ddd compare` refuses `--plugin` beside it as a usage error, "
+                "before anything is read. `ddd generate`, `ddd artefacts` and `ddd gui` do not "
+                "take it, each running what the project names as a build does.",
+                "which beside a project candidate is a usage error, because the project names its "
+                "own, and so is it beside `--no-plugins`, which runs none on either side;",
+                "The one exception is `plugin-skipped`, which a run given `--no-plugins` files for "
+                "a plugin the baseline names ([section 3.11](#311-plugins)): carried and prefixed "
+                "alike, it is graded as this run grades its own findings, since that the plugin "
+                "did not run is this run's doing rather than the baseline's.",
             ),
         ),
         "docs/consistency_checks.rst": (
@@ -12277,12 +12287,13 @@ class TestARunThatRunsNoPlugin:
                 "While a plugin the run names was skipped (``--no-plugins``), which checks it "
                 "registers is not known, and an override naming a plugin's check is accepted "
                 "unverified.",
-                "Only ``--no-plugins`` runs none, on ``ddd check``, ``ddd list``, ``ddd dump`` and "
-                "``ddd sources``: no module a description names is imported, each entry naming "
-                "one is reported as ``plugin-skipped``, a warning, and its blocks are carried into "
-                "the dictionary as written, neither validated nor reported as "
-                "``unknown-extension``. ``ddd generate``, ``ddd artefacts`` and ``ddd gui`` do not "
-                "take it, each running what the project names as a build does.",
+                "Only ``--no-plugins`` runs none, on ``ddd check``, ``ddd list``, ``ddd dump``, "
+                "``ddd sources`` and ``ddd compare``, both sides of a comparison alike: no module "
+                "a description names is imported, each entry naming one is reported as "
+                "``plugin-skipped``, a warning, and its blocks are carried into the dictionary as "
+                "written, neither validated nor reported as ``unknown-extension``. ``ddd "
+                "generate``, ``ddd artefacts`` and ``ddd gui`` do not take it, each running what "
+                "the project names as a build does.",
             ),
         ),
         "README.md": (
@@ -12304,7 +12315,7 @@ class TestARunThatRunsNoPlugin:
     def test_the_commands_that_take_it_are_those_the_pages_name(self) -> None:
         """Decision M7: ``ddd generate``, ``ddd artefacts`` and ``ddd gui`` run what the project
         names, as a build does."""
-        assert commands_with("--no-plugins") == ["check", "dump", "list", "sources"]
+        assert commands_with("--no-plugins") == ["check", "compare", "dump", "list", "sources"]
 
     HELP: ClassVar[str] = (
         "import none of the plugins the project names, reporting each as plugin-skipped, a "
@@ -12312,9 +12323,20 @@ class TestARunThatRunsNoPlugin:
     )
     """What ``--help`` says of the option on every command over a project."""
 
-    @pytest.mark.parametrize("command", ["check", "dump", "list"])
+    @pytest.mark.parametrize("command", ["dump", "list"])
     def test_the_help_says_what_it_does(self, command: str) -> None:
         assert option_help(command, "--no-plugins") == self.HELP
+
+    def test_the_help_of_check_says_it_reaches_the_baseline(self) -> None:
+        assert option_help("check", "--no-plugins") == (
+            f"{self.HELP}; with --baseline, the baseline's too, reported as the baseline's"
+        )
+
+    def test_the_help_of_compare_says_it_reaches_either_side_and_not_plugin(self) -> None:
+        assert option_help("compare", "--no-plugins") == (
+            f"{self.HELP}; a description on either side runs none, the baseline's reported as "
+            "the baseline's, and --plugin is refused beside it"
+        )
 
     def test_the_help_of_sources_says_what_it_leaves_out(self) -> None:
         assert option_help("sources", "--no-plugins") == (

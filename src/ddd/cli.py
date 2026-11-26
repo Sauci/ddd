@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import contextvars
 import errno
 import json
 import os
@@ -208,12 +209,30 @@ def _flush(*streams: _Watched) -> None:
         stream.flush()
 
 
+_VERDICT: contextvars.ContextVar[int] = contextvars.ContextVar("verdict", default=EXIT_OK)
+"""The code the command that runs decided it ends at, for :func:`main` to end a run at when its
+output meets a closed pipe."""
+
+
+def _verdict(code: int) -> int:
+    """Decide that the run ends at ``code``, and return it.
+
+    Called before the command prints anything that can meet a closed pipe - its report, its
+    listing, its dictionary - so that a reader who stops early takes nothing of the verdict with
+    them: ``ddd check p --format json | head -1`` still fails a project with errors under
+    ``set -o pipefail``. A command that judges nothing decides nothing, and ends at 0.
+    """
+    _VERDICT.set(code)
+    return code
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Entry point of the ``ddd`` command; returns the process exit code."""
     _write_utf8(sys.stdout)
     _write_utf8(sys.stderr)
     arguments = list(sys.argv[1:] if argv is None else argv)
     parser = _build_parser(_plugin_artefact(arguments))
+    _VERDICT.set(EXIT_OK)
     with _watching() as watched:
         try:
             try:
@@ -238,9 +257,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         except BrokenPipeError:
             # `ddd schema component | head -1`: the reader stopped reading, which is what a pager
             # and `head` do, and nothing about it is this run's error - reported as a usage error
-            # it failed a paging script on the tool's side under `set -o pipefail`. What either
+            # it failed a paging script on the tool's side under `set -o pipefail`. Nor does it
+            # say anything of the project: the run ends at what its command decided before it
+            # printed (`_verdict`), so a check that found errors fails however early its reader
+            # stopped. A stderr that lost its reader is never 0, since the report owed there was
+            # not made: 1 where an error stands to say so, and 2 where none does. What either
             # stream still holds goes to the null device as the run ends (`_watching`).
-            return EXIT_OK
+            verdict = _VERDICT.get()
+            stderr = watched[1]
+            if stderr.lost_its_reader and verdict != EXIT_FINDINGS:
+                return EXIT_USAGE
+            return verdict
         except UnknownCheckError as error:
             # UnknownCheckError is a ValueError, listed first only to keep its own wording apart
             # from the clause below; being one, `_reported_on_failure` already covers it too.
@@ -1037,9 +1064,10 @@ def _command_check(args: argparse.Namespace) -> int:
                     location=where(args.project),
                     baseline_location=where(args.baseline),
                 )
+    code = _verdict(EXIT_FINDINGS if bag.has_errors else EXIT_OK)
     _report(bag, args.format)
     if args.format == "json":
-        return EXIT_FINDINGS if bag.has_errors else EXIT_OK
+        return code
     if dictionary is not None and not len(bag):
         count = len(dictionary.listed)
         components = len(dictionary.components)
@@ -1049,7 +1077,7 @@ def _command_check(args: argparse.Namespace) -> int:
             f"{'is' if count == 1 else 'are'} consistent",
             file=sys.stderr,
         )
-    return EXIT_FINDINGS if bag.has_errors else EXIT_OK
+    return code
 
 
 def _command_compare(args: argparse.Namespace) -> int:
@@ -1067,8 +1095,9 @@ def _command_compare(args: argparse.Namespace) -> int:
         baseline = read_baseline(args.baseline, bag, run_plugins=not args.no_plugins)
         candidate = read_dictionary(args.candidate, bag, run_plugins=not args.no_plugins)
         if baseline is None or candidate is None:
+            code = _verdict(EXIT_FINDINGS)
             _report(bag, args.format)
-            return EXIT_FINDINGS
+            return code
 
         plugins = candidate.plugins
         if args.plugin:
@@ -1106,6 +1135,7 @@ def _command_compare(args: argparse.Namespace) -> int:
                     f"{error.strerror or error}"
                 )
                 raise OSError(msg) from None
+    code = _verdict(EXIT_FINDINGS if bag.has_errors else EXIT_OK)
     _report(bag, args.format)
     if args.format != "json":
         # The file names, not the project names: two deliveries of one project share a name.
@@ -1118,7 +1148,7 @@ def _command_compare(args: argparse.Namespace) -> int:
         if candidate == baseline:
             candidate, baseline = args.candidate.as_posix(), args.baseline.as_posix()
         print(f"{candidate} {verdict} replace {baseline}", file=sys.stderr)
-    return EXIT_FINDINGS if bag.has_errors else EXIT_OK
+    return code
 
 
 def _check_address_coverage(
@@ -1436,8 +1466,9 @@ def _command_generate(args: argparse.Namespace) -> int:
 
     resolved, bag = _analyze(args)
     if resolved is None:
+        code = _verdict(EXIT_FINDINGS)
         _report(bag, args.format)
-        return EXIT_FINDINGS
+        return code
     dictionary = resolved.dictionary
 
     with _reported_on_failure(bag, args.format):
@@ -1570,8 +1601,9 @@ def _command_generate(args: argparse.Namespace) -> int:
                 f"cmake), and an image states its own",
             )
         if bag.has_errors and not args.force:
+            code = _verdict(EXIT_FINDINGS)
             _report(bag, args.format)
-            return EXIT_FINDINGS
+            return code
 
         backends: list[Backend] = []
         if args.render_c:
@@ -1662,6 +1694,7 @@ def _command_generate(args: argparse.Namespace) -> int:
             )
             raise OSError(describe_write_failure(error, target)) from None
 
+    code = _verdict(EXIT_FINDINGS if bag.has_errors else EXIT_OK)
     if args.format == "json":
         payload = _diagnostics_payload(bag)
         payload["generated"] = [
@@ -1675,16 +1708,18 @@ def _command_generate(args: argparse.Namespace) -> int:
         for result in results:
             shown = _displayed_path(result.path, args.output_dir)
             print(_written(result.status, shown, prefix), file=sys.stderr)
-    return EXIT_FINDINGS if bag.has_errors else EXIT_OK
+    return code
 
 
 def _command_list(args: argparse.Namespace) -> int:
     resolved, bag = _analyze(args)
     if resolved is None:
+        code = _verdict(EXIT_FINDINGS)
         _report(bag, args.format)
-        return EXIT_FINDINGS
+        return code
     dictionary = resolved.dictionary
 
+    code = _verdict(EXIT_FINDINGS if bag.has_errors else EXIT_OK)
     if args.format == "json":
         print(
             json.dumps(
@@ -1715,7 +1750,7 @@ def _command_list(args: argparse.Namespace) -> int:
         # every finding of the run - which is not the order anybody reads a log in.
         sys.stdout.flush()
         _report(bag, args.format)
-    return EXIT_FINDINGS if bag.has_errors else EXIT_OK
+    return code
 
 
 def _command_dump(args: argparse.Namespace) -> int:
@@ -1730,8 +1765,10 @@ def _command_dump(args: argparse.Namespace) -> int:
     """
     resolved, bag = _analyze(args, stream=sys.stderr)
     if resolved is None:
+        code = _verdict(EXIT_FINDINGS)
         _report(bag, args.format, stream=sys.stderr)
-        return EXIT_FINDINGS
+        return code
+    code = _verdict(EXIT_FINDINGS if bag.has_errors else EXIT_OK)
     if args.output is None:
         print(_dictionary_text(resolved.dictionary), end="")
         # The findings go to stderr, the dictionary to stdout, and `ddd dump p.ddd.json > log
@@ -1741,7 +1778,7 @@ def _command_dump(args: argparse.Namespace) -> int:
         _report(bag, args.format, stream=sys.stderr)
     else:
         _write_dictionary(resolved, args.output, bag, args.format)
-    return EXIT_FINDINGS if bag.has_errors else EXIT_OK
+    return code
 
 
 def _command_tool_from_elf(args: argparse.Namespace) -> int:
@@ -1787,16 +1824,18 @@ def _command_tool_from_elf(args: argparse.Namespace) -> int:
         bag=bag,
     )
     if bag.has_errors and not args.force:
+        code = _verdict(EXIT_FINDINGS)
         _report(bag, args.format, stream=sys.stderr)
-        return EXIT_FINDINGS
+        return code
     text = document_text(description, component)
+    code = _verdict(EXIT_FINDINGS if bag.has_errors else EXIT_OK)
     if args.output is None:
         print(text, end="")
         sys.stdout.flush()
         _report(bag, args.format, stream=sys.stderr)
     else:
         _write_output(args.output, lambda: text, bag, args.format, resolve_path(args.image))
-    return EXIT_FINDINGS if bag.has_errors else EXIT_OK
+    return code
 
 
 def _write_dictionary(
@@ -1878,10 +1917,11 @@ def _command_id(args: argparse.Namespace) -> int:
             skipped.append((path, "cannot be written, skipped"))
         else:
             written += count
+    code = _verdict(EXIT_FINDINGS if skipped else EXIT_OK)
     for path, reason in skipped:
         print(f"{path}: {reason}", file=sys.stderr)
     print(f"wrote {written} id{'' if written == 1 else 's'}", file=sys.stderr)
-    return EXIT_FINDINGS if skipped else EXIT_OK
+    return code
 
 
 def schema_models() -> dict[str, type[BaseModel]]:
@@ -2156,6 +2196,7 @@ def _command_artefacts(args: argparse.Namespace) -> int:
         # project's own templates render, so the note says where its output comes from.
         silent = [plugin.name for plugin in plugins if plugin.backend is None]
 
+    code = _verdict(EXIT_FINDINGS if unreadable else EXIT_OK)
     if args.format == "json":
         payload = {
             "artefacts": listed,
@@ -2163,10 +2204,10 @@ def _command_artefacts(args: argparse.Namespace) -> int:
             **_diagnostics_payload(bag),
         }
         print(json.dumps(payload, indent=2))
-        return EXIT_FINDINGS if unreadable else EXIT_OK
+        return code
     if unreadable:
         _report(bag, "text")
-        return EXIT_FINDINGS
+        return code
     width = max(len(entry["name"]) for entry in listed)
     for entry in listed:
         print(f"{entry['name']:<{width}}  {entry['kind']}")
@@ -2186,7 +2227,7 @@ def _command_artefacts(args: argparse.Namespace) -> int:
     # in a buffered pipe.
     sys.stdout.flush()
     _report(bag, "text")
-    return EXIT_OK
+    return code
 
 
 def _command_sources(args: argparse.Namespace) -> int:
@@ -2214,6 +2255,7 @@ def _command_sources(args: argparse.Namespace) -> int:
     workspace = load_workspace(
         args.project, bag, plugin_defects_are_findings=True, run_plugins=not args.no_plugins
     )
+    code = _verdict(EXIT_FINDINGS if workspace is None else EXIT_OK)
     if args.format == "json":
         payload = {
             "sources": [path.as_posix() for path in workspace.sources()]
@@ -2222,15 +2264,15 @@ def _command_sources(args: argparse.Namespace) -> int:
             **_diagnostics_payload(bag),
         }
         print(json.dumps(payload, indent=2))
-        return EXIT_FINDINGS if workspace is None else EXIT_OK
+        return code
     if workspace is None:
         _report(bag, "text")
-        return EXIT_FINDINGS
+        return code
     for path in workspace.sources():
         print(path.as_posix())
     sys.stdout.flush()
     _report(bag, "text")
-    return EXIT_OK
+    return code
 
 
 def _command_checks(args: argparse.Namespace) -> int:

@@ -3877,6 +3877,128 @@ class TestAClosedPipe:
         assert (tmp_path / "spare").read_bytes() == b""
         assert capsys.readouterr().err == ""
 
+    @pytest.mark.parametrize("arguments", [["--format", "json"], []])
+    def test_a_closed_pipe_keeps_the_verdict_of_a_failing_check(
+        self, arguments: list[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr("sys.stdout", self._Closed())
+        monkeypatch.setattr("sys.stderr", self._Closed())
+        assert main(["check", str(INCONSISTENT), *arguments]) == EXIT_FINDINGS
+
+    @pytest.mark.parametrize(
+        ("project", "code"),
+        [(INCONSISTENT, EXIT_FINDINGS), (DEMO, EXIT_OK)],
+        ids=["errors", "clean"],
+    )
+    def test_a_reader_of_stdout_that_stops_leaves_the_verdict_in_silence(
+        self,
+        project: Path,
+        code: int,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """``ddd check p --format json | head -1`` ended at 0, so under ``set -o pipefail`` a gate
+        passed a project with errors, the likelier the more it had: a report that outgrows the
+        pipe is the one cut short. A clean one still ends at 0, as a pager over it should."""
+        monkeypatch.setattr("sys.stdout", self._Closed())
+        assert main(["check", str(project), "--format", "json"]) == code
+        assert capsys.readouterr().err == ""
+
+    @pytest.mark.parametrize(
+        ("project", "code"),
+        [(INCONSISTENT, EXIT_FINDINGS), (DEMO, EXIT_USAGE)],
+        ids=["errors", "clean"],
+    )
+    @pytest.mark.parametrize("closed", [_Closed, _Invalid], ids=["a closed pipe", "on windows"])
+    def test_a_closed_stderr_is_never_0(
+        self,
+        closed: type[_Closed],
+        project: Path,
+        code: int,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """The text report goes to stderr, and a clean check's is its ``ok:`` line. A run that
+        could not make its report has not said that it found nothing: it ends at 1 where an
+        error stands, and at 2, what a run that could not do as asked ends at, where none does.
+        """
+        monkeypatch.setattr(sys, "platform", "win32")
+        monkeypatch.setattr("sys.stderr", closed())
+        assert main(["check", str(project)]) == code
+        assert capsys.readouterr().out == ""
+
+    VERDICTS: ClassVar[dict[str, list[str]]] = {
+        "compare, a side unread": ["compare", "{tmp}/gone.ddd.json", "{inconsistent}"],
+        "compare": ["compare", "{inconsistent}", "{inconsistent}"],
+        "generate, a project unread": ["generate", "c", "{tmp}/gone.ddd.json", "-t", "{c}"],
+        "generate, a project with errors": ["generate", "c", "{inconsistent}", "-t", "{c}"],
+        "generate --force": ["generate", "c", "{inconsistent}", "-t", "{c}", "--force"],
+        "list, a project unread": ["list", "{tmp}/gone.ddd.json"],
+        "list": ["list", "{inconsistent}"],
+        "dump, a project unread": ["dump", "{tmp}/gone.ddd.json"],
+        "dump": ["dump", "{inconsistent}"],
+        "from-elf, an error": ["tool", "from-elf", "{image}", "Cal_Gain", "Type_Pointer"],
+        "from-elf --force": ["tool", "from-elf", "{image}", "Cal_Gain", "Type_Pointer", "--force"],
+        "id": ["id", "--assign", "{tmp}/broken.ddd.json"],
+        "sources, a project unread": ["sources", "{tmp}/gone.ddd.json"],
+        "artefacts, a project unread": ["artefacts", "{tmp}/gone.ddd.json"],
+    }
+    """Each place a command ends with findings, by the command line that reaches it."""
+
+    @pytest.mark.parametrize("output_format", ["text", "json"])
+    @pytest.mark.parametrize("reached", sorted(VERDICTS))
+    def test_each_command_keeps_the_verdict_it_decided(
+        self, reached: str, output_format: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A command decides the code it ends at before it prints what can meet a closed pipe,
+        so a reader who stops early takes nothing of it, whichever way the command ends."""
+        (tmp_path / "broken.ddd.json").write_text("not json", encoding="utf-8")
+        places = {"tmp": tmp_path.as_posix(), "inconsistent": str(INCONSISTENT)}
+        places |= {"c": str(TEMPLATES), "image": str(X86)}
+        arguments = [argument.format(**places) for argument in self.VERDICTS[reached]]
+        if arguments[0] == "generate":
+            arguments += ["-o", str(tmp_path / "generated")]
+        if arguments[0] != "id":
+            arguments += ["--format", output_format]
+        monkeypatch.setattr("sys.stdout", self._Closed())
+        monkeypatch.setattr("sys.stderr", self._Closed())
+        assert main(arguments) == EXIT_FINDINGS
+
+    def test_a_report_refused_at_the_last_flush_is_never_0(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A stderr that holds what the run printed until it is flushed meets the closed pipe at
+        the run's last flush: answered there, inside the run, a clean check whose report was
+        never made ends at 2 rather than at the 0 the command returned."""
+        spare = os.open(tmp_path / "spare", os.O_WRONLY | os.O_CREAT)
+        try:
+            monkeypatch.setattr("sys.stderr", self._Held(spare))
+            assert main(["check", str(DEMO)]) == EXIT_USAGE
+        finally:
+            os.close(spare)
+        assert capsys.readouterr().out == ""
+
+    def test_a_verdict_ends_with_its_run(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """One process may run ``main`` more than once, as this suite does: a check that found
+        errors leaves no verdict behind for a later run that decides none."""
+        assert main(["check", str(INCONSISTENT), "--format", "json"]) == EXIT_FINDINGS
+        monkeypatch.setattr("sys.stdout", self._Closed())
+        assert main(["schema", "component"]) == EXIT_OK
+        assert capsys.readouterr().err == ""
+
+    def test_the_streams_are_given_back_as_they_were_handed_over(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``main`` watches both streams while it runs, and whoever called it gets back the very
+        streams they set, closed pipe or not."""
+        stdout, stderr = self._Closed(), sys.stderr
+        monkeypatch.setattr("sys.stdout", stdout)
+        assert main(["schema", "component"]) == EXIT_OK
+        assert sys.stdout is stdout
+        assert sys.stderr is stderr
+
     def test_what_argparse_prints_is_answered_inside_the_run(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -4038,8 +4160,25 @@ class TestAClosedPipeInAProcessOfItsOwn:
             (["checks"], "stdout", EXIT_OK),
             (["schema", "component"], "stdout", EXIT_OK),
             (["check", str(DEMO), "--format", "json"], "stdout", EXIT_OK),
+            (["check", str(INCONSISTENT), "--format", "json"], "stdout", EXIT_FINDINGS),
+            (["list", str(INCONSISTENT)], "stdout", EXIT_FINDINGS),
+            (["dump", str(INCONSISTENT)], "stdout", EXIT_FINDINGS),
+            (["check", str(INCONSISTENT)], "stderr", EXIT_FINDINGS),
+            (["check", str(DEMO)], "stderr", EXIT_USAGE),
         ],
-        ids=["--version", "--help", "cmake-dir", "checks", "schema", "a clean check in json"],
+        ids=[
+            "--version",
+            "--help",
+            "cmake-dir",
+            "checks",
+            "schema",
+            "a clean check in json",
+            "a failing check in json",
+            "list",
+            "dump",
+            "a failing check's report",
+            "a clean check's report",
+        ],
     )
     def test_a_reader_gone_before_the_first_line_leaves_the_code_to_the_run(
         self, arguments: list[str], stream: str, code: int
@@ -4047,6 +4186,43 @@ class TestAClosedPipeInAProcessOfItsOwn:
         ran = self.with_a_reader_gone(arguments, stream)
         assert ran.returncode == code, ran.stderr
         assert ran.stderr in (None, b"")
+
+    @pytest.fixture
+    def many(self, tmp_path: Path) -> Path:
+        """A project of 4,000 errors, whose report outgrows any pipe and any buffer: its reader
+        stops while the run still has most of it to write."""
+        inputs = [declare("input", f"Input{index}") for index in range(4000)]
+        write_tree(
+            tmp_path,
+            {"p.ddd.json": project("P", "c.ddd.json"), "c.ddd.json": component("C", *inputs)},
+        )
+        return tmp_path / "p.ddd.json"
+
+    @pytest.mark.parametrize(
+        ("output_format", "stream"),
+        [("json", "stdout"), ("text", "stderr")],
+        ids=["json on stdout", "text on stderr"],
+    )
+    def test_a_reader_that_stops_after_one_line_keeps_the_verdict(
+        self, many: Path, output_format: str, stream: str
+    ) -> None:
+        """``ddd check p --format json | head -1`` and ``ddd check p 2>&1 | head -1``. The text
+        report cut on stderr ended at 0 in process and at 120 in a process of its own, where
+        what stderr still held failed again as the interpreter ended."""
+        with subprocess.Popen(
+            [sys.executable, "-m", "ddd", "check", str(many), "--format", output_format],
+            stdout=subprocess.PIPE if stream == "stdout" else subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            cwd=EXAMPLES.parent,
+            env=_from_these_sources(),
+        ) as process:
+            reader = process.stdout if stream == "stdout" else process.stderr
+            assert reader is not None
+            assert process.stderr is not None
+            assert reader.readline()
+            reader.close()
+            said = b"" if stream == "stderr" else process.stderr.read()
+            assert (process.wait(timeout=120), said) == (EXIT_FINDINGS, b"")
 
 
 class TestATargetWithNoName:

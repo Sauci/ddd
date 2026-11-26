@@ -3145,6 +3145,165 @@ class TestAPluginThatPrints:
         assert json.loads(target.read_text(encoding="utf-8"))["format"] == DICTIONARY_FORMAT
 
 
+IMPORT_PRINT = TAG_PLUGIN.replace(
+    "\n\nclass Tag(BaseModel):", '\nprint("NOISY-IMPORT")\n\n\nclass Tag(BaseModel):', 1
+)
+"""A plugin that prints as its module body runs, as an imported library's banner does."""
+
+MODEL_PRINT = (
+    TAG_PLUGIN.replace(
+        "from pydantic import BaseModel, ConfigDict\n",
+        "from pydantic import BaseModel, ConfigDict, field_validator, model_validator\n",
+        1,
+    )
+    .replace(
+        "    tag: str\n\n\nclass Settings",
+        "    tag: str\n\n"
+        '    @field_validator("tag")\n'
+        "    @classmethod\n"
+        "    def noisy(cls, value: str) -> str:\n"
+        '        print("NOISY-FIELD")\n'
+        "        return value\n\n\n"
+        "class Settings",
+        1,
+    )
+    .replace(
+        '    prefix: str = ""\n',
+        '    prefix: str = ""\n\n'
+        '    @model_validator(mode="after")\n'
+        "    def noisy(self) -> Settings:\n"
+        '        print("NOISY-MODEL")\n'
+        "        return self\n\n"
+        "    def __copy__(self) -> Settings:\n"
+        '        print("NOISY-COPY")\n'
+        "        return self\n",
+        1,
+    )
+)
+"""A plugin whose models print: a validator of the block of an object, a validator of the
+settings, and the copy a hook is handed of them."""
+
+SCHEMA_PRINT = TAG_PLUGIN.replace(
+    '    model_config = ConfigDict(frozen=True, extra="forbid")\n    tag: str\n',
+    '    model_config = ConfigDict(frozen=True, extra="forbid")\n'
+    "    tag: str\n\n"
+    "    @classmethod\n"
+    "    def model_json_schema(cls, *arguments, **keywords):\n"
+    '        print("NOISY-SCHEMA")\n'
+    "        return super().model_json_schema(*arguments, **keywords)\n",
+    1,
+)
+"""A plugin whose model prints as its schema is rendered."""
+
+PRINTERS = {
+    "at import": (IMPORT_PRINT, ("NOISY-IMPORT",)),
+    "in a validator": (MODEL_PRINT, ("NOISY-FIELD", "NOISY-MODEL", "NOISY-COPY")),
+}
+"""Plugins that print where no hook runs, each with what it prints."""
+
+
+class TestAPluginThatPrintsOutsideItsHooks:
+    """A ``print`` as the module runs, or in a validator of one of its models, landed on stdout,
+    ahead of the dictionary ``dump`` prints and of the report of ``--format json``, as the
+    first line of ``sources`` and on the stdout ``dump -o`` promises empty. It goes to stderr,
+    as a hook's does."""
+
+    @pytest.fixture(params=sorted(PRINTERS))
+    def noisy(self, request: pytest.FixtureRequest, tree: Path) -> tuple[str, tuple[str, ...]]:
+        source, markers = PRINTERS[request.param]
+        write_plugin(tree / "tools", source=source)
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", plugins=["tools/tag_plugin.py"]),
+                "a.ddd.json": component(
+                    "A", declare("local", "X", extensions={"tag": {"tag": "zz"}})
+                ),
+            },
+        )
+        return str(tree / "project.ddd.json"), markers
+
+    def test_check_json_carries_the_document_alone(
+        self, noisy: tuple[str, tuple[str, ...]], capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        root, markers = noisy
+        assert main(["check", root, "-W", "missing-id=ignore", "--format", "json"]) == EXIT_OK
+        captured = capsys.readouterr()
+        assert json.loads(captured.out)["summary"] == {"error": 0, "warning": 0, "info": 0}
+        for marker in markers:
+            assert marker in captured.err
+
+    def test_dump_carries_the_dictionary_alone(
+        self, noisy: tuple[str, tuple[str, ...]], capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        root, markers = noisy
+        assert main(["dump", root, "-W", "missing-id=ignore"]) == EXIT_OK
+        captured = capsys.readouterr()
+        assert json.loads(captured.out)["format"] == DICTIONARY_FORMAT
+        for marker in markers:
+            assert marker in captured.err
+
+    def test_dump_to_a_file_leaves_stdout_empty(
+        self,
+        noisy: tuple[str, tuple[str, ...]],
+        tree: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        root, markers = noisy
+        target = tree / "out.json"
+        assert main(["dump", root, "-o", str(target), "-W", "missing-id=ignore"]) == EXIT_OK
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        for marker in markers:
+            assert marker in captured.err
+
+    def test_sources_lists_the_files_alone(
+        self, noisy: tuple[str, tuple[str, ...]], capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        root, markers = noisy
+        assert main(["sources", root]) == EXIT_OK
+        captured = capsys.readouterr()
+        assert sorted(captured.out.splitlines()) == sorted(
+            (Path(root).parent / name).resolve().as_posix()
+            for name in ("project.ddd.json", "a.ddd.json", "tools/tag_plugin.py")
+        )
+        # No hook runs under ``sources``, so no settings are copied: what it prints is the
+        # import and the validations.
+        assert markers[0] in captured.err
+
+    def test_a_plugin_named_as_a_module_is_held_to_it_too(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_plugin(tree / "site", "banner_plugin.py", IMPORT_PRINT)
+        monkeypatch.syspath_prepend(str(tree / "site"))
+        write_tree(tree, {"p.ddd.json": project("P", plugins=["banner_plugin"])})
+        assert main(["sources", str(tree / "p.ddd.json")]) == EXIT_OK
+        captured = capsys.readouterr()
+        assert captured.out.splitlines()[0] == (tree / "p.ddd.json").resolve().as_posix()
+        assert "NOISY-IMPORT" in captured.err
+
+    def test_the_rendering_of_a_schema_is_held_to_it_too(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_plugin(tree / "tools", source=SCHEMA_PRINT)
+        monkeypatch.chdir(tree)
+        assert main(["schema", "component", "--plugin", "tools/tag_plugin.py"]) == EXIT_OK
+        captured = capsys.readouterr()
+        assert json.loads(captured.out)["title"]
+        assert "NOISY-SCHEMA" in captured.err
+
+    def test_stdout_is_given_back_when_an_import_fails(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_plugin(tree / "tools", source='print("NOISY-IMPORT")\nraise RuntimeError("no")\n')
+        with pytest.raises(PluginInvalidError):
+            load_plugin(str(tree / "tools" / "tag_plugin.py"), tree)
+        sys.stdout.write("AFTER")
+        captured = capsys.readouterr()
+        assert captured.out == "AFTER"
+        assert "NOISY-IMPORT" in captured.err
+
+
 MUTATING_PLUGIN = TAG_PLUGIN.replace(
     "def check(context: CheckContext) -> None:\n",
     "def check(context: CheckContext) -> None:\n"

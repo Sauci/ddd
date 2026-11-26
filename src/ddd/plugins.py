@@ -260,6 +260,27 @@ def _module_name(path: Path) -> str:
     return f"ddd_plugin_{re.sub(r'\W', '_', path.stem)}_{digest}"
 
 
+@contextlib.contextmanager
+def _stdout_on_stderr() -> Iterator[None]:
+    """Bind ``sys.stdout`` to ``sys.stderr`` while a plugin's own code runs.
+
+    stdout is a document wherever DDD writes one there - the ``--format json`` report, the
+    dictionary ``dump`` prints, the list ``sources`` prints - and ``dump -o`` promises it empty,
+    so a ``print`` of the plugin's would otherwise be read as part of one. It is redirected
+    rather than swallowed: what a plugin says is still its author's to read, on the stream every
+    other word this tool writes about a run goes to. Every place DDD runs a plugin's code is
+    held to it: the import of the module, each validation against, and copy of, one of its
+    models, the rendering of their schema, and each hook (:func:`_call`). ``sys.stderr`` is read
+    on entry, so a caller that replaced either stream is followed rather than bypassed.
+
+    ``contextlib.redirect_stdout`` rebinds ``sys.stdout`` for every thread, not only the
+    caller's, for as long as it lasts, and rebinds no more: a child process, ``os.write(1, ...)``
+    and ``sys.__stdout__`` are the plugin's to keep off stdout.
+    """
+    with contextlib.redirect_stdout(sys.stderr):
+        yield
+
+
 def _load_from_path(spelling: str, base: Path) -> Any:
     path = _path_of(spelling, base)
     if not path.is_file():
@@ -287,7 +308,8 @@ def _load_from_path(spelling: str, base: Path) -> Any:
         # does not hold - a restart asked for in vain - and never a change it holds told as none.
         # Inside the guard, so that a file that cannot be read fails to import as it always has.
         source = path.read_bytes()
-        spec.loader.exec_module(module)
+        with _stdout_on_stderr():
+            spec.loader.exec_module(module)
     except (Exception, SystemExit) as error:
         # Not left cached half-run: a second load must retry it and report again, rather than
         # hand out a module whose body never finished. A plugin body that calls sys.exit(...)
@@ -314,7 +336,8 @@ def _load_from_path(spelling: str, base: Path) -> Any:
 
 def _import(spelling: str) -> Any:
     try:
-        return importlib.import_module(spelling)
+        with _stdout_on_stderr():
+            return importlib.import_module(spelling)
     except ModuleNotFoundError as error:
         # The module itself is missing, or something it imports is: the first is "not
         # found", the second is a plugin that exists and does not work. The boundary is the
@@ -430,7 +453,8 @@ def guarding_plugin_model(name: str, what: str) -> Iterator[None]:
     ``KeyboardInterrupt`` is deliberately re-raised, exactly as in :func:`_call`.
     """
     try:
-        yield
+        with _stdout_on_stderr():
+            yield
     except (ValidationError, KeyboardInterrupt):
         raise
     except BaseException as error:
@@ -632,7 +656,7 @@ def _call[C, R](plugin: Plugin, hook: str, function: Callable[[C], R], context: 
         # swallowed: what a plugin says is still its author's to read, on the stream every
         # other word this tool writes about a run goes to. `sys.stderr` is read here, at each
         # call, so a caller that replaced either stream is followed rather than bypassed.
-        with contextlib.redirect_stdout(sys.stderr):
+        with _stdout_on_stderr():
             return function(context)
     except KeyboardInterrupt:
         # The user's own Ctrl-C, and never the plugin's error to be blamed for: it has to

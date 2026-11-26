@@ -4180,6 +4180,63 @@ class TestAnArtefactThatIsAFileTheRunRead:
         assert target.exists()
 
 
+class TestARecordOrASchemaThatIsADescription:
+    """``build-info -o`` and ``schema -o`` overwrite no description, and ``build-info -o`` is
+    written as a dictionary is: staged, and left alone when nothing changes."""
+
+    FILES = TestAnArtefactThatIsAFileTheRunRead.FILES
+
+    def made(self, tree: Path) -> Path:
+        write_tree(tree, self.FILES)
+        return tree / "project.ddd.json"
+
+    refused = TestAnArtefactThatIsAFileTheRunRead.refused
+
+    @pytest.mark.parametrize("name", ["project.ddd.json", "project.json"])
+    def test_a_build_record_over_the_description_it_names_is_refused(
+        self, name: str, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Whatever the description is called: the file named is the one refused."""
+        self.made(tree)
+        named = tree / name
+        named.write_text(named.read_text(encoding="utf-8") if named.exists() else "{}\n", "utf-8")
+        self.refused(["build-info", str(named), "-o", str(named)], named, capsys)
+
+    @pytest.mark.parametrize("command", ["build-info", "schema"])
+    def test_a_description_name_is_no_target_for_a_record_or_a_schema(
+        self, command: str, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Neither reads the description it overwrites, so the name alone refuses it."""
+        write_tree(tree, self.FILES)
+        target = tree / "A.ddd.json"
+        before = target.read_bytes()
+        arguments = (
+            ["build-info", str(tree / "project.ddd.json")]
+            if command == "build-info"
+            else [
+                "schema",
+                "component",
+            ]
+        )
+        assert main([*arguments, "-o", str(target)]) == EXIT_USAGE
+        assert f"-o names a description, '{target.as_posix()}'" in capsys.readouterr().err
+        assert target.read_bytes() == before
+
+    def test_a_build_record_is_written_like_a_dictionary_and_left_alone_when_unchanged(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        root = self.made(tree)
+        target = tree / "build" / "ddd-build.json"
+        assert main(["build-info", str(root), "-o", str(target)]) == EXIT_OK
+        assert capsys.readouterr().err == f"wrote       {target.as_posix()} (created)\n"
+        stamp = target.stat().st_mtime_ns - 10**10
+        os.utime(target, ns=(stamp, stamp))
+        assert main(["build-info", str(root), "-o", str(target)]) == EXIT_OK
+        assert capsys.readouterr().err == f"unchanged   {target.as_posix()}\n"
+        assert target.stat().st_mtime_ns == stamp
+        assert [path.name for path in target.parent.iterdir()] == ["ddd-build.json"]
+
+
 def test_assigning_ids_writes_one_per_producing_declaration(tree, capsys):
     write_tree(
         tree,

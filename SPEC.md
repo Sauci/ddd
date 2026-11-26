@@ -2584,7 +2584,9 @@ the one it needs is asked for only if it stayed, and a run left with nothing to 
 refused rather than reporting success. Every artefact also takes `--dictionary FILE`, a path
 relative to the working directory, which writes the resolved dictionary - the text `ddd dump`
 prints - in the same write as the artefacts, all of them or none; it counts as something to
-write, and a path an artefact of the run is written to is refused, as is one the run read;
+write, and a path an artefact of the run is written to is refused, as is one the run read - a
+description or a plugin, the image, the address map, the a2l module fragment or any file under
+the template directory - a dry run refusing it as a run does;
 [section 5](#5-generated-artefacts)); listing the resolved data objects (`ddd list`, as a
 table whose rows are sorted by variable name, stating the physical reading of a stated
 initial value beside the raw one, or, in JSON, as an object carrying `project`,
@@ -2706,7 +2708,9 @@ that raises, an override naming a plugin check that no loaded plugin registers, 
 is held until the project is read ([section 3.11](#311-plugins)), an address map or an
 image that cannot be read, a `--renames` file, a dumped dictionary or an artefact that cannot be
 written, an output path naming a file the run itself read - `ddd dump -o`,
-`ddd compare --renames` and `ddd generate --dictionary` each refuse one, naming it, since
+`ddd compare --renames`, `ddd generate --dictionary` and an artefact of `ddd generate` each
+refuse one, as `ddd build-info -o` refuses the description it names, and `ddd schema -o` and
+`ddd build-info -o` refuse any path named `*.ddd.json`, naming it, since
 nothing DDD writes is ever a file it read - a `ddd compare --plugin` refused beside a
 *candidate* given as a project description, which names its own plugins
 ([section 3.11](#311-plugins)), or a run that would write nothing - is printed after the

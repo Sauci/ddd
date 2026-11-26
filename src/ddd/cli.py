@@ -1882,7 +1882,7 @@ def _command_build_info(args: argparse.Namespace) -> int:
     # Built rather than recorded blindly: a typo in a severity override would otherwise be
     # copied into the file as a policy nobody can apply, and would surface at build time
     # instead of here, while the project is being configured.
-    from ddd.backends import describe_write_failure
+    from ddd.backends import GeneratedFile, describe_write_failure, write
     from ddd.build_info import BuildInfo, build_info_text
 
     SeverityPolicy.from_strings(args.severity, strict=args.strict)
@@ -1894,14 +1894,19 @@ def _command_build_info(args: argparse.Namespace) -> int:
         strict=args.strict,
         severity=tuple(args.severity),
     )
+    # The description it names is a file this command refers to rather than reads, and it is
+    # the one it must not replace; any other description is refused by its name.
+    _refuse_a_directory(args.output, "-o")
+    _refuse_a_source(args.output, "-o", args.project)
+    _refuse_a_description_name(args.output)
     try:
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        # newline="" for the same reason the schemas use it: a file committed or compared
-        # across platforms must not differ by its line endings alone.
-        args.output.write_text(build_info_text(info), encoding="utf-8", newline="")
+        # The writer a dumped dictionary goes through: staged beside the target, the same bytes
+        # on every platform, and left untouched when the record would not change, so that a build
+        # reading it does not run again for nothing.
+        (result,) = write([GeneratedFile(args.output, build_info_text(info))])
     except OSError as error:
         raise OSError(describe_write_failure(error, args.output.as_posix())) from None
-    print(f"wrote {args.output.as_posix()}", file=sys.stderr)
+    print(_written(result.status, args.output.as_posix()), file=sys.stderr)
     return EXIT_OK
 
 
@@ -1911,6 +1916,7 @@ def _write_schema(path: Path, kind: str, plugins: Sequence[Plugin] = ()) -> None
     # is the mkdir talking about a file the caller named as a directory, and says neither.
     from ddd.backends import describe_write_failure
 
+    _refuse_a_description_name(path)
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         # newline="" keeps the line endings as written on every platform, the same discipline
@@ -2223,6 +2229,24 @@ def _files_the_run_read(
     if template_dir is not None:
         reads.update(resolve_path(path) for path in template_dir.rglob("*") if path.is_file())
     return frozenset(reads)
+
+
+def _refuse_a_description_name(path: Path) -> None:
+    """Refuse an output path named as a description, for the commands that never read one.
+
+    ``ddd schema component -o a.ddd.json`` and ``ddd build-info P -o a.ddd.json`` replaced a
+    hand-written description with a schema or a record, and neither had read the file to be
+    compared with. No schema (``ddd_<kind>.schema.json``) and no record (``ddd-build.json``) is
+    named so, which is what makes the name enough to refuse.
+    """
+    from ddd.loading import DDD_SUFFIX
+
+    if path.name.lower().endswith(DDD_SUFFIX):
+        msg = (
+            f"-o names a description, '{path.as_posix()}', and what this command writes is "
+            f"not one; give it another name"
+        )
+        raise ValueError(msg)
 
 
 def _refuse_a_source(

@@ -175,8 +175,11 @@ The exit code is the same everywhere, which lets a build system treat DDD like a
        plugin hook that raises, an override naming a plugin check no loaded plugin
        registers, a ``--renames`` file, a dumped dictionary or an artefact that cannot be
        written, an output path naming a file the run itself read (``dump -o``,
-       ``compare --renames`` and ``generate --dictionary`` each refuse one, naming it, since
-       nothing DDD writes is ever a file it read), an address map that cannot be read,
+       ``compare --renames``, ``generate --dictionary`` and an artefact of ``generate`` each
+       refuse one, naming it, since nothing DDD writes is ever a file it read: a description or
+       a plugin, the image, the address map, the a2l module fragment, any file under ``-t``, on
+       a dry run as well; ``build-info -o`` refuses the description it names, and it and
+       ``schema -o`` any path named ``*.ddd.json``), an address map that cannot be read,
        ``ddd compare --plugin`` refused beside a project description on the *candidate*
        side, which names its own plugins, or a run that would write nothing - reports the
        findings of the run

@@ -12064,3 +12064,41 @@ class TestWhatIsRedirectedAndWhatIsNot:
             assert phrase in said, f"{page} no longer says: {phrase!r}"
         for phrase in stale:
             assert phrase not in said, f"{page} still says: {phrase!r}"
+
+
+class TestWhatTheRunReadIsNeverWrittenOver:
+    """What a run's reads hold, and the commands that refuse to write over them, is on both
+    pages: the files a run read, the artefacts held to them, a dry run included, and the two
+    commands that read no description and refuse the name of one."""
+
+    SAID: ClassVar[dict[str, tuple[str, tuple[str, ...]]]] = {
+        "SPEC.md": (
+            SPEC,
+            (
+                "a path an artefact of the run is written to is refused, as is one the run read "
+                "- a description or a plugin, the image, the address map, the a2l module "
+                "fragment or any file under the template directory - a dry run refusing it as "
+                "a run does",
+                "`ddd generate --dictionary` and an artefact of `ddd generate` each refuse one, "
+                "as `ddd build-info -o` refuses the description it names, and `ddd schema -o` "
+                "and `ddd build-info -o` refuse any path named `*.ddd.json`",
+            ),
+        ),
+        "docs/command_line_interface.rst": (
+            COMMAND_LINE_INTERFACE,
+            (
+                "``generate --dictionary`` and an artefact of ``generate`` each refuse one, "
+                "naming it, since nothing DDD writes is ever a file it read: a description or a "
+                "plugin, the image, the address map, the a2l module fragment, any file under "
+                "``-t``, on a dry run as well; ``build-info -o`` refuses the description it "
+                "names, and it and ``schema -o`` any path named ``*.ddd.json``",
+            ),
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(SAID))
+    def test_the_page_says_it(self, page: str) -> None:
+        text, phrases = self.SAID[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"

@@ -247,12 +247,16 @@ def _located(spelling: str) -> str | None:
 
     A module that failed to import is in no ``sys.modules``, and the file it is in is what a
     build has to go on watching. A dotted name imports its parents to be located, which runs
-    their code, so whatever that raises - a parent that does not import either - is no
-    location: nothing is known of it.
+    their code, so whatever that raises, but the user's own interrupt - a parent that does not
+    import either - is no location: nothing is known of it.
     """
     try:
         found = importlib.util.find_spec(spelling)
-    except (Exception, SystemExit):
+    except KeyboardInterrupt:
+        raise
+    except BaseException:
+        # Whatever else a parent raises, as the import of it was: a cancellation and an
+        # exception of the plugin's own included, which ended the run in a traceback.
         return None
     origin = None if found is None else found.origin
     return origin if origin is not None and origin.endswith(".py") else None

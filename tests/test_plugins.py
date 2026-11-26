@@ -3903,6 +3903,61 @@ class TestWhatAPluginHandsBackAtImport:
         assert "plugin-invalid" in checks(bag)
         assert "failed to import: gone" in messages(bag)
 
+    @pytest.mark.parametrize(
+        "raised",
+        [
+            "__import__('asyncio').CancelledError('gone')",
+            "type('Boom', (BaseException,), {})('gone')",
+            "RuntimeError('gone')",
+        ],
+        ids=["a cancellation", "a custom base exception", "an exception, the control"],
+    )
+    def test_a_parent_package_that_raises_is_a_finding_of_the_project(
+        self,
+        tree: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        raised: str,
+    ) -> None:
+        """A dotted spelling is imported, and then located again for the build's file list, which
+        imports its parents once more: a parent that raises is ``plugin-invalid`` and the verdict
+        on both, never a traceback."""
+        package = tree / "site" / "parent_that_raises"
+        package.mkdir(parents=True)
+        (package / "__init__.py").write_text(f"raise {raised}\n", encoding="utf-8")
+        (package / "plugin.py").write_text("X = 1\n", encoding="utf-8")
+        monkeypatch.syspath_prepend(str(tree / "site"))
+        files = {
+            "project.ddd.json": project("P", "a.ddd.json", plugins=["parent_that_raises.plugin"]),
+            "a.ddd.json": component("A", declare("local", "X")),
+        }
+        try:
+            _, bag = run_analysis(tree, files)
+            assert "plugin-invalid" in checks(bag)
+            assert "failed to import: gone" in messages(bag)
+            assert main(["check", str(tree / "project.ddd.json")]) == EXIT_FINDINGS
+            err = capsys.readouterr().err
+            assert "plugin-invalid" in err
+            assert "Traceback" not in err
+        finally:
+            for name in ("parent_that_raises", "parent_that_raises.plugin"):
+                sys.modules.pop(name, None)
+
+    def test_an_interrupt_in_a_parent_package_still_interrupts_the_location(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from ddd.plugins import plugin_files
+
+        package = tree / "site" / "parent_that_is_interrupted"
+        package.mkdir(parents=True)
+        (package / "__init__.py").write_text("raise KeyboardInterrupt\n", encoding="utf-8")
+        monkeypatch.syspath_prepend(str(tree / "site"))
+        try:
+            with pytest.raises(KeyboardInterrupt):
+                plugin_files("parent_that_is_interrupted.plugin", tree)
+        finally:
+            sys.modules.pop("parent_that_is_interrupted", None)
+
     def test_a_lazy_plugin_that_raises_is_a_finding_of_the_project(self, tree: Path) -> None:
         write_plugin(tree, "lazy.py", "def __getattr__(name):\n    raise RuntimeError('lazy')\n")
         _, bag = run_analysis(

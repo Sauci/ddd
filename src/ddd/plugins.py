@@ -718,7 +718,6 @@ def _returns_nothing(plugin: Plugin, hook: str, returned: object) -> None:
         what = "a coroutine"
         reason = "a hook is called and never awaited, so declare it with def, not async def"
     elif inspect.isgenerator(returned):
-        returned.close()
         what = "a generator"
         reason = "a hook is called and never iterated, so its body does not run: do not yield"
     else:

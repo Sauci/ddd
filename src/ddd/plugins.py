@@ -160,7 +160,7 @@ def load_plugin(spelling: str, base: Path) -> Plugin:
     return plugin
 
 
-def plugin_files(spelling: str, base: Path) -> tuple[Path, ...]:
+def plugin_files(spelling: str, base: Path, *, run_plugins: bool = True) -> tuple[Path, ...]:
     """The files a plugin the project names is made of, for the dependency list of a build system.
 
     What the project names, whether or not the import went well: a path spelling names its
@@ -172,9 +172,16 @@ def plugin_files(spelling: str, base: Path) -> tuple[Path, ...]:
     directory, not its ``__init__.py`` alone: the module its ``PLUGIN`` comes from, and the
     shared code a plugin keeps beside it, are plugin code as much as the file that imports
     them. Nothing of the plugin is imported here.
+
+    ``run_plugins`` false is a run that runs no plugin (``--no-plugins``), where nothing may run
+    to find a file either: a module spelling is the file the finder locates for a top level
+    name, and nothing for a dotted one, whose packages the finder imports to locate it.
     """
     if spelling.endswith(".py"):
         source: Path | None = _path_of(spelling, base)
+    elif not run_plugins:
+        located = None if "." in spelling else _located(spelling)
+        source = Path(located).resolve() if located else None
     else:
         recorded = getattr(sys.modules.get(spelling), "__file__", None) or _located(spelling)
         source = Path(recorded).resolve() if recorded else None
@@ -378,8 +385,9 @@ def resolve_blocks(
     dictionary as its file keys it, and for a round trip, which leaves a computed field out:
     a hook reading a block from the dictionary, and a comparison reading an archived one back,
     hand the model what it reads. A block no loaded plugin owns, or one the plugin
-    declares no model for, is carried as written: the loader has already reported it, and a
-    project that relaxed ``unknown-extension`` asked for exactly that. On the project, every
+    declares no model for, is carried as written: the loader has already reported it, or the
+    plugins a run did not run (``plugin-skipped``), one of which may own it, and a project that
+    relaxed ``unknown-extension`` asked for exactly that. On the project, every
     plugin that declares a project model appears, with its defaults, whether or not the
     project stated a block for it: the dictionary carries each plugin's settings.
 

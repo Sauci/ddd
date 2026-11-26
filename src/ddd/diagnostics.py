@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import re
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -196,6 +196,12 @@ CHECKS: Final[dict[str, CheckInfo]] = {
                "a string init breaks the rules for one"),
         _check("point-counts-unrepresentable", Severity.ERROR,
                "a table stores its point counts in a datatype that cannot hold them"),
+        # Filed by the loader (`ddd.loading`) at each entry of a `plugins` list that a run given
+        # `--no-plugins` did not import. A warning: the run did what it was asked, and what it
+        # says is what was left undone.
+        _check("plugin-skipped", Severity.WARNING,
+               "a project names a plugin that did not run, as --no-plugins asks, so its checks did "
+               "not run and its blocks were not validated"),
         _check("storage-mismatch", Severity.WARNING,
                "components disagree on how the a2l presents the object; the producer wins"),
         _check("condition-mismatch", Severity.WARNING,
@@ -589,12 +595,19 @@ class SeverityPolicy:
         """The overrides naming a plugin's check, sorted; nothing has confirmed them yet."""
         return tuple(sorted(name for name in self.overrides if PLUGIN_CHECK_SEPARATOR in name))
 
-    def verify(self, registered: Mapping[str, CheckInfo]) -> None:
+    def verify(self, registered: Mapping[str, CheckInfo], skipped: Sequence[str] = ()) -> None:
         """Hold every provisional override to the checks the loaded plugins registered.
 
         The same outcome an unknown built-in check gets, reached later: a usage error, not a
         finding, because the mistake is on the command line and not in the project.
+
+        ``skipped`` are the plugins the run names and did not run, as ``--no-plugins`` asks
+        (:attr:`DiagnosticBag.skipped`). Which checks a plugin registers is known once it ran, so
+        while one was skipped an override naming a plugin's check may name one of its checks, and
+        every such override is accepted unverified.
         """
+        if skipped:
+            return
         for name in self.provisional:
             if name not in registered:
                 msg = f"unknown check '{name}': no loaded plugin registers it"
@@ -622,6 +635,7 @@ class DiagnosticBag:
         self.policy = policy or SeverityPolicy()
         self._items: list[Diagnostic] = []
         self._registered: dict[str, CheckInfo] = {}
+        self._skipped: list[str] = []
 
     def register(self, checks: Iterable[CheckInfo]) -> None:
         """Make a plugin's checks resolvable through this bag.
@@ -637,6 +651,17 @@ class DiagnosticBag:
     def registered(self) -> Mapping[str, CheckInfo]:
         """The plugin checks registered on this bag, by identifier."""
         return self._registered
+
+    def skip(self, spelling: str) -> None:
+        """Note a plugin a description names that this run did not run, as ``--no-plugins`` asks:
+        whatever checks it registers, none is registered here (:meth:`SeverityPolicy.verify`)."""
+        self._skipped.append(spelling)
+
+    @property
+    def skipped(self) -> tuple[str, ...]:
+        """The plugins noted as not run (:meth:`skip`), by the spelling that names each, in the
+        order they were met: once for each entry naming one."""
+        return tuple(self._skipped)
 
     def add(
         self,

@@ -12220,3 +12220,104 @@ class TestEveryPageSaysWhatForceCannotWrite:
             assert phrase in said, f"{page} no longer says: {phrase!r}"
         for phrase in stale:
             assert phrase not in said, f"{page} still says: {phrase!r}"
+
+
+class TestARunThatRunsNoPlugin:
+    """1:I15. ``--no-plugins`` imports no plugin a description names and reports each entry naming
+    one as ``plugin-skipped``: the specification, the check reference, the plugin page and the
+    README's table of checks say what such a run does, and the parser offers it where they say."""
+
+    SAID: ClassVar[dict[str, tuple[str, tuple[str, ...]]]] = {
+        "SPEC.md": (
+            SPEC,
+            (
+                "A run given `--no-plugins` ([section 7](#7-tool-interface)) runs none: no module "
+                "a description names is imported, and each entry of a `plugins` list is reported "
+                "as `plugin-skipped`, a warning, at the entry "
+                "([section 4](#4-consistency-checks)), so that plugin's checks do not run and its "
+                "blocks are not validated.",
+                "Where one was skipped, a block naming no loaded plugin is carried into the "
+                "dictionary as written rather than reported as `unknown-extension`, since which "
+                "plugin owns a block is known only once the plugins are imported, and the "
+                "dictionary's `plugins` names none that was skipped.",
+                "where a plugin the run names was skipped, which checks it registers is not known, "
+                "and the override is accepted unverified;",
+                "- `plugin-skipped`: a project names a plugin ([section 3.11](#311-plugins)) that "
+                "the run did not import, as `--no-plugins` asks, so its checks did not run and its "
+                "blocks were not validated: reported once for each entry of a `plugins` list, at "
+                "the entry. Where one was skipped, a block naming no loaded plugin reaches the "
+                "dictionary as written rather than being `unknown-extension`.",
+                "under `--no-plugins`, one named as a module is listed only where its name holds "
+                "no dot, since the finder imports the packages above a dotted name to locate it;",
+                "`ddd check`, `ddd list`, `ddd dump` and `ddd sources` take `--no-plugins`, which "
+                "imports none of the plugins a project names and reports each as `plugin-skipped` "
+                "([section 3.11](#311-plugins)); `ddd generate`, `ddd artefacts` and `ddd gui` do "
+                "not, each running what the project names as a build does.",
+            ),
+        ),
+        "docs/consistency_checks.rst": (
+            CONSISTENCY_CHECKS,
+            (
+                "* - ``plugin-skipped`` - warning - a project names a :doc:`plugin <plugins>` that "
+                "the run did not import, as ``--no-plugins`` asks, so its checks did not run and "
+                "its blocks were not validated: one finding for each entry of a ``plugins`` list, "
+                "at the entry. Where one was skipped, a block naming no loaded plugin is carried "
+                "into the dictionary as written rather than reported as ``unknown-extension``.",
+                "Where a plugin the run names was skipped (``--no-plugins``), which checks it "
+                "registers is not known, and an override naming a plugin's check is accepted "
+                "unverified.",
+            ),
+        ),
+        "docs/plugins.rst": (
+            PAGES["docs/plugins.rst"],
+            (
+                "Under ``--no-plugins``, which imports none of them, a module named without a dot "
+                "is listed by the file the finder locates for it, and a dotted name is left out, "
+                "since locating its file imports the packages above it.",
+                "While a plugin the run names was skipped (``--no-plugins``), which checks it "
+                "registers is not known, and an override naming a plugin's check is accepted "
+                "unverified.",
+                "Only ``--no-plugins`` runs none, on ``ddd check``, ``ddd list``, ``ddd dump`` and "
+                "``ddd sources``: no module a description names is imported, each entry naming "
+                "one is reported as ``plugin-skipped``, a warning, and its blocks are carried into "
+                "the dictionary as written, neither validated nor reported as "
+                "``unknown-extension``. ``ddd generate``, ``ddd artefacts`` and ``ddd gui`` do not "
+                "take it, each running what the project names as a build does.",
+            ),
+        ),
+        "README.md": (
+            README,
+            (
+                "| warning | `plugin-skipped` | a project names a plugin that `--no-plugins` kept "
+                "from running, so its checks did not run and its blocks were not validated |",
+            ),
+        ),
+    }
+
+    @pytest.mark.parametrize("page", sorted(SAID))
+    def test_the_page_says_what_a_run_given_no_plugins_does(self, page: str) -> None:
+        text, phrases = self.SAID[page]
+        said = flattened(text)
+        for phrase in phrases:
+            assert phrase in said, f"{page} no longer says: {phrase!r}"
+
+    def test_the_commands_that_take_it_are_those_the_pages_name(self) -> None:
+        """Decision M7: ``ddd generate``, ``ddd artefacts`` and ``ddd gui`` run what the project
+        names, as a build does."""
+        assert commands_with("--no-plugins") == ["check", "dump", "list", "sources"]
+
+    HELP: ClassVar[str] = (
+        "import none of the plugins the project names, reporting each as plugin-skipped, a "
+        "warning: its checks do not run and its blocks are not validated"
+    )
+    """What ``--help`` says of the option on every command over a project."""
+
+    @pytest.mark.parametrize("command", ["check", "dump", "list"])
+    def test_the_help_says_what_it_does(self, command: str) -> None:
+        assert option_help(command, "--no-plugins") == self.HELP
+
+    def test_the_help_of_sources_says_what_it_leaves_out(self) -> None:
+        assert option_help("sources", "--no-plugins") == (
+            f"{self.HELP}; a plugin named by a dotted module name is then left out of the "
+            "listing, since locating its file imports the packages above it"
+        )

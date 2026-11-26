@@ -216,6 +216,7 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
         help="also verify that the project can still replace this published dictionary",
     )
     _add_standalone_argument(check, "check")
+    _add_no_plugins_argument(check)
     check.set_defaults(handler=_command_check)
 
     compare_parser = subparsers.add_parser(
@@ -293,6 +294,7 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
     listing = subparsers.add_parser("list", help="list the global variables of a project")
     _add_common_arguments(listing)
     _add_standalone_argument(listing, "list")
+    _add_no_plugins_argument(listing)
     listing.set_defaults(handler=_command_list)
 
     dump = subparsers.add_parser(
@@ -315,6 +317,7 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
         ),
     )
     _add_standalone_argument(dump, "dump")
+    _add_no_plugins_argument(dump)
     dump.set_defaults(handler=_command_dump)
 
     identity = subparsers.add_parser(
@@ -538,6 +541,11 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
     )
     sources.add_argument(
         "--strict", action="store_true", help="report warnings as errors, as the build does"
+    )
+    _add_no_plugins_argument(
+        sources,
+        "; a plugin named by a dotted module name is then left out of the listing, since locating "
+        "its file imports the packages above it",
     )
     sources.set_defaults(handler=_command_sources)
 
@@ -818,6 +826,19 @@ def _add_standalone_argument(parser: argparse.ArgumentParser, verb: str) -> None
     )
 
 
+def _add_no_plugins_argument(parser: argparse.ArgumentParser, more: str = "") -> None:
+    """``--no-plugins``, spelled once for every command that reads a project without needing what
+    its plugins do; ``more`` is what the command says of it beyond that."""
+    parser.add_argument(
+        "--no-plugins",
+        action="store_true",
+        help=(
+            "import none of the plugins the project names, reporting each as plugin-skipped, a "
+            f"warning: its checks do not run and its blocks are not validated{more}"
+        ),
+    )
+
+
 def _add_plugin_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--plugin",
@@ -841,11 +862,13 @@ def _verify_overrides(bag: DiagnosticBag, plugins: Sequence[Plugin] = ()) -> Non
     reports about that plugin, was refused as naming a check no loaded plugin registers,
     which is the opposite of what happened. Registered only where nothing has claimed the
     identifier yet: a check both sides declare keeps the candidate's own, because the
-    candidate's plugins are the ones that report through this bag.
+    candidate's plugins are the ones that report through this bag. While a plugin the run names
+    was skipped (``--no-plugins``, :attr:`~ddd.diagnostics.DiagnosticBag.skipped`), which checks
+    it registers is not known, and the override is accepted unverified.
     """
     for plugin in plugins:
         bag.register(info for info in plugin.checks if info.identifier not in bag.registered)
-    bag.policy.verify(bag.registered)
+    bag.policy.verify(bag.registered, bag.skipped)
 
 
 def _plugins_from_arguments(
@@ -2076,7 +2099,9 @@ def _command_sources(args: argparse.Namespace) -> int:
     # The policy the build runs under, so that a check it relaxed is not reported here either:
     # the findings only say what the other commands would say of the same project.
     bag = DiagnosticBag(SeverityPolicy.from_strings(args.severity, strict=args.strict))
-    workspace = load_workspace(args.project, bag, plugin_defects_are_findings=True)
+    workspace = load_workspace(
+        args.project, bag, plugin_defects_are_findings=True, run_plugins=not args.no_plugins
+    )
     if args.format == "json":
         payload = {
             "sources": [path.as_posix() for path in workspace.sources()]
@@ -2168,7 +2193,9 @@ def _analyze(
     # is a usage error like a hook that raises, and the findings gathered before it are the
     # project's, printed first - in json, as the document the format promises.
     with _reported_on_failure(bag, args.format, stream):
-        workspace = load_workspace(args.project, bag)
+        workspace = load_workspace(
+            args.project, bag, run_plugins=not getattr(args, "no_plugins", False)
+        )
         if workspace is None:
             # Nothing was read, so nothing says which plugins this project names: holding a
             # `-W` naming one of their checks to an empty registry would blame the command

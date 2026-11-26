@@ -17,8 +17,9 @@ from conftest import (
     run_analysis,
     write_tree,
 )
+from ddd.analysis import analyze
 from ddd.cli import EXIT_FINDINGS, main
-from ddd.diagnostics import DiagnosticBag
+from ddd.diagnostics import DiagnosticBag, Location, Severity, SeverityPolicy
 from ddd.loading import (
     FileRead,
     _pattern_anchor,
@@ -28,6 +29,7 @@ from ddd.loading import (
     parse_json_text,
     resolve_path,
 )
+from test_plugins import naming_the_marker, ran
 
 
 def test_project_with_components(tree: Path) -> None:
@@ -993,3 +995,74 @@ class TestWhatEachFileIsReadAs:
             line,
             1,
         )
+
+
+class TestAReadThatRunsNoPlugin:
+    """1:I15. ``load_workspace(..., run_plugins=False)``, which ``--no-plugins`` reads with: no
+    module a description names is imported, each entry naming one is ``plugin-skipped`` where it
+    is written, and a block is carried as written."""
+
+    def test_no_module_a_description_names_is_imported(self, tree: Path) -> None:
+        root = naming_the_marker(tree)
+        bag = DiagnosticBag(SeverityPolicy.from_strings(["missing-id=ignore"]))
+        workspace = load_workspace(root, bag, run_plugins=False)
+        assert workspace is not None
+        assert not ran(tree)
+        assert workspace.plugins == ()
+        assert workspace.project_settings == {}
+        assert bag.skipped == ("tools/mark.py",)
+        assert bag.registered == {}
+        assert [(found.check, found.severity, found.location) for found in bag] == [
+            ("plugin-skipped", Severity.WARNING, Location(root.resolve(), "project.plugins[0]"))
+        ]
+        assert workspace.plugin_paths == ((tree / "tools" / "mark.py").resolve(),)
+
+    def test_each_entry_naming_a_plugin_is_reported_where_it_is_written(self, tree: Path) -> None:
+        """Nothing is looked for: a file that is not there is skipped as one that is."""
+        write_tree(
+            tree,
+            {
+                "p.ddd.json": project("P", "sub/s.ddd.json", plugins=["tools/mark.py"]),
+                "sub/s.ddd.json": project(
+                    "S", "a.ddd.json", plugins=["../tools/mark.py", "nowhere.py"]
+                ),
+                "sub/a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        bag = DiagnosticBag(SeverityPolicy.from_strings(["missing-id=ignore"]))
+        assert load_workspace(tree / "p.ddd.json", bag, run_plugins=False) is not None
+        assert [(found.check, found.location) for found in bag.sorted] == [
+            ("plugin-skipped", Location(tree / "p.ddd.json", "project.plugins[0]")),
+            ("plugin-skipped", Location(tree / "sub" / "s.ddd.json", "project.plugins[0]")),
+            ("plugin-skipped", Location(tree / "sub" / "s.ddd.json", "project.plugins[1]")),
+        ]
+        assert bag.skipped == ("tools/mark.py", "../tools/mark.py", "nowhere.py")
+
+    def test_a_skipped_plugin_s_blocks_reach_the_dictionary_as_written(self, tree: Path) -> None:
+        """Neither block is one the plugin's models take, which only the plugin says."""
+        root = naming_the_marker(tree, key="one", level="two")
+        bag = DiagnosticBag(SeverityPolicy.from_strings(["missing-id=ignore"]))
+        workspace = load_workspace(root, bag, run_plugins=False)
+        assert workspace is not None
+        assert checks(bag) == ["plugin-skipped"]
+        dictionary = analyze(workspace, bag)
+        assert checks(bag) == ["plugin-skipped"]
+        assert dictionary.plugins == ()
+        assert dictionary.extensions == {"mark": {"level": "two"}}
+        assert [entry.extensions for entry in dictionary.objects] == [{"mark": {"key": "one"}}]
+        loaded = DiagnosticBag(SeverityPolicy.from_strings(["missing-id=ignore"]))
+        load_workspace(root, loaded)
+        assert checks(loaded) == ["schema", "schema"]
+
+    def test_a_block_no_plugin_named_could_own_is_still_unknown(self, tree: Path) -> None:
+        write_tree(
+            tree,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", extensions={"mark": {}}),
+                "a.ddd.json": component("A", declare("local", "X", extensions={"mark": {}})),
+            },
+        )
+        bag = DiagnosticBag(SeverityPolicy.from_strings(["missing-id=ignore"]))
+        load_workspace(tree / "p.ddd.json", bag, run_plugins=False)
+        assert checks(bag) == ["unknown-extension", "unknown-extension"]
+        assert bag.skipped == ()

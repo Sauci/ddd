@@ -1199,7 +1199,14 @@ one on the project, and contributing checks, comparison rules and an artefact of
   over the project, and in the language server whenever a file of the project is opened or
   saved, and whenever the server reads the project description to find out whether it
   includes an opened file
-  ([section 7.2](#72-editor-integration)). A module is imported once per process; an edit
+  ([section 7.2](#72-editor-integration)). A run given `--no-plugins`
+  ([section 7](#7-tool-interface)) runs none: no module a description names is imported, and
+  each entry of a `plugins` list is reported as `plugin-skipped`, a warning, at the entry
+  ([section 4](#4-consistency-checks)), so that plugin's checks do not run and its blocks are
+  not validated. Where one was skipped, a block naming no loaded plugin is carried into the
+  dictionary as written rather than reported as `unknown-extension`, since which plugin owns a
+  block is known only once the plugins are imported, and the dictionary's `plugins` names none
+  that was skipped. A module is imported once per process; an edit
   takes effect in the next run, and in the editor and in `ddd gui` after the server is
   restarted, which `ddd gui` says meanwhile with `plugin-changed` on the file of a plugin
   named by its path. A module a plugin imports is not watched, and a plugin named as a
@@ -1277,7 +1284,9 @@ than in the built-in registry, and an override naming a plugin check is accepted
 provisionally and held, once the project is read, to the checks the loaded plugins
 registered: one that no loaded plugin registers is then the usage error an unknown built-in
 check is. It is held to them whether or not the read reported findings of its own, the
-plugins being loaded before the rest of the project is; and where a run reads a baseline as
+plugins being loaded before the rest of the project is; where a plugin the run names was
+skipped, which checks it registers is not known, and the override is accepted unverified;
+and where a run reads a baseline as
 well ([section 4.1](#41-comparing-two-deliveries)), the plugins it is held to include the
 baseline's own, which that run loaded to analyse it.
 
@@ -1548,6 +1557,11 @@ Errors:
 
 Warnings:
 
+- `plugin-skipped`: a project names a plugin ([section 3.11](#311-plugins)) that the run did
+  not import, as `--no-plugins` asks, so its checks did not run and its blocks were not
+  validated: reported once for each entry of a `plugins` list, at the entry. Where one was
+  skipped, a block naming no loaded plugin reaches the dictionary as written rather than being
+  `unknown-extension`.
 - `storage-mismatch`: components disagree on how the A2L presents the object; the producer
   wins.
 - `section-alignment`: an object needs stricter alignment than its section guarantees. This
@@ -2643,7 +2657,9 @@ the plugin modules the project names ([section 3.11](#311-plugins)) are among th
 each by the file it was imported from, and every `.py` file of one that is a package,
 so that an edited plugin re-runs the generation as an edited component does; a plugin
 named by a `.py` path is listed whether or not it imports, as a missing include is, and so is
-one named as a module, by the file the finder locates for it; a plugin that does not import
+one named as a module, by the file the finder locates for it; under `--no-plugins`, one named
+as a module is listed only where its name holds no dot, since the finder imports the packages
+above a dotted name to locate it; a plugin that does not import
 or whose model raises is a `plugin-invalid` finding beside the listing (a missing one,
 `plugin-not-found`), so that the edit repairing it is heard of; `-W` and `--strict` grade
 those findings as they grade `check`'s, so that a check a build relaxed is not reported
@@ -2680,6 +2696,11 @@ project ([section 4](#4-consistency-checks)), the
 same set the editor holds back ([section 7.2](#72-editor-integration)); an explicit `-W` on
 the same run still wins. Given a project root, `--standalone` holds the same checks back
 project-wide, which is rarely wanted.
+
+`ddd check`, `ddd list`, `ddd dump` and `ddd sources` take `--no-plugins`, which imports none
+of the plugins a project names and reports each as `plugin-skipped`
+([section 3.11](#311-plugins)); `ddd generate`, `ddd artefacts` and `ddd gui` do not, each
+running what the project names as a build does.
 
 Every command that reports findings can produce machine readable JSON (`--format json`): a
 `diagnostics` list, each finding carrying `check`, `severity`, `message`, a `location` of

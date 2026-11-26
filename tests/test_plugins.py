@@ -690,6 +690,21 @@ class TestThePolicy:
         with pytest.raises(UnknownCheckError, match="no loaded plugin registers it"):
             policy.verify({})
 
+    def test_an_override_is_accepted_unverified_while_a_plugin_did_not_run(self) -> None:
+        """1:I15. Which checks a plugin registers is known once it ran: while one the run names
+        was skipped, an override naming a plugin's check may name one of its own."""
+        policy = SeverityPolicy.from_strings(["tag/bad-prefix=error"])
+        policy.verify({}, ("tools/tag_plugin.py",))
+        with pytest.raises(UnknownCheckError, match="no loaded plugin registers it"):
+            policy.verify({}, ())
+
+    def test_a_bag_holds_the_plugins_a_run_did_not_run_in_the_order_it_met_them(self) -> None:
+        bag = DiagnosticBag()
+        assert bag.skipped == ()
+        bag.skip("tools/tag_plugin.py")
+        bag.skip("company.ddd_plugin")
+        assert bag.skipped == ("tools/tag_plugin.py", "company.ddd_plugin")
+
     def test_a_registered_check_resolves_like_a_built_in_one(self) -> None:
         info = CheckInfo("tag/bad-prefix", Severity.WARNING, "x")
         bag = DiagnosticBag()
@@ -3516,3 +3531,235 @@ class TestResolvedSettings:
         stated = resolve_blocks({"tag": plugin}, {"tag": {"prefix": "p"}}, on_project=True)
         assert stated == {"tag": {"prefix": "p"}}
         assert resolve_blocks({"tag": plugin}, {}, on_project=False) == {}
+
+
+MARKING_PLUGIN = '''
+"""A plugin whose module, each time it runs, adds a line to the file ``ran.txt`` beside it."""
+
+from pathlib import Path
+
+from pydantic import BaseModel, ConfigDict
+
+from ddd.diagnostics import CheckInfo, Severity
+from ddd.plugins import CheckContext, Plugin
+
+with Path(__file__).with_name("ran.txt").open("a", encoding="utf-8") as ran:
+    ran.write("ran\\n")
+
+
+class Key(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    key: int
+
+
+class Level(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    level: int = 1
+
+
+def check(context: CheckContext) -> None:
+    context.bag.add("mark/checked", "the check of the plugin ran")
+
+
+PLUGIN = Plugin(
+    name="mark",
+    object_model=Key,
+    project_model=Level,
+    checks=(CheckInfo("mark/checked", Severity.WARNING, "the check of the plugin ran"),),
+    check=check,
+)
+'''
+
+
+def naming_the_marker(
+    base: Path,
+    *,
+    plugins: tuple[str, ...] = ("tools/mark.py",),
+    key: object = 1,
+    level: object = 2,
+) -> Path:
+    """A project naming :data:`MARKING_PLUGIN` by its path among ``plugins``, its settings stated
+    and a block for it on a definition, ``key`` and ``level`` what they hold; the project file.
+    ``tools/ran.txt`` is there once the plugin's module ran (:func:`ran`)."""
+    write_plugin(base / "tools", "mark.py", MARKING_PLUGIN)
+    write_tree(
+        base,
+        {
+            "p.ddd.json": project(
+                "P", "a.ddd.json", plugins=list(plugins), extensions={"mark": {"level": level}}
+            ),
+            "a.ddd.json": component("A", declare("local", "X", extensions={"mark": {"key": key}})),
+        },
+    )
+    return base / "p.ddd.json"
+
+
+def ran(base: Path) -> bool:
+    """Whether the module of the marking plugin :func:`naming_the_marker` wrote ran."""
+    return (base / "tools" / "ran.txt").exists()
+
+
+SKIPPED = (
+    "plugin 'tools/mark.py' did not run, as --no-plugins asks: its checks did not run and its "
+    "blocks were not validated"
+)
+"""What ``plugin-skipped`` says of the entry naming the marking plugin."""
+
+
+class TestARunThatRunsNoPlugin:
+    """1:I15. ``--no-plugins`` imports no plugin a description names, and says of each that it did
+    not run (``plugin-skipped``), so that its checks did not run and its blocks were not validated.
+    Each test that says a plugin did not run says, without the switch, that it did."""
+
+    @pytest.mark.parametrize("command", ["check", "list", "dump", "sources"])
+    def test_the_command_runs_no_plugin_and_says_so(
+        self, tree: Path, capsys: pytest.CaptureFixture[str], command: str
+    ) -> None:
+        root = naming_the_marker(tree)
+        assert main([command, "--no-plugins", str(root)]) == EXIT_OK
+        assert not ran(tree)
+        said = capsys.readouterr().err
+        assert f"p.ddd.json#project.plugins[0]: warning[plugin-skipped]: {SKIPPED}" in said
+        assert main([command, str(root)]) == EXIT_OK
+        assert ran(tree)
+        assert "plugin-skipped" not in capsys.readouterr().err
+
+    def test_the_finding_is_a_warning_at_the_entry(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        root = naming_the_marker(tree)
+        arguments = ["check", "--no-plugins", "-W", "missing-id=ignore", "--format", "json"]
+        assert main([*arguments, str(root)]) == EXIT_OK
+        (finding,) = json.loads(capsys.readouterr().out)["diagnostics"]
+        assert finding == {
+            "check": "plugin-skipped",
+            "severity": "warning",
+            "message": SKIPPED,
+            "location": {
+                "path": root.resolve().as_posix(),
+                "pointer": "project.plugins[0]",
+                "line": None,
+                "column": None,
+            },
+            "notes": [],
+        }
+
+    def test_its_checks_do_not_run(self, tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        root = naming_the_marker(tree)
+        assert main(["check", "--no-plugins", str(root)]) == EXIT_OK
+        assert "mark/checked" not in capsys.readouterr().err
+        assert main(["check", str(root)]) == EXIT_OK
+        assert "warning[mark/checked]: the check of the plugin ran" in capsys.readouterr().err
+
+    def test_the_dump_carries_its_blocks_as_written(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Neither block is one the plugin's models take, which only the plugin says."""
+        root = naming_the_marker(tree, key="one", level="two")
+        assert main(["dump", "--no-plugins", "-W", "missing-id=ignore", str(root)]) == EXIT_OK
+        captured = capsys.readouterr()
+        dictionary = json.loads(captured.out)
+        assert dictionary["plugins"] == []
+        assert dictionary["extensions"] == {"mark": {"level": "two"}}
+        assert [entry["extensions"] for entry in dictionary["objects"]] == [
+            {"mark": {"key": "one"}}
+        ]
+        assert re.findall(r"\[([a-z/-]+)\]", captured.err) == ["plugin-skipped"]
+        assert main(["dump", str(root)]) == EXIT_FINDINGS
+        assert capsys.readouterr().err.count("error[schema]") == 2
+
+    def test_a_block_no_plugin_named_could_own_is_still_unknown(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_tree(
+            tree,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X", extensions={"mark": {}})),
+            },
+        )
+        assert main(["check", "--no-plugins", str(tree / "p.ddd.json")]) == EXIT_FINDINGS
+        assert "error[unknown-extension]" in capsys.readouterr().err
+
+    @pytest.mark.parametrize("check", ["mark/checked", "mark/registered-by-nothing"])
+    def test_an_override_naming_a_plugin_s_check_is_accepted_unverified(
+        self, tree: Path, capsys: pytest.CaptureFixture[str], check: str
+    ) -> None:
+        """Which checks a plugin registers is known once it ran, so a skipped one's may be any."""
+        root = naming_the_marker(tree)
+        assert main(["check", "--no-plugins", "-W", f"{check}=error", str(root)]) == EXIT_OK
+        assert "unknown check" not in capsys.readouterr().err
+
+    def test_an_override_is_still_held_where_no_plugin_was_skipped(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_tree(
+            tree,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        arguments = ["check", "--no-plugins", "-W", "mark/checked=error", str(tree / "p.ddd.json")]
+        assert main(arguments) == EXIT_USAGE
+        assert (
+            "unknown check 'mark/checked': no loaded plugin registers it" in capsys.readouterr().err
+        )
+
+    def test_it_is_a_warning_a_run_may_grade(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        root = naming_the_marker(tree)
+        assert main(["check", "--no-plugins", "--strict", str(root)]) == EXIT_FINDINGS
+        assert "error[plugin-skipped]" in capsys.readouterr().err
+        relaxed = ["-W", "plugin-skipped=ignore", "-W", "missing-id=ignore"]
+        assert main(["check", "--no-plugins", *relaxed, str(root)]) == EXIT_OK
+        assert "plugin-skipped" not in capsys.readouterr().err
+
+    def test_the_registry_and_ddd_checks_hold_it(self, capsys: pytest.CaptureFixture[str]) -> None:
+        assert CHECKS["plugin-skipped"] == CheckInfo(
+            "plugin-skipped",
+            Severity.WARNING,
+            "a project names a plugin that did not run, as --no-plugins asks, so its checks did "
+            "not run and its blocks were not validated",
+        )
+        assert main(["checks", "--format", "json"]) == EXIT_OK
+        listed = {entry["check"]: entry for entry in json.loads(capsys.readouterr().out)}
+        assert listed["plugin-skipped"] == {
+            "check": "plugin-skipped",
+            "default_severity": "warning",
+            "description": CHECKS["plugin-skipped"].description,
+            "overridable": True,
+            "needs_every_component": False,
+            "comparison": False,
+        }
+
+    def test_sources_lists_only_what_it_finds_without_running_anything(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A path's file, and a top level module's as the finder locates it; never a dotted
+        name's, whose packages the finder imports to locate it."""
+        site = tree / "site"
+        write_plugin(site, "marking_module.py", MARKING_PLUGIN)
+        package = site / "marking_pkg"
+        write_plugin(package, "__init__.py", MARKING_PLUGIN)
+        write_plugin(package, "plugin.py", BARE_PLUGIN)
+        monkeypatch.syspath_prepend(str(site))
+        root = naming_the_marker(
+            tree, plugins=("tools/mark.py", "marking_module", "marking_pkg.plugin")
+        )
+        try:
+            assert main(["sources", "--no-plugins", str(root)]) == EXIT_OK
+            listed = capsys.readouterr().out.splitlines()
+            assert sorted(tree.rglob("ran.txt")) == []
+            assert (tree / "tools" / "mark.py").resolve().as_posix() in listed
+            assert (site / "marking_module.py").resolve().as_posix() in listed
+            assert not [line for line in listed if "marking_pkg" in line]
+            # The control: located as a run that imports does, the dotted name runs its package.
+            from ddd.plugins import plugin_files
+
+            assert plugin_files("marking_pkg.plugin", tree) == ((package / "plugin.py").resolve(),)
+            assert (package / "ran.txt").exists()
+        finally:
+            for name in ("marking_module", "marking_pkg", "marking_pkg.plugin"):
+                sys.modules.pop(name, None)

@@ -36,7 +36,9 @@ installed. A sub-project may name plugins too, and the set in play is the union.
 ``ddd sources`` lists each plugin's file beside the description files - every ``.py`` file of
 one that is a package, and a ``.py`` path whether or not it imports - so that a build re-runs
 the generation when a plugin changes exactly as it does when a component does, and when its
-repair follows a defect.
+repair follows a defect. Under ``--no-plugins``, which imports none of them, a module named
+without a dot is listed by the file the finder locates for it, and a dotted name is left out,
+since locating its file imports the packages above it.
 
 ``extensions`` on the project holds each plugin's settings, keyed by the plugin's name and
 validated against its project model with defaults filled in. The key is spelled the way a
@@ -114,7 +116,9 @@ one exactly as it targets a built-in check - ``-W layout/duplicate-key=warning``
 override naming one is accepted first and verified once the project is read - whether or not
 the read reported findings of its own - and one that no loaded plugin registered is a usage
 error, the same outcome an unknown built-in check gets. A run given a baseline is held to the
-baseline's plugins as well, which it loaded to analyse it.
+baseline's plugins as well, which it loaded to analyse it. While a plugin the run names was
+skipped (``--no-plugins``), which checks it registers is not known, and an override naming a
+plugin's check is accepted unverified.
 
 The hooks
 ~~~~~~~~~
@@ -276,7 +280,12 @@ or saved; the :doc:`editor page <editor_integration>` says what that means for a
 you did not write, and why the server will not run there until you trust the workspace. It
 is true of the cmake integration too: ``ddd_generate()`` runs ``ddd`` at configure time, so
 the plugins a project names are imported when CMake runs, not only when the generation does
-(see :doc:`build_integration`).
+(see :doc:`build_integration`). Only ``--no-plugins`` runs none, on ``ddd check``, ``ddd
+list``, ``ddd dump`` and ``ddd sources``: no module a description names is imported, each
+entry naming one is reported as ``plugin-skipped``, a warning, and its blocks are carried into
+the dictionary as written, neither validated nor reported as ``unknown-extension``. ``ddd
+generate``, ``ddd artefacts`` and ``ddd gui`` do not take it, each running what the project
+names as a build does.
 
 The templates a run renders from are code in the same sense, and easier to overlook because
 a template looks like data: they are jinja2, rendered in an ordinary unsandboxed

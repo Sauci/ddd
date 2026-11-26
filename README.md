@@ -607,6 +607,7 @@ carries the same three as `overridable`, `needs_every_component` and `comparison
 | error | `include-empty` | an include pattern matches no file; relaxable, unlike the eight above |
 | error | `unknown-extension` | an `extensions` block names a plugin the project does not load |
 | error | `plugin-changed` | filed by `ddd gui` alone: a plugin named by its path changed since the server imported it, so the server runs the old code until it is restarted |
+| warning | `plugin-skipped` | a project names a plugin that `--no-plugins` kept from running, so its checks did not run and its blocks were not validated |
 | warning | `storage-mismatch` | components disagree on how the a2l shows the object; the producer wins |
 | warning | `section-alignment` | an object needs stricter alignment than its section guarantees |
 | warning | `condition-mismatch` | declarations of one variable, or an object and what it refers to, use different conditions |

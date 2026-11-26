@@ -552,11 +552,14 @@ class Workspace:
     whether or not it imports, as a missing include is a source: the edit that repairs one is
     what the build has to notice. A package is every ``.py`` file of it, and a module spelling
     that failed to import is the file the finder locates for it. A module with no file - one
-    planted into ``sys.modules`` - or one the finder cannot locate either, is not here.
+    planted into ``sys.modules`` - or one the finder cannot locate either, is not here, and
+    neither is a dotted module name a read that runs no plugin skipped, which the finder would
+    import packages to locate (:func:`~ddd.plugins.plugin_files`).
     """
 
     plugins: tuple[Plugin, ...] = ()
-    """The plugins the project files name, in project order, each once.
+    """The plugins the project files name, in project order, each once; none in a read that runs
+    no plugin (``plugin-skipped``).
 
     Empty for a component read on its own: only a project names plugins, which is why a
     block in such a run is reported by ``unknown-extension``, a check the editor's
@@ -728,6 +731,7 @@ def load_workspace(
     includes: Sequence[str] | None = None,
     files_read: dict[Path, FileRead] | None = None,
     plugin_defects_are_findings: bool = False,
+    run_plugins: bool = True,
 ) -> Workspace | None:
     """Load ``path`` (a project or a single component file) and everything it includes.
 
@@ -749,12 +753,20 @@ def load_workspace(
     commands over the analysis answer to. ``plugin_defects_are_findings`` has the load go on
     instead and report each as ``plugin-invalid`` at the block: for a caller that wants what
     the project names - ``ddd sources`` and ``ddd artefacts`` - whatever a plugin's defect.
+
+    ``run_plugins`` false is a read that runs no plugin, as ``--no-plugins`` asks: no module a
+    description names is imported, and each entry naming one is ``plugin-skipped`` where it is
+    written and noted on ``bag`` (:meth:`~ddd.diagnostics.DiagnosticBag.skip`), its files those
+    found without running anything (:func:`~ddd.plugins.plugin_files`). Once one was skipped, a
+    block naming no loaded plugin is carried as written rather than ``unknown-extension``: which
+    plugin owns a block is known only once the plugins ran.
     """
     return _Loader(
         bag,
         includes=includes,
         files_read=files_read,
         plugin_defects_are_findings=plugin_defects_are_findings,
+        run_plugins=run_plugins,
     ).load(path)
 
 
@@ -766,9 +778,14 @@ class _Loader:
         includes: Sequence[str] | None = None,
         files_read: dict[Path, FileRead] | None = None,
         plugin_defects_are_findings: bool = False,
+        run_plugins: bool,
     ) -> None:
         self._bag = bag
         self._plugin_defects_are_findings = plugin_defects_are_findings
+        self._run_plugins = run_plugins
+        self._skipped = False
+        """Whether this read skipped a plugin the files name: the read's own, never read off
+        ``bag``, which another read may have noted skips on as well."""
         self._root_includes = includes
         self._files_read = files_read
         self._components: list[LoadedComponent] = []
@@ -1222,11 +1239,27 @@ class _Loader:
         """Import one plugin the project names and note its files, whether or not it loaded.
 
         A plugin that stopped importing is the file a build has to go on watching: its repair
-        is what runs the generation again.
+        is what runs the generation again. A read that runs no plugin skips it instead, and notes
+        what of it can be found without running anything.
         """
-        self._import_plugin(spelling, origin, base)
-        for path in plugin_files(spelling, base):
+        if self._run_plugins:
+            self._import_plugin(spelling, origin, base)
+        else:
+            self._skip_plugin(spelling, origin)
+        for path in plugin_files(spelling, base, run_plugins=self._run_plugins):
             self._plugin_files.setdefault(path)
+
+    def _skip_plugin(self, spelling: str, origin: Location) -> None:
+        """Report a plugin the project names as not run, as ``--no-plugins`` asks, where it is
+        named: once for each entry, since nothing says which of them name one module."""
+        self._skipped = True
+        self._bag.skip(spelling)
+        self._bag.add(
+            "plugin-skipped",
+            f"plugin '{spelling}' did not run, as --no-plugins asks: its checks did not run and "
+            f"its blocks were not validated",
+            origin,
+        )
 
     def _import_plugin(self, spelling: str, origin: Location, base: Path) -> None:
         """Import one plugin the project names, or report why it could not be.
@@ -1328,8 +1361,12 @@ class _Loader:
         on_project: bool,
     ) -> BaseModel | None:
         """The instance ``block`` validates into against the model of the plugin that owns it,
-        or ``None`` where it does not - the reason reported."""
+        or ``None`` where it does not - the reason reported. A block no loaded plugin owns, in a
+        read that skipped a plugin, may be that plugin's: it is carried as written, and the skip
+        is what was reported (``plugin-skipped``)."""
         if plugin is None:
+            if self._skipped:
+                return None
             self._bag.add(
                 "unknown-extension",
                 f"'{name}' names no plugin this project loads; a block only means something "

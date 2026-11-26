@@ -177,7 +177,9 @@ one naming a check no loaded plugin registered is then the same usage error an u
 built-in check is. It is verified whether or not the read found anything - the plugins are
 loaded before the rest of the project, so a typo does not wait for the first run that happens
 to load cleanly - and a run given a baseline as well is held to the baseline's plugins too,
-which it loaded to analyse it.
+which it loaded to analyse it. Where a plugin the run names was skipped (``--no-plugins``),
+which checks it registers is not known, and an override naming a plugin's check is accepted
+unverified.
 
 Checking a component on its own
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -653,6 +655,13 @@ it is either a smell or a decision somebody should have taken consciously.
    * - Check
      - Default
      - Fires when
+   * - ``plugin-skipped``
+     - warning
+     - a project names a :doc:`plugin <plugins>` that the run did not import, as
+       ``--no-plugins`` asks, so its checks did not run and its blocks were not validated: one
+       finding for each entry of a ``plugins`` list, at the entry. Where one was skipped, a
+       block naming no loaded plugin is carried into the dictionary as written rather than
+       reported as ``unknown-extension``.
    * - ``storage-mismatch``
      - warning
      - two components describe the same variable differently in a property that shapes how

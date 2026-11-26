@@ -3987,8 +3987,12 @@ class TestAPathTheSystemRefuses:
 
     @pytest.mark.parametrize(
         "refusal",
-        [OSError(40, "Too many levels of symbolic links"), RuntimeError("Symlink loop")],
-        ids=["an os error", "a runtime error"],
+        [
+            OSError(40, "Too many levels of symbolic links"),
+            RuntimeError("Symlink loop"),
+            ValueError("a path the system refuses"),
+        ],
+        ids=["an os error", "a runtime error", "a value error"],
     )
     def test_whatever_the_system_refuses_with_is_not_found(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, refusal: Exception
@@ -4002,6 +4006,23 @@ class TestAPathTheSystemRefuses:
         monkeypatch.setattr(Path, "resolve", refusing)
         with pytest.raises(PluginNotFoundError, match="cannot be resolved"):
             load_plugin("tools/plugin.py", tmp_path)
+
+    def test_a_nul_is_refused_before_anything_resolves_it(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Windows on python 3.13 and later hands such a path back from ``resolve`` as it is, and
+        every platform says the one thing: refused before the system is asked."""
+        monkeypatch.setattr(Path, "resolve", lambda self, strict=False: self)
+        with pytest.raises(PluginNotFoundError, match="cannot be resolved"):
+            load_plugin("tools/a\0b.py", tmp_path)
+
+    def test_the_files_of_a_nul_are_none_where_resolve_hands_it_back(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from ddd.plugins import plugin_files
+
+        monkeypatch.setattr(Path, "resolve", lambda self, strict=False: self)
+        assert plugin_files("tools/a\0b.py", tmp_path) == ()
 
     def test_a_project_naming_such_a_path_files_it_and_goes_on(self, tree: Path) -> None:
         _, bag = run_analysis(

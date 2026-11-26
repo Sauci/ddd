@@ -265,6 +265,11 @@ def _located(spelling: str) -> str | None:
 def _path_of(spelling: str, base: Path) -> Path:
     """The file a path spelling names, resolved; a path the system refuses to resolve - one
     holding a NUL, or a loop of links - names none, as a path to nothing does."""
+    if "\0" in spelling:
+        # Asked of no system: python 3.13 and later on Windows hands such a path back from
+        # `resolve` unchanged, where every other platform and python refuses it.
+        msg = f"plugin '{spelling}' names a path that cannot be resolved: embedded null character"
+        raise PluginNotFoundError(msg)
     raw = Path(spelling)
     try:
         return (raw if raw.is_absolute() else base / raw).resolve()

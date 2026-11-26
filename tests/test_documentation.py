@@ -11999,11 +11999,11 @@ class TestAHookIsHandedTheSettingsTheProjectStates:
 
 class TestWhatIsRedirectedAndWhatIsNot:
     """5:I4, 9:M2. What a plugin prints while its module is imported, or while one of its models
-    validates, goes to stderr as a hook's does, and the pages say what that covers: what is redirected (``sys.stdout``),
-    what stays the plugin's to keep off standard output (a child process, ``os.write(1, ...)``,
-    ``sys.__stdout__``, on the wire of ``ddd lsp`` too), that under ``dump --format json`` a
-    hook's print shares standard error with the findings document, and that the redirect binds
-    ``sys.stdout`` for every thread while it lasts."""
+    validates, goes to stderr as a hook's does, and the pages say what that covers: what is
+    redirected (``sys.stdout``), what stays the plugin's to keep off standard output (a child
+    process, ``os.write(1, ...)``, ``sys.__stdout__``, on the wire of ``ddd lsp`` too), that under
+    ``dump --format json`` a hook's print shares standard error with the findings document, and
+    that the redirect binds ``sys.stdout`` for every thread while it lasts."""
 
     SAID: ClassVar[dict[str, tuple[str, tuple[str, ...], tuple[str, ...]]]] = {
         "SPEC.md": (
